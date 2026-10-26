@@ -15,7 +15,14 @@ export class ApiCallError extends Error {
 export async function callApi<T = unknown>(
   app: FastifyInstance,
   url: string,
-  opts: { method?: string; headers?: Record<string, string>; body?: unknown } = {},
+  opts: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: unknown;
+    /** For long polls; defaults to 15 s. */
+    timeoutMs?: number;
+    signal?: AbortSignal;
+  } = {},
 ): Promise<{ status: number; data: T; headers: Headers }> {
   const res = await safeFetch(url, {
     method: opts.method ?? 'GET',
@@ -27,9 +34,11 @@ export async function callApi<T = unknown>(
     },
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
     allowPrivate: app.settings.get('allowPrivateNetworkTargets'),
-    timeoutMs: 15_000,
+    timeoutMs: opts.timeoutMs ?? 15_000,
+    signal: opts.signal,
     maxBytes: 10 * 1024 * 1024,
   }).catch((err: unknown) => {
+    if (opts.signal?.aborted) throw err;
     // undici reports every network failure as "fetch failed"; the cause says what actually happened.
     throw new Error(`${new URL(url).host}: couldn't connect (${networkCause(err)})`);
   });

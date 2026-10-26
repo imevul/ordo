@@ -88,6 +88,8 @@ export interface SafeFetchOptions {
   timeoutMs?: number;
   maxBytes?: number;
   maxRedirects?: number;
+  /** Cancels the request early (a long poll when its connection is stopped). */
+  signal?: AbortSignal;
 }
 
 export interface SafeResponse {
@@ -107,7 +109,9 @@ export async function safeFetch(input: string, opts: SafeFetchOptions = {}): Pro
     maxBytes = 5 * 1024 * 1024,
     maxRedirects = 5,
   } = opts;
-  const signal = AbortSignal.timeout(timeoutMs);
+  const signal = opts.signal
+    ? AbortSignal.any([AbortSignal.timeout(timeoutMs), opts.signal])
+    : AbortSignal.timeout(timeoutMs);
   let url = new URL(input);
   let method = opts.method ?? 'GET';
   let body = opts.body;

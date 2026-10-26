@@ -81,7 +81,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ Signed outgoing webhooks with filters, delivery log, ping, redelivery and auto-disable
 - ✅ Integration framework: inbound webhooks, polling, domain events, bot accounts; issue links (PRs, branches,
   messages, plain links)
-- ⬜ Long-lived connectors under leases (lands with chat in Phase 8)
+- ✅ Long-lived connectors under leases (landed with chat in Phase 8)
 
 ### Phase 7 — Git forges ✅
 
@@ -89,10 +89,13 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ Magic words, per-team status automation (forward only), key aliases after renames, PR comments
 - ✅ Webhooks or polling for instances the forge can't reach; claimable forge usernames; branch name format
 
-### Phase 8 — Chat
+### Phase 8 — Chat ✅
 
-- ⬜ Slack, Discord, Matrix, Telegram: channel subscriptions, personal notifications, create issues from messages,
-  link unfurls; works behind NAT
+- ✅ Slack, Discord, Matrix, Telegram: channel feeds per team and kind of activity, personal notifications by
+  direct message, create issues from messages, link previews for people who can read the issue
+- ✅ Accounts linked with one-time codes; commands (`link`, `new`, `unlink`, `help`)
+- ✅ Works behind NAT: Slack Socket Mode, Discord gateway, Telegram long polling, Matrix sync, under leases
+- ⬜ Later: threaded comment sync, end-to-end encrypted Matrix rooms, one-click Slack install (OAuth)
 
 ### Phase 9 — Importers and export
 

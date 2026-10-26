@@ -41,6 +41,7 @@ import { teamRoutes } from './routes/teams.ts';
 import { viewRoutes } from './routes/views.ts';
 import { webhookRoutes } from './routes/webhooks.ts';
 import { workspaceRoutes } from './routes/workspaces.ts';
+import { Connectors } from './services/connectors.ts';
 import { Mailer } from './services/mailer.ts';
 import { Settings } from './services/settings.ts';
 
@@ -54,6 +55,7 @@ declare module 'fastify' {
     keyring: Keyring;
     jobs: JobQueue;
     leases: Leases;
+    connectors: Connectors;
     storage: Storage;
     mailer: Mailer;
     /** DNS TXT lookup (domain verification); replaced in tests. */
@@ -93,7 +95,9 @@ export async function buildApp(
   app.decorate('keyring', new Keyring(env.secretKey, env.previousSecretKey));
   const jobQueue = new JobQueue(db, client, app.log);
   app.decorate('jobs', jobQueue);
-  app.decorate('leases', new Leases(db, jobQueue.workerId));
+  const leases = new Leases(db, jobQueue.workerId);
+  app.decorate('leases', leases);
+  app.decorate('connectors', new Connectors(app, leases));
   app.decorate('storage', createStorage(env.storage));
   app.decorate('mailer', new Mailer(app));
   app.decorate('resolveTxt', resolveTxt);
@@ -102,6 +106,7 @@ export async function buildApp(
   if (!env.secretKey)
     app.log.warn('ORDO_SECRET_KEY is not set: storing secrets (SSO, integrations) is disabled');
   app.addHook('onClose', async () => {
+    await app.connectors.stop();
     await app.jobs.stop();
     await client.end({ timeout: 5 });
   });

@@ -32,7 +32,8 @@ Admins can **suspend** a member — they keep their history but can't open the w
   one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.
 - **Authentication** — single sign-on with your own identity provider (OpenID Connect), group → role mapping, and
   **require SSO**. See [SSO](sso.md).
-- **Integrations** — connect GitHub, GitLab or Forgejo/Gitea; see [integrations](integrations/README.md).
+- **Integrations** — connect GitHub, GitLab or Forgejo/Gitea, and Slack, Discord, Matrix or Telegram; see
+  [integrations](integrations/README.md).
 - **Webhooks** — send issue, comment, project and cycle events to your own endpoints, signed, with a delivery log,
   test button and redelivery ([API docs](api.md#webhooks)).
 - **Audit log** — security-relevant changes: invites, role changes, team changes, domains, and more.
@@ -163,7 +164,9 @@ Open **Settings** (workspace menu, or `G` then `S`):
   with any authenticator app, and keep the ten recovery codes somewhere safe — each works once if you lose your
   device; see and revoke your **sessions**.
 - **Connected accounts** — sign-in identities you've linked (and a button to connect your workspace's SSO
-  provider), and your usernames on connected forges so your pull requests show as yours.
+  provider), your usernames on connected forges so your pull requests show as yours, and your **chat** accounts:
+  link one with a one-time code to get notifications as direct messages and to create issues from chat
+  ([chat](integrations/chat.md)).
 - **Notifications** — everything lands in your Inbox; choose which kinds are also emailed and how often (within a few
   minutes, hourly, daily, or never). Anything you read in the app first isn't emailed.
 - **API keys** — personal keys for scripts and integrations ([API docs](api.md)).

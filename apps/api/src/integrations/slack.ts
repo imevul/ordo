@@ -1,0 +1,303 @@
+import {
+  type ChatIncoming,
+  chatFeed,
+  parseChannels,
+  runChatCommand,
+  unfurl,
+} from '../services/chat.ts';
+import { callApi, hmacHex, safeEqual } from './http.ts';
+import { runSocket } from './socket.ts';
+import type {
+  ChatMessage,
+  InboundRequest,
+  IntegrationContext,
+  IntegrationProvider,
+  IntegrationRow,
+} from './types.ts';
+
+/**
+ * Slack: a bot token plus either the Events API (Slack posts to Ordo; needs the signing secret)
+ * or Socket Mode (Ordo holds a socket open to Slack; needs an app-level token, works behind NAT).
+ * The `/ordo` command, mentions and direct messages run chat commands; the "Create Ordo issue"
+ * message shortcut files a message; issue links unfurl.
+ */
+
+interface SlackConfig {
+  delivery: 'events' | 'socket';
+}
+
+const cfg = (row: IntegrationRow) => row.config as unknown as SlackConfig;
+// Overridable for tests (a mock Slack) and nothing else.
+const apiUrl = () => process.env.ORDO_SLACK_API_URL ?? 'https://slack.com/api';
+
+/** Slack answers 200 with `ok: false` for most errors. */
+async function slack<T = Record<string, unknown>>(
+  ictx: IntegrationContext,
+  method: string,
+  body: Record<string, unknown> = {},
+  token = ictx.secrets.botToken,
+) {
+  const { data } = await callApi<{ ok: boolean; error?: string } & T>(
+    ictx.app,
+    `${apiUrl()}/${method}`,
+    { method: 'POST', headers: { authorization: `Bearer ${token}` }, body },
+  );
+  if (!data.ok) throw new Error(`Slack ${method}: ${data.error ?? 'failed'}`);
+  return data;
+}
+
+const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+export function slackBlocks(m: ChatMessage) {
+  const lines = [esc(m.headline)];
+  if (m.title) lines.push(m.url ? `*<${m.url}|${esc(m.title)}>*` : `*${esc(m.title)}*`);
+  if (m.body) lines.push(...m.body.split('\n').map((l) => `> ${esc(l)}`));
+  const blocks: unknown[] = [{ type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } }];
+  if (m.context)
+    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: esc(m.context) }] });
+  return {
+    text: [m.headline, m.title, m.url].filter(Boolean).join(' · '),
+    blocks,
+  };
+}
+
+const parseForm = (body: string) => Object.fromEntries(new URLSearchParams(body));
+
+interface SlackEvent {
+  type: string;
+  user: string;
+  channel: string;
+  channel_type?: string;
+  ts?: string;
+  thread_ts?: string;
+  text?: string;
+  bot_id?: string;
+  subtype?: string;
+  links?: { url: string }[];
+  message_ts?: string;
+  unfurl_id?: string;
+  source?: string;
+}
+
+interface SlackInteraction {
+  type: string;
+  trigger_id?: string;
+  response_url: string;
+  user: { id: string; username?: string; name?: string };
+  channel: { id: string };
+  message: { ts: string; text?: string; user?: string };
+}
+
+interface SlackInbound {
+  type?: string;
+  challenge?: string;
+  event_id?: string;
+  event?: SlackEvent;
+  command?: Record<string, string>;
+  interaction?: SlackInteraction;
+}
+
+/** Events arrive as JSON; slash commands and interactions as forms. */
+function parseInbound(req: InboundRequest): SlackInbound {
+  if (req.body.trimStart().startsWith('{')) return JSON.parse(req.body);
+  const form = parseForm(req.body);
+  return form.payload ? { interaction: JSON.parse(form.payload) } : { command: form };
+}
+
+async function respond(ictx: IntegrationContext, responseUrl: string, m: ChatMessage) {
+  // response_url is Slack's own host, handed to us in a signed request.
+  await callApi(ictx.app, responseUrl, {
+    method: 'POST',
+    body: { response_type: 'ephemeral', replace_original: false, ...slackBlocks(m) },
+  });
+}
+
+async function handleEvent(ictx: IntegrationContext, event: SlackEvent) {
+  const botUserId = ictx.integration.state.botUserId as string | undefined;
+  if (event.bot_id || event.subtype || (botUserId && event.user === botUserId)) return;
+  if (event.type === 'link_shared') {
+    const previews = await unfurl(
+      ictx,
+      event.user,
+      (event.links ?? []).map((l) => l.url).join(' '),
+    );
+    if (!previews.length) return;
+    await slack(ictx, 'chat.unfurl', {
+      ...(event.unfurl_id
+        ? { unfurl_id: event.unfurl_id, source: event.source }
+        : { channel: event.channel, ts: event.message_ts }),
+      unfurls: Object.fromEntries(
+        previews.map((p) => [p.url, { blocks: slackBlocks(p.message).blocks }]),
+      ),
+    });
+    return;
+  }
+  const direct = event.type === 'message' && event.channel_type === 'im';
+  if (event.type !== 'app_mention' && !direct) return;
+  const text = String(event.text ?? '')
+    .replace(/<@[A-Z0-9]+>/g, '')
+    .trim();
+  const incoming: ChatIncoming = { channel: event.channel, user: { id: event.user }, text, direct };
+  const answer = await runChatCommand(ictx, incoming);
+  await slack(ictx, 'chat.postMessage', {
+    channel: event.channel,
+    ...(direct ? {} : { thread_ts: event.thread_ts ?? event.ts }),
+    unfurl_links: false,
+    ...slackBlocks(answer),
+  });
+}
+
+async function handleCommand(ictx: IntegrationContext, form: Record<string, string>) {
+  const incoming: ChatIncoming = {
+    channel: form.channel_id!,
+    user: { id: form.user_id!, name: form.user_name },
+    text: form.text ?? '',
+    direct: form.channel_name === 'directmessage',
+  };
+  await respond(ictx, form.response_url!, await runChatCommand(ictx, incoming));
+}
+
+/** The "Create Ordo issue" message shortcut. */
+async function handleInteraction(ictx: IntegrationContext, p: SlackInteraction) {
+  if (p.type !== 'message_action') return;
+  const { message } = p;
+  const { permalink } = await slack<{ permalink: string }>(ictx, 'chat.getPermalink', {
+    channel: p.channel.id,
+    message_ts: message.ts,
+  }).catch(() => ({ permalink: null }));
+  let author = message.user;
+  if (message.user) {
+    const info = await slack<{ user: { real_name?: string; name?: string } }>(ictx, 'users.info', {
+      user: message.user,
+    }).catch(() => null);
+    author = info?.user.real_name || info?.user.name || author;
+  }
+  const answer = await runChatCommand(ictx, {
+    channel: p.channel.id,
+    user: { id: p.user.id, name: p.user.username ?? p.user.name },
+    text: 'new',
+    direct: false,
+    quoted: {
+      id: `${p.channel.id}:${message.ts}`,
+      text: message.text ?? '',
+      url: permalink,
+      author,
+    },
+  });
+  await respond(ictx, p.response_url, answer);
+}
+
+export const slackProvider: IntegrationProvider = {
+  key: 'slack',
+  name: 'Slack',
+  description:
+    'Post issue activity to channels, DM people their notifications, create issues from messages and unfurl links.',
+  category: 'chat',
+
+  configure({ config, secrets }) {
+    const delivery = config.delivery === 'socket' ? 'socket' : 'events';
+    if (!secrets.botToken || !String(secrets.botToken).startsWith('xoxb-'))
+      throw new Error('The bot token starts with xoxb-');
+    if (delivery === 'events' && !secrets.signingSecret)
+      throw new Error('The signing secret is required for the Events API');
+    if (delivery === 'socket' && !String(secrets.appToken ?? '').startsWith('xapp-'))
+      throw new Error('Socket Mode needs an app-level token (xapp-…) with connections:write');
+    return {
+      config: { delivery, channels: parseChannels(config.channels) },
+      secrets: Object.fromEntries(
+        ['botToken', 'signingSecret', 'appToken']
+          .filter((k) => secrets[k])
+          .map((k) => [k, String(secrets[k])]),
+      ),
+    };
+  },
+
+  async install(ictx) {
+    const auth = await slack<{ team: string; team_id: string; user_id: string }>(ictx, 'auth.test');
+    await ictx.saveState({ team: auth.team, teamId: auth.team_id, botUserId: auth.user_id });
+  },
+
+  verify(req, _row, secrets) {
+    const ts = Number(req.headers['x-slack-request-timestamp']);
+    // Old timestamps are replays.
+    if (!secrets.signingSecret || !ts || Math.abs(Date.now() / 1000 - ts) > 300) return false;
+    return safeEqual(
+      req.headers['x-slack-signature'],
+      `v0=${hmacHex(secrets.signingSecret, `v0:${ts}:${req.body}`)}`,
+    );
+  },
+
+  ackInbound(req) {
+    const parsed = parseInbound(req);
+    if (parsed.type === 'url_verification')
+      return { body: { challenge: parsed.challenge }, process: false };
+    // Slack wants a 200 within three seconds; answers follow through response_url or the API.
+    return { status: 200, body: '' };
+  },
+
+  deliveryId(req) {
+    const p = parseInbound(req);
+    return p.event_id ?? p.command?.trigger_id ?? p.interaction?.trigger_id ?? null;
+  },
+
+  async handleInbound(ictx, req) {
+    const p = parseInbound(req);
+    if (p.type === 'event_callback' && p.event) await handleEvent(ictx, p.event);
+    else if (p.command) await handleCommand(ictx, p.command);
+    else if (p.interaction) await handleInteraction(ictx, p.interaction);
+  },
+
+  onDomainEvent: chatFeed,
+
+  wantsConnection: (row) => cfg(row).delivery === 'socket',
+
+  /** Socket Mode: Slack pushes the same payloads over a socket; each is acked, then queued. */
+  async connect(ictx, io) {
+    const { url } = await slack<{ url: string }>(
+      ictx,
+      'apps.connections.open',
+      {},
+      ictx.secrets.appToken,
+    );
+    await runSocket(url, io.signal, async (raw, send, close) => {
+      const env = raw as { envelope_id?: string; type: string; payload?: unknown };
+      if (env.envelope_id) send({ envelope_id: env.envelope_id });
+      if (env.type === 'hello') await io.connected();
+      else if (env.type === 'disconnect') close();
+      else if (env.type === 'events_api')
+        await io.deliver({ headers: {}, query: {}, body: JSON.stringify(env.payload) });
+      else if (env.type === 'slash_commands')
+        await io.deliver({
+          headers: {},
+          query: {},
+          body: new URLSearchParams(env.payload as Record<string, string>).toString(),
+        });
+      else if (env.type === 'interactive')
+        await io.deliver({
+          headers: {},
+          query: {},
+          body: new URLSearchParams({ payload: JSON.stringify(env.payload) }).toString(),
+        });
+    });
+  },
+
+  chat: {
+    async post(ictx, channel, message) {
+      await slack(ictx, 'chat.postMessage', {
+        channel,
+        unfurl_links: false,
+        ...slackBlocks(message),
+      });
+    },
+    async direct(ictx, to, message) {
+      // Posting to a user id lands in the app's direct messages with them.
+      await slack(ictx, 'chat.postMessage', {
+        channel: to.externalId,
+        unfurl_links: false,
+        ...slackBlocks(message),
+      });
+      return undefined;
+    },
+    linkHint: () => '/ordo link CODE',
+  },
+};
