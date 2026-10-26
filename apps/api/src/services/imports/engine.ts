@@ -42,9 +42,10 @@ import { createProject } from '../projects.ts';
 import { createRelation } from '../relations.ts';
 import { createTeam } from '../teams.ts';
 import { csvSource } from './csv.ts';
-import { githubSource } from './github.ts';
+import { gitlabSource } from './gitlab.ts';
 import { jiraSource } from './jira.ts';
 import { linearSource } from './linear.ts';
+import { forgejoSource, githubSource } from './repo-issues.ts';
 import {
   ImportAbort,
   type ImportAdapter,
@@ -71,6 +72,8 @@ const ADAPTERS: Record<string, ImportAdapter> = {
   linear: linearSource,
   github: githubSource,
   jira: jiraSource,
+  forgejo: forgejoSource,
+  gitlab: gitlabSource,
 };
 export const importAdapter = (source: string) => ADAPTERS[source];
 

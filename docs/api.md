@@ -350,9 +350,15 @@ Admins only. How imports work, and the CSV columns Ordo reads, are in [Importing
 | POST   | `/imports/:id/cancel`  | Stops at the next page                                                                          |
 | DELETE | `/imports/:id`         | Forgets the import and its file; imported issues stay                                           |
 
-API sources take `{ "source": "linear", "apiKey" }` or `{ "source": "github", "token", "repos": ["owner/name"],
-"apiUrl"? }` or `{ "source": "jira", "siteUrl", "email"?, "token", "projects"? }`; the credentials are checked first
-and never returned.
+API sources take one of:
+
+- `{ "source": "linear", "apiKey" }`
+- `{ "source": "github", "token", "repos": ["owner/name"], "apiUrl"? }`
+- `{ "source": "forgejo", "baseUrl", "token", "repos": ["owner/name"] }`
+- `{ "source": "gitlab", "baseUrl"?, "token", "projects": ["group/project"] }`
+- `{ "source": "jira", "siteUrl", "email"?, "token", "projects"? }`
+
+The credentials are checked first and never returned.
 
 `status` goes `analyzing` → `ready` → (`dry_running` → `ready`) → `running` → `completed`, or `failed` / `canceled`.
 `mapping` is `{ teams, statuses, users, labels, projects, keepNumbers }`, keyed by the source's ids from `summary`:

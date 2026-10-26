@@ -1,6 +1,7 @@
 # Importing data
 
-Workspace admins can bring issues in from other tools: **CSV files**, **Linear**, **GitHub Issues** and **Jira**.
+Workspace admins can bring issues in from other tools: **CSV files**, **Linear**, **GitHub Issues**,
+**Forgejo/Gitea**, **GitLab** and **Jira**.
 Workspace export and a settings page for all of it are on the
 [roadmap](../ROADMAP.md#phase-9--importers-and-export). Until the page lands, imports run through the
 [API](api.md#imports).
@@ -71,6 +72,38 @@ repository, keeps the token encrypted until you delete the import, and then:
 
 Analysis reads every issue and comment once, to count them and to find everyone involved. GitHub's rate limits
 apply; a large import may pause and carry on by itself.
+
+## Forgejo and Gitea
+
+Works like GitHub (Codeberg included), with the server's address and an access token that can read issues:
+
+```json
+{ "source": "forgejo", "baseUrl": "https://codeberg.org", "token": "…", "repos": ["acme/tools"] }
+```
+
+Issues are **Open** or **Closed**. People match by the usernames members claimed for that server, then by email
+(when the server shares a real one) or name.
+
+## GitLab
+
+For gitlab.com or a self-managed GitLab, with an access token with the `read_api` scope and the projects' full
+paths:
+
+```json
+{
+  "source": "gitlab",
+  "baseUrl": "https://gitlab.com",
+  "token": "glpat-…",
+  "projects": ["acme/backend/api"]
+}
+```
+
+- Each project becomes a source team named after it; issues keep their numbers (`#12` becomes `API-12`) and are
+  **Open** or **Closed**.
+- Milestones become projects, group milestones included; weights become estimates; due dates stay.
+- Comments are the issues' notes, without GitLab's own system notes ("added ~bug label").
+- People match by the usernames members claimed, then by name.
+- Related issues, child tasks and epics aren't imported.
 
 ## Jira
 
