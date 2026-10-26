@@ -1,0 +1,22 @@
+# Development database only. The API and web client run on the host via `make dev`.
+name: ordo-dev
+
+services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: ordo
+      POSTGRES_PASSWORD: ordo
+      POSTGRES_DB: ordo
+    ports:
+      - "${ORDO_DEV_DB_PORT:-5433}:5432"
+    volumes:
+      - ordo-dev-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ordo -d ordo"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  ordo-dev-db:

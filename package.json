@@ -1,0 +1,26 @@
+{
+  "name": "ordo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ordo — a self-hostable issue tracker for software teams",
+  "type": "module",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @ordo/api --filter @ordo/web dev",
+    "build": "pnpm --filter @ordo/web build && pnpm --filter @ordo/api build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "db:generate": "pnpm --filter @ordo/api db:generate",
+    "db:migrate": "pnpm --filter @ordo/api db:migrate",
+    "db:seed": "pnpm --filter @ordo/api db:seed"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.3",
+    "typescript": "7.0.2"
+  }
+}
