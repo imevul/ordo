@@ -1,4 +1,5 @@
 import type {
+  AuditAction,
   EstimateScale,
   FavoriteKind,
   MemberRole,
@@ -20,6 +21,7 @@ export interface User {
 }
 
 export interface Me extends User {
+  isInstanceAdmin: boolean;
   workspaces: { id: string; name: string; slug: string; role: MemberRole }[];
 }
 
@@ -95,7 +97,7 @@ export interface Progress {
 export interface ProjectUpdate {
   id: string;
   projectId: string;
-  authorId: string;
+  authorId: string | null;
   body: string;
   health: ProjectHealth;
   createdAt: string;
@@ -122,7 +124,8 @@ export interface Issue {
   stateId: string;
   priority: number;
   assigneeId: string | null;
-  creatorId: string;
+  /** Null when the creator's account was deleted. */
+  creatorId: string | null;
   projectId: string | null;
   cycleId: string | null;
   parentId: string | null;
@@ -167,7 +170,8 @@ export interface IssueDetail extends Issue {
 export interface Comment {
   id: string;
   issueId: string;
-  authorId: string;
+  /** Null when the author's account was deleted. */
+  authorId: string | null;
   parentId: string | null;
   body: string;
   createdAt: string;
@@ -205,7 +209,7 @@ export interface View {
   id: string;
   name: string;
   description: string | null;
-  ownerId: string;
+  ownerId: string | null;
   teamId: string | null;
   shared: boolean;
   filters: IssueFilter;
@@ -263,4 +267,37 @@ export interface InstanceConfig {
 export interface SearchResults {
   issues: Issue[];
   projects: { id: string; name: string; color: string }[];
+}
+
+export interface AuditEntry {
+  id: string;
+  workspaceId: string | null;
+  actorId: string | null;
+  action: AuditAction;
+  targetType: string | null;
+  targetId: string | null;
+  data: Record<string, unknown>;
+  ip: string | null;
+  createdAt: string;
+}
+
+/** Instance-wide settings (admin area). Environment variables override stored values. */
+export interface InstanceSettings {
+  signupMode: 'open' | 'invite';
+  allowWorkspaceCreation: boolean;
+  /** Let outbound requests (IdP discovery, webhooks, forge URLs) reach private/LAN addresses. */
+  allowPrivateNetworkTargets: boolean;
+}
+
+export const INSTANCE_SETTING_DEFAULTS: InstanceSettings = {
+  signupMode: 'invite',
+  allowWorkspaceCreation: true,
+  allowPrivateNetworkTargets: false,
+};
+
+export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof InstanceSettings> {
+  key: K;
+  value: InstanceSettings[K];
+  /** Where the effective value comes from; `env` values are read-only in the UI. */
+  source: 'env' | 'db' | 'default';
 }

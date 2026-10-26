@@ -24,7 +24,14 @@ import {
   parse,
   unauthorized,
 } from '../lib/errors.ts';
+import { requestMeta } from '../lib/mutate.ts';
+import { audit, auditCtx } from '../services/audit.ts';
+import type { Ctx } from '../services/context.ts';
 import { createTeam } from '../services/teams.ts';
+
+// A well-formed hash nobody can match, compared against when the account doesn't exist.
+const DUMMY_HASH =
+  'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
 
 const authLimit = { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } };
 
@@ -79,6 +86,14 @@ async function acceptInvite(
       .update(invites)
       .set({ acceptedAt: new Date().toISOString() })
       .where(eq(invites.id, invite.id));
+  await audit(tx, {
+    action: 'invite.accepted',
+    workspaceId: invite.workspaceId,
+    actorId: userId,
+    targetType: 'invite',
+    targetId: invite.id,
+    data: { role: invite.role },
+  });
   const [ws] = await tx
     .select({ slug: workspaces.slug })
     .from(workspaces)
@@ -87,14 +102,14 @@ async function acceptInvite(
 }
 
 export async function authRoutes(app: FastifyInstance) {
-  const { db, env } = app;
+  const { db, env, settings } = app;
 
   app.get('/config', async (): Promise<InstanceConfig> => {
     const [{ n }] = (await db.select({ n: count() }).from(users)) as [{ n: number }];
     return {
-      signupMode: env.signupMode,
+      signupMode: settings.get('signupMode'),
       hasUsers: n > 0,
-      allowWorkspaceCreation: env.allowWorkspaceCreation,
+      allowWorkspaceCreation: settings.get('allowWorkspaceCreation'),
       version: env.version,
     };
   });
@@ -107,7 +122,7 @@ export async function authRoutes(app: FastifyInstance) {
       const invite = input.inviteToken ? await findInvite(tx, input.inviteToken) : null;
       if (input.inviteToken && !invite)
         throw badRequest('This invite link is invalid or has expired');
-      if (n > 0 && env.signupMode === 'invite' && !invite)
+      if (n > 0 && settings.get('signupMode') === 'invite' && !invite)
         throw forbidden('Sign-ups on this instance require an invite');
       const [existing] = await tx
         .select({ id: users.id })
@@ -122,30 +137,53 @@ export async function authRoutes(app: FastifyInstance) {
           username: await uniqueUsername(tx, email),
           passwordHash: await hashPassword(input.password),
           avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
+          // The first account on an instance administers it.
+          isInstanceAdmin: n === 0,
         })
         .returning({ id: users.id });
+      await audit(
+        tx,
+        { action: 'auth.signup', actorId: user!.id, data: { invited: !!invite } },
+        requestMeta(req),
+      );
       const workspaceSlug = invite ? await acceptInvite(tx, invite, user!.id, email) : null;
       return { userId: user!.id, workspaceSlug };
     });
-    await createSession(app, reply, result.userId, req.headers['user-agent']);
+    await createSession(app, reply, result.userId, req);
     return { ok: true, workspaceSlug: result.workspaceSlug };
   });
 
   app.post('/auth/login', authLimit, async (req, reply) => {
     const input = parse(loginSchema, req.body);
-    const [user] = await db.select().from(users).where(eq(users.email, input.email.toLowerCase()));
-    // Always run a hash comparison so timing does not reveal which emails exist.
-    const valid = await verifyPassword(
-      input.password,
-      user?.passwordHash ?? 'scrypt$32768$8$1$AAAA$AAAA',
+    const email = input.email.toLowerCase();
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    // Always run a hash comparison so timing does not reveal which emails exist or have passwords.
+    const valid = await verifyPassword(input.password, user?.passwordHash ?? DUMMY_HASH);
+    const usable = user && user.kind === 'human' && user.passwordHash && valid;
+    if (!usable) {
+      await audit(
+        db,
+        { action: 'auth.login_failed', actorId: user?.id ?? null, data: { email } },
+        requestMeta(req),
+      );
+      throw unauthorized('Wrong email or password');
+    }
+    if (user.disabledAt)
+      throw forbidden('This account has been disabled. Contact your administrator.');
+    await audit(
+      db,
+      { action: 'auth.login', actorId: user.id, data: { method: 'password' } },
+      requestMeta(req),
     );
-    if (!user || !valid) throw unauthorized('Wrong email or password');
-    await createSession(app, reply, user.id, req.headers['user-agent']);
+    await createSession(app, reply, user.id, req);
     return { ok: true };
   });
 
   app.post('/auth/logout', async (req, reply) => {
-    if (req.sessionId) await db.delete(sessions).where(eq(sessions.id, req.sessionId));
+    if (req.sessionId) {
+      await db.delete(sessions).where(eq(sessions.id, req.sessionId));
+      await audit(db, { action: 'auth.logout', actorId: req.user?.id }, requestMeta(req));
+    }
     clearSessionCookie(reply);
     return { ok: true };
   });
@@ -201,17 +239,19 @@ export async function authRoutes(app: FastifyInstance) {
       .select({ hash: users.passwordHash })
       .from(users)
       .where(eq(users.id, user.id));
-    if (!row || !(await verifyPassword(input.currentPassword, row.hash)))
+    if (!row?.hash) throw badRequest('This account signs in through SSO and has no password');
+    if (!(await verifyPassword(input.currentPassword, row.hash)))
       throw badRequest('Current password is wrong');
-    await db
-      .update(users)
-      .set({ passwordHash: await hashPassword(input.newPassword) })
-      .where(eq(users.id, user.id));
-    // Sign out every other session.
-    if (req.sessionId)
-      await db
-        .delete(sessions)
-        .where(and(eq(sessions.userId, user.id), ne(sessions.id, req.sessionId)));
+    const passwordHash = await hashPassword(input.newPassword);
+    await db.transaction(async (tx) => {
+      await tx.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+      // Sign out every other session.
+      if (req.sessionId)
+        await tx
+          .delete(sessions)
+          .where(and(eq(sessions.userId, user.id), ne(sessions.id, req.sessionId)));
+      await audit(tx, { action: 'auth.password_changed', actorId: user.id }, requestMeta(req));
+    });
     return { ok: true };
   });
 
@@ -234,10 +274,24 @@ export async function authRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     const { name } = parse(createApiKeySchema, req.body);
     const token = `${API_KEY_PREFIX}${randomToken(24)}`;
-    const [key] = await db
-      .insert(apiKeys)
-      .values({ userId: user.id, name, tokenHash: sha256(token), prefix: token.slice(0, 12) })
-      .returning({ id: apiKeys.id });
+    const key = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(apiKeys)
+        .values({ userId: user.id, name, tokenHash: sha256(token), prefix: token.slice(0, 12) })
+        .returning({ id: apiKeys.id });
+      await audit(
+        tx,
+        {
+          action: 'api_key.created',
+          actorId: user.id,
+          targetType: 'api_key',
+          targetId: row!.id,
+          data: { name },
+        },
+        requestMeta(req),
+      );
+      return row;
+    });
     // The plaintext token is returned exactly once.
     return { id: key!.id, token };
   });
@@ -245,7 +299,23 @@ export async function authRoutes(app: FastifyInstance) {
   app.delete('/me/api-keys/:id', async (req) => {
     const user = requireUser(req);
     const { id } = req.params as { id: string };
-    await db.delete(apiKeys).where(and(eq(apiKeys.id, id), eq(apiKeys.userId, user.id)));
+    const [removed] = await db
+      .delete(apiKeys)
+      .where(and(eq(apiKeys.id, id), eq(apiKeys.userId, user.id)))
+      .returning({ id: apiKeys.id, name: apiKeys.name });
+    if (removed) {
+      await audit(
+        db,
+        {
+          action: 'api_key.revoked',
+          actorId: user.id,
+          targetType: 'api_key',
+          targetId: id,
+          data: { name: removed.name },
+        },
+        requestMeta(req),
+      );
+    }
     return { ok: true };
   });
 
@@ -278,7 +348,7 @@ export async function authRoutes(app: FastifyInstance) {
       .select({ n: count() })
       .from(workspaceMembers)
       .where(eq(workspaceMembers.userId, user.id))) as [{ n: number }];
-    if (!env.allowWorkspaceCreation && n > 0)
+    if (!settings.get('allowWorkspaceCreation') && n > 0)
       throw forbidden('Creating workspaces is disabled on this instance');
     try {
       const slug = await db.transaction(async (tx) => {
@@ -289,13 +359,25 @@ export async function authRoutes(app: FastifyInstance) {
         await tx
           .insert(workspaceMembers)
           .values({ workspaceId: ws!.id, userId: user.id, role: 'admin' });
-        await createTeam(
-          { tx, userId: user.id, workspaceId: ws!.id, events: [] },
-          {
-            name: input.teamName ?? input.name,
-            key: input.teamKey ?? deriveKey(input.teamName ?? input.name),
-          },
-        );
+        const ctx: Ctx = {
+          tx,
+          userId: user.id,
+          workspaceId: ws!.id,
+          events: [],
+          source: req.authMethod === 'api_key' ? 'api' : 'web',
+          silent: false,
+          meta: requestMeta(req),
+        };
+        await createTeam(ctx, {
+          name: input.teamName ?? input.name,
+          key: input.teamKey ?? deriveKey(input.teamName ?? input.name),
+        });
+        await auditCtx(ctx, {
+          action: 'workspace.created',
+          targetType: 'workspace',
+          targetId: ws!.id,
+          data: { slug: ws!.slug },
+        });
         return ws!.slug;
       });
       return { slug };

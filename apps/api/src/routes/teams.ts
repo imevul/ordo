@@ -12,6 +12,7 @@ import { issues, teamMembers, teams, workflowStates } from '../db/schema.ts';
 import { requireAdmin } from '../lib/auth.ts';
 import { badRequest, conflict, isUniqueViolation, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
+import { auditCtx } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { createTeam, listTeams } from '../services/teams.ts';
 
@@ -45,7 +46,16 @@ export async function teamRoutes(app: FastifyInstance) {
   app.post('/teams', async (req) => {
     const input = parse(createTeamSchema, req.body);
     try {
-      const id = await mutate(app, req, (ctx) => createTeam(ctx, input));
+      const id = await mutate(app, req, async (ctx) => {
+        const teamId = await createTeam(ctx, input);
+        await auditCtx(ctx, {
+          action: 'team.created',
+          targetType: 'team',
+          targetId: teamId,
+          data: { name: input.name, key: input.key },
+        });
+        return teamId;
+      });
       return (await listTeams(app.db, req.workspace!.id)).find((t) => t.id === id);
     } catch (err) {
       throw keyTaken(err);
@@ -67,6 +77,12 @@ export async function teamRoutes(app: FastifyInstance) {
           .set(input as Partial<typeof teams.$inferInsert>)
           .where(eq(teams.id, teamId));
         emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
+        await auditCtx(ctx, {
+          action: 'team.updated',
+          targetType: 'team',
+          targetId: teamId,
+          data: input,
+        });
       });
     } catch (err) {
       throw keyTaken(err);
@@ -88,6 +104,12 @@ export async function teamRoutes(app: FastifyInstance) {
       await ctx.tx.delete(issues).where(eq(issues.teamId, team.id));
       await ctx.tx.delete(teams).where(eq(teams.id, team.id));
       emit(ctx, { kind: 'team', action: 'deleted', id: team.id, teamId: team.id });
+      await auditCtx(ctx, {
+        action: 'team.deleted',
+        targetType: 'team',
+        targetId: team.id,
+        data: { name: team.name, key: team.key },
+      });
       return { ok: true };
     });
   });

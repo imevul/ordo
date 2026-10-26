@@ -1,14 +1,20 @@
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
+import postgres from 'postgres';
 import { buildApp } from '../src/app.ts';
 import { runMigrations } from '../src/db/migrate.ts';
 import { loadEnv } from '../src/env.ts';
 
 export async function testApp(overrides: Parameters<typeof loadEnv>[0] = {}) {
   const app = await buildApp(
-    loadEnv({ databaseUrl: process.env.TEST_DATABASE_URL!, signupMode: 'open', ...overrides }),
+    loadEnv({
+      databaseUrl: process.env.TEST_DATABASE_URL!,
+      ...overrides,
+      settingsFromEnv: { signupMode: 'open', ...overrides.settingsFromEnv },
+    }),
     { logger: false },
   );
   await runMigrations(app.db);
+  await app.settings.reload();
   await app.ready();
   return app;
 }
@@ -62,4 +68,15 @@ export async function signup(
   });
   if (res.statusCode !== 200) throw new Error(`signup failed: ${res.body}`);
   return { client: c, email, data: res.data };
+}
+
+/** Creates (or recreates) an empty database next to the test database and returns its URL. */
+export async function freshDatabase(name: string) {
+  const base = new URL(process.env.TEST_DATABASE_URL!);
+  const admin = postgres(base.toString(), { max: 1, onnotice: () => {} });
+  await admin.unsafe(`drop database if exists ${name} with (force)`);
+  await admin.unsafe(`create database ${name}`);
+  await admin.end();
+  base.pathname = `/${name}`;
+  return base.toString();
 }

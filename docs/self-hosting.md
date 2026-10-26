@@ -51,6 +51,9 @@ if one fails the app refuses to start and the previous data is untouched. **Take
 
 ## Backups
 
+Back up two things: the database (below) and `ORDO_SECRET_KEY` from `.env`, which encrypts stored SSO and
+integration secrets. A database restored without its key loses those secrets (everything else still works).
+
 ```bash
 make backup                                   # → backups/ordo-20260131-120000.sql.gz
 make restore FILE=backups/ordo-20260131-120000.sql.gz
@@ -119,6 +122,10 @@ works the same way. Sticky sessions are not required.
 
 ## Security notes
 
+- The first account created on an instance is its **instance admin**.
+- Every sign-in, failed sign-in, password change, API key, invite, role and team change is written to an audit log.
+- Outbound requests to URLs an admin enters (SSO, webhooks, integrations) refuse private and loopback addresses unless
+  `ORDO_ALLOW_PRIVATE_NETWORK_TARGETS` is on.
 - Keep `ORDO_SIGNUP_MODE=invite` on public instances.
 - Passwords are hashed with scrypt; session tokens and API keys are stored as SHA-256 hashes.
 - Login and sign-up are rate-limited per IP (20/min).

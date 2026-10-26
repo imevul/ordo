@@ -94,6 +94,33 @@ export const RELATION_TYPES = ['blocks', 'related', 'duplicate'] as const;
 export type RelationType = (typeof RELATION_TYPES)[number];
 
 export const MEMBER_ROLES = ['admin', 'member'] as const;
+
+/** Only humans sign in. Bots act for integrations; placeholders stand in for unmapped imported people. */
+export const USER_KINDS = ['human', 'bot', 'placeholder'] as const;
+export type UserKind = (typeof USER_KINDS)[number];
+
+export const AUDIT_ACTIONS = [
+  'auth.signup',
+  'auth.login',
+  'auth.login_failed',
+  'auth.logout',
+  'auth.password_changed',
+  'api_key.created',
+  'api_key.revoked',
+  'workspace.created',
+  'workspace.updated',
+  'member.joined',
+  'member.role_changed',
+  'member.removed',
+  'invite.created',
+  'invite.revoked',
+  'invite.accepted',
+  'team.created',
+  'team.updated',
+  'team.deleted',
+  'settings.updated',
+] as const;
+export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 export type MemberRole = (typeof MEMBER_ROLES)[number];
 
 export const NOTIFICATION_TYPES = [

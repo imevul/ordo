@@ -359,12 +359,12 @@ function ProjectOverview({ project }: { project: Project }) {
             </div>
           </div>
           {updates.map((u) => {
-            const author = ws.memberById.get(u.authorId);
+            const author = u.authorId ? ws.memberById.get(u.authorId) : undefined;
             return (
               <div key={u.id} className="mt-4 border-b border-border-soft pb-4">
                 <div className="flex items-center gap-2 text-[12.5px]">
                   {author && <Avatar name={author.name} color={author.avatarColor} size={18} />}
-                  <span className="font-medium">{author?.name}</span>
+                  <span className="font-medium">{author?.name ?? 'Former member'}</span>
                   <HealthChip health={u.health} />
                   <span className="ml-auto font-mono text-[11px] text-index">
                     {relativeTime(u.createdAt)}

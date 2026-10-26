@@ -12,8 +12,12 @@ services:
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-ordo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ordo}
       ORDO_PUBLIC_URL: ${ORDO_PUBLIC_URL:-http://localhost:3000}
-      ORDO_SIGNUP_MODE: ${ORDO_SIGNUP_MODE:-invite}
-      ORDO_ALLOW_WORKSPACE_CREATION: ${ORDO_ALLOW_WORKSPACE_CREATION:-true}
+      ORDO_SECRET_KEY: ${ORDO_SECRET_KEY:?Run `make update` to add ORDO_SECRET_KEY to .env}
+      ORDO_SECRET_KEY_PREVIOUS: ${ORDO_SECRET_KEY_PREVIOUS:-}
+      # Empty means "managed in Admin → Settings"; a value here pins the setting.
+      ORDO_SIGNUP_MODE: ${ORDO_SIGNUP_MODE:-}
+      ORDO_ALLOW_WORKSPACE_CREATION: ${ORDO_ALLOW_WORKSPACE_CREATION:-}
+      ORDO_ALLOW_PRIVATE_NETWORK_TARGETS: ${ORDO_ALLOW_PRIVATE_NETWORK_TARGETS:-}
       ORDO_TRUST_PROXY: ${ORDO_TRUST_PROXY:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:

@@ -31,6 +31,7 @@ export async function notify(
     data?: Record<string, unknown>;
   },
 ) {
+  if (ctx.silent) return;
   const ids = [...new Set(input.userIds.filter((x): x is string => !!x && x !== ctx.userId))];
   if (ids.length === 0) return;
   const members = await ctx.tx
