@@ -1,10 +1,61 @@
-import type { Project, ProjectHealth } from '@ordo/shared';
-import { and, asc, desc, eq, exists, inArray, sql } from 'drizzle-orm';
+import type { CreateProjectInput, Project, ProjectHealth } from '@ordo/shared';
+import { and, asc, desc, eq, exists, inArray, min, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
-import { projects, projectTeams, projectUpdates } from '../db/schema.ts';
-import { type Access, canReadTeam } from './access.ts';
+import { projects, projectTeams, projectUpdates, teams, workspaceMembers } from '../db/schema.ts';
+import { badRequest } from '../lib/errors.ts';
+import { type Access, assertCan, canReadTeam } from './access.ts';
+import { type Ctx, emit, record } from './context.ts';
 import { progressBy } from './progress.ts';
 import { toProject } from './serialize.ts';
+
+export async function assertProjectTeams(ctx: Ctx, teamIds: string[]) {
+  const rows = await ctx.tx
+    .select({ id: teams.id })
+    .from(teams)
+    .where(and(eq(teams.workspaceId, ctx.workspaceId), inArray(teams.id, teamIds)));
+  if (rows.length !== new Set(teamIds).size || teamIds.some((t) => !canReadTeam(ctx.access, t))) {
+    throw badRequest('Unknown team');
+  }
+}
+
+export async function assertProjectLead(ctx: Ctx, leadId: string | null | undefined) {
+  if (!leadId) return;
+  const [m] = await ctx.tx
+    .select({ userId: workspaceMembers.userId })
+    .from(workspaceMembers)
+    .where(
+      and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, leadId)),
+    );
+  if (!m) throw badRequest('Lead is not a workspace member');
+}
+
+/** Creates a project at the top of the list; returns its id. */
+export async function createProject(ctx: Ctx, input: CreateProjectInput): Promise<string> {
+  assertCan(ctx.access, 'projects.create', 'Guests cannot create projects');
+  await assertProjectTeams(ctx, input.teamIds);
+  await assertProjectLead(ctx, input.leadId);
+  const [{ first }] = (await ctx.tx
+    .select({ first: min(projects.sortOrder) })
+    .from(projects)
+    .where(eq(projects.workspaceId, ctx.workspaceId))) as [{ first: number | null }];
+  const { teamIds, ...rest } = input;
+  const [row] = await ctx.tx
+    .insert(projects)
+    .values({
+      ...rest,
+      workspaceId: ctx.workspaceId,
+      createdBy: ctx.userId,
+      sortOrder: (first ?? 0) - 1024,
+    })
+    .returning({ id: projects.id });
+  await ctx.tx
+    .insert(projectTeams)
+    .values(teamIds.map((teamId) => ({ projectId: row!.id, teamId })));
+  emit(ctx, { kind: 'project', action: 'created', id: row!.id });
+  const [project] = await listProjects(ctx.tx, ctx.access, row!.id);
+  record(ctx, 'project.created', project!, { teamIds: project!.teamIds });
+  return row!.id;
+}
 
 /**
  * Projects visible to `access`: those linked to at least one readable team. Linked teams the

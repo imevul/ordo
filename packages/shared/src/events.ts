@@ -15,7 +15,8 @@ export type EntityKind =
   | 'member'
   | 'view'
   | 'favorite'
-  | 'notification';
+  | 'notification'
+  | 'import';
 
 export interface RealtimeEvent {
   kind: EntityKind;

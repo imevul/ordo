@@ -412,14 +412,55 @@ function stateTimestamps(type: StateType, prev?: { startedAt: string | null }) {
   };
 }
 
-async function recordHistory(ctx: Ctx, issueId: string, changes: HistoryChange[]) {
+async function recordHistory(
+  ctx: Ctx,
+  issueId: string,
+  changes: HistoryChange[],
+  at: { actorId?: string | null; createdAt?: string } = {},
+) {
   if (changes.length === 0) return;
-  await ctx.tx.insert(issueHistory).values({ issueId, actorId: ctx.userId, changes });
+  await ctx.tx.insert(issueHistory).values({
+    issueId,
+    actorId: at.actorId === undefined ? ctx.userId : at.actorId,
+    changes,
+    createdAt: at.createdAt,
+  });
+}
+
+/** What an import keeps from the source: who made the issue, when things happened, its number. */
+export interface ImportedIssueFields {
+  creatorId: string | null;
+  number?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+  canceledAt?: string;
+}
+
+/** State timestamps for an imported issue: the source's where it has them, plausible ones if not. */
+function importedTimestamps(type: StateType, i: ImportedIssueFields) {
+  const now = new Date().toISOString();
+  const finished = i.completedAt ?? i.canceledAt ?? i.updatedAt ?? now;
+  return {
+    startedAt:
+      type === 'started' || type === 'completed' ? (i.startedAt ?? i.createdAt ?? now) : null,
+    completedAt: type === 'completed' ? (i.completedAt ?? finished) : null,
+    canceledAt: type === 'canceled' ? (i.canceledAt ?? finished) : null,
+  };
 }
 
 // ─── mutations ─────────────────────────────────────────────────────────
 
-export async function createIssue(ctx: Ctx, input: CreateIssueInput): Promise<Issue> {
+/**
+ * Creates an issue. Imports pass `imported` to keep the source's creator, timestamps and number;
+ * the acting user (the importer) is then neither the creator nor subscribed.
+ */
+export async function createIssue(
+  ctx: Ctx,
+  input: CreateIssueInput,
+  imported?: ImportedIssueFields,
+): Promise<Issue> {
   const team = await teamOf(ctx, input.teamId);
   const state = input.stateId
     ? await stateOf(ctx, team.id, input.stateId)
@@ -431,11 +472,18 @@ export async function createIssue(ctx: Ctx, input: CreateIssueInput): Promise<Is
   const labelIds = [...new Set(input.labelIds ?? [])];
   await assertLabels(ctx, team.id, labelIds);
 
+  // A kept number moves the counter past it, so later issues don't collide.
   const [{ counter }] = (await ctx.tx
     .update(teams)
-    .set({ issueCounter: sql`${teams.issueCounter} + 1` })
+    .set({
+      issueCounter: imported?.number
+        ? sql`greatest(${teams.issueCounter}, ${imported.number})`
+        : sql`${teams.issueCounter} + 1`,
+    })
     .where(eq(teams.id, team.id))
     .returning({ counter: teams.issueCounter })) as [{ counter: number }];
+  const number = imported?.number ?? counter;
+  const creatorId = imported ? imported.creatorId : ctx.userId;
 
   let sortOrder = input.sortOrder;
   if (sortOrder == null) {
@@ -454,27 +502,38 @@ export async function createIssue(ctx: Ctx, input: CreateIssueInput): Promise<Is
     .values({
       workspaceId: ctx.workspaceId,
       teamId: team.id,
-      number: counter,
+      number,
       title: input.title,
       description: input.description ?? '',
       stateId: state.id,
       priority: input.priority ?? 0,
       assigneeId: input.assigneeId ?? null,
-      creatorId: ctx.userId,
+      creatorId,
       projectId: input.projectId ?? null,
       cycleId: input.cycleId ?? null,
       parentId: input.parentId ?? null,
       estimate: input.estimate ?? null,
       dueDate: input.dueDate ?? null,
       sortOrder,
-      ...stateTimestamps(state.type),
+      ...(imported
+        ? {
+            ...importedTimestamps(state.type, imported),
+            createdAt: imported.createdAt,
+            updatedAt: imported.updatedAt ?? imported.createdAt,
+          }
+        : stateTimestamps(state.type)),
     })
     .returning({ id: issues.id });
   const id = row!.id;
   if (labelIds.length)
     await ctx.tx.insert(issueLabels).values(labelIds.map((labelId) => ({ issueId: id, labelId })));
-  await subscribe(ctx, id, [ctx.userId, input.assigneeId]);
-  await recordHistory(ctx, id, [{ field: 'created', from: null, to: null }]);
+  await subscribe(ctx, id, [creatorId, input.assigneeId]);
+  await recordHistory(
+    ctx,
+    id,
+    [{ field: 'created', from: null, to: null }],
+    imported ? { actorId: creatorId, createdAt: imported.createdAt } : {},
+  );
   if (input.assigneeId)
     await notify(ctx, { userIds: [input.assigneeId], type: 'issue_assigned', issueId: id });
   emit(ctx, { kind: 'issue', action: 'created', id, teamId: team.id });
@@ -651,6 +710,20 @@ export async function updateIssue(
   if (changes.length)
     record(ctx, 'issue.updated', issue, { teamIds: [current.teamId, teamId], changes });
   return issue;
+}
+
+/**
+ * Imports link sub-issues once every issue exists (a child can come before its parent). Checked
+ * like any parent change, but part of the import rather than a history entry of its own.
+ */
+export async function setImportedParent(ctx: Ctx, issueId: string, parentId: string) {
+  await assertParent(ctx, issueId, parentId);
+  const [row] = await ctx.tx
+    .update(issues)
+    .set({ parentId })
+    .where(and(eq(issues.id, issueId), eq(issues.workspaceId, ctx.workspaceId)))
+    .returning({ teamId: issues.teamId });
+  if (row) emit(ctx, { kind: 'issue', action: 'updated', id: issueId, teamId: row.teamId });
 }
 
 /** Soft delete: the issue moves to the trash and can be restored. */

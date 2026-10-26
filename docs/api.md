@@ -230,7 +230,7 @@ curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
 ```
 
 `kind` is one of `issue`, `comment`, `project`, `projectUpdate`, `cycle`, `label`, `team`, `state`, `workspace`,
-`member`, `view`, `favorite`, `notification`; `action` is `created`, `updated` or `deleted`. Notification and
+`member`, `view`, `favorite`, `notification`, `import`; `action` is `created`, `updated` or `deleted`. Notification and
 favorite events are delivered only to their user. Events are hints — refetch what you display.
 
 A GraphQL API is on the [roadmap](../ROADMAP.md).
@@ -334,3 +334,23 @@ sync) accept no webhooks.
 
 Team settings take `gitAutomation: { branch?, draft?, open?, review?, merged? }` — a status id or `"none"`; missing
 events use the defaults. Workspace settings take `gitBranchFormat`.
+
+## Imports
+
+Admins only. How imports work, and the CSV columns Ordo reads, are in [Importing data](import-export.md).
+
+| Method | Path                   |                                                                                                 |
+| ------ | ---------------------- | ----------------------------------------------------------------------------------------------- |
+| GET    | `/imports`             | The latest 50                                                                                   |
+| POST   | `/imports`             | Multipart: `file` (and `source: csv`). Starts the analysis                                      |
+| GET    | `/imports/:id`         | `{ status, summary, mapping, report, progress, error, … }`                                      |
+| PATCH  | `/imports/:id`         | `{ mapping? }` saves the mapping; `{ config: { columns } }` changes CSV columns and re-analyzes |
+| POST   | `/imports/:id/dry-run` | Reports what a run would do, in `report`                                                        |
+| POST   | `/imports/:id/run`     | Imports; running again skips what's already imported                                            |
+| POST   | `/imports/:id/cancel`  | Stops at the next page                                                                          |
+| DELETE | `/imports/:id`         | Forgets the import and its file; imported issues stay                                           |
+
+`status` goes `analyzing` → `ready` → (`dry_running` → `ready`) → `running` → `completed`, or `failed` / `canceled`.
+`mapping` is `{ teams, statuses, users, labels, projects, keepNumbers }`, keyed by the source's ids from `summary`:
+a team maps to `{ teamId }`, `{ create: { name, key } }` or `{ skip: true }`; a status to a status id or a status
+type; a person to a user id or `null`; a label or project to an id, `"create"` or `"skip"`.

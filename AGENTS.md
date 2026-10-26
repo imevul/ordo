@@ -135,5 +135,6 @@ RS256 ID tokens); set `idp.next` to the claims of the next sign-in and `idp.tamp
 | New API resource   | a route file in `apps/api/src/routes/`, register it in `app.ts`, add tests                |
 | Notifications      | `services/notifications.ts`, inbox UI in `routes/inbox.tsx`                               |
 | Filters / grouping | `filterConditions` in `services/issues.ts`, `lib/issues.ts`, `components/FilterBar.tsx`   |
+| New import source  | an `ImportAdapter` in `services/imports/`, added to `ADAPTERS` in `engine.ts`             |
 
 See [ROADMAP.md](ROADMAP.md) for planned work.
