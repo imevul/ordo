@@ -6,7 +6,7 @@ import { useWsMutation } from '../../api/queries.ts';
 import { confirmDialog } from '../../components/ui/Modal.tsx';
 import { Popover } from '../../components/ui/Popover.tsx';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { SettingsCard } from './index.tsx';
+import { SettingsCard } from './ui.tsx';
 
 function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (

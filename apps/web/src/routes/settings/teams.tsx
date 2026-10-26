@@ -25,7 +25,7 @@ import { Avatar } from '../../components/ui/Avatar.tsx';
 import { ConfirmModal, confirmDialog } from '../../components/ui/Modal.tsx';
 import { Popover } from '../../components/ui/Popover.tsx';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { FormRow, SettingsCard } from './index.tsx';
+import { FormRow, SettingsCard } from './ui.tsx';
 
 export function TeamsSection() {
   const ws = useWorkspace();

@@ -18,7 +18,7 @@ switch from the menu under the Ordo logo. Everyone in a workspace has a role:
 Invite people from **Settings → Members**: paste one or more email addresses (each gets an emailed invite when
 email is set up) or leave it empty for a shareable link; choose member, guest or admin, and the teams they should
 join. An invite with an email address works once, for that address; an open link works for anyone until it
-expires. Pending invites can be copied, resent or revoked. By default only admins invite; **Settings → Security**
+expires. Pending invites can be copied, resent or revoked. By default only admins invite; **Settings → Access**
 can let members invite too (never as admins).
 
 Admins can **suspend** a member — they keep their history but can't open the workspace — and restore them later.
@@ -26,7 +26,7 @@ Admins can **suspend** a member — they keep their history but can't open the w
 ### Workspace settings
 
 - **General** — name, URL, logo, and a **default team** every new member (except guests) joins automatically.
-- **Security** — who may invite; **domains** you've verified with a DNS TXT record
+- **Access** — who may invite; **domains** you've verified with a DNS TXT record
   (`_ordo-verify.example.com` → `ordo-verify=…`); and **join by domain**, which lets anyone with a _verified_ email at
   one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.
 - **Authentication** — single sign-on with your own identity provider (OpenID Connect), group → role mapping, and
@@ -160,8 +160,9 @@ Open **Settings** (workspace menu, or `G` then `S`):
   set up) and see whether it's verified.
 - **Security** — change your password (this signs out your other sessions); turn on **two-factor authentication**
   with any authenticator app, and keep the ten recovery codes somewhere safe — each works once if you lose your
-  device; **connected accounts** (SSO identities you've linked, and a button to connect your workspace's provider);
-  see and revoke your **sessions**.
+  device; see and revoke your **sessions**.
+- **Connected accounts** — sign-in identities you've linked (and a button to connect your workspace's SSO
+  provider), and your usernames on connected forges so your pull requests show as yours.
 - **Notifications** — everything lands in your Inbox; choose which kinds are also emailed and how often (within a few
   minutes, hourly, daily, or never). Anything you read in the app first isn't emailed.
 - **API keys** — personal keys for scripts and integrations ([API docs](api.md)).

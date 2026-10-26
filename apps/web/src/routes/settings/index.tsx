@@ -9,9 +9,9 @@ import {
   NotificationsSection,
   SecuritySection,
 } from './account.tsx';
-import { IntegrationsSection } from './integrations.tsx';
+import { GitAccountsCard, IntegrationsSection } from './integrations.tsx';
 import { LabelsSection } from './labels.tsx';
-import { AuthenticationSection } from './sso.tsx';
+import { AuthenticationSection, ConnectedAccountsCard } from './sso.tsx';
 import { TeamSettings, TeamsSection } from './teams.tsx';
 import { WebhooksSection } from './webhooks.tsx';
 import {
@@ -24,13 +24,15 @@ import {
 const SECTIONS: { key: string; label: string; group: string; admin?: boolean }[] = [
   { key: 'account', label: 'Profile', group: 'Account' },
   { key: 'security', label: 'Security', group: 'Account' },
+  { key: 'connected', label: 'Connected accounts', group: 'Account' },
   { key: 'notifications', label: 'Notifications', group: 'Account' },
   { key: 'api', label: 'API keys', group: 'Account' },
   { key: 'workspace', label: 'General', group: 'Workspace', admin: true },
   { key: 'members', label: 'Members', group: 'Workspace' },
   { key: 'teams', label: 'Teams', group: 'Workspace' },
   { key: 'labels', label: 'Labels', group: 'Workspace' },
-  { key: 'org-security', label: 'Security', group: 'Workspace', admin: true },
+  // Invitations, domains and joining: who gets in. (The key predates the name.)
+  { key: 'org-security', label: 'Access', group: 'Workspace', admin: true },
   { key: 'authentication', label: 'Authentication', group: 'Workspace', admin: true },
   { key: 'integrations', label: 'Integrations', group: 'Workspace', admin: true },
   { key: 'webhooks', label: 'Webhooks', group: 'Workspace', admin: true },
@@ -55,7 +57,7 @@ function SettingsShell({
           <>
             settings
             <Sep />
-            {active}
+            {active.startsWith('team:') ? 'team' : title.toLowerCase()}
           </>
         }
         title={title}
@@ -118,6 +120,11 @@ export function SettingsPage() {
       <WorkspaceSection />
     ) : section === 'members' ? (
       <MembersSection />
+    ) : section === 'connected' ? (
+      <>
+        <ConnectedAccountsCard />
+        <GitAccountsCard />
+      </>
     ) : section === 'org-security' ? (
       <OrgSecuritySection />
     ) : section === 'integrations' ? (
@@ -150,41 +157,5 @@ export function TeamSettingsPage() {
     <SettingsShell active={`team:${key}`} title={team ? team.name : 'Team'}>
       {team ? <TeamSettings team={team} /> : <p className="text-muted">Team not found.</p>}
     </SettingsShell>
-  );
-}
-
-export function SettingsCard({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className="mb-10">
-      <div className="section-label mb-2">{title}</div>
-      {description && <p className="mb-4 text-[13px] text-muted">{description}</p>}
-      {children}
-    </section>
-  );
-}
-
-export function FormRow({
-  label,
-  children,
-  hint,
-}: {
-  label: string;
-  children: ReactNode;
-  hint?: ReactNode;
-}) {
-  return (
-    <label className="mb-4 block">
-      <span className="mb-1 block text-[12px] text-muted">{label}</span>
-      {children}
-      {hint && <span className="mt-1 block text-[11.5px] text-index">{hint}</span>}
-    </label>
   );
 }

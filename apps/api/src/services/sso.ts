@@ -266,7 +266,7 @@ export async function resolveSsoUser(
     if (!userId) {
       if (!trusted) {
         throw new SsoError(
-          "This sign-in isn't linked to an Ordo account. Sign in with your password, then link it under Settings → Profile.",
+          "This sign-in isn't linked to an Ordo account. Sign in another way, then connect it under Settings → Connected accounts.",
         );
       }
       const [existing] = await tx.select().from(users).where(eq(users.email, email!));
