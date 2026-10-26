@@ -158,6 +158,7 @@ export const adminSettingsSchema = z.object({
   signupMode: z.enum(['open', 'invite']).optional(),
   allowWorkspaceCreation: z.boolean().optional(),
   allowPrivateNetworkTargets: z.boolean().optional(),
+  maxAttachmentMb: z.number().int().min(1).max(1024).optional(),
   /** `url: ''` keeps the stored URL (the UI never sees it); `smtp: null` turns email off. */
   smtp: z
     .object({ url: z.string().max(2000), from: z.string().min(3).max(200) })

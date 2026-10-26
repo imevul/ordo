@@ -1,6 +1,7 @@
 import { lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { sessions } from './db/schema.ts';
+import { sweepAttachments } from './services/attachments.ts';
 import { runChatNotification, runChatPost } from './services/chat.ts';
 import { sendNotificationEmails } from './services/digest.ts';
 import { dispatchEvents, pruneEvents } from './services/events.ts';
@@ -58,6 +59,7 @@ export function registerJobs(app: FastifyInstance) {
     await purgeExpiredTokens(app.db);
     await purgeExpiredStates(app);
     await purgeOldExports(app);
+    await sweepAttachments(app);
     await app.db.delete(sessions).where(lt(sessions.expiresAt, new Date().toISOString()));
     // Dead jobs stay for a week so admins can see what failed.
     await app.db.execute(

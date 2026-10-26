@@ -241,6 +241,11 @@ async function issueResult(c: McpCaller, dir: Directory, ref: string, withCommen
       title: r.issue.title,
     })),
     links: detail.links.map((l) => ({ title: l.title, url: l.url, kind: l.kind, state: l.state })),
+    attachments: detail.attachments.map((a) => ({
+      filename: a.filename,
+      size: a.size,
+      url: `${c.app.env.publicUrl}${a.url}`,
+    })),
     comments: withComments
       ? comments.map((x) => ({
           id: x.id,

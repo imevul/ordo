@@ -607,6 +607,28 @@ export const files = pgTable(
 );
 
 /**
+ * Files attached to issues. `issue_id` stays null from upload until a description or comment that
+ * references the file is saved; unclaimed uploads are swept after a day.
+ */
+export const attachments = pgTable(
+  'attachments',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'cascade' }),
+    fileId: uuid('file_id')
+      .notNull()
+      .unique()
+      .references(() => files.id, { onDelete: 'cascade' }),
+    uploaderId: uuid('uploader_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('attachments_issue_idx').on(t.issueId)],
+);
+
+/**
  * Background jobs. Workers claim rows with FOR UPDATE SKIP LOCKED; jobs sharing an
  * ordering_key run one at a time in id order. Finished jobs are deleted; dead ones are kept.
  */

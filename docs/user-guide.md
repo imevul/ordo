@@ -80,6 +80,8 @@ in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L
   the team's _Duplicate_ (or first canceled) status.
 - **Comments** — markdown, replies, edits, `@username` mentions (with autocomplete). Mentioned people are notified
   and subscribed. Issue identifiers like `ENG-12` in text become links.
+- **Attachments** — paste or drop files into a description or comment (or use the paperclip), or drop them on the
+  issue's _Attachments_ section. See below.
 - **Activity** — every property change is recorded with who and when.
 - **Subscribe** to follow an issue. You're subscribed automatically when you create it, are assigned to it,
   comment on it or are mentioned.
@@ -87,6 +89,18 @@ in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L
   matching status.
 - **Delete** moves the issue to the **Trash**, where anyone can restore it and admins can delete it for good.
 - **Copy git branch name** in the `…` menu gives you `eng-42-short-title`.
+
+### Attachments
+
+Files you paste, drop or pick in a description or comment are uploaded and linked where your cursor is: images show
+inline, anything else as a link. Every file also appears under **Attachments** on the issue, with its size, who added
+it and when; the uploader and team admins can remove it there. Files dropped on that section are attached without
+touching the text.
+
+Attachments are as private as their issue: only people who can see the issue can open them, and their links keep
+working if the workspace URL changes. Images (PNG, JPEG, GIF, WebP) open in the browser; every other file downloads.
+The size limit is 25 MB unless your instance admin changed it. Files pasted into an issue you then don't create are
+deleted after a day.
 
 ### Links
 

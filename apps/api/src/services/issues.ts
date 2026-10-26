@@ -49,6 +49,7 @@ import {
   teamScope,
   usersWithTeamAccess,
 } from './access.ts';
+import { claimAttachments, listAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
@@ -335,6 +336,7 @@ export async function getIssueDetail(
     relations,
     subscriberIds: subs.map((s) => s.userId),
     links: await listIssueLinks(db, issue.id),
+    attachments: await listAttachments(db, issue.id),
   };
 }
 
@@ -553,6 +555,7 @@ export async function createIssue(
     })
     .returning({ id: issues.id });
   const id = row!.id;
+  await claimAttachments(ctx, id, input.description);
   if (labelIds.length)
     await ctx.tx.insert(issueLabels).values(labelIds.map((labelId) => ({ issueId: id, labelId })));
   await subscribe(ctx, id, [creatorId, input.assigneeId]);
@@ -651,6 +654,7 @@ export async function updateIssue(
   if (patch.description !== undefined && patch.description !== current.description) {
     set.description = patch.description;
     changes.push({ field: 'description', from: null, to: null });
+    await claimAttachments(ctx, issueId, patch.description);
   }
   if (patch.priority !== undefined) change('priority', 'priority', patch.priority);
   if (patch.assigneeId !== undefined) {

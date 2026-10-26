@@ -202,6 +202,22 @@ export interface IssueDetail extends Issue {
   relations: IssueRelation[];
   subscriberIds: string[];
   links: IssueLink[];
+  attachments: Attachment[];
+}
+
+/** A file uploaded to an issue (or, until a description or comment uses it, to its uploader). */
+export interface Attachment {
+  id: string;
+  /** Null between upload and the issue description or comment that references it. */
+  issueId: string | null;
+  filename: string;
+  /** Sniffed from the bytes: an image type, or `application/octet-stream` for everything else. */
+  contentType: string;
+  size: number;
+  /** Stable URL; needs a session or API key that can read the issue. */
+  url: string;
+  uploaderId: string | null;
+  createdAt: string;
 }
 
 export interface Comment {
@@ -336,6 +352,8 @@ export interface InstanceSettings {
    * Outgoing mail. `url` is smtp(s)://user:password@host:port; stored encrypted. Null disables email.
    */
   smtp: { url: string; from: string } | null;
+  /** Largest file people may attach to issues, in megabytes. */
+  maxAttachmentMb: number;
 }
 
 export const INSTANCE_SETTING_DEFAULTS: InstanceSettings = {
@@ -343,6 +361,7 @@ export const INSTANCE_SETTING_DEFAULTS: InstanceSettings = {
   allowWorkspaceCreation: true,
   allowPrivateNetworkTargets: false,
   smtp: null,
+  maxAttachmentMb: 25,
 };
 
 export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof InstanceSettings> {

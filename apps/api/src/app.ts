@@ -21,6 +21,7 @@ import { createStorage, type Storage } from './lib/storage/index.ts';
 import { Realtime } from './realtime.ts';
 import { accountRoutes } from './routes/account.ts';
 import { adminRoutes } from './routes/admin.ts';
+import { attachmentDownloadRoutes, attachmentRoutes } from './routes/attachments.ts';
 import { authRoutes } from './routes/auth.ts';
 import { authProviderRoutes } from './routes/authProviders.ts';
 import { cycleRoutes } from './routes/cycles.ts';
@@ -173,6 +174,7 @@ export async function buildApp(
   await app.register(authRoutes, { prefix: '/api' });
   await app.register(accountRoutes, { prefix: '/api' });
   await app.register(fileRoutes, { prefix: '/api' });
+  await app.register(attachmentDownloadRoutes, { prefix: '/api' });
   await app.register(joiningRoutes, { prefix: '/api' });
   await app.register(ssoRoutes, { prefix: '/api' });
   await app.register(hookRoutes, { prefix: '/api/hooks' });
@@ -194,6 +196,7 @@ export async function buildApp(
       await w.register(teamRoutes);
       await w.register(cycleRoutes);
       await w.register(issueRoutes);
+      await w.register(attachmentRoutes);
       await w.register(projectRoutes);
       await w.register(labelRoutes);
       await w.register(viewRoutes);

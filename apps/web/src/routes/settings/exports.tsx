@@ -7,18 +7,11 @@ import { api, wsPath } from '../../api/client.ts';
 import { Spinner } from '../../components/PageHeader.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog } from '../../components/ui/Modal.tsx';
-import { relativeTime } from '../../lib/format.ts';
+import { fileSize, relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { SettingsCard } from './ui.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
-
-const size = (bytes: number) =>
-  bytes < 1024
-    ? `${bytes} B`
-    : bytes < 1024 ** 2
-      ? `${(bytes / 1024).toFixed(1)} KB`
-      : `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 
 /** People imports brought along, and merging them into members who've joined since. */
 export function PlaceholdersCard() {
@@ -163,7 +156,7 @@ export function ExportsCard() {
                 ? 'Being made…'
                 : e.status === 'failed'
                   ? `Failed: ${e.error ?? 'unknown error'}`
-                  : size(e.size ?? 0)}
+                  : fileSize(e.size ?? 0)}
             </div>
             <div className="truncate text-[11.5px] text-index">
               {e.createdBy?.name ?? 'Someone'} · {relativeTime(e.createdAt)} · deleted{' '}

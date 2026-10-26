@@ -29,6 +29,7 @@ setting it pins the value and shows it as locked in the UI. Precedence: environm
 | `ORDO_SIGNUP_MODE`                   | `invite` | `invite`: only people with an invite link can create accounts (the very first user always can, and becomes the instance admin). `open`: anyone who can reach the instance can sign up.                             |
 | `ORDO_ALLOW_WORKSPACE_CREATION`      | `true`   | Whether signed-in users who already belong to a workspace may create more. Users without a workspace can always create their first one.                                                                            |
 | `ORDO_ALLOW_PRIVATE_NETWORK_TARGETS` | `false`  | Let outbound requests Ordo makes on an admin's behalf (SSO discovery, webhooks, forge and chat integrations) reach loopback, private and link-local addresses. Turn on when your IdP or Forgejo lives on your LAN. |
+| `ORDO_MAX_ATTACHMENT_MB`             | `25`     | Largest file people can attach to issues and comments, in megabytes (1–1024). Keep your reverse proxy's request body limit above it.                                                                               |
 
 ## Email
 

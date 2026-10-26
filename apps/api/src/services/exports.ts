@@ -9,7 +9,9 @@ import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import {
+  attachments,
   comments,
+  files,
   issueHistory,
   issueLinks,
   issueRelations,
@@ -39,7 +41,7 @@ import { workspaceSettings } from './workspaces.ts';
 /**
  * Workspace exports, written by a job and kept for a week. JSON holds what belongs to the
  * workspace as a whole: people, teams, labels, projects, cycles, shared views, and issues with
- * their comments, history, relations and links. CSV is the issues, in the columns Ordo's CSV
+ * their comments, history, relations, links and attachment metadata. CSV is the issues, in the columns Ordo's CSV
  * import reads, so it round-trips. Personal things (private views, favourites, notifications) and
  * anything secret (integrations, webhooks, SSO) are left out.
  */
@@ -300,6 +302,22 @@ async function jsonExport(
         })
         .from(issueLinks)
         .where(inArray(issueLinks.issueId, ids)),
+    ),
+    // Metadata only: the files stay on the instance, at their URLs.
+    attachments: await perIssue((ids) =>
+      db
+        .select({
+          issueId: attachments.issueId,
+          id: attachments.id,
+          filename: files.filename,
+          contentType: files.contentType,
+          size: files.size,
+          uploaderId: attachments.uploaderId,
+          createdAt: attachments.createdAt,
+        })
+        .from(attachments)
+        .innerJoin(files, eq(files.id, attachments.fileId))
+        .where(inArray(attachments.issueId, ids)),
     ),
   };
   return JSON.stringify(data, null, 1);

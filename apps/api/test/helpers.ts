@@ -53,6 +53,37 @@ export class Client {
   post = (url: string, body?: unknown) => this.req('POST', url, body ?? {});
   patch = (url: string, body?: unknown) => this.req('PATCH', url, body ?? {});
   del = (url: string) => this.req('DELETE', url);
+
+  /** A one-file multipart upload, as the web client sends it. */
+  async upload(
+    url: string,
+    filename: string,
+    body: Buffer,
+    contentType = 'application/octet-stream',
+  ) {
+    const boundary = '----ordo-test-upload';
+    const payload = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`,
+      ),
+      body,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    const res = await this.app.inject({
+      method: 'POST',
+      url,
+      payload,
+      headers: {
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+        ...(this.cookie ? { cookie: this.cookie } : {}),
+      },
+    });
+    let data: unknown = null;
+    try {
+      data = res.json();
+    } catch {}
+    return Object.assign(res, { data }) as LightMyRequestResponse & { data: any };
+  }
 }
 
 let n = 0;

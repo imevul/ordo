@@ -51,6 +51,13 @@ export const Markdown = memo(function Markdown({
         components={{
           a: ({ href = '', children }) => {
             if (href.startsWith('mention:')) return <span className="mention">{children}</span>;
+            if (href.startsWith('/api/attachments/')) {
+              return (
+                <a href={href} target="_blank" rel="noopener">
+                  {children}
+                </a>
+              );
+            }
             if (href.startsWith('/')) {
               return (
                 <a
@@ -72,7 +79,7 @@ export const Markdown = memo(function Markdown({
             );
           },
           img: ({ src, alt }) =>
-            typeof src === 'string' && /^https?:/i.test(src) ? (
+            typeof src === 'string' && /^(https?:|\/api\/attachments\/)/i.test(src) ? (
               <img src={src} alt={alt ?? ''} className="max-w-full" />
             ) : null,
         }}

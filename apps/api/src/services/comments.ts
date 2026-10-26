@@ -4,6 +4,7 @@ import type { DbOrTx } from '../db/client.ts';
 import { comments, issues, users, workspaceMembers } from '../db/schema.ts';
 import { badRequest, forbidden, notFound } from '../lib/errors.ts';
 import { type Access, canReadTeam, usersWithTeamAccess } from './access.ts';
+import { claimAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { getIssue } from './issues.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
@@ -80,6 +81,7 @@ export async function createComment(
       updatedAt: imported?.createdAt,
     })
     .returning();
+  await claimAttachments(ctx, issue.id, input.body);
   const mentioned = await mentionedUserIds(ctx, issue.teamId, input.body);
   const subscribers = await subscriberIds(ctx, issue.id);
   await subscribe(ctx, issue.id, [authorId, ...mentioned]);
@@ -142,6 +144,7 @@ export async function updateComment(ctx: Ctx, id: string, body: string) {
     .set({ body, updatedAt: now, editedAt: now })
     .where(eq(comments.id, id))
     .returning();
+  await claimAttachments(ctx, comment.issueId, body);
   emit(ctx, { kind: 'comment', action: 'updated', id, issueId: comment.issueId, teamId });
   record(ctx, 'comment.updated', { comment: publicComment(row!) }, { teamIds: [teamId] });
   return row!;

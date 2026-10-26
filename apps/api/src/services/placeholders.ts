@@ -3,6 +3,7 @@ import { AVATAR_COLORS, type PlaceholderSummary, type User } from '@ordo/shared'
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import {
+  attachments,
   comments,
   domainEvents,
   files,
@@ -128,6 +129,7 @@ export const MERGED_COLUMNS = [
   projects.leadId,
   domainEvents.actorId,
   files.ownerId,
+  attachments.uploaderId,
 ];
 
 /**

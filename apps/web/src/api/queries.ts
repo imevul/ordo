@@ -1,6 +1,7 @@
 import type {
   Account,
   ApiKey,
+  Attachment,
   Bootstrap,
   Comment,
   CreateIssueInput,
@@ -18,8 +19,9 @@ import type {
   UpdateIssueInput,
 } from '@ordo/shared';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback } from 'react';
 import { toast } from 'sonner';
-import { ApiError, api, wsPath } from './client.ts';
+import { ApiError, api, upload, wsPath } from './client.ts';
 
 export const keys = {
   config: ['config'] as const,
@@ -239,3 +241,26 @@ export function useWsMutation<TVars, TResult = unknown>(
     },
   });
 }
+
+/**
+ * Uploads a file as an attachment. With an issue it's attached right away; without one (a new
+ * issue) the server keeps it for the uploader until the saved description references it.
+ */
+export function useAttachmentUpload(slug: string, issueId?: string) {
+  const qc = useQueryClient();
+  return useCallback(
+    async (file: File) => {
+      const query = issueId ? `?issueId=${encodeURIComponent(issueId)}` : '';
+      const att = await upload<Attachment>(wsPath(slug, `/attachments${query}`), file, file.name);
+      if (issueId) qc.invalidateQueries({ queryKey: keys.issue(slug, issueId) });
+      return att;
+    },
+    [slug, issueId, qc],
+  );
+}
+
+/** The Markdown that shows an attachment: inline for images, a link for anything else. */
+export const attachmentMarkdown = (att: Attachment) => {
+  const name = att.filename.replace(/[[\]\\]/g, '');
+  return att.contentType.startsWith('image/') ? `![${name}](${att.url})` : `[${name}](${att.url})`;
+};

@@ -515,6 +515,8 @@ describe('route inventory', () => {
     'DELETE /integrations/:id': 'workspace admins only',
     'POST /issues/:id/links': "getIssue with the caller's access",
     'DELETE /issue-links/:id': 'deleteIssueLink checks the issue team',
+    'POST /attachments': "getIssue with the caller's access (attachments.test.ts)",
+    'DELETE /attachments/:id': 'checks the issue team, uploader or admin (attachments.test.ts)',
     'GET /integrations/github/app': 'workspace admins only',
     'POST /integrations/github/manifest': 'instance admins only',
     'POST /integrations/github/install': 'workspace admins only',
