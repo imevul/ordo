@@ -128,13 +128,14 @@ RS256 ID tokens); set `idp.next` to the claims of the next sign-in and `idp.tamp
 
 ## Where to look first
 
-| Task               | Start in                                                                                  |
-| ------------------ | ----------------------------------------------------------------------------------------- |
-| New issue field    | `schema.ts` → `types.ts`/`schemas.ts` in shared → `services/issues.ts` → `properties.tsx` |
-| New page           | `apps/web/src/router.tsx`, then a file in `src/routes/`                                   |
-| New API resource   | a route file in `apps/api/src/routes/`, register it in `app.ts`, add tests                |
-| Notifications      | `services/notifications.ts`, inbox UI in `routes/inbox.tsx`                               |
-| Filters / grouping | `filterConditions` in `services/issues.ts`, `lib/issues.ts`, `components/FilterBar.tsx`   |
-| New import source  | an `ImportAdapter` in `services/imports/`, added to `ADAPTERS` in `engine.ts`             |
+| Task               | Start in                                                                                        |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| New issue field    | `schema.ts` → `types.ts`/`schemas.ts` in shared → `services/issues.ts` → `properties.tsx`       |
+| New page           | `apps/web/src/router.tsx`, then a file in `src/routes/`                                         |
+| New API resource   | a route file in `apps/api/src/routes/`, register it in `app.ts`, add tests                      |
+| Notifications      | `services/notifications.ts`, inbox UI in `routes/inbox.tsx`                                     |
+| Filters / grouping | `filterConditions` in `services/issues.ts`, `lib/issues.ts`, `components/FilterBar.tsx`         |
+| New import source  | an `ImportAdapter` in `services/imports/`, added to `ADAPTERS` in `engine.ts`                   |
+| New MCP tool       | schema + `MCP_TOOLS` entry in shared `mcp.ts`, handler in `services/mcp.ts`, `test/mcp.test.ts` |
 
 See [ROADMAP.md](ROADMAP.md) for planned work.

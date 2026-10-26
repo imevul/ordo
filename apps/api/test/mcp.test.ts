@@ -1,0 +1,376 @@
+import type { Bootstrap, IssueDetail } from '@ordo/shared';
+import { and, desc, eq } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { domainEvents, workspaces } from '../src/db/schema.ts';
+import { type Client, signup, testApp } from './helpers.ts';
+
+let app: FastifyInstance;
+let ada: Client;
+let key: string;
+let boot: Bootstrap;
+const ws = '/api/w/mcp';
+const url = `${ws}/mcp`;
+const MODERN = '2026-07-28';
+
+/** One JSON-RPC request; `modern` adds the per-request _meta and its mirrored headers. */
+async function rpc(
+  method: string,
+  params: Record<string, unknown> = {},
+  opts: {
+    token?: string | null;
+    modern?: boolean;
+    headers?: Record<string, string>;
+    to?: string;
+  } = {},
+) {
+  const token = opts.token === undefined ? key : opts.token;
+  const headers: Record<string, string> = {
+    'content-type': 'application/json',
+    accept: 'application/json, text/event-stream',
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+  };
+  let body: Record<string, unknown> = { ...params };
+  if (opts.modern) {
+    body = {
+      ...body,
+      _meta: {
+        'io.modelcontextprotocol/protocolVersion': MODERN,
+        'io.modelcontextprotocol/clientCapabilities': {},
+        'io.modelcontextprotocol/clientInfo': { name: 'test', version: '1' },
+      },
+    };
+    headers['mcp-protocol-version'] = MODERN;
+    headers['mcp-method'] = method;
+    if (typeof params.name === 'string') headers['mcp-name'] = params.name;
+  }
+  const res = await app.inject({
+    method: 'POST',
+    url: opts.to ?? url,
+    headers: { ...headers, ...opts.headers },
+    payload: { jsonrpc: '2.0', id: 1, method, params: body },
+  });
+  return Object.assign(res, { data: res.body ? res.json() : null });
+}
+
+/** Calls a tool and returns its parsed JSON output (or the error text). */
+async function tool(name: string, args: Record<string, unknown> = {}, token?: string) {
+  const res = await rpc('tools/call', { name, arguments: args }, { token });
+  expect(res.statusCode, res.body).toBe(200);
+  const { content, isError } = res.data.result;
+  return isError ? { error: content[0].text as string } : JSON.parse(content[0].text);
+}
+
+beforeAll(async () => {
+  app = await testApp();
+  const s = await signup(app, 'Ada Lovelace');
+  ada = s.client;
+  await ada.post('/api/workspaces', {
+    name: 'MCP',
+    slug: 'mcp',
+    teamName: 'Engineering',
+    teamKey: 'ENG',
+  });
+  await ada.patch('/api/me', { username: 'ada' });
+  key = (await ada.post('/api/me/api-keys', { name: 'agent' })).data.token;
+  await ada.post(`${ws}/labels`, { name: 'Bug', color: '#ef4444' });
+  boot = (await ada.get(`${ws}/bootstrap`)).data;
+});
+
+afterAll(() => app.close());
+
+describe('protocol', () => {
+  it('answers the initialize handshake of older clients', async () => {
+    const res = await rpc('initialize', {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'test', version: '1' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.data.result.protocolVersion).toBe('2025-06-18');
+    expect(res.data.result.capabilities).toEqual({ tools: {} });
+    expect(res.data.result.serverInfo.name).toBe('ordo');
+    expect(res.data.result.instructions).toContain('@ada');
+    // A version it doesn't know gets the newest one it does.
+    expect(
+      (await rpc('initialize', { protocolVersion: '2024-01-01' })).data.result.protocolVersion,
+    ).toBe('2025-11-25');
+  });
+
+  it('accepts notifications with 202 and no body', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url,
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      payload: { jsonrpc: '2.0', method: 'notifications/initialized' },
+    });
+    expect(res.statusCode).toBe(202);
+    expect(res.body).toBe('');
+  });
+
+  it('lists the tools with JSON Schemas', async () => {
+    const { tools } = (await rpc('tools/list')).data.result;
+    expect(tools.map((t: { name: string }) => t.name)).toEqual(
+      expect.arrayContaining([
+        'search_issues',
+        'get_issue',
+        'create_issue',
+        'update_issue',
+        'add_comment',
+        'my_issues',
+        'list_teams',
+      ]),
+    );
+    const create = tools.find((t: { name: string }) => t.name === 'create_issue');
+    expect(create.inputSchema.type).toBe('object');
+    expect(create.inputSchema.required).toEqual(['team', 'title']);
+    expect(create.annotations.readOnlyHint).toBe(false);
+  });
+
+  it('serves 2026-07-28 requests with per-request metadata', async () => {
+    const res = await rpc('server/discover', {}, { modern: true });
+    expect(res.statusCode).toBe(200);
+    expect(res.data.result.resultType).toBe('complete');
+    expect(res.data.result.supportedVersions).toContain(MODERN);
+    expect(res.data.result._meta['io.modelcontextprotocol/serverInfo'].name).toBe('ordo');
+    const list = await rpc('tools/list', {}, { modern: true });
+    expect(list.data.result.tools.length).toBeGreaterThan(5);
+    const call = await rpc('tools/call', { name: 'list_teams', arguments: {} }, { modern: true });
+    expect(JSON.parse(call.data.result.content[0].text)[0].key).toBe('ENG');
+  });
+
+  it('validates the mirrored headers', async () => {
+    const mismatch = await rpc(
+      'tools/list',
+      {},
+      { modern: true, headers: { 'mcp-method': 'ping' } },
+    );
+    expect(mismatch.statusCode).toBe(400);
+    expect(mismatch.data.error.code).toBe(-32020);
+    const name = await rpc(
+      'tools/call',
+      { name: 'list_teams', arguments: {} },
+      { modern: true, headers: { 'mcp-name': 'my_issues' } },
+    );
+    expect(name.data.error.code).toBe(-32020);
+    const encoded = await rpc(
+      'tools/call',
+      { name: 'list_teams', arguments: {} },
+      {
+        modern: true,
+        headers: { 'mcp-name': `=?base64?${Buffer.from('list_teams').toString('base64')}?=` },
+      },
+    );
+    expect(encoded.statusCode).toBe(200);
+  });
+
+  it('names its versions when asked for one it does not speak', async () => {
+    const res = await rpc('tools/list', {}, { headers: { 'mcp-protocol-version': '1999-01-01' } });
+    expect(res.statusCode).toBe(400);
+    expect(res.data.error.code).toBe(-32022);
+    expect(res.data.error.data.supported).toEqual(expect.arrayContaining([MODERN, '2025-06-18']));
+    // A modern header without the _meta it mirrors is malformed.
+    const bare = await rpc('tools/list', {}, { headers: { 'mcp-protocol-version': MODERN } });
+    expect(bare.data.error.code).toBe(-32602);
+  });
+
+  it('reports unknown methods and tools', async () => {
+    const legacy = await rpc('resources/list');
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.data.error.code).toBe(-32601);
+    const modern = await rpc('resources/list', {}, { modern: true });
+    expect(modern.statusCode).toBe(404);
+    expect(modern.data.error.code).toBe(-32601);
+    expect((await rpc('tools/call', { name: 'drop_tables' })).data.error.code).toBe(-32602);
+  });
+
+  it('rejects malformed bodies and other methods', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url,
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      payload: '{not json',
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error.code).toBe(-32700);
+    const get = await app.inject({
+      method: 'GET',
+      url,
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect(get.statusCode).toBe(405);
+    expect(get.headers.allow).toBe('POST');
+  });
+
+  it('blocks browser requests from other origins', async () => {
+    const res = await rpc('tools/list', {}, { headers: { origin: 'https://evil.example' } });
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('auth', () => {
+  it('needs a valid API key', async () => {
+    const none = await rpc('tools/list', {}, { token: null });
+    expect(none.statusCode).toBe(401);
+    expect(none.headers['www-authenticate']).toContain('Bearer');
+    expect(none.data.error.code).toBe(401);
+    expect((await rpc('tools/list', {}, { token: 'ordo_not-a-real-key' })).statusCode).toBe(401);
+    // Browser sessions don't count: the endpoint is for agents with keys.
+    const cookie = await app.inject({
+      method: 'POST',
+      url,
+      headers: { cookie: ada.cookie, 'content-type': 'application/json' },
+      payload: { jsonrpc: '2.0', id: 1, method: 'tools/list' },
+    });
+    expect(cookie.statusCode).toBe(401);
+  });
+
+  it("hides workspaces the key's owner isn't in", async () => {
+    const other = (await signup(app, 'Otto Outsider')).client;
+    const otherKey = (await other.post('/api/me/api-keys', { name: 'x' })).data.token;
+    const res = await rpc('tools/list', {}, { token: otherKey });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('stops working once the key is revoked', async () => {
+    const temp = (await ada.post('/api/me/api-keys', { name: 'temp' })).data;
+    expect((await rpc('ping', {}, { token: temp.token })).statusCode).toBe(200);
+    await ada.del(`/api/me/api-keys/${temp.id}`);
+    expect((await rpc('ping', {}, { token: temp.token })).statusCode).toBe(401);
+  });
+
+  it("follows the workspace's API-key policy under required SSO", async () => {
+    const member = (
+      await signup(app, 'Mia Member', {
+        inviteToken: (await ada.post(`${ws}/invites`, { role: 'member' })).data[0].token,
+      })
+    ).client;
+    const memberKey = (await member.post('/api/me/api-keys', { name: 'agent' })).data.token;
+    const setPolicy = (settings: Record<string, unknown>) =>
+      app.db.update(workspaces).set({ settings }).where(eq(workspaces.id, boot.workspace.id));
+    await setPolicy({ requireSso: true });
+    try {
+      const blocked = await rpc('tools/list', {}, { token: memberKey });
+      expect(blocked.statusCode).toBe(403);
+      expect(blocked.data.error.data.error).toBe('sso_required');
+      await setPolicy({ requireSso: true, allowApiKeysUnderSso: true });
+      expect((await rpc('tools/list', {}, { token: memberKey })).statusCode).toBe(200);
+    } finally {
+      await setPolicy({});
+    }
+  });
+});
+
+describe('tools', () => {
+  it('creates an issue from names, as the user, with source mcp', async () => {
+    const out = await tool('create_issue', {
+      team: 'eng',
+      title: 'Agents can file bugs',
+      description: 'Filed through **MCP**',
+      status: 'todo',
+      priority: 'high',
+      assignee: 'me',
+      labels: ['bug'],
+      estimate: 3,
+    });
+    expect(out.identifier).toBe('ENG-1');
+    expect(out).toMatchObject({
+      status: 'Todo',
+      priority: 'High',
+      labels: ['Bug'],
+      assignee: { username: 'ada' },
+      creator: { username: 'ada' },
+      estimate: 3,
+    });
+    expect(out.url).toMatch(/\/mcp\/issue\/ENG-1$/);
+    const rest: IssueDetail = (await ada.get(`${ws}/issues/ENG-1`)).data;
+    expect(rest.description).toBe('Filed through **MCP**');
+    const [event] = await app.db
+      .select()
+      .from(domainEvents)
+      .where(
+        and(
+          eq(domainEvents.workspaceId, boot.workspace.id),
+          eq(domainEvents.type, 'issue.created'),
+        ),
+      )
+      .orderBy(desc(domainEvents.id));
+    expect(event!.source).toBe('mcp');
+  });
+
+  it('updates status, labels and assignee', async () => {
+    const out = await tool('update_issue', {
+      issue: 'ENG-1',
+      status: 'Done',
+      removeLabels: ['Bug'],
+      assignee: null,
+      priority: 0,
+    });
+    expect(out).toMatchObject({
+      statusType: 'completed',
+      labels: [],
+      assignee: null,
+      priority: 'No priority',
+    });
+    expect(out.completedAt).toBeTruthy();
+    const history = (await ada.get(`${ws}/issues/${out.id}/history`)).data;
+    expect(history.length).toBeGreaterThan(0);
+    expect((await tool('update_issue', { issue: 'ENG-1' })).error).toBe('Nothing to change');
+  });
+
+  it('comments and reads the thread back', async () => {
+    const c = await tool('add_comment', { issue: 'ENG-1', body: 'Looks good to me' });
+    expect(c.issue).toBe('ENG-1');
+    await tool('add_comment', { issue: 'ENG-1', body: 'Agreed', replyTo: c.id });
+    const issue = await tool('get_issue', { issue: 'eng-1' });
+    expect(issue.comments.map((x: { body: string }) => x.body)).toEqual([
+      'Looks good to me',
+      'Agreed',
+    ]);
+    expect(issue.comments[1].replyTo).toBe(c.id);
+    expect(issue.comments[0].author.username).toBe('ada');
+    expect(issue.description).toBe('Filed through **MCP**');
+  });
+
+  it('searches open issues by default and closed ones on request', async () => {
+    await tool('create_issue', { team: 'ENG', title: 'Searchable open thing', assignee: 'ada' });
+    const open = await tool('search_issues', { query: 'thing' });
+    expect(open.issues.map((i: { title: string }) => i.title)).toEqual(['Searchable open thing']);
+    expect((await tool('search_issues', { query: 'bugs' })).count).toBe(0);
+    expect((await tool('search_issues', { query: 'bugs', includeClosed: true })).count).toBe(1);
+    expect((await tool('search_issues', { statusType: ['completed'] })).issues[0].identifier).toBe(
+      'ENG-1',
+    );
+    const mine = await tool('my_issues');
+    expect(mine.issues.map((i: { title: string }) => i.title)).toEqual(['Searchable open thing']);
+    const limited = await tool('search_issues', { team: 'ENG', includeClosed: true, limit: 1 });
+    expect(limited).toMatchObject({ count: 1, truncated: true });
+  });
+
+  it('lists what the agent can refer to', async () => {
+    const [team] = await tool('list_teams');
+    expect(team.statuses.map((s: { name: string }) => s.name)).toContain('In Progress');
+    expect((await tool('list_statuses', { team: 'ENG' })).length).toBe(team.statuses.length);
+    expect((await tool('list_labels')).map((l: { name: string }) => l.name)).toContain('Bug');
+    expect((await tool('list_members', { query: 'ada' }))[0]).toMatchObject({
+      username: 'ada',
+      me: true,
+    });
+    expect(await tool('list_projects')).toEqual([]);
+    expect(await tool('list_cycles')).toEqual([]);
+  });
+
+  it('explains bad input so the agent can retry', async () => {
+    const status = await tool('create_issue', { team: 'ENG', title: 'x', status: 'Doing' });
+    expect(status.error).toContain('Unknown status "Doing" in ENG');
+    expect(status.error).toContain('In Progress');
+    expect((await tool('create_issue', { team: 'NOPE', title: 'x' })).error).toContain(
+      'ENG (Engineering)',
+    );
+    expect((await tool('create_issue', { team: 'ENG' })).error).toContain('title');
+    expect((await tool('get_issue', { issue: 'ENG-999' })).error).toBe('Issue not found');
+    expect((await tool('update_issue', { issue: 'ENG-1', assignee: 'nobody' })).error).toContain(
+      'Unknown person',
+    );
+  });
+});

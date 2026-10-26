@@ -1,10 +1,26 @@
 import type { CreateLabelInput, Label } from '@ordo/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq, isNull, or } from 'drizzle-orm';
+import type { DbOrTx } from '../db/client.ts';
 import { labels, teams } from '../db/schema.ts';
 import { badRequest } from '../lib/errors.ts';
-import { assertCan, canReadTeam } from './access.ts';
+import { type Access, assertCan, canReadTeam, teamScope } from './access.ts';
 import { type Ctx, emit } from './context.ts';
 import { toLabel } from './serialize.ts';
+
+/** Workspace labels, plus labels of teams `access` can read. */
+export async function listLabels(db: DbOrTx, access: Access): Promise<Label[]> {
+  const rows = await db
+    .select()
+    .from(labels)
+    .where(
+      and(
+        eq(labels.workspaceId, access.workspaceId),
+        access.isAdmin ? undefined : or(isNull(labels.teamId), teamScope(access, labels.teamId)),
+      ),
+    )
+    .orderBy(asc(labels.name));
+  return rows.map(toLabel);
+}
 
 /** Labels are managed by everyone but guests; team labels only by people who can see the team. */
 export async function assertLabelTeam(ctx: Ctx, teamId: string | null | undefined) {

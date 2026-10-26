@@ -12,10 +12,8 @@ import type { FastifyInstance } from 'fastify';
 import {
   auditLog,
   favorites,
-  labels,
   notifications,
   teams,
-  users,
   views,
   workspaceMembers,
   workspaces,
@@ -23,17 +21,17 @@ import {
 import { requireAdmin, requireOwner, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { badRequest, conflict, isUniqueViolation, notFound, parse } from '../lib/errors.ts';
 import { mutate, requestMeta } from '../lib/mutate.ts';
-import { teamScope } from '../services/access.ts';
 import { audit, auditCtx } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { listCycles } from '../services/cycles.ts';
 import { deleteFile, saveFile, signedFileUrl } from '../services/files.ts';
 import { workspaceBots } from '../services/integrations.ts';
+import { listLabels } from '../services/labels.ts';
 import { workspacePlaceholders } from '../services/placeholders.ts';
 import { listProjects } from '../services/projects.ts';
-import { toLabel, toView } from '../services/serialize.ts';
+import { toView } from '../services/serialize.ts';
 import { listTeams } from '../services/teams.ts';
-import { memberRole, toWorkspace, workspaceSettings } from '../services/workspaces.ts';
+import { listMembers, memberRole, toWorkspace, workspaceSettings } from '../services/workspaces.ts';
 
 export async function workspaceRoutes(app: FastifyInstance) {
   const { db } = app;
@@ -56,36 +54,9 @@ export async function workspaceRoutes(app: FastifyInstance) {
       placeholders,
     ] = await Promise.all([
       db.select().from(workspaces).where(eq(workspaces.id, ws.id)),
-      db
-        .select({
-          id: users.id,
-          name: users.name,
-          username: users.username,
-          email: users.email,
-          avatarColor: users.avatarColor,
-          avatarFileId: users.avatarFileId,
-          role: workspaceMembers.role,
-          joinedAt: workspaceMembers.joinedAt,
-          suspendedAt: workspaceMembers.suspendedAt,
-        })
-        .from(workspaceMembers)
-        .innerJoin(users, eq(users.id, workspaceMembers.userId))
-        .where(eq(workspaceMembers.workspaceId, ws.id))
-        .orderBy(asc(users.name)),
+      listMembers(db, access),
       listTeams(db, access),
-      // Workspace labels, plus labels of teams the viewer can read.
-      db
-        .select()
-        .from(labels)
-        .where(
-          and(
-            eq(labels.workspaceId, ws.id),
-            access.isAdmin
-              ? undefined
-              : or(isNull(labels.teamId), teamScope(access, labels.teamId)),
-          ),
-        )
-        .orderBy(asc(labels.name)),
+      listLabels(db, access),
       listProjects(db, access),
       listCycles(db, access),
       db
@@ -125,17 +96,14 @@ export async function workspaceRoutes(app: FastifyInstance) {
     return {
       workspace: toWorkspace(app, workspace[0]!),
       role: ws.role,
-      members: members.map(({ avatarFileId, suspendedAt, ...m }) => ({
+      members: members.map(({ avatarFileId, ...m }) => ({
         ...m,
         avatarUrl: signedFileUrl(app, avatarFileId),
-        suspended: !!suspendedAt,
-        // Guests don't see other people's email addresses.
-        email: access.isGuest && m.id !== user.id ? '' : m.email,
       })),
       bots: bots.map((b) => ({ ...b, email: '', avatarUrl: null })),
       placeholders,
       teams: teamList,
-      labels: labelRows.map(toLabel),
+      labels: labelRows,
       projects,
       cycles,
       views: viewRows.map(toView),

@@ -4,11 +4,12 @@ import {
   type Workspace,
   type WorkspaceSettings,
 } from '@ordo/shared';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
-import { teamMembers, teams, workspaceMembers, workspaces } from '../db/schema.ts';
+import { teamMembers, teams, users, workspaceMembers, workspaces } from '../db/schema.ts';
 import { badRequest } from '../lib/errors.ts';
+import type { Access } from './access.ts';
 import { signedFileUrl } from './files.ts';
 
 export const workspaceSettings = (row: {
@@ -28,6 +29,31 @@ export function toWorkspace(app: FastifyInstance, row: typeof workspaces.$inferS
     settings: workspaceSettings(row),
     createdAt: row.createdAt,
   };
+}
+
+/** Members of the workspace as `access` may see them: guests don't see other people's email. */
+export async function listMembers(db: DbOrTx, access: Access) {
+  const rows = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      email: users.email,
+      avatarColor: users.avatarColor,
+      avatarFileId: users.avatarFileId,
+      role: workspaceMembers.role,
+      joinedAt: workspaceMembers.joinedAt,
+      suspendedAt: workspaceMembers.suspendedAt,
+    })
+    .from(workspaceMembers)
+    .innerJoin(users, eq(users.id, workspaceMembers.userId))
+    .where(eq(workspaceMembers.workspaceId, access.workspaceId))
+    .orderBy(asc(users.name));
+  return rows.map(({ suspendedAt, ...m }) => ({
+    ...m,
+    suspended: !!suspendedAt,
+    email: access.isGuest && m.id !== access.userId ? '' : m.email,
+  }));
 }
 
 export async function memberRole(tx: DbOrTx, workspaceId: string, userId: string) {

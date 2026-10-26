@@ -366,6 +366,59 @@ describe('realtime', () => {
   });
 });
 
+describe('MCP tools', () => {
+  const keys: Partial<Record<keyof typeof c, string>> = {};
+  const call = async (who: keyof typeof c, name: string, args: Record<string, unknown> = {}) => {
+    keys[who] ??= (await c[who].post('/api/me/api-keys', { name: 'agent' })).data.token;
+    const res = await app.inject({
+      method: 'POST',
+      url: `${ws}/mcp`,
+      headers: { authorization: `Bearer ${keys[who]}`, 'content-type': 'application/json' },
+      payload: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name, arguments: args } },
+    });
+    if (res.statusCode !== 200) return { status: res.statusCode };
+    const { content, isError } = res.json().result;
+    return isError ? { error: content[0].text as string } : JSON.parse(content[0].text);
+  };
+
+  it("gives the agent exactly its user's access", async () => {
+    for (const who of ALLOWED) {
+      expect((await call(who, 'get_issue', { issue: 'PRV-1' })).title, who).toBe(
+        'Zebra classified launch',
+      );
+      const found = await call(who, 'search_issues', { query: 'zebra' });
+      expect(found.count, who).toBe(1);
+    }
+    for (const who of DENIED) {
+      expect(await call(who, 'get_issue', { issue: 'PRV-1' }), who).toEqual({
+        error: 'Issue not found',
+      });
+      expect((await call(who, 'search_issues', { query: 'zebra' })).count, who).toBe(0);
+      const teams = (await call(who, 'list_teams')).map((t: { key: string }) => t.key);
+      expect(teams, who).toEqual(['PUB']);
+      expect((await call(who, 'create_issue', { team: 'PRV', title: 'x' })).error, who).toContain(
+        'Unknown team "PRV"',
+      );
+      expect((await call(who, 'add_comment', { issue: 'PRV-1', body: 'hi' })).error, who).toBe(
+        'Issue not found',
+      );
+      const labels = (await call(who, 'list_labels')).map((l: { name: string }) => l.name);
+      expect(labels, who).not.toContain('Classified');
+      const projects = (await call(who, 'list_projects')).map((p: { name: string }) => p.name);
+      expect(projects, who).not.toContain('Secret plan');
+      expect(await call(who, 'list_cycles', { includePast: true }), who).toEqual([]);
+    }
+    // The public issue is blocked by the private one; that relation stays hidden.
+    expect((await call('member', 'get_issue', { issue: ids.pubIssue })).relations).toEqual([]);
+    expect(await call('outsider', 'list_teams')).toEqual({ status: 404 });
+  });
+
+  it("hides other people's email from guests", async () => {
+    const people = await call('guest', 'list_members');
+    expect(people.filter((p: { email?: string }) => p.email)).toHaveLength(1);
+  });
+});
+
 /**
  * Every workspace route must be accounted for: exercised by this matrix, or listed with the reason
  * it needs no team check. A new route that is in neither list fails the build.
@@ -400,6 +453,7 @@ describe('route inventory', () => {
     'PATCH /members/:userId',
     'DELETE /members/:userId',
     'POST /invites',
+    'POST /mcp',
   ]);
   // Routes that go through the same service as a covered route, or have no team-scoped data.
   const ALLOWLISTED: Record<string, string> = {
@@ -488,6 +542,8 @@ describe('route inventory', () => {
     'POST /exports': 'workspace admins only (exports.test.ts)',
     'DELETE /exports/:id': 'workspace admins only',
     'POST /placeholders/:id/merge': 'workspace admins only (placeholders.test.ts)',
+    'GET /mcp': 'always 405',
+    'DELETE /mcp': 'always 405',
   };
 
   it('accounts for every workspace route', () => {

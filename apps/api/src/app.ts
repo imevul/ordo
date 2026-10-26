@@ -33,6 +33,7 @@ import { externalAccountRoutes, integrationRoutes } from './routes/integrations.
 import { issueRoutes } from './routes/issues.ts';
 import { joiningRoutes } from './routes/joining.ts';
 import { labelRoutes } from './routes/labels.ts';
+import { mcpRoutes } from './routes/mcp.ts';
 import { memberRoutes } from './routes/members.ts';
 import { notificationRoutes } from './routes/notifications.ts';
 import { placeholderRoutes } from './routes/placeholders.ts';
@@ -205,6 +206,7 @@ export async function buildApp(
       await w.register(placeholderRoutes);
       await w.register(githubWorkspaceRoutes);
       await w.register(externalAccountRoutes);
+      await w.register(mcpRoutes);
     },
     { prefix: '/api/w/:ws' },
   );

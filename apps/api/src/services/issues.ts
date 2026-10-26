@@ -181,10 +181,21 @@ export async function queryIssues(
   access: Access,
   filter: IssueFilter,
   limit = 2000,
+  order: 'manual' | 'recent' | 'priority' = 'manual',
 ): Promise<Issue[]> {
+  const orderBy =
+    order === 'recent'
+      ? [desc(issues.updatedAt)]
+      : order === 'priority'
+        ? // Urgent first, "no priority" last.
+          [
+            sql`case when ${issues.priority} = 0 then 5 else ${issues.priority} end`,
+            desc(issues.updatedAt),
+          ]
+        : [asc(issues.sortOrder), desc(issues.createdAt)];
   const rows = await baseQuery(db)
     .where(and(...filterConditions(access, filter)))
-    .orderBy(asc(issues.sortOrder), desc(issues.createdAt))
+    .orderBy(...orderBy)
     .limit(limit);
   return rows.map(toIssue);
 }
