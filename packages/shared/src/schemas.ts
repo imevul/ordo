@@ -508,7 +508,22 @@ export const updateImportSchema = z.object({
 export const mergePlaceholderSchema = z.object({ userId: id });
 
 /** Starts an import from another tracker's API (file sources are uploaded instead). */
-export const createApiImportSchema = z.object({
-  source: z.enum(['linear']),
-  apiKey: z.string().trim().min(10).max(500),
-});
+export const createApiImportSchema = z.discriminatedUnion('source', [
+  z.object({ source: z.literal('linear'), apiKey: z.string().trim().min(10).max(500) }),
+  z.object({
+    source: z.literal('github'),
+    token: z.string().trim().min(10).max(500),
+    repos: z
+      .array(
+        z
+          .string()
+          .trim()
+          .regex(/^[\w.-]+\/[\w.-]+$/, 'Repositories look like owner/name'),
+      )
+      .min(1)
+      .max(20),
+    /** GitHub Enterprise Server's API, e.g. https://github.example.com/api/v3 */
+    apiUrl: z.url().max(500).optional(),
+  }),
+]);
+export type CreateApiImportInput = z.infer<typeof createApiImportSchema>;

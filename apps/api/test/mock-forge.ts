@@ -8,7 +8,9 @@ export interface ForgeRequest {
   body: unknown;
 }
 
-type Handler = (req: ForgeRequest) => { status?: number; body?: unknown } | undefined;
+type Handler = (
+  req: ForgeRequest,
+) => { status?: number; body?: unknown; headers?: Record<string, string> } | undefined;
 
 /** A stand-in for forge and chat APIs: answers from registered handlers, logs every call. */
 export async function startMockForge() {
@@ -33,7 +35,7 @@ export async function startMockForge() {
       handler?.(entry) ??
       (handler ? { status: 200, body: {} } : { status: 404, body: { message: 'Not Found' } });
     res
-      .writeHead(out.status ?? 200, { 'content-type': 'application/json' })
+      .writeHead(out.status ?? 200, { 'content-type': 'application/json', ...out.headers })
       .end(JSON.stringify(out.body ?? {}));
   });
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));

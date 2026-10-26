@@ -1,4 +1,4 @@
-import type { ImportSource, ImportSummary } from '@ordo/shared';
+import type { CreateApiImportInput, ImportSource, ImportSummary } from '@ordo/shared';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { imports } from '../../db/schema.ts';
 
@@ -67,9 +67,22 @@ export interface SourceContext {
   log: FastifyBaseLogger;
 }
 
+/** What an API source keeps for an import it agreed to start. */
+export interface StartedImport {
+  name: string;
+  config: Record<string, unknown>;
+  /** Stored encrypted (see `secrets.ts`), never shown again. */
+  secrets: Record<string, string>;
+}
+
 /** One kind of source (a file format or another tracker's API). */
 export interface ImportAdapter {
   key: ImportSource;
+  /**
+   * API sources: checks the credentials and settings someone gave (throwing `ImportAbort` with a
+   * reason if they don't work) and says what to keep.
+   */
+  start?(app: FastifyInstance, input: CreateApiImportInput): Promise<StartedImport>;
   /** Reads the source and summarizes it; may return settings it worked out (CSV columns). */
   analyze(
     sctx: SourceContext,

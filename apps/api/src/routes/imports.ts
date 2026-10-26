@@ -10,13 +10,15 @@ import { requestMeta } from '../lib/mutate.ts';
 import { audit } from '../services/audit.ts';
 import { deleteFile, saveFile } from '../services/files.ts';
 import {
+  importAdapter,
   isBusy,
   listImports,
   startAnalysis,
   startRun,
   suggestMapping,
 } from '../services/imports/engine.ts';
-import { linearQuery, linearSecretsAad, ORGANIZATION } from '../services/imports/linear.ts';
+import { importSecretsAad } from '../services/imports/secrets.ts';
+import type { StartedImport } from '../services/imports/types.ts';
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 /** Sources that start from an uploaded file. */
@@ -136,15 +138,12 @@ export async function importRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     const input = parse(createApiImportSchema, req.body);
     if (!app.keyring.available)
-      throw badRequest('Set ORDO_SECRET_KEY before importing from Linear');
-    let organization: { name: string };
+      throw badRequest('Set ORDO_SECRET_KEY before importing from an API');
+    let started: StartedImport;
     try {
-      ({ organization } = await linearQuery<{ organization: { name: string } }>(
-        app,
-        input.apiKey,
-        ORGANIZATION,
-      ));
+      started = await importAdapter(input.source)!.start!(app, input);
     } catch (err) {
+      // Bad credentials, missing repositories, an unreachable server: say what the source said.
       throw badRequest(err instanceof Error ? err.message : String(err));
     }
     const id = randomUUID();
@@ -154,11 +153,9 @@ export async function importRoutes(app: FastifyInstance) {
         id,
         workspaceId: ws.id,
         source: input.source,
-        name: `Linear: ${organization.name}`.slice(0, 200),
-        secrets: app.keyring.encrypt(
-          JSON.stringify({ apiKey: input.apiKey }),
-          linearSecretsAad(id),
-        ),
+        name: started.name.slice(0, 200),
+        config: started.config,
+        secrets: app.keyring.encrypt(JSON.stringify(started.secrets), importSecretsAad(id)),
         createdById: user.id,
       })
       .returning();

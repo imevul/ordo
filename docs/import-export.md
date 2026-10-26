@@ -1,7 +1,7 @@
 # Importing data
 
-Workspace admins can bring issues in from other tools: **CSV files** and **Linear** so far. Importers for GitHub
-Issues and Jira, workspace export, and a settings page for all of it are on the
+Workspace admins can bring issues in from other tools: **CSV files**, **Linear** and **GitHub Issues** so far. A
+Jira importer, workspace export, and a settings page for all of it are on the
 [roadmap](../ROADMAP.md#phase-9--importers-and-export). Until the page lands, imports run through the
 [API](api.md#imports).
 
@@ -47,6 +47,30 @@ it encrypted until you delete the import, and reads the whole workspace the key 
 
 Linear limits how fast an API key can read. A large workspace may hit that limit; the import then waits and carries
 on by itself, and says so while it waits.
+
+## GitHub Issues
+
+Start an import with a token that can read the repositories' issues (a fine-grained token with read access to
+Issues and Metadata, or a classic token with `repo` for private repositories):
+
+```json
+{ "source": "github", "token": "github_pat_…", "repos": ["acme/app", "acme/site"] }
+```
+
+For GitHub Enterprise Server, add `"apiUrl": "https://github.example.com/api/v3"`. Ordo checks it can see every
+repository, keeps the token encrypted until you delete the import, and then:
+
+- Makes each repository a source team (named after the repository), with the statuses **Open**, **Closed**, and
+  **Closed as not planned** or **as duplicate** (cancelled).
+- Keeps issue numbers in new teams; numbers that belonged to pull requests are simply missing.
+- Merges labels with the same name across repositories, and turns milestones into projects (open ones planned,
+  closed ones completed, with their due dates).
+- Matches people by the GitHub usernames members claimed under **Account → Connected accounts**, then by name;
+  everyone else, including people who only commented, gets a placeholder.
+- Imports comments. Pull requests and their comments are left out, as are GitHub's sub-issues for now.
+
+Analysis reads every issue and comment once, to count them and to find everyone involved. GitHub's rate limits
+apply; a large import may pause and carry on by itself.
 
 ## Placeholders
 

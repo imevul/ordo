@@ -6,7 +6,7 @@ import type { ProjectStatus, StateType } from './constants.ts';
  * a dry run reports what would happen, and the run writes it.
  */
 
-export const IMPORT_SOURCES = ['csv', 'linear'] as const;
+export const IMPORT_SOURCES = ['csv', 'linear', 'github'] as const;
 export type ImportSource = (typeof IMPORT_SOURCES)[number];
 
 export const IMPORT_STATUSES = [
@@ -37,6 +37,8 @@ export interface ImportSourceUser {
   name: string;
   email: string | null;
   count: number;
+  /** Their account at a forge, matched against usernames people claimed in Ordo. */
+  account?: { provider: string; host: string; login: string };
 }
 
 export interface ImportSourceNamed {
