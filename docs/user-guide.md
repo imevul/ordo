@@ -15,9 +15,23 @@ switch from the menu under the Ordo logo. Everyone in a workspace has a role:
 | **Member** | Work in every public team and in private teams they belong to; create teams, projects, views and labels.                                                                    |
 | **Guest**  | Only see and work on issues in the teams they've been added to. Guests can't create teams, projects, views, labels or cycles, and don't see other people's email addresses. |
 
-Invite people from **Settings → Members**: choose member, guest or admin. An invite with an email address works
-once, for that address; an invite without one is a link anyone can use until it expires. A guest sees nothing until
-a team admin adds them to a team. Ownership is granted by an existing owner after someone has joined.
+Invite people from **Settings → Members**: paste one or more email addresses (each gets an emailed invite when
+email is set up) or leave it empty for a shareable link; choose member, guest or admin, and the teams they should
+join. An invite with an email address works once, for that address; an open link works for anyone until it
+expires. Pending invites can be copied, resent or revoked. By default only admins invite; **Settings → Security**
+can let members invite too (never as admins).
+
+Admins can **suspend** a member — they keep their history but can't open the workspace — and restore them later.
+
+### Workspace settings
+
+- **General** — name, URL, logo, and a **default team** every new member (except guests) joins automatically.
+- **Security** — who may invite; **domains** you've verified with a DNS TXT record
+  (`_ordo-verify.example.com` → `ordo-verify=…`); and **join by domain**, which lets anyone with a _verified_ email at
+  one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.
+- **Audit log** — security-relevant changes: invites, role changes, team changes, domains, and more.
+- **Danger zone** (owners) — **transfer ownership** to another member (you become an admin), or **delete** the
+  workspace for good.
 
 ## Teams
 

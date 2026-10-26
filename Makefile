@@ -5,7 +5,7 @@ DEV_COMPOSE  ?= docker compose -f docker-compose.dev.yml
 BACKUP_DIR   ?= backups
 
 .DEFAULT_GOAL := help
-.PHONY: help up down restart update logs ps status seed backup restore psql ensure-secret \
+.PHONY: help up down restart update logs ps status seed backup restore psql ensure-secret admin reset-password \
         dev dev-db dev-down install build test typecheck lint format db-generate check-bundle clean
 
 help: ## Show this help
@@ -83,6 +83,14 @@ restore: ## Restore a backup: make restore FILE=backups/ordo-….sql.gz (uploads
 			$(COMPOSE) run --rm -T --no-deps --entrypoint sh app -c 'rm -rf /data/* && tar -C /data -xzf -' < "$$uploads" && echo "Restored uploads from $$uploads"; \
 		fi
 	$(COMPOSE) start app
+
+admin: ## Make someone an instance admin: make admin EMAIL=you@example.com
+	@test -n "$(EMAIL)" || (echo "Usage: make admin EMAIL=you@example.com" && exit 1)
+	$(COMPOSE) exec app node cli.mjs promote-admin $(EMAIL)
+
+reset-password: ## Print a password reset link: make reset-password EMAIL=…
+	@test -n "$(EMAIL)" || (echo "Usage: make reset-password EMAIL=you@example.com" && exit 1)
+	$(COMPOSE) exec app node cli.mjs reset-password $(EMAIL)
 
 psql: ## Open a psql shell in the database container
 	$(COMPOSE) exec db sh -c 'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'

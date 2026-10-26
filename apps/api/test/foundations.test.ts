@@ -200,7 +200,7 @@ describe('instance', () => {
       expect.arrayContaining(['workspace.created', 'workspace.updated']),
     );
     const invite = await owner.post('/api/w/audited/invites', {});
-    const member = (await signup(app, 'Max Member', { inviteToken: invite.data.token })).client;
+    const member = (await signup(app, 'Max Member', { inviteToken: invite.data[0].token })).client;
     expect((await member.get('/api/w/audited/audit-log')).statusCode).toBe(403);
   });
 

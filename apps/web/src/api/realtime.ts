@@ -56,12 +56,21 @@ export function useRealtime(slug: string): RealtimeStatus {
       socket.onmessage = (msg) => {
         const e = JSON.parse(msg.data) as RealtimeEvent | { kind: 'hello' };
         if (e.kind === 'hello') return;
+        if (e.kind === 'workspace' && e.action === 'deleted') {
+          location.assign('/');
+          return;
+        }
         pending.add(e.kind);
         flushTimer ??= setTimeout(flush, 60);
       };
       socket.onclose = (ev) => {
         if (closed) return;
         setStatus('offline');
+        // Removed, suspended or disabled: this workspace is no longer ours to show.
+        if (ev.code === 4403) {
+          location.assign('/');
+          return;
+        }
         if (ev.code === 4401 || ev.code === 4404) return;
         attempt++;
         timer = setTimeout(connect, Math.min(30_000, 500 * 2 ** attempt));

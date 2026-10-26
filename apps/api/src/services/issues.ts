@@ -52,14 +52,16 @@ import { notify, subscribe, subscriberIds } from './notifications.ts';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Correlated subqueries name the outer table explicitly ("issues"."id"): Drizzle leaves columns
+// unqualified in single-table selects, and a bare "id" would bind to the subquery's own table.
 const issueSelect = {
   ...getTableColumns(issues),
   teamKey: teams.key,
   labelIds: sql<
     string[]
-  >`coalesce((select array_agg(il.label_id::text) from issue_labels il where il.issue_id = ${issues.id}), '{}')`,
-  subIssueCount: sql<number>`(select count(*)::int from issues c where c.parent_id = ${issues.id} and c.deleted_at is null)`,
-  completedSubIssueCount: sql<number>`(select count(*)::int from issues c join workflow_states cs on cs.id = c.state_id where c.parent_id = ${issues.id} and c.deleted_at is null and cs.type in ('completed', 'canceled'))`,
+  >`coalesce((select array_agg(il.label_id::text) from issue_labels il where il.issue_id = "issues"."id"), '{}')`,
+  subIssueCount: sql<number>`(select count(*)::int from issues c where c.parent_id = "issues"."id" and c.deleted_at is null)`,
+  completedSubIssueCount: sql<number>`(select count(*)::int from issues c join workflow_states cs on cs.id = c.state_id where c.parent_id = "issues"."id" and c.deleted_at is null and cs.type in ('completed', 'canceled'))`,
 };
 
 type IssueRow = typeof issues.$inferSelect & {
@@ -144,7 +146,7 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
   if (f.labelIds?.length) {
     conds.push(
       exists(
-        sql`(select 1 from issue_labels fl where fl.issue_id = ${issues.id} and fl.label_id in (${sql.join(
+        sql`(select 1 from issue_labels fl where fl.issue_id = "issues"."id" and fl.label_id in (${sql.join(
           f.labelIds.map((l) => sql`${l}`),
           sql`, `,
         )}))`,
@@ -155,7 +157,7 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
   if (f.subscribedBy === 'me') {
     conds.push(
       exists(
-        sql`(select 1 from issue_subscribers su where su.issue_id = ${issues.id} and su.user_id = ${userId})`,
+        sql`(select 1 from issue_subscribers su where su.issue_id = "issues"."id" and su.user_id = ${userId})`,
       ),
     );
   }

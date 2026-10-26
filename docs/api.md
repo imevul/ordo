@@ -64,23 +64,42 @@ the same as something that doesn't exist; actions the caller can see but isn't a
 | GET        | `/invites/:token`        | Public invite info                                       |
 | POST       | `/invites/:token/accept` | Join with the signed-in account                          |
 
+Joining by domain (no workspace prefix):
+
+| Method | Path                   |                                                            |
+| ------ | ---------------------- | ---------------------------------------------------------- |
+| GET    | `/workspaces/joinable` | Workspaces you may join through your verified email domain |
+| POST   | `/workspaces/:id/join` | Join one of them                                           |
+
+Account endpoints (no workspace prefix): `GET /me/account`, `PATCH /me/preferences`, `POST|DELETE /me/avatar`,
+`POST /me/email`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/2fa/setup|enable|disable|recovery-codes`,
+`POST /auth/forgot`, `POST /auth/reset`, `POST /auth/mfa`, `POST /auth/verify-email`. Instance administration lives
+under `/api/admin/*` (instance admins only; see [admin.md](admin.md)).
+
 ## Workspace-scoped endpoints
 
 Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g. `/api/w/acme/issues`.
 
 ### Workspace
 
-| Method     | Path                        |                                                                                                                |
-| ---------- | --------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| GET        | `/bootstrap`                | Workspace, your role, members, teams (with statuses), labels, projects, cycles, views, favorites, unread count |
-| PATCH      | `/`                         | _Admin._ `{ name?, slug? }`                                                                                    |
-| PATCH      | `/members/:userId`          | _Admin._ `{ role: "owner" \| "admin" \| "member" \| "guest" }` — only owners grant or change ownership         |
-| DELETE     | `/members/:userId`          | _Admin_, or yourself to leave                                                                                  |
-| GET / POST | `/invites`                  | _Admin._ List / create `{ email?, role?, expiresInDays? }`                                                     |
-| DELETE     | `/invites/:id`              | _Admin._ Revoke                                                                                                |
-| GET        | `/audit-log?before=&limit=` | _Admin._ Recent security-relevant actions in this workspace                                                    |
-| POST       | `/favorites`                | `{ kind: "project" \| "view" \| "team" \| "issue" \| "cycle", targetId }`                                      |
-| DELETE     | `/favorites/:id`            |                                                                                                                |
+| Method        | Path                        |                                                                                                                                                                     |
+| ------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET           | `/bootstrap`                | Workspace, your role, members, teams (with statuses), labels, projects, cycles, views, favorites, unread count                                                      |
+| PATCH         | `/`                         | _Admin._ `{ name?, slug?, defaultTeamId?, settings?: { invitePolicy?, domainAutoJoin?, autoJoinRole? } }`                                                           |
+| DELETE        | `/`                         | _Owner._ `{ confirmSlug }` — deletes the workspace                                                                                                                  |
+| POST / DELETE | `/logo`                     | _Admin._ Upload (multipart `file`) / remove the logo                                                                                                                |
+| POST          | `/transfer-ownership`       | _Owner._ `{ userId, stepDown? }`                                                                                                                                    |
+| PATCH         | `/members/:userId`          | _Admin._ `{ role: "owner" \| "admin" \| "member" \| "guest" }` — only owners grant or change ownership                                                              |
+| DELETE        | `/members/:userId`          | _Admin_, or yourself to leave                                                                                                                                       |
+| GET / POST    | `/invites`                  | List / create `{ emails?, role?, teamIds?, expiresInDays? }` — one invite per address (emailed), or one open link; admins, or members when the invite policy allows |
+| POST          | `/invites/:id/resend`       | Email it again (and extend it)                                                                                                                                      |
+| DELETE        | `/invites/:id`              | _Admin._ Revoke                                                                                                                                                     |
+| GET / POST    | `/domains`                  | _Admin._ List / add `{ domain }`                                                                                                                                    |
+| POST          | `/domains/:id/verify`       | _Admin._ Check the `_ordo-verify.<domain>` TXT record                                                                                                               |
+| DELETE        | `/domains/:id`              | _Admin._                                                                                                                                                            |
+| GET           | `/audit-log?before=&limit=` | _Admin._ Recent security-relevant actions in this workspace                                                                                                         |
+| POST          | `/favorites`                | `{ kind: "project" \| "view" \| "team" \| "issue" \| "cycle", targetId }`                                                                                           |
+| DELETE        | `/favorites/:id`            |                                                                                                                                                                     |
 
 ### Teams & workflow
 

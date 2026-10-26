@@ -67,6 +67,10 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
   handler registered in `src/jobs.ts` (`app.jobs.define` / `app.jobs.every`). Handlers must be idempotent (jobs
   retry). Send email with `queueEmail(tx, to, template(...))`, never `app.mailer.send` from a request. Tests run jobs
   with `await app.jobs.drain()` and capture mail with `captureMail(app)`.
+- **Instance-admin endpoints** live in `routes/admin.ts` under `/api/admin`, guarded by `isInstanceAdmin` in a
+  plugin-level hook. Workspace membership changes go through `joinWorkspace` (`services/workspaces.ts`).
+- **Correlated subqueries**: name the outer table explicitly (`"issues"."id"`), not `${issues.id}` — Drizzle leaves
+  columns unqualified in single-table selects, so a bare `"id"` binds to the subquery's own table.
 - **Uploads** go through `saveFile` (`services/files.ts`) and are exposed only via `signedFileUrl`. Never serve user
   files from the web root or trust a client-supplied content type.
 - **Only enabled humans authenticate.** `users.kind` is `human | bot | placeholder`; `disabled_at` blocks sign-in and

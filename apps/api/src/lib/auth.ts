@@ -163,8 +163,15 @@ export async function authorizeWorkspace(
     .from(workspaces)
     .innerJoin(
       workspaceMembers,
-      and(eq(workspaceMembers.workspaceId, workspaces.id), eq(workspaceMembers.userId, user.id)),
+      and(
+        eq(workspaceMembers.workspaceId, workspaces.id),
+        eq(workspaceMembers.userId, user.id),
+        // Suspended members keep their history but lose access.
+        isNull(workspaceMembers.suspendedAt),
+      ),
     )
+    // Re-checked here (not just at sign-in) so live sockets of disabled accounts are closed.
+    .innerJoin(users, and(eq(users.id, workspaceMembers.userId), isNull(users.disabledAt)))
     .where(typeof ref === 'string' ? eq(workspaces.slug, ref) : eq(workspaces.id, ref.id));
   if (!row) throw notFound('Workspace');
   return { ...row, access: await computeAccess(db, user.id, row.id, row.role) };

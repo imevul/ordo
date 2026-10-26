@@ -23,7 +23,7 @@ const ALLOWED = ['owner', 'admin', 'insider'] as const;
 const DENIED = ['member', 'guest'] as const;
 
 async function invite(role: 'admin' | 'member' | 'guest') {
-  return (await c.owner.post(`${ws}/invites`, { role })).data.token as string;
+  return (await c.owner.post(`${ws}/invites`, { role })).data[0].token as string;
 }
 
 beforeAll(async () => {
@@ -435,6 +435,15 @@ describe('route inventory', () => {
     'DELETE /favorites/:id': "the caller's own data",
     'POST /notifications/read': "the caller's own notifications",
     'POST /notifications/delete': "the caller's own notifications",
+    'DELETE /': 'owners only, confirmed by slug',
+    'POST /logo': 'workspace admins only',
+    'DELETE /logo': 'workspace admins only',
+    'POST /transfer-ownership': 'owners only',
+    'POST /invites/:id/resend': 'admins, or the member who created it',
+    'GET /domains': 'workspace admins only',
+    'POST /domains': 'workspace admins only',
+    'POST /domains/:id/verify': 'workspace admins only',
+    'DELETE /domains/:id': 'workspace admins only',
   };
 
   it('accounts for every workspace route', () => {

@@ -63,11 +63,11 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ File storage (local volume or S3-compatible) with signed URLs
 - ✅ Account area: picture, email change, password reset, sessions, TOTP 2FA with recovery codes, notification preferences (connected accounts: Phase 5)
 
-### Phase 4 — Organisation settings, invites, instance admin
+### Phase 4 — Organisation settings, invites, instance admin ✅
 
-- ⬜ Org settings: general, members, security, audit log, danger zone
-- ⬜ Emailed and bulk invites into teams, guest invites, verified-domain auto-join
-- ⬜ Instance admin: users, organisations, settings, health; recovery CLI
+- ✅ Org settings: general (logo, default team), members (suspend), security (invite policy, domains), audit log, danger zone (transfer, delete)
+- ✅ Emailed and bulk invites into teams, resend, guest invites, verified-domain auto-join
+- ✅ Instance admin: users, workspaces, domains, settings (SMTP, sign-up, network), jobs, audit, health; recovery CLI
 
 ### Phase 5 — Per-organisation OIDC SSO
 

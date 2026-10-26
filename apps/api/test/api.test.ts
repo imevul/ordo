@@ -25,7 +25,7 @@ beforeAll(async () => {
 
   const invite = await ada.post(`${ws}/invites`, {});
   expect(invite.statusCode).toBe(200);
-  const g = await signup(app, 'Grace Hopper', { inviteToken: invite.data.token });
+  const g = await signup(app, 'Grace Hopper', { inviteToken: invite.data[0].token });
   grace = g.client;
   expect(g.data.workspaceSlug).toBe('acme');
   graceId = (await grace.get('/api/auth/me')).data.id;
