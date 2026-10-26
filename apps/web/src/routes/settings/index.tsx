@@ -10,6 +10,8 @@ import {
   SecuritySection,
 } from './account.tsx';
 import { ChatAccountsCard } from './chat.tsx';
+import { ExportsCard, PlaceholdersCard } from './exports.tsx';
+import { ImportsSection } from './imports.tsx';
 import { GitAccountsCard, IntegrationsSection } from './integrations.tsx';
 import { LabelsSection } from './labels.tsx';
 import { AuthenticationSection, ConnectedAccountsCard } from './sso.tsx';
@@ -37,6 +39,7 @@ const SECTIONS: { key: string; label: string; group: string; admin?: boolean }[]
   { key: 'authentication', label: 'Authentication', group: 'Workspace', admin: true },
   { key: 'integrations', label: 'Integrations', group: 'Workspace', admin: true },
   { key: 'webhooks', label: 'Webhooks', group: 'Workspace', admin: true },
+  { key: 'import', label: 'Import & export', group: 'Workspace', admin: true },
   { key: 'audit', label: 'Audit log', group: 'Workspace', admin: true },
 ];
 
@@ -108,6 +111,7 @@ function SettingsShell({
 }
 
 export function SettingsPage() {
+  const ws = useWorkspace();
   const { section } = useParams({ from: '/$slug/settings/$section' });
   const meta = SECTIONS.find((s) => s.key === section) ?? SECTIONS[0]!;
   const body =
@@ -133,6 +137,16 @@ export function SettingsPage() {
       <IntegrationsSection />
     ) : section === 'webhooks' ? (
       <WebhooksSection />
+    ) : section === 'import' ? (
+      ws.isAdmin ? (
+        <>
+          <ImportsSection />
+          <PlaceholdersCard />
+          <ExportsCard />
+        </>
+      ) : (
+        <p className="text-muted">Only admins can import and export.</p>
+      )
     ) : section === 'authentication' ? (
       <AuthenticationSection />
     ) : section === 'audit' ? (

@@ -17,11 +17,19 @@ export const IMPORT_STATUSES = [
   'completed',
   'failed',
   'canceled',
+  /** Its issues are being moved to the trash. */
+  'undoing',
+  'undone',
 ] as const;
 export type ImportStatus = (typeof IMPORT_STATUSES)[number];
 
 /** Statuses during which a job is working on the import. */
-export const IMPORT_BUSY: readonly ImportStatus[] = ['analyzing', 'dry_running', 'running'];
+export const IMPORT_BUSY: readonly ImportStatus[] = [
+  'analyzing',
+  'dry_running',
+  'running',
+  'undoing',
+];
 
 /** Something the source has, described for mapping. `id` is the source's own identifier. */
 export interface ImportSourceTeam {

@@ -348,6 +348,7 @@ Admins only. How imports work, and the CSV columns Ordo reads, are in [Importing
 | POST   | `/imports/:id/dry-run` | Reports what a run would do, in `report`                                                        |
 | POST   | `/imports/:id/run`     | Imports; running again skips what's already imported                                            |
 | POST   | `/imports/:id/cancel`  | Stops at the next page                                                                          |
+| POST   | `/imports/:id/undo`    | Moves the issues it created to the trash; the import becomes `undone`                           |
 | DELETE | `/imports/:id`         | Forgets the import and its file; imported issues stay                                           |
 
 API sources take one of:
@@ -360,7 +361,8 @@ API sources take one of:
 
 The credentials are checked first and never returned.
 
-`status` goes `analyzing` → `ready` → (`dry_running` → `ready`) → `running` → `completed`, or `failed` / `canceled`.
+`status` goes `analyzing` → `ready` → (`dry_running` → `ready`) → `running` → `completed`, or `failed` / `canceled`;
+undoing goes `undoing` → `undone`.
 `mapping` is `{ teams, statuses, users, labels, projects, keepNumbers }`, keyed by the source's ids from `summary`:
 a team maps to `{ teamId }`, `{ create: { name, key } }` or `{ skip: true }`; a status to a status id or a status
 type; a person to a member's or placeholder's id, `"placeholder"` for a new placeholder, or `null`; a label or

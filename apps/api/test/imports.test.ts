@@ -1,5 +1,5 @@
 import type { Bootstrap, Import, IssueDetail } from '@ordo/shared';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { auditLog, issues, labels, notifications, projects, teams } from '../src/db/schema.ts';
@@ -255,6 +255,45 @@ describe('CSV import into an existing team', () => {
     const again = (await owner.get(`${ws}/imports/${imp.id}`)).data as Import;
     expect(again.summary!.csv!.columns.title).toBe('Body');
     expect(again.status).toBe('ready');
+  });
+});
+
+describe('undoing an import', () => {
+  it('moves what it created to the trash, where it can be restored', async () => {
+    let imp = await analyzed('undo.csv', 'Title\nUndo me\nAnd me');
+    imp = await run(imp.id, 'run');
+    const made = await app.db
+      .select({ id: issues.id, deletedAt: issues.deletedAt })
+      .from(issues)
+      .where(inArray(issues.title, ['Undo me', 'And me']));
+    expect(made).toHaveLength(2);
+
+    // Only an import that ran can be undone.
+    const fresh = await analyzed('fresh.csv', 'Title\nNot yet');
+    expect((await owner.post(`${ws}/imports/${fresh.id}/undo`)).statusCode).toBe(400);
+    expect((await member.post(`${ws}/imports/${imp.id}/undo`)).statusCode).toBe(403);
+
+    const res = await owner.post(`${ws}/imports/${imp.id}/undo`);
+    expect(res.data.status).toBe('undoing');
+    await settle();
+    imp = (await owner.get(`${ws}/imports/${imp.id}`)).data;
+    expect(imp.status).toBe('undone');
+    expect(imp.progress).toMatchObject({ phase: 'undo', done: 2, total: 2 });
+    const trashed = await app.db
+      .select({ deletedAt: issues.deletedAt })
+      .from(issues)
+      .where(
+        inArray(
+          issues.id,
+          made.map((m) => m.id),
+        ),
+      );
+    expect(trashed.every((t) => t.deletedAt)).toBe(true);
+
+    expect((await owner.post(`${ws}/issues/${made[0]!.id}/restore`)).statusCode).toBe(200);
+    expect((await owner.post(`${ws}/imports/${imp.id}/run`)).data.message).toContain('undone');
+    const audit = await app.db.select().from(auditLog).where(eq(auditLog.targetId, imp.id));
+    expect(audit.map((a) => a.action)).toContain('import.undone');
   });
 });
 

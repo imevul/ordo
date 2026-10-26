@@ -36,6 +36,9 @@ Admins can **suspend** a member — they keep their history but can't open the w
   [integrations](integrations/README.md).
 - **Webhooks** — send issue, comment, project and cycle events to your own endpoints, signed, with a delivery log,
   test button and redelivery ([API docs](api.md#webhooks)).
+- **Import & export** — bring issues in from a CSV file, Linear, GitHub, GitLab, Forgejo/Gitea or Jira (with a
+  dry run first, and undo afterwards), merge people from imports into members who've joined, and export the
+  workspace as JSON or CSV. See [importing data](import-export.md).
 - **Audit log** — security-relevant changes: invites, role changes, team changes, domains, and more.
 - **Danger zone** (owners) — **transfer ownership** to another member (you become an admin), or **delete** the
   workspace for good.
