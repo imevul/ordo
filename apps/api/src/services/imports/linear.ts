@@ -8,6 +8,7 @@ import {
 } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { ApiCallError, callApi } from '../../integrations/http.ts';
+import { importSecrets } from './secrets.ts';
 import {
   ImportAbort,
   type ImportAdapter,
@@ -26,8 +27,6 @@ import {
 const apiUrl = () => process.env.ORDO_LINEAR_API_URL ?? 'https://api.linear.app/graphql';
 const PAGE_SIZE = 100;
 
-export const linearSecretsAad = (importId: string) => `imports:${importId}:secrets`;
-
 interface GqlError {
   message: string;
   extensions?: { code?: string; type?: string };
@@ -37,7 +36,7 @@ const isAuthError = (text: string) => /authenticat|unauthori[sz]ed|forbidden/i.t
 const isRateLimit = (text: string) => /rate ?limit/i.test(text);
 
 /** One GraphQL request. Auth problems end the import; rate limits pause it. */
-export async function linearQuery<T>(
+async function linearQuery<T>(
   app: FastifyInstance,
   apiKey: string,
   query: string,
@@ -75,13 +74,7 @@ const rateLimited = () =>
     new Date(Date.now() + 10 * 60_000),
   );
 
-function apiKey(sctx: SourceContext) {
-  const { row, app } = sctx;
-  if (!row.secrets) throw new ImportAbort('The import has no Linear API key');
-  return (
-    JSON.parse(app.keyring.decrypt(row.secrets, linearSecretsAad(row.id))) as { apiKey: string }
-  ).apiKey;
-}
+const apiKey = (sctx: SourceContext) => importSecrets<{ apiKey: string }>(sctx).apiKey;
 
 interface Connection<T> {
   nodes: T[];
@@ -120,7 +113,7 @@ const conn = (fields: string) => `nodes { ${fields} } pageInfo { hasNextPage end
 const list = (field: string, fields: string, args = '') =>
   `query List($first: Int, $after: String) { ${field}(first: $first, after: $after${args}) { ${conn(fields)} } }`;
 
-export const ORGANIZATION = 'query Organization { organization { id name urlKey } }';
+const ORGANIZATION = 'query Organization { organization { id name urlKey } }';
 const TEAMS = list(
   'teams',
   'id name key issueCount states(first: 100) { nodes { id name type position } }',
@@ -235,6 +228,20 @@ function toIssue(i: LinearIssue, labels: Map<string, string>): SourceIssue {
 
 export const linearSource: ImportAdapter = {
   key: 'linear',
+
+  async start(app, input) {
+    if (input.source !== 'linear') throw new Error('Not a Linear import');
+    const { organization } = await linearQuery<{ organization: { name: string } }>(
+      app,
+      input.apiKey,
+      ORGANIZATION,
+    );
+    return {
+      name: `Linear: ${organization.name}`,
+      config: {},
+      secrets: { apiKey: input.apiKey },
+    };
+  },
 
   async analyze(sctx) {
     const [teams, users, labels, projects, cycles] = await Promise.all([

@@ -105,7 +105,9 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   settings page)
 - ✅ Linear importer: teams, statuses, people, labels, projects, cycles, issues, sub-issues, comments, relations,
   attachments as links; waits out rate limits
-- ⬜ GitHub Issues and Jira importers
+- ✅ GitHub Issues importer: repositories as teams, open/closed statuses, labels, milestones as projects,
+  comments, people by claimed usernames; GitHub Enterprise Server
+- ⬜ Jira importer
 - ⬜ Workspace export (JSON, CSV)
 - ⬜ Settings → Import & export, undo an import
 

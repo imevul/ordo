@@ -11,10 +11,11 @@ import {
   type StateType,
   TEAM_KEY_PATTERN,
 } from '@ordo/shared';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../../db/client.ts';
 import {
+  externalAccounts,
   importItems,
   imports,
   issues,
@@ -41,6 +42,7 @@ import { createProject } from '../projects.ts';
 import { createRelation } from '../relations.ts';
 import { createTeam } from '../teams.ts';
 import { csvSource } from './csv.ts';
+import { githubSource } from './github.ts';
 import { linearSource } from './linear.ts';
 import {
   ImportAbort,
@@ -63,7 +65,11 @@ import {
  * create as PLANNED items (so sub-issue links can be checked), and removes them when it ends.
  */
 
-const ADAPTERS: Record<string, ImportAdapter> = { csv: csvSource, linear: linearSource };
+const ADAPTERS: Record<string, ImportAdapter> = {
+  csv: csvSource,
+  linear: linearSource,
+  github: githubSource,
+};
 export const importAdapter = (source: string) => ADAPTERS[source];
 
 /** How long one job works before handing over to the next, well inside the job lease. */
@@ -188,6 +194,18 @@ async function workspaceData(db: DbOrTx, workspaceId: string) {
     .select({ id: projects.id, name: projects.name })
     .from(projects)
     .where(eq(projects.workspaceId, workspaceId));
+  // Forge usernames members claimed (chat accounts belong to an integration and don't count).
+  const accounts = await db
+    .select({
+      provider: externalAccounts.provider,
+      host: externalAccounts.host,
+      login: externalAccounts.externalId,
+      userId: externalAccounts.userId,
+    })
+    .from(externalAccounts)
+    .where(
+      and(eq(externalAccounts.workspaceId, workspaceId), isNull(externalAccounts.integrationId)),
+    );
   const placeholderRows = await db
     .select({ id: users.id, name: users.name, importedEmail: users.importedEmail })
     .from(users)
@@ -196,6 +214,7 @@ async function workspaceData(db: DbOrTx, workspaceId: string) {
     teams: teamRows,
     states,
     members,
+    accounts,
     placeholders: placeholderRows,
     labels: labelRows,
     projects: projectRows,
@@ -284,7 +303,16 @@ export async function suggestMapping(
       mapping.users[u.id] = previous.users[u.id]!;
       continue;
     }
+    const claimed = u.account
+      ? data.accounts.find(
+          (a) =>
+            a.provider === u.account!.provider &&
+            a.host === u.account!.host &&
+            a.login === lower(u.account!.login),
+        )
+      : undefined;
     const match =
+      (claimed && data.members.find((m) => m.id === claimed.userId)) ||
       (u.email && data.members.find((m) => lower(m.email) === lower(u.email!))) ||
       data.members.find(
         (m) => lower(m.name) === lower(u.name) || lower(m.username) === lower(u.name),
