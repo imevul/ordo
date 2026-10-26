@@ -22,7 +22,7 @@ import { useWsMutation } from '../../api/queries.ts';
 import { StatusIcon, TeamIcon } from '../../components/icons.tsx';
 import { Picker } from '../../components/properties.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
-import { ConfirmModal } from '../../components/ui/Modal.tsx';
+import { ConfirmModal, confirmDialog } from '../../components/ui/Modal.tsx';
 import { Popover } from '../../components/ui/Popover.tsx';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './index.tsx';
@@ -187,11 +187,14 @@ function StateRow({ state, team }: { state: WorkflowState; team: Team }) {
       <button
         type="button"
         className="btn btn-danger btn-sm opacity-0 group-hover:opacity-100"
-        onClick={() =>
-          confirm(
-            `Delete status “${state.name}”? Its issues move to another status of the same type.`,
-          ) && remove.mutate(undefined)
-        }
+        onClick={async () => {
+          const ok = await confirmDialog({
+            title: `Delete status “${state.name}”?`,
+            body: 'Its issues move to another status of the same type.',
+            danger: true,
+          });
+          if (ok) remove.mutate(undefined);
+        }}
         aria-label={`Delete ${state.name}`}
       >
         <Trash2 size={12} />

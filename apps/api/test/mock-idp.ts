@@ -18,7 +18,8 @@ export interface MockIdp {
  * A minimal OpenID provider for tests: discovery, authorize (auto-approves and redirects with a
  * code), token (checks client secret and PKCE, signs an RS256 ID token), userinfo and JWKS.
  */
-export async function startMockIdp(port = 0): Promise<MockIdp> {
+/** `path` puts the provider under a sub-path, e.g. "/application/o/ordo/" like Authentik (trailing slash included). */
+export async function startMockIdp(port = 0, path = ''): Promise<MockIdp> {
   const { privateKey, publicKey } = await generateKeyPair('RS256');
   const jwk: JWK = { ...(await exportJWK(publicKey)), kid: 'k1', alg: 'RS256', use: 'sig' };
   const codes = new Map<
@@ -27,6 +28,9 @@ export async function startMockIdp(port = 0): Promise<MockIdp> {
   >();
   const tokens = new Map<string, Record<string, unknown>>();
 
+  // Endpoints hang off the path without its trailing slash; the issuer keeps it.
+  const base = path.replace(/\/+$/, '');
+  let origin = '';
   const idp: MockIdp = {
     issuer: '',
     clientId: 'ordo-test',
@@ -42,15 +46,17 @@ export async function startMockIdp(port = 0): Promise<MockIdp> {
 
   const server: Server = createServer(async (req, res) => {
     const url = new URL(req.url!, idp.issuer);
+    if (path && url.pathname.startsWith(base))
+      url.pathname = url.pathname.slice(base.length) || '/';
     let body = '';
     for await (const chunk of req) body += chunk;
     if (url.pathname === '/.well-known/openid-configuration') {
       return json(res, 200, {
         issuer: idp.issuer,
-        authorization_endpoint: `${idp.issuer}/authorize`,
-        token_endpoint: `${idp.issuer}/token`,
-        userinfo_endpoint: `${idp.issuer}/userinfo`,
-        jwks_uri: `${idp.issuer}/jwks`,
+        authorization_endpoint: `${origin}${base}/authorize`,
+        token_endpoint: `${origin}${base}/token`,
+        userinfo_endpoint: `${origin}${base}/userinfo`,
+        jwks_uri: `${origin}${base}/jwks`,
         response_types_supported: ['code'],
         subject_types_supported: ['public'],
         id_token_signing_alg_values_supported: ['RS256'],
@@ -123,6 +129,7 @@ export async function startMockIdp(port = 0): Promise<MockIdp> {
     res.writeHead(404).end();
   });
   await new Promise<void>((r) => server.listen(port, '127.0.0.1', () => r()));
-  idp.issuer = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  idp.issuer = `${origin}${path}`;
   return idp;
 }

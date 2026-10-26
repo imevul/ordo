@@ -50,7 +50,7 @@ export async function authProviderRoutes(app: FastifyInstance) {
         .insert(authProviders)
         .values({
           ...input,
-          issuer: input.issuer.replace(/\/$/, ''),
+          issuer: input.issuer.trim(),
           workspaceId: ws.id,
           clientSecret: 'pending',
         })
@@ -81,7 +81,7 @@ export async function authProviderRoutes(app: FastifyInstance) {
         .update(authProviders)
         .set({
           ...rest,
-          issuer: rest.issuer?.replace(/\/$/, ''),
+          issuer: rest.issuer?.trim(),
           clientSecret: clientSecret ? app.keyring.encrypt(clientSecret, secretAad(id)) : undefined,
           updatedAt: new Date().toISOString(),
         })

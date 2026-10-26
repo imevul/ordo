@@ -5,7 +5,7 @@ import { type FormEvent, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
 import { Spinner } from '../../components/PageHeader.tsx';
-import { Modal } from '../../components/ui/Modal.tsx';
+import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './index.tsx';
@@ -152,7 +152,15 @@ export function IntegrationsSection() {
                 className="btn btn-danger btn-sm"
                 aria-label={`Disconnect ${i.name}`}
                 onClick={async () => {
-                  if (!confirm(`Disconnect ${i.name}? Existing links on issues stay.`)) return;
+                  if (
+                    !(await confirmDialog({
+                      title: `Disconnect ${i.name}?`,
+                      body: 'Links already on issues stay.',
+                      confirmLabel: 'Disconnect',
+                      danger: true,
+                    }))
+                  )
+                    return;
                   await api.del(wsPath(ws.slug, `/integrations/${i.id}`));
                   reload();
                 }}

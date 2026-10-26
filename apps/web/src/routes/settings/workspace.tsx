@@ -29,7 +29,7 @@ import { TeamIcon } from '../../components/icons.tsx';
 import { Spinner } from '../../components/PageHeader.tsx';
 import { Picker } from '../../components/properties.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
-import { Modal } from '../../components/ui/Modal.tsx';
+import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime, shortDate } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './index.tsx';
@@ -245,7 +245,15 @@ function DangerZone() {
             disabled={!heir}
             onClick={async () => {
               const who = ws.memberById.get(heir)?.name;
-              if (!window.confirm(`Make ${who} the owner? You'll become an admin.`)) return;
+              if (
+                !(await confirmDialog({
+                  title: `Make ${who} the owner?`,
+                  body: "You'll become an admin.",
+                  confirmLabel: 'Transfer ownership',
+                  danger: true,
+                }))
+              )
+                return;
               try {
                 await api.post(wsPath(ws.slug, '/transfer-ownership'), {
                   userId: heir,
@@ -562,13 +570,15 @@ export function MembersSection() {
               <button
                 type="button"
                 className="btn btn-danger btn-sm"
-                onClick={() =>
-                  confirm(
-                    m.id === ws.me.id
-                      ? 'Leave this workspace?'
-                      : `Remove ${m.name} from the workspace?`,
-                  ) && removeMember.mutate(m.id)
-                }
+                onClick={async () => {
+                  const self = m.id === ws.me.id;
+                  const ok = await confirmDialog({
+                    title: self ? 'Leave this workspace?' : `Remove ${m.name} from the workspace?`,
+                    confirmLabel: self ? 'Leave' : 'Remove',
+                    danger: true,
+                  });
+                  if (ok) removeMember.mutate(m.id);
+                }}
                 aria-label={m.id === ws.me.id ? 'Leave workspace' : `Remove ${m.name}`}
               >
                 <Trash2 size={12} />

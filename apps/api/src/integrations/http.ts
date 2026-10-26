@@ -29,6 +29,9 @@ export async function callApi<T = unknown>(
     allowPrivate: app.settings.get('allowPrivateNetworkTargets'),
     timeoutMs: 15_000,
     maxBytes: 10 * 1024 * 1024,
+  }).catch((err: unknown) => {
+    // undici reports every network failure as "fetch failed"; the cause says what actually happened.
+    throw new Error(`${new URL(url).host}: couldn't connect (${networkCause(err)})`);
   });
   const text = new TextDecoder().decode(res.body);
   let data: unknown = null;
@@ -75,4 +78,16 @@ export function repoList(value: unknown): string[] {
         .filter(Boolean),
     ),
   ];
+}
+
+/** "ECONNREFUSED", "certificate has expired"… out of a fetch error and its causes. */
+export function networkCause(err: unknown): string {
+  let e = err as { message?: string; code?: string; cause?: unknown } | undefined;
+  let last = e?.message ?? String(err);
+  while (e) {
+    if (e.code) return e.code;
+    if (e.message && e.message !== 'fetch failed') last = e.message;
+    e = e.cause as typeof e;
+  }
+  return last;
 }

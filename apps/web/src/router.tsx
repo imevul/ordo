@@ -7,6 +7,7 @@ import {
   Outlet,
 } from '@tanstack/react-router';
 import { Toaster } from 'sonner';
+import { ConfirmHost } from './components/ui/Modal.tsx';
 import { AdminPage } from './routes/admin.tsx';
 import {
   EmailLinkPage,
@@ -36,6 +37,7 @@ const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: () => (
     <>
       <Outlet />
+      <ConfirmHost />
       <Toaster
         theme="dark"
         position="bottom-right"

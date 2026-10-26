@@ -15,7 +15,7 @@ import { api, upload } from '../../api/client.ts';
 import { keys, useAccount, useApiKeys, useConfig, useSessions } from '../../api/queries.ts';
 import { Spinner } from '../../components/PageHeader.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
-import { Modal } from '../../components/ui/Modal.tsx';
+import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './index.tsx';
@@ -757,7 +757,15 @@ export function ApiKeysSection() {
     }
   };
   const revoke = async (id: string) => {
-    if (!confirm('Revoke this key? Anything using it stops working.')) return;
+    if (
+      !(await confirmDialog({
+        title: 'Revoke this key?',
+        body: 'Anything using it stops working.',
+        confirmLabel: 'Revoke',
+        danger: true,
+      }))
+    )
+      return;
     await api.del(`/me/api-keys/${id}`);
     qc.invalidateQueries({ queryKey: keys.apiKeys });
   };

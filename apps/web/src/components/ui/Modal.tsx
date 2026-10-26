@@ -4,7 +4,7 @@ import {
   FloatingPortal,
   useFloating,
 } from '@floating-ui/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useHotkey, useHotkeyScope } from '../../lib/hotkeys.ts';
 
 interface Props {
@@ -87,5 +87,54 @@ export function ConfirmModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+interface ConfirmRequest {
+  title: string;
+  body?: ReactNode;
+  confirmLabel?: string;
+  danger?: boolean;
+}
+
+let showConfirm: ((req: ConfirmRequest & { resolve: (ok: boolean) => void }) => void) | null = null;
+
+/**
+ * Asks for confirmation in Ordo's own dialog: `if (!(await confirmDialog({ title }))) return;`.
+ * Native `confirm()` is off-brand and silently returns false in embedded browsers.
+ */
+export function confirmDialog(req: ConfirmRequest): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (showConfirm) showConfirm({ ...req, resolve });
+    else resolve(false);
+  });
+}
+
+/** Renders `confirmDialog` requests. Mounted once, at the root. */
+export function ConfirmHost() {
+  const [req, setReq] = useState<(ConfirmRequest & { resolve: (ok: boolean) => void }) | null>(
+    null,
+  );
+  useEffect(() => {
+    showConfirm = setReq;
+    return () => {
+      showConfirm = null;
+    };
+  }, []);
+  if (!req) return null;
+  const done = (ok: boolean) => {
+    req.resolve(ok);
+    setReq(null);
+  };
+  return (
+    <ConfirmModal
+      open
+      title={req.title}
+      body={req.body ?? null}
+      confirmLabel={req.confirmLabel ?? (req.danger ? 'Delete' : 'Confirm')}
+      danger={req.danger}
+      onConfirm={() => done(true)}
+      onClose={() => done(false)}
+    />
   );
 }
