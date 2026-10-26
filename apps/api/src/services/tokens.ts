@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull, lt, or } from 'drizzle-orm';
+import { and, eq, gt, isNull, lt, or, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { authTokens } from '../db/schema.ts';
 import { randomToken, sha256 } from '../lib/crypto.ts';
@@ -13,14 +13,26 @@ export async function createToken(
   kind: TokenKind,
   ttlMinutes: number,
   data: Record<string, unknown> = {},
-  /** A caller-made token, e.g. a short code people type; it must be unguessable within its TTL. */
-  token = randomToken(),
+  opts: {
+    /** A caller-made token, e.g. a short code people type; it must be unguessable within its TTL. */
+    token?: string;
+    /** Only replace older tokens with the same value under this `data` key (one per integration). */
+    replaceSame?: string;
+  } = {},
 ) {
+  const token = opts.token ?? randomToken();
   // A new token of the same kind replaces older unused ones (e.g. a second reset request).
   await db
     .delete(authTokens)
     .where(
-      and(eq(authTokens.userId, userId), eq(authTokens.kind, kind), isNull(authTokens.usedAt)),
+      and(
+        eq(authTokens.userId, userId),
+        eq(authTokens.kind, kind),
+        isNull(authTokens.usedAt),
+        opts.replaceSame
+          ? sql`${authTokens.data}->>${opts.replaceSame} = ${String(data[opts.replaceSame])}`
+          : undefined,
+      ),
     );
   await db.insert(authTokens).values({
     userId,
