@@ -127,7 +127,7 @@ export function PriorityIcon({ priority, size = 14 }: { priority: number; size?:
           y={10 - (i + 1) * 3 + 2}
           width="2.75"
           height={(i + 1) * 3}
-          fill={i < filled ? '#fff4fa' : '#49313e'}
+          style={{ fill: i < filled ? 'var(--color-text)' : 'var(--color-border)' }}
         />
       ))}
     </svg>

@@ -113,7 +113,7 @@ export function OptionList({
             >
               {multi && (
                 <span
-                  className={`flex h-3.5 w-3.5 flex-none items-center justify-center border ${isSel ? 'border-primary bg-primary text-bg' : 'border-border'}`}
+                  className={`flex h-3.5 w-3.5 flex-none items-center justify-center border ${isSel ? 'border-primary bg-primary text-on-primary' : 'border-border'}`}
                 >
                   {isSel && <Check size={10} strokeWidth={3} />}
                 </span>

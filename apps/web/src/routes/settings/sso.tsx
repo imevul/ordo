@@ -156,7 +156,7 @@ export function AuthenticationSection() {
           </span>
           <input
             type="checkbox"
-            className="accent-[#ff1493]"
+            className="accent-primary"
             disabled={!anyEnabled && !settings.requireSso}
             checked={settings.requireSso}
             onChange={(e) => save({ requireSso: e.target.checked })}
@@ -192,7 +192,7 @@ export function AuthenticationSection() {
           </span>
           <input
             type="checkbox"
-            className="accent-[#ff1493]"
+            className="accent-primary"
             checked={settings.allowApiKeysUnderSso}
             onChange={(e) => save({ allowApiKeysUnderSso: e.target.checked })}
           />
@@ -378,7 +378,7 @@ function ProviderModal({
         <label className="flex items-center gap-2 text-[13.5px]">
           <input
             type="checkbox"
-            className="accent-[#ff1493]"
+            className="accent-primary"
             checked={form.enabled}
             onChange={(e) => set('enabled', e.target.checked)}
           />

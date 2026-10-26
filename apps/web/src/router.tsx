@@ -43,9 +43,9 @@ const rootRoute = createRootRouteWithContext<{ queryClient: QueryClient }>()({
         position="bottom-right"
         toastOptions={{
           style: {
-            background: '#1c191c',
-            border: '1px solid #49313e',
-            color: '#fff4fa',
+            background: 'var(--color-raised)',
+            border: '1px solid var(--color-border)',
+            color: 'var(--color-text)',
             borderRadius: 0,
             fontFamily: 'var(--font-sans)',
           },

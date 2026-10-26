@@ -494,7 +494,7 @@ function Settings() {
           </span>
           <input
             type="checkbox"
-            className="accent-[#ff1493]"
+            className="accent-primary"
             disabled={locked('allowWorkspaceCreation')}
             checked={entry('allowWorkspaceCreation').value as boolean}
             onChange={(e) => save({ allowWorkspaceCreation: e.target.checked })}
@@ -582,7 +582,7 @@ function Settings() {
           </span>
           <input
             type="checkbox"
-            className="accent-[#ff1493]"
+            className="accent-primary"
             disabled={locked('allowPrivateNetworkTargets')}
             checked={entry('allowPrivateNetworkTargets').value as boolean}
             onChange={(e) => save({ allowPrivateNetworkTargets: e.target.checked })}

@@ -257,7 +257,7 @@ function DeliveryFields({
       <label className="mb-1 flex items-start gap-2 text-[13px]">
         <input
           type="radio"
-          className="mt-1 accent-[#ff1493]"
+          className="mt-1 accent-primary"
           checked={delivery === 'webhook'}
           onChange={() => setDelivery('webhook')}
         />
@@ -271,7 +271,7 @@ function DeliveryFields({
       <label className="mb-4 flex items-start gap-2 text-[13px]">
         <input
           type="radio"
-          className="mt-1 accent-[#ff1493]"
+          className="mt-1 accent-primary"
           checked={delivery === 'poll'}
           onChange={() => setDelivery('poll')}
         />
@@ -285,7 +285,7 @@ function DeliveryFields({
       <label className="mb-2 flex items-center gap-2 text-[13px]">
         <input
           type="checkbox"
-          className="accent-[#ff1493]"
+          className="accent-primary"
           checked={comment}
           onChange={(e) => setComment(e.target.checked)}
         />
@@ -590,7 +590,7 @@ function EditModal({
             <label className="flex items-center gap-2 text-[13px]">
               <input
                 type="checkbox"
-                className="accent-[#ff1493]"
+                className="accent-primary"
                 checked={comment}
                 onChange={(e) => setComment(e.target.checked)}
               />

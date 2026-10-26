@@ -25,6 +25,16 @@ Professional first; the neon is an accent, not the wallpaper. Tokens and compone
 `index` (#8e7985, 5.0:1 on `bg`) replaces the system's `border`-as-text for identifiers, fixing the contrast
 issue flagged in the design review.
 
+### Workspace accents
+
+Hotline Pink is the default. A workspace can pick another accent (Settings → General); `accentVariables()` in
+`packages/shared/src/theme.ts` derives the rest from it the way Hotline Pink's tokens relate to each other —
+`highlight` lighter, `deep` darker, `magenta` a touch warmer, the neutrals (`text`, `muted`, `index`, `border`,
+`border-soft`, `raised`) faintly tinted with its hue — plus `on-primary`, the readable text colour on primary fills.
+`useAccent` sets them on the document root while the workspace is open; sign-in pages stay pink. So: never hard-code
+`#ff1493` or friends in components — use the tokens (`bg-primary`, `text-on-primary`, `accent-primary`,
+`var(--color-primary)`), or the accent won't follow. Team colours are data and keep their own colour.
+
 ## Shape
 
 - **No rounded corners**, anywhere — enforced globally.

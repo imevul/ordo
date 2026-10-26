@@ -15,6 +15,8 @@
   --color-highlight: #ff5cb8;
   --color-magenta: #ff00a8;
   --color-deep: #c6006f;
+  /* Text on primary fills; a workspace with a dark accent switches it to light. */
+  --color-on-primary: #09090b;
   --color-cyan: #2de2e6;
   --color-text: #fff4fa;
   --color-muted: #b8aab2;
@@ -33,15 +35,16 @@
   --cut-sm: 8px;
   --ease-hud: cubic-bezier(0.2, 0.7, 0.2, 1);
 
-  --shadow-glow-mark: 0 0 14px rgb(255 20 147 / 0.55);
-  --shadow-glow-nav: 0 0 12px #ff1493;
-  --shadow-glow-led: 0 0 6px #ff1493;
+  /* Glows follow the accent, so a workspace's own colour carries through. */
+  --shadow-glow-mark: 0 0 14px color-mix(in srgb, var(--color-primary) 55%, transparent);
+  --shadow-glow-nav: 0 0 12px var(--color-primary);
+  --shadow-glow-led: 0 0 6px var(--color-primary);
 }
 
 :root {
   color-scheme: dark;
   --dur: 180ms;
-  --glow-primary: rgb(255 20 147 / 0.08);
+  --glow-primary: color-mix(in srgb, var(--color-primary) 8%, transparent);
 }
 
 @layer base {
@@ -79,7 +82,7 @@
 
   ::selection {
     background: var(--color-primary);
-    color: var(--color-bg);
+    color: var(--color-on-primary);
   }
 
   ::-webkit-scrollbar {
@@ -115,7 +118,11 @@
   .hud-ground {
     background-color: var(--color-bg);
     background-image:
-      radial-gradient(60rem 40rem at 100% 0%, rgb(255 0 168 / 0.1), transparent 60%),
+      radial-gradient(
+        60rem 40rem at 100% 0%,
+        color-mix(in srgb, var(--color-magenta) 10%, transparent),
+        transparent 60%
+      ),
       radial-gradient(50rem 30rem at 0% 100%, rgb(45 226 230 / 0.04), transparent 60%),
       linear-gradient(rgb(255 255 255 / 0.025) 1px, transparent 1px),
       linear-gradient(90deg, rgb(255 255 255 / 0.025) 1px, transparent 1px);
@@ -225,7 +232,7 @@
   }
   .btn-primary {
     background: var(--color-primary);
-    color: var(--color-bg);
+    color: var(--color-on-primary);
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--color-highlight);

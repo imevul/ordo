@@ -25,7 +25,7 @@ function GroupIcon({ group, kind }: { group: IssueGroup; kind: string }) {
     return <StatusIcon type={group.stateType} color={group.color ?? '#b8aab2'} />;
   if (kind === 'priority') return <PriorityIcon priority={group.value as number} />;
   if (kind === 'assignee' && group.value)
-    return <Avatar name={group.label} color={group.color ?? '#ff1493'} size={16} />;
+    return <Avatar name={group.label} color={group.color ?? 'var(--color-primary)'} size={16} />;
   if (group.color) return <span className="tag-dot" style={{ background: group.color }} />;
   return null;
 }

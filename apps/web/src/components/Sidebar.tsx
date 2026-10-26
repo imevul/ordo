@@ -141,7 +141,7 @@ export function Sidebar({
                   onClick={() => navigate({ to: '/$slug', params: { slug: w.slug } })}
                 >
                   <span
-                    className={`h-[7px] w-[7px] ${w.slug === ws.slug ? 'bg-primary shadow-[0_0_10px_#ff1493]' : 'bg-border'}`}
+                    className={`h-[7px] w-[7px] ${w.slug === ws.slug ? 'bg-primary shadow-[0_0_10px_var(--color-primary)]' : 'bg-border'}`}
                   />
                   {w.name}
                 </button>
@@ -206,7 +206,7 @@ export function Sidebar({
             <Inbox size={15} />
             Inbox
             {ws.unreadCount > 0 && (
-              <span className="ml-auto bg-primary px-1.5 font-mono text-[10.5px] font-semibold text-bg">
+              <span className="ml-auto bg-primary px-1.5 font-mono text-[10.5px] font-semibold text-on-primary">
                 {ws.unreadCount}
               </span>
             )}

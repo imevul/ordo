@@ -1,10 +1,16 @@
 import {
+  ACCENT_PRESETS,
   type AuditEntry,
+  accentVariables,
   branchName,
+  contrast,
+  DEFAULT_ACCENT,
+  HEX_COLOR,
   type Invite,
   MEMBER_ROLE_LABELS,
   MEMBER_ROLES,
   type MemberRole,
+  THEME_BACKGROUND,
   type WorkspaceDomain,
   type WorkspaceSettings,
 } from '@ordo/shared';
@@ -76,7 +82,7 @@ export function WorkspaceSection() {
           {ws.workspace.logoUrl ? (
             <img src={ws.workspace.logoUrl} alt="" className="h-12 w-12 object-cover" />
           ) : (
-            <TeamIcon color="#ff1493" label={ws.workspace.name} size={48} />
+            <TeamIcon color="var(--color-primary)" label={ws.workspace.name} size={48} />
           )}
           <div className="flex gap-2">
             <button
@@ -160,10 +166,115 @@ export function WorkspaceSection() {
         </select>
       </SettingsCard>
 
+      <AccentCard />
+
       <BranchFormatCard />
 
       {ws.isOwner && <DangerZone />}
     </>
+  );
+}
+
+/** The workspace's accent colour: presets, or any colour that reads on the dark background. */
+function AccentCard() {
+  const ws = useWorkspace();
+  const qc = useQueryClient();
+  const saved = ws.workspace.settings.accentColor ?? DEFAULT_ACCENT;
+  const [draft, setDraft] = useState(saved);
+  const valid = HEX_COLOR.test(draft);
+  const faint = valid && contrast(draft, THEME_BACKGROUND) < 3;
+  const save = async (color: string) => {
+    try {
+      await api.patch(wsPath(ws.slug, '/'), {
+        settings: {
+          accentColor: color.toLowerCase() === DEFAULT_ACCENT ? null : color.toLowerCase(),
+        },
+      });
+      qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
+      toast.success('Accent saved');
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
+  };
+  return (
+    <SettingsCard
+      title="Accent colour"
+      description="Buttons, highlights and glows across this workspace. Everyone in it sees the same colour; sign-in pages stay Hotline Pink."
+    >
+      <div className="mb-4 flex flex-wrap gap-2">
+        {ACCENT_PRESETS.map((p) => (
+          <button
+            key={p.color}
+            type="button"
+            onClick={() => setDraft(p.color)}
+            className={`flex items-center gap-2 border px-2.5 py-1.5 text-[12.5px] ${draft.toLowerCase() === p.color ? 'border-text text-text' : 'border-border-soft text-muted hover:text-text'}`}
+            aria-pressed={draft.toLowerCase() === p.color}
+          >
+            <span className="h-3 w-3" style={{ background: p.color }} />
+            {p.name}
+          </button>
+        ))}
+      </div>
+      <div className="mb-4 flex items-center gap-2">
+        <input
+          type="color"
+          className="h-8 w-10 cursor-pointer border border-border bg-bg p-0.5"
+          value={valid ? draft : DEFAULT_ACCENT}
+          onChange={(e) => setDraft(e.target.value)}
+          aria-label="Custom colour"
+        />
+        <input
+          className="input w-32 font-mono"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.trim())}
+          aria-label="Hex colour"
+        />
+      </div>
+      {/* The palette is a set of CSS variables, so this box previews it without touching the page. */}
+      <div
+        className="mb-4 border border-border-soft bg-bg p-4"
+        style={valid ? (accentVariables(draft) as React.CSSProperties) : undefined}
+      >
+        <div className="kicker mb-2">
+          <span className="text-muted">// </span>preview
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="btn btn-primary btn-sm">Primary</span>
+          <span className="btn btn-ghost btn-sm">Ghost</span>
+          <span className="chip [--chip:var(--color-primary)]">in progress</span>
+          <span className="text-[13px] text-highlight">a link</span>
+          <span className="h-[7px] w-[7px] bg-primary shadow-[0_0_10px_var(--color-primary)]" />
+          <span className="text-[12px] text-muted">muted text</span>
+        </div>
+      </div>
+      {faint && (
+        <p className="mb-3 text-[12px] text-warning">
+          This colour is hard to see on the dark background; pick something brighter.
+        </p>
+      )}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={!valid || draft.toLowerCase() === saved.toLowerCase()}
+          onClick={() => save(draft)}
+        >
+          Save
+        </button>
+        {saved !== DEFAULT_ACCENT && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => {
+              setDraft(DEFAULT_ACCENT);
+              save(DEFAULT_ACCENT);
+            }}
+          >
+            Back to Hotline Pink
+          </button>
+        )}
+      </div>
+    </SettingsCard>
   );
 }
 
@@ -637,7 +748,7 @@ export function OrgSecuritySection() {
           Allow joining by domain
           <input
             type="checkbox"
-            className="accent-[#ff1493]"
+            className="accent-primary"
             checked={settings.domainAutoJoin}
             onChange={(e) => save({ domainAutoJoin: e.target.checked })}
           />

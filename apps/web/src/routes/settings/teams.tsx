@@ -110,7 +110,7 @@ export function TeamsSection() {
             <label className="col-span-3 flex items-center gap-2 text-[13px] text-muted">
               <input
                 type="checkbox"
-                className="accent-[#ff1493]"
+                className="accent-primary"
                 checked={isPrivate}
                 onChange={(e) => setPrivate(e.target.checked)}
               />
@@ -323,7 +323,7 @@ export function TeamSettings({ team }: { team: Team }) {
             </span>
             <input
               type="checkbox"
-              className="accent-[#ff1493]"
+              className="accent-primary"
               checked={team.private}
               onChange={(e) => save.mutate({ private: e.target.checked })}
             />
@@ -337,7 +337,7 @@ export function TeamSettings({ team }: { team: Team }) {
             </span>
             <input
               type="checkbox"
-              className="accent-[#ff1493]"
+              className="accent-primary"
               checked={team.triageEnabled}
               onChange={(e) => save.mutate({ triageEnabled: e.target.checked })}
             />
@@ -351,7 +351,7 @@ export function TeamSettings({ team }: { team: Team }) {
             </span>
             <input
               type="checkbox"
-              className="accent-[#ff1493]"
+              className="accent-primary"
               checked={team.cyclesEnabled}
               onChange={(e) => save.mutate({ cyclesEnabled: e.target.checked })}
             />
