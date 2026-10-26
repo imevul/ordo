@@ -117,7 +117,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 ### Phase 10 — Product depth
 
 - [x] ✅ Rich text editor and attachments; comment reactions; issue templates
-- ⬜ Full-text search; pagination for very large teams
+- [~] ⬜ Full-text search; pagination for very large teams
 - ⬜ Cycle automation; auto-archive
 - ⬜ Project milestones; initiatives and roadmap timeline; insights and charts
 - ⬜ SLAs, recurring issues, triage rules; customer requests and intake by email
@@ -132,4 +132,3 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 
 - Board grouped by **label** shows multi-label issues in several columns; dragging is disabled there.
 - Issue lists load up to 2 000 issues per view (server cap 5 000) — fine for most teams, not for huge backlogs.
-- Search is substring-based (`ILIKE`), not ranked.

@@ -12,7 +12,7 @@ export async function searchRoutes(app: FastifyInstance) {
     const access = requireAccess(req);
     const needle = term.toLowerCase();
     const [issueRows, visibleProjects] = await Promise.all([
-      queryIssues(app.db, access, { q: term }, 50),
+      queryIssues(app.db, access, { q: term }, 50, 'relevance'),
       listProjects(app.db, access),
     ]);
     const projectRows = visibleProjects

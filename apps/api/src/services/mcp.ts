@@ -267,7 +267,7 @@ async function search(
   dir: Directory,
   filter: IssueFilter,
   limit: number,
-  order: 'recent' | 'priority',
+  order: 'recent' | 'priority' | 'relevance',
 ) {
   // One extra row tells the agent there is more.
   const rows = await queryIssues(c.app.db, c.access, filter, limit + 1, order);
@@ -409,7 +409,7 @@ function handlers(c: McpCaller): Handlers {
         filter.cycleIds = a.cycle === 'none' ? ['none'] : await dir.cycleIds(a.cycle, team?.id);
       if (a.priority?.length) filter.priorities = a.priority.map(priorityOf);
       if (a.subscribed) filter.subscribedBy = 'me';
-      return search(c, dir, filter, a.limit, 'recent');
+      return search(c, dir, filter, a.limit, a.query?.trim() ? 'relevance' : 'recent');
     },
 
     my_issues: async ({ includeClosed, limit }) =>

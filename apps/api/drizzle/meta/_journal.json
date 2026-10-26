@@ -134,6 +134,13 @@
       "when": 1793057667688,
       "tag": "0018_issue_templates",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793058094597,
+      "tag": "0019_full_text_search",
+      "breakpoints": true
     }
   ]
 }
