@@ -4,7 +4,7 @@ import type { DbOrTx } from '../db/client.ts';
 import { comments, issues, users, workspaceMembers } from '../db/schema.ts';
 import { badRequest, forbidden, notFound } from '../lib/errors.ts';
 import { type Access, canReadTeam, usersWithTeamAccess } from './access.ts';
-import { type Ctx, emit } from './context.ts';
+import { type Ctx, emit, record } from './context.ts';
 import { getIssue } from './issues.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 
@@ -98,6 +98,15 @@ export async function createComment(
     issueId: issue.id,
     teamId: issue.teamId,
   });
+  record(
+    ctx,
+    'comment.created',
+    {
+      comment: publicComment(comment!),
+      issue: { id: issue.id, identifier: issue.identifier, title: issue.title },
+    },
+    { teamIds: [issue.teamId] },
+  );
   return comment!;
 }
 
@@ -124,6 +133,7 @@ export async function updateComment(ctx: Ctx, id: string, body: string) {
     .where(eq(comments.id, id))
     .returning();
   emit(ctx, { kind: 'comment', action: 'updated', id, issueId: comment.issueId, teamId });
+  record(ctx, 'comment.updated', { comment: publicComment(row!) }, { teamIds: [teamId] });
   return row!;
 }
 
@@ -134,4 +144,20 @@ export async function deleteComment(ctx: Ctx, id: string) {
   }
   await ctx.tx.delete(comments).where(or(eq(comments.id, id), eq(comments.parentId, id)));
   emit(ctx, { kind: 'comment', action: 'deleted', id, issueId: comment.issueId, teamId });
+  record(
+    ctx,
+    'comment.deleted',
+    { comment: { id, issueId: comment.issueId } },
+    { teamIds: [teamId] },
+  );
 }
+
+const publicComment = (c: typeof comments.$inferSelect) => ({
+  id: c.id,
+  issueId: c.issueId,
+  authorId: c.authorId,
+  parentId: c.parentId,
+  body: c.body,
+  createdAt: c.createdAt,
+  editedAt: c.editedAt,
+});

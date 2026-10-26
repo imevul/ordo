@@ -1,10 +1,12 @@
 import type {
   AuditAction,
+  DomainEventType,
   EstimateScale,
   FavoriteKind,
   HistoryChange,
   IssueDisplay,
   IssueFilter,
+  IssueLinkKind,
   MemberRole,
   NotificationType,
   ProjectHealth,
@@ -14,10 +16,12 @@ import type {
   TeamRole,
   UserKind,
   UserPreferences,
+  WebhookPayload,
   WorkspaceSettings,
 } from '@ordo/shared';
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   bigserial,
   boolean,
   customType,
@@ -694,3 +698,186 @@ export const authStates = pgTable('auth_states', {
   redirect: text('redirect'),
   expiresAt: ts('expires_at').notNull(),
 });
+
+// ─── Events, webhooks, integrations ──────────────────────────────────────
+
+/**
+ * The outbox: domain events written in the same transaction as the change they describe, then
+ * fanned out to webhooks and integrations by an `events.dispatch` job.
+ */
+export const domainEvents = pgTable(
+  'domain_events',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    type: text('type').$type<DomainEventType>().notNull(),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    source: text('source').notNull(),
+    /** Teams the event belongs to; deliveries respect team filters and private teams by these. */
+    teamIds: uuid('team_ids').array().notNull().default(sql`'{}'`),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull(),
+    changes: jsonb('changes').$type<HistoryChange[]>(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('domain_events_workspace_idx').on(t.workspaceId, t.id)],
+);
+
+export const webhooks = pgTable(
+  'webhooks',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    url: text('url').notNull(),
+    description: text('description').notNull().default(''),
+    /** Encrypted signing secret. */
+    secret: text('secret').notNull(),
+    eventTypes: text('event_types').array().$type<DomainEventType[]>().notNull().default(sql`'{}'`),
+    teamIds: uuid('team_ids').array().notNull().default(sql`'{}'`),
+    enabled: boolean('enabled').notNull().default(true),
+    failureCount: integer('failure_count').notNull().default(0),
+    disabledReason: text('disabled_reason'),
+    lastDeliveryAt: ts('last_delivery_at'),
+    lastStatus: integer('last_status'),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('webhooks_workspace_idx').on(t.workspaceId)],
+);
+
+export const webhookDeliveries = pgTable(
+  'webhook_deliveries',
+  {
+    id: pk(),
+    webhookId: uuid('webhook_id')
+      .notNull()
+      .references(() => webhooks.id, { onDelete: 'cascade' }),
+    /** Null for pings. Not a foreign key: events are pruned before deliveries. */
+    eventId: bigint('event_id', { mode: 'number' }),
+    eventType: text('event_type').notNull(),
+    /** The exact body sent, so redeliveries match the original. */
+    payload: jsonb('payload').$type<WebhookPayload>().notNull(),
+    status: text('status').$type<'pending' | 'success' | 'failed'>().notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    responseStatus: integer('response_status'),
+    responseBody: text('response_body'),
+    error: text('error'),
+    durationMs: integer('duration_ms'),
+    createdAt: createdAt(),
+    deliveredAt: ts('delivered_at'),
+  },
+  (t) => [index('webhook_deliveries_webhook_idx').on(t.webhookId, t.createdAt)],
+);
+
+/** Instance-level app credentials shared by many workspaces (a GitHub App, a Slack app, a Discord bot…). */
+export const integrationApps = pgTable(
+  'integration_apps',
+  {
+    id: pk(),
+    provider: text('provider').notNull(),
+    name: text('name').notNull(),
+    config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
+    /** Encrypted JSON object of secrets. */
+    secrets: text('secrets'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('integration_apps_provider_idx').on(t.provider)],
+);
+
+/** One connection between a workspace and an outside service. */
+export const integrations = pgTable(
+  'integrations',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    appId: uuid('app_id').references(() => integrationApps.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
+    /** Encrypted JSON object of secrets (tokens, signing secrets). */
+    secrets: text('secrets'),
+    /** The bot account changes are attributed to. */
+    botUserId: uuid('bot_user_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Random path segment of this integration's inbound webhook URL. */
+    inboundToken: text('inbound_token').notNull().unique(),
+    /** Provider-specific id of the remote installation, e.g. a GitHub installation id. */
+    externalId: text('external_id'),
+    status: text('status').$type<'active' | 'error' | 'disabled'>().notNull().default('active'),
+    lastError: text('last_error'),
+    lastEventAt: ts('last_event_at'),
+    /** Polling cursor and other provider state. */
+    state: jsonb('state').$type<Record<string, unknown>>().notNull().default({}),
+    lastPolledAt: ts('last_polled_at'),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('integrations_workspace_idx').on(t.workspaceId),
+    index('integrations_external_idx').on(t.provider, t.externalId),
+  ],
+);
+
+export const issueLinks = pgTable(
+  'issue_links',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    integrationId: uuid('integration_id').references(() => integrations.id, {
+      onDelete: 'set null',
+    }),
+    provider: text('provider').notNull(),
+    kind: text('kind').$type<IssueLinkKind>().notNull(),
+    /** Stable id at the provider (PR node id, commit sha, message ts…); the URL for plain links. */
+    externalId: text('external_id').notNull(),
+    url: text('url').notNull(),
+    title: text('title').notNull(),
+    state: text('state'),
+    author: text('author'),
+    authorUserId: uuid('author_user_id').references(() => users.id, { onDelete: 'set null' }),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('issue_links_external_idx').on(t.issueId, t.provider, t.kind, t.externalId),
+    index('issue_links_lookup_idx').on(t.workspaceId, t.provider, t.externalId),
+  ],
+);
+
+/** An account at an outside service (GitHub login, Slack user…) mapped to an Ordo user. */
+export const externalAccounts = pgTable(
+  'external_accounts',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    /** Distinguishes several servers of one provider (e.g. two GitLab instances); empty for SaaS. */
+    host: text('host').notNull().default(''),
+    externalId: text('external_id').notNull(),
+    username: text('username'),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('external_accounts_idx').on(t.workspaceId, t.provider, t.host, t.externalId),
+    index('external_accounts_user_idx').on(t.userId),
+  ],
+);

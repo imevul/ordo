@@ -2,6 +2,7 @@ import type { RealtimeEvent } from '@ordo/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { type Access, systemAccess } from '../services/access.ts';
 import type { ActorSource, Ctx, RequestMeta } from '../services/context.ts';
+import { writeOutbox } from '../services/events.ts';
 import { requireUser, requireWorkspace } from './auth.ts';
 
 export interface RunOptions {
@@ -25,18 +26,23 @@ export async function runInWorkspace<T>(
 ): Promise<T> {
   const events: RealtimeEvent[] = [];
   const access = opts.access ?? systemAccess(opts.workspaceId, opts.actorId);
-  const result = await app.db.transaction((tx) =>
-    fn({
+  const result = await app.db.transaction(async (tx) => {
+    const ctx: Ctx = {
       tx,
       userId: opts.actorId,
       workspaceId: opts.workspaceId,
       access,
       events,
+      domainEvents: [],
       source: opts.source,
       silent: opts.silent ?? false,
       meta: opts.meta ?? null,
-    }),
-  );
+    };
+    const value = await fn(ctx);
+    // Same transaction: a rollback leaves no events behind.
+    await writeOutbox(ctx);
+    return value;
+  });
   app.realtime.publish(events);
   return result;
 }

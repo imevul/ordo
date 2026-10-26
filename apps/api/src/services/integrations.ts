@@ -1,0 +1,323 @@
+import { randomUUID } from 'node:crypto';
+import { AVATAR_COLORS, type Integration, type IntegrationProviderInfo } from '@ordo/shared';
+import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
+import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
+import type { DbOrTx } from '../db/client.ts';
+import { domainEvents, integrations, users } from '../db/schema.ts';
+import { getProvider, listProviders } from '../integrations/registry.ts';
+import type {
+  InboundRequest,
+  IntegrationContext,
+  IntegrationProvider,
+  IntegrationRow,
+  Secrets,
+} from '../integrations/types.ts';
+import { randomToken } from '../lib/crypto.ts';
+import { notFound } from '../lib/errors.ts';
+import { enqueue, type JobContext } from '../lib/jobs/index.ts';
+import { runInWorkspace } from '../lib/mutate.ts';
+import { auditCtx } from './audit.ts';
+import type { Ctx } from './context.ts';
+import type { EventRow } from './events.ts';
+import { toPayloads } from './events.ts';
+
+/**
+ * Integrations: per-workspace connections to outside services. Providers (in `integrations/`)
+ * plug into three paths, each a job so a slow or failing service never blocks a request:
+ * inbound webhooks (`integration.inbound`), domain events (`integration.event`) and polling
+ * (`integration.poll`). Changes an integration makes are attributed to its bot account and carry
+ * `source: integration:<id>`, so it never receives its own echoes.
+ */
+
+export const integrationSecretAad = (id: string) => `integrations:${id}:secrets`;
+
+export function readSecrets(app: FastifyInstance, row: IntegrationRow): Secrets {
+  return row.secrets
+    ? JSON.parse(app.keyring.decrypt(row.secrets, integrationSecretAad(row.id)))
+    : {};
+}
+
+export function sealSecrets(app: FastifyInstance, id: string, secrets: Secrets) {
+  return Object.keys(secrets).length
+    ? app.keyring.encrypt(JSON.stringify(secrets), integrationSecretAad(id))
+    : null;
+}
+
+export const providerInfo = (p: IntegrationProvider): IntegrationProviderInfo => ({
+  key: p.key,
+  name: p.name,
+  description: p.description,
+  category: p.category,
+});
+
+export const listProviderInfo = () => listProviders().map(providerInfo);
+
+export function toIntegration(app: FastifyInstance, row: IntegrationRow): Integration {
+  const provider = getProvider(row.provider);
+  return {
+    id: row.id,
+    provider: row.provider,
+    name: row.name,
+    status: row.status,
+    lastError: row.lastError,
+    lastEventAt: row.lastEventAt,
+    config: row.config,
+    inboundUrl:
+      provider?.handleInbound && !provider.resolveInbound
+        ? `${app.env.publicUrl}/api/hooks/${row.provider}/${row.inboundToken}`
+        : null,
+    createdAt: row.createdAt,
+  };
+}
+
+export function integrationContext(
+  app: FastifyInstance,
+  row: IntegrationRow,
+  log: FastifyBaseLogger = app.log,
+): IntegrationContext {
+  return {
+    app,
+    integration: row,
+    secrets: readSecrets(app, row),
+    log: log.child({ integration: row.id, provider: row.provider }),
+    run: (fn) =>
+      runInWorkspace(
+        app,
+        {
+          workspaceId: row.workspaceId,
+          actorId: row.botUserId ?? row.createdById!,
+          source: `integration:${row.id}`,
+        },
+        fn,
+      ),
+    saveState: async (patch) => {
+      await app.db
+        .update(integrations)
+        .set({ state: sql`${integrations.state} || ${JSON.stringify(patch)}::jsonb` })
+        .where(eq(integrations.id, row.id));
+    },
+  };
+}
+
+/** Creates the integration and its bot account in the caller's transaction. */
+export async function createIntegration(
+  app: FastifyInstance,
+  ctx: Ctx,
+  input: {
+    provider: IntegrationProvider;
+    name?: string;
+    config: Record<string, unknown>;
+    secrets: Secrets;
+    appId?: string | null;
+    externalId?: string | null;
+  },
+) {
+  const id = randomUUID();
+  const short = id.slice(0, 8);
+  const [bot] = await ctx.tx
+    .insert(users)
+    .values({
+      kind: 'bot',
+      email: `bot-${id}@bots.ordo.invalid`,
+      name: input.name || input.provider.name,
+      username: `${input.provider.key}-bot-${short}`,
+      passwordHash: null,
+      avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
+    })
+    .returning({ id: users.id });
+  const [row] = await ctx.tx
+    .insert(integrations)
+    .values({
+      id,
+      workspaceId: ctx.workspaceId,
+      provider: input.provider.key,
+      appId: input.appId ?? null,
+      name: input.name || input.provider.name,
+      config: input.config,
+      secrets: sealSecrets(app, id, input.secrets),
+      botUserId: bot!.id,
+      inboundToken: randomToken(24),
+      externalId: input.externalId ?? null,
+      createdById: ctx.userId,
+    })
+    .returning();
+  await auditCtx(ctx, {
+    action: 'integration.created',
+    targetType: 'integration',
+    targetId: id,
+    data: { provider: input.provider.key, name: row!.name },
+  });
+  return row!;
+}
+
+export async function loadIntegration(db: DbOrTx, workspaceId: string, id: string) {
+  const [row] = await db
+    .select()
+    .from(integrations)
+    .where(and(eq(integrations.id, id), eq(integrations.workspaceId, workspaceId)));
+  if (!row) throw notFound('Integration');
+  return row;
+}
+
+/** Runs a provider hook, keeping the integration's status and last error current. */
+async function track(app: FastifyInstance, row: IntegrationRow, fn: () => Promise<void>) {
+  try {
+    await fn();
+    await app.db
+      .update(integrations)
+      .set({
+        lastEventAt: new Date().toISOString(),
+        ...(row.status === 'error' && { status: 'active', lastError: null }),
+      })
+      .where(eq(integrations.id, row.id));
+  } catch (err) {
+    await app.db
+      .update(integrations)
+      .set({
+        status: 'error',
+        lastError: (err instanceof Error ? err.message : String(err)).slice(0, 1000),
+      })
+      // An admin may have switched it off meanwhile; that wins.
+      .where(and(eq(integrations.id, row.id), ne(integrations.status, 'disabled')));
+    throw err;
+  }
+}
+
+async function activeIntegration(app: FastifyInstance, id: string) {
+  const [row] = await app.db.select().from(integrations).where(eq(integrations.id, id));
+  if (!row || row.status === 'disabled') return null;
+  const provider = getProvider(row.provider);
+  return provider ? { row, provider } : null;
+}
+
+// ─── the three paths in ───────────────────────────────────────────────────
+
+/** Called by the event dispatcher: one ordered job per integration and event. */
+export async function dispatchToIntegrations(
+  app: FastifyInstance,
+  workspaceId: string,
+  events: EventRow[],
+) {
+  const rows = await app.db
+    .select({ id: integrations.id, provider: integrations.provider })
+    .from(integrations)
+    .where(
+      and(
+        eq(integrations.workspaceId, workspaceId),
+        or(eq(integrations.status, 'active'), eq(integrations.status, 'error')),
+      ),
+    );
+  const interested = rows.filter((r) => getProvider(r.provider)?.onDomainEvent);
+  if (!interested.length) return;
+  await app.db.transaction(async (tx) => {
+    for (const integration of interested) {
+      for (const event of events) {
+        if (event.source === `integration:${integration.id}`) continue;
+        await enqueue(
+          tx,
+          'integration.event',
+          { integrationId: integration.id, eventId: event.id },
+          {
+            orderingKey: `integration:${integration.id}`,
+            dedupeKey: `ie:${integration.id}:${event.id}`,
+          },
+        );
+      }
+    }
+  });
+}
+
+export async function runIntegrationEvent(
+  app: FastifyInstance,
+  { integrationId, eventId }: { integrationId: string; eventId: number },
+  job: JobContext,
+) {
+  const found = await activeIntegration(app, integrationId);
+  if (!found?.provider.onDomainEvent) return;
+  const [event] = await app.db.select().from(domainEvents).where(eq(domainEvents.id, eventId));
+  if (!event) return;
+  const [payload] = await toPayloads(app, [event]);
+  const ictx = integrationContext(app, found.row, job.log);
+  await track(app, found.row, () =>
+    found.provider.onDomainEvent!(ictx, { ...payload!, teamIds: event.teamIds }),
+  );
+}
+
+export async function runInbound(
+  app: FastifyInstance,
+  { integrationId, req }: { integrationId: string; req: InboundRequest },
+  job: JobContext,
+) {
+  const found = await activeIntegration(app, integrationId);
+  if (!found?.provider.handleInbound) return;
+  const ictx = integrationContext(app, found.row, job.log);
+  await track(app, found.row, () => found.provider.handleInbound!(ictx, req));
+}
+
+/** Scheduled every minute: queues a poll for each integration whose interval has passed. */
+export async function schedulePolls(app: FastifyInstance) {
+  const pollers = listProviders().filter((p) => p.poll);
+  if (!pollers.length) return;
+  const rows = await app.db
+    .select()
+    .from(integrations)
+    .where(
+      and(
+        inArray(
+          integrations.provider,
+          pollers.map((p) => p.key),
+        ),
+        or(eq(integrations.status, 'active'), eq(integrations.status, 'error')),
+      ),
+    );
+  const now = Date.now();
+  for (const row of rows) {
+    const interval = (getProvider(row.provider)?.pollIntervalSeconds ?? 300) * 1000;
+    if (row.lastPolledAt && now - new Date(row.lastPolledAt).getTime() < interval) continue;
+    await enqueue(
+      app.db,
+      'integration.poll',
+      { integrationId: row.id },
+      {
+        orderingKey: `integration:${row.id}`,
+        dedupeKey: `poll:${row.id}:${Math.floor(now / interval)}`,
+        maxAttempts: 1,
+      },
+    );
+  }
+}
+
+export async function runPoll(
+  app: FastifyInstance,
+  { integrationId }: { integrationId: string },
+  job: JobContext,
+) {
+  const found = await activeIntegration(app, integrationId);
+  if (!found?.provider.poll) return;
+  await app.db
+    .update(integrations)
+    .set({ lastPolledAt: new Date().toISOString() })
+    .where(eq(integrations.id, integrationId));
+  const ictx = integrationContext(app, found.row, job.log);
+  await track(app, found.row, () => found.provider.poll!(ictx));
+}
+
+/** Bot accounts of a workspace's integrations, so their names show next to what they did. */
+export async function workspaceBots(db: DbOrTx, workspaceId: string) {
+  return db
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      avatarColor: users.avatarColor,
+    })
+    .from(users)
+    .innerJoin(integrations, eq(integrations.botUserId, users.id))
+    .where(
+      and(
+        eq(integrations.workspaceId, workspaceId),
+        eq(users.kind, 'bot'),
+        isNull(users.disabledAt),
+      ),
+    );
+}

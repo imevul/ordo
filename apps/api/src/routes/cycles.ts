@@ -6,7 +6,7 @@ import { requireAccess } from '../lib/auth.ts';
 import { badRequest, forbidden, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertTeamAccess, canReadTeam } from '../services/access.ts';
-import { type Ctx, emit } from '../services/context.ts';
+import { type Ctx, emit, record } from '../services/context.ts';
 import { listCycles } from '../services/cycles.ts';
 import { toCycle } from '../services/serialize.ts';
 
@@ -35,6 +35,7 @@ export async function cycleRoutes(app: FastifyInstance) {
         .values({ teamId, number: team.counter, ...input })
         .returning();
       emit(ctx, { kind: 'cycle', action: 'created', id: cycle!.id, teamId });
+      record(ctx, 'cycle.created', toCycle(cycle!), { teamIds: [teamId] });
       return toCycle(cycle!);
     });
   });
@@ -59,6 +60,7 @@ export async function cycleRoutes(app: FastifyInstance) {
       if (next.endsAt <= next.startsAt) throw badRequest('End date must be after start date');
       const [row] = await ctx.tx.update(cycles).set(input).where(eq(cycles.id, id)).returning();
       emit(ctx, { kind: 'cycle', action: 'updated', id, teamId: cycle.teamId });
+      record(ctx, 'cycle.updated', toCycle(row!), { teamIds: [cycle.teamId] });
       return toCycle(row!);
     });
   });
@@ -71,6 +73,7 @@ export async function cycleRoutes(app: FastifyInstance) {
       await ctx.tx.delete(cycles).where(eq(cycles.id, id));
       emit(ctx, { kind: 'cycle', action: 'deleted', id, teamId: cycle.teamId });
       emit(ctx, { kind: 'issue', action: 'updated', id, teamId: cycle.teamId });
+      record(ctx, 'cycle.deleted', toCycle(cycle), { teamIds: [cycle.teamId] });
       return { ok: true };
     });
   });

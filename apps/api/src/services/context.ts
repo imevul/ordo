@@ -1,4 +1,4 @@
-import type { RealtimeEvent } from '@ordo/shared';
+import type { DomainEventType, HistoryChange, RealtimeEvent } from '@ordo/shared';
 import type { DbOrTx } from '../db/client.ts';
 import type { Access } from './access.ts';
 
@@ -19,6 +19,8 @@ export interface Ctx {
   /** What the actor may see and do; services scope every query by it. */
   access: Access;
   events: RealtimeEvent[];
+  /** Outbox entries, written at the end of the transaction (see `services/events.ts`). */
+  domainEvents: DomainEventDraft[];
   source: ActorSource;
   /** Suppresses notifications (imports, bulk system changes). */
   silent: boolean;
@@ -27,4 +29,29 @@ export interface Ctx {
 
 export function emit(ctx: Ctx, e: Omit<RealtimeEvent, 'workspaceId' | 'actorId'>) {
   ctx.events.push({ ...e, workspaceId: ctx.workspaceId, actorId: ctx.userId });
+}
+
+export interface DomainEventDraft {
+  type: DomainEventType;
+  teamIds: string[];
+  data: Record<string, unknown>;
+  changes?: HistoryChange[];
+}
+
+/**
+ * Records a domain event for webhooks and integrations. Unlike `emit` (a cache hint for open
+ * clients), this is a public, durable description of what happened, so `data` is the full entity.
+ */
+export function record(
+  ctx: Ctx,
+  type: DomainEventType,
+  data: object,
+  opts: { teamIds?: (string | null | undefined)[]; changes?: HistoryChange[] } = {},
+) {
+  ctx.domainEvents.push({
+    type,
+    data: data as Record<string, unknown>,
+    teamIds: [...new Set((opts.teamIds ?? []).filter((t): t is string => !!t))],
+    changes: opts.changes,
+  });
 }

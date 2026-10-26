@@ -47,7 +47,8 @@ import {
   teamScope,
   usersWithTeamAccess,
 } from './access.ts';
-import { type Ctx, emit } from './context.ts';
+import { type Ctx, emit, record } from './context.ts';
+import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -287,6 +288,7 @@ export async function getIssueDetail(
     subIssues,
     relations,
     subscriberIds: subs.map((s) => s.userId),
+    links: await listIssueLinks(db, issue.id),
   };
 }
 
@@ -459,7 +461,9 @@ export async function createIssue(ctx: Ctx, input: CreateIssueInput): Promise<Is
   emit(ctx, { kind: 'issue', action: 'created', id, teamId: team.id });
   if (input.parentId)
     emit(ctx, { kind: 'issue', action: 'updated', id: input.parentId, teamId: team.id });
-  return getIssue(ctx.tx, ctx.access, id);
+  const issue = await getIssue(ctx.tx, ctx.access, id);
+  record(ctx, 'issue.created', issue, { teamIds: [team.id] });
+  return issue;
 }
 
 export async function updateIssue(
@@ -623,7 +627,11 @@ export async function updateIssue(
       if (parent) emit(ctx, { kind: 'issue', action: 'updated', id: parent, teamId });
     }
   }
-  return getIssue(ctx.tx, ctx.access, issueId);
+  const issue = await getIssue(ctx.tx, ctx.access, issueId);
+  // Reordering alone (sort order) isn't news to the outside world.
+  if (changes.length)
+    record(ctx, 'issue.updated', issue, { teamIds: [current.teamId, teamId], changes });
+  return issue;
 }
 
 /** Soft delete: the issue moves to the trash and can be restored. */
@@ -654,6 +662,14 @@ export async function trashIssue(ctx: Ctx, issueId: string, restore = false) {
   });
   if (row.parentId)
     emit(ctx, { kind: 'issue', action: 'updated', id: row.parentId, teamId: row.teamId });
+  record(
+    ctx,
+    restore ? 'issue.restored' : 'issue.trashed',
+    await getIssue(ctx.tx, ctx.access, row.id),
+    {
+      teamIds: [row.teamId],
+    },
+  );
 }
 
 export async function purgeIssue(ctx: Ctx, issueId: string) {
@@ -672,4 +688,5 @@ export async function purgeIssue(ctx: Ctx, issueId: string) {
   // Children keep living as top-level issues.
   await ctx.tx.update(issues).set({ parentId: null }).where(eq(issues.parentId, issueId));
   emit(ctx, { kind: 'issue', action: 'deleted', id: row.id, teamId: row.teamId });
+  record(ctx, 'issue.deleted', { id: row.id }, { teamIds: [row.teamId] });
 }

@@ -57,6 +57,13 @@
       "when": 1793029747103,
       "tag": "0007_sso",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1793030938448,
+      "tag": "0008_outbox_webhooks_integrations",
+      "breakpoints": true
     }
   ]
 }

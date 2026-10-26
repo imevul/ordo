@@ -2,9 +2,17 @@ import { lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { sessions } from './db/schema.ts';
 import { sendNotificationEmails } from './services/digest.ts';
+import { dispatchEvents, pruneEvents } from './services/events.ts';
+import {
+  runInbound,
+  runIntegrationEvent,
+  runPoll,
+  schedulePolls,
+} from './services/integrations.ts';
 import type { Email } from './services/mail-templates.ts';
 import { purgeExpiredStates } from './services/sso.ts';
 import { purgeExpiredTokens } from './services/tokens.ts';
+import { deliverWebhook } from './services/webhooks.ts';
 
 /** Registers every background job and schedule. Add new job types here. */
 export function registerJobs(app: FastifyInstance) {
@@ -17,7 +25,23 @@ export function registerJobs(app: FastifyInstance) {
   jobs.define('notifications.email', () => sendNotificationEmails(app));
   jobs.every('notifications.email', 60);
 
+  // The outbox: one dispatch per transaction, then one job per webhook delivery / integration.
+  jobs.define<{ workspaceId: string; ids: number[] }>('events.dispatch', (p) =>
+    dispatchEvents(app, p),
+  );
+  jobs.define<{ deliveryId: string }>('webhook.deliver', (p, job) => deliverWebhook(app, p, job));
+  jobs.define<Parameters<typeof runIntegrationEvent>[1]>('integration.event', (p, job) =>
+    runIntegrationEvent(app, p, job),
+  );
+  jobs.define<Parameters<typeof runInbound>[1]>('integration.inbound', (p, job) =>
+    runInbound(app, p, job),
+  );
+  jobs.define<{ integrationId: string }>('integration.poll', (p, job) => runPoll(app, p, job));
+  jobs.define('integrations.poll', () => schedulePolls(app));
+  jobs.every('integrations.poll', 60);
+
   jobs.define('maintenance.cleanup', async () => {
+    await pruneEvents(app);
     await purgeExpiredTokens(app.db);
     await purgeExpiredStates(app);
     await app.db.delete(sessions).where(lt(sessions.expiresAt, new Date().toISOString()));

@@ -127,6 +127,24 @@ Notable choices:
 - Login/sign-up rate-limited; constant-time hash comparison runs even for unknown emails.
 - Tenant isolation: every query filters by the workspace from the membership check.
 
+## Events, webhooks and integrations
+
+- **Outbox** (`services/events.ts`): services call `record(ctx, type, data, { teamIds, changes })` next to
+  `emit(...)`. `emit` is a cache hint for open browsers; `record` is the durable, public description of the change.
+  `runInWorkspace` writes the recorded events to `domain_events` at the end of the transaction, plus **one**
+  `events.dispatch` job ordered per workspace, so a rollback leaves nothing and consumers see commit order. Silent
+  contexts (imports) record nothing.
+- **Dispatch** fans out to webhook deliveries (`webhook_deliveries`, one `webhook.deliver` job each, payload stored
+  so redeliveries are identical) and to `integration.event` jobs (ordered per integration, deduplicated by event).
+  An integration never receives events whose `source` is itself.
+- **Integration framework** (`integrations/types.ts`, `services/integrations.ts`): a provider may implement
+  `configure`, `install`/`uninstall`, `verify` + `deliveryId` + `handleInbound` (webhooks at
+  `/api/hooks/<provider>/<key>`, raw bodies up to 25 MB, answered 202 and processed in a job), `onDomainEvent`, and
+  `poll` (scheduled per `pollIntervalSeconds`, for instances that can't receive webhooks). Each integration has an
+  encrypted secrets blob, a bot user (`users.kind = 'bot'`, not a workspace member) that its changes are
+  attributed to, a status and last error. `issue_links` holds PRs, branches, commits and messages per issue;
+  `external_accounts` maps provider users to Ordo users.
+
 ## Background work
 
 `lib/jobs` is a job queue on Postgres itself (no Redis):

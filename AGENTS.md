@@ -104,6 +104,17 @@ the source (`*.test.ts`). The web app has no unit tests yet; verify UI changes i
 SSO tests run against an in-process OpenID provider (`test/mock-idp.ts`: discovery, PKCE-checking token endpoint,
 RS256 ID tokens); set `idp.next` to the claims of the next sign-in and `idp.tamper` to corrupt the next token.
 
+## Events and integrations
+
+- Every service mutation that the outside world should hear about calls `record(ctx, '<type>', data, { teamIds })`
+  next to its `emit(...)`. New event types go in `DOMAIN_EVENT_TYPES` (shared) and the table in `docs/api.md#webhooks`
+  — they're public API, so don't rename them.
+- A new integration is a provider object (`integrations/types.ts`) registered with `registerProvider` (see
+  `integrations/registry.ts`). Do slow or fallible work in its hooks — they all run in jobs. Use `ictx.run(fn)` for
+  changes so they're attributed to the bot and not echoed back.
+- Tests: `test/events.test.ts` shows a fake provider and a local webhook receiver; `settle()` runs queued jobs
+  including retries.
+
 ## Gotchas
 
 - `pnpm` 12 blocks dependency build scripts unless listed under `allowBuilds` in `pnpm-workspace.yaml`.

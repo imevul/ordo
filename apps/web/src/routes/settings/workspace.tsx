@@ -720,6 +720,13 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
     'auth.login':
       d.method === 'sso' ? `signed in with ${String(d.provider ?? 'SSO')}` : 'signed in',
     'auth.sso_bypass': 'signed in with a password (owner fallback)',
+    'webhook.created': `added a webhook to ${String(d.url ?? '')}`,
+    'webhook.updated': 'changed a webhook',
+    'webhook.deleted': `removed the webhook to ${String(d.url ?? '')}`,
+    'webhook.disabled': `webhook to ${String(d.url ?? '')} switched off after failures`,
+    'integration.created': `connected ${String(d.name ?? d.provider ?? 'an integration')}`,
+    'integration.updated': 'changed an integration',
+    'integration.deleted': `disconnected ${String(d.name ?? d.provider ?? 'an integration')}`,
     'auth.identity_linked': `linked ${String(d.provider ?? 'an identity')}`,
   };
   return map[e.action] ?? e.action;

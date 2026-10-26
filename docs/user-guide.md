@@ -31,6 +31,8 @@ Admins can **suspend** a member — they keep their history but can't open the w
   one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.
 - **Authentication** — single sign-on with your own identity provider (OpenID Connect), group → role mapping, and
   **require SSO**. See [SSO](sso.md).
+- **Webhooks** — send issue, comment, project and cycle events to your own endpoints, signed, with a delivery log,
+  test button and redelivery ([API docs](api.md#webhooks)).
 - **Audit log** — security-relevant changes: invites, role changes, team changes, domains, and more.
 - **Danger zone** (owners) — **transfer ownership** to another member (you become an admin), or **delete** the
   workspace for good.
@@ -79,6 +81,12 @@ in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L
   matching status.
 - **Delete** moves the issue to the **Trash**, where anyone can restore it and admins can delete it for good.
 - **Copy git branch name** in the `…` menu gives you `eng-42-short-title`.
+
+### Links
+
+The **Links** section of an issue collects what lives elsewhere: pull requests, branches and commits from connected
+forges, chat messages, and any URL you add with **Add link**. Forge links show their state (open, draft, merged,
+closed).
 
 ## Lists and boards
 

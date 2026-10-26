@@ -24,6 +24,8 @@ const SCHEDULE_TICK_MS = 15_000;
 
 export interface JobContext {
   attempt: number;
+  /** The last attempt; a handler that fails on it ends up dead. */
+  maxAttempts: number;
   jobId: number;
   log: FastifyBaseLogger;
 }
@@ -207,6 +209,7 @@ export class JobQueue {
     try {
       await def.handler(job.payload as never, {
         attempt: job.attempts,
+        maxAttempts: job.max_attempts,
         jobId: job.id,
         log: this.log,
       });

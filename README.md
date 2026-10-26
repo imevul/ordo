@@ -28,7 +28,7 @@ Then open <http://localhost:3000>. The first person to sign up becomes the admin
 - **Realtime** — every change shows up for everyone instantly, over a WebSocket fed by Postgres `LISTEN/NOTIFY`.
 - **Workspaces, members, roles and invite links**; invite-only or open sign-up.
 - **Single sign-on** per workspace with any OpenID Connect provider, group → role mapping and "require SSO".
-- **REST API** with personal API keys.
+- **REST API** with personal API keys, and signed **webhooks** for issue, comment, project and cycle events.
 
 See [ROADMAP.md](ROADMAP.md) for what's next.
 
@@ -90,7 +90,7 @@ chamfered corners instead of rounded ones ([docs/design.md](docs/design.md)).
 | [docs/configuration.md](docs/configuration.md)           | Environment variables                              |
 | [docs/admin.md](docs/admin.md)                           | Instance administration and recovery               |
 | [docs/sso.md](docs/sso.md)                               | Single sign-on (OpenID Connect) per workspace      |
-| [docs/api.md](docs/api.md)                               | REST API and realtime events                       |
+| [docs/api.md](docs/api.md)                               | REST API, webhooks and realtime events             |
 | [docs/architecture.md](docs/architecture.md)             | How it's built, data model                         |
 | [docs/development.md](docs/development.md)               | Working on Ordo                                    |
 | [docs/design.md](docs/design.md)                         | The design system as applied to Ordo               |

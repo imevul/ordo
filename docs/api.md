@@ -130,13 +130,15 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 | Method         | Path                       |                                                                                              |
 | -------------- | -------------------------- | -------------------------------------------------------------------------------------------- |
 | POST           | `/issues/query`            | `{ filter, limit? }` → `Issue[]` (see below)                                                 |
-| GET            | `/issues/:idOrIdentifier`  | Issue with parent, sub-issues, relations, subscribers                                        |
+| GET            | `/issues/:idOrIdentifier`  | Issue with parent, sub-issues, relations, subscribers, links                                 |
 | POST           | `/issues`                  | Create (see example)                                                                         |
 | PATCH          | `/issues/:id`              | Any of the create fields, plus `teamId` (move), `addLabelIds`, `removeLabelIds`, `sortOrder` |
 | POST           | `/issues/batch`            | `{ ids, patch }` — same patch on up to 250 issues                                            |
 | DELETE         | `/issues/:id`              | Move to trash                                                                                |
 | POST           | `/issues/batch-delete`     | `{ ids }`                                                                                    |
 | POST           | `/issues/:id/restore`      | Restore from trash                                                                           |
+| POST           | `/issues/:id/links`        | Attach a link `{ url, title? }`                                                              |
+| DELETE         | `/issue-links/:id`         | Remove a link (any kind)                                                                     |
 | DELETE         | `/issues/:id/purge`        | _Admin._ Permanently delete a trashed issue                                                  |
 | GET            | `/issues/:id/history`      | Change log                                                                                   |
 | POST / DELETE  | `/issues/:id/subscription` | Subscribe / unsubscribe yourself                                                             |
@@ -231,4 +233,78 @@ curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
 `member`, `view`, `favorite`, `notification`; `action` is `created`, `updated` or `deleted`. Notification and
 favorite events are delivered only to their user. Events are hints — refetch what you display.
 
-Webhooks and a GraphQL API are on the [roadmap](../ROADMAP.md).
+A GraphQL API is on the [roadmap](../ROADMAP.md).
+
+## Webhooks
+
+Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo POSTs one JSON event per request:
+
+```json
+{
+  "id": "1042",
+  "type": "issue.updated",
+  "createdAt": "2026-10-26T16:20:03.862Z",
+  "workspace": { "id": "…", "slug": "acme", "name": "Acme" },
+  "actor": { "id": "…", "name": "Ada Lovelace", "username": "ada", "kind": "human" },
+  "source": "web",
+  "data": {
+    "id": "…",
+    "identifier": "ENG-42",
+    "title": "…",
+    "stateId": "…",
+    "priority": 1,
+    "…": "…"
+  },
+  "changes": [{ "field": "priority", "from": 0, "to": 1 }]
+}
+```
+
+| Type                                                             | `data`                                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `issue.created` `issue.updated` `issue.trashed` `issue.restored` | The issue (as `GET /issues/:id` without the detail lists); `changes` on updates |
+| `issue.deleted`                                                  | `{ id }` (permanently deleted from the trash)                                   |
+| `comment.created` `comment.updated` `comment.deleted`            | `{ comment, issue? }`                                                           |
+| `relation.created` `relation.deleted`                            | `{ id, type, issueId, relatedIssueId }`                                         |
+| `project.created` `project.updated` `project.deleted`            | The project (`{ id, name }` when deleted)                                       |
+| `project_update.created`                                         | `{ update, project }`                                                           |
+| `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                       |
+| `ping`                                                           | Sent by the "test" button                                                       |
+
+`source` says where a change came from: `web`, `api` (an API key), `system`, `import` or `integration:<id>`.
+
+**Headers:** `Ordo-Event` (the type), `Ordo-Delivery` (unique per attempt series; reuse it to deduplicate), and
+`Ordo-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 over `"<t>.<raw body>"` with the webhook's
+secret. Check it with a constant-time comparison and reject old timestamps:
+
+```js
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+function verify(rawBody, header, secret, toleranceSeconds = 300) {
+  const { t, v1 } = Object.fromEntries(header.split(',').map((p) => p.split('=')));
+  if (Math.abs(Date.now() / 1000 - Number(t)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', secret).update(`${t}.${rawBody}`).digest('hex');
+  return v1.length === expected.length && timingSafeEqual(Buffer.from(v1), Buffer.from(expected));
+}
+```
+
+**Delivery:** answer with any 2xx within 10 seconds. Anything else is retried with exponential backoff (10 attempts,
+about an hour). Redirects aren't followed. Events of one workspace are dispatched in commit order, but retries can
+reorder them — use `createdAt` or `id` (increasing). After 20 deliveries in a row fail for good, the webhook switches
+itself off; turning it back on resets the count. Deliveries are kept for 30 days.
+
+Webhooks only receive events for the teams they're limited to (all by default), so private-team issues only leave
+Ordo if an admin chose to send them.
+
+| Method         | Path                                             |                                                                                                         |
+| -------------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| GET / POST     | `/webhooks`                                      | _Admin._ List / create `{ url, description?, eventTypes?, teamIds?, enabled? }` → `{ webhook, secret }` |
+| PATCH / DELETE | `/webhooks/:id`                                  | _Admin._ Update (same fields) / delete                                                                  |
+| GET            | `/webhooks/:id/secret`                           | _Admin._ `{ secret }`                                                                                   |
+| POST           | `/webhooks/:id/rotate-secret`                    | _Admin._ New secret, returned once                                                                      |
+| POST           | `/webhooks/:id/ping`                             | _Admin._ Send a `ping` event                                                                            |
+| GET            | `/webhooks/:id/deliveries`                       | _Admin._ Recent deliveries (status, response, attempts)                                                 |
+| GET            | `/webhooks/:id/deliveries/:deliveryId`           | _Admin._ One delivery with its payload                                                                  |
+| POST           | `/webhooks/:id/deliveries/:deliveryId/redeliver` | _Admin._ Send the same payload again                                                                    |
+
+Integrations (GitHub, GitLab, Forgejo, Slack, Discord, Matrix, Telegram) are listed at `GET /integrations` and
+managed by admins; their own docs explain how to connect them.
