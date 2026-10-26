@@ -103,7 +103,9 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   silent runs in background jobs, kept issue numbers, cancel; CSV importer with column detection (API only so far)
 - 🟡 Placeholder people for unmatched users, reused across imports, merged into members later (API; UI in the
   settings page)
-- ⬜ Linear, GitHub Issues and Jira importers
+- ✅ Linear importer: teams, statuses, people, labels, projects, cycles, issues, sub-issues, comments, relations,
+  attachments as links; waits out rate limits
+- ⬜ GitHub Issues and Jira importers
 - ⬜ Workspace export (JSON, CSV)
 - ⬜ Settings → Import & export, undo an import
 

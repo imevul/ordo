@@ -1,4 +1,4 @@
-import type { StateType } from './constants.ts';
+import type { ProjectStatus, StateType } from './constants.ts';
 
 /**
  * Imports from other trackers and files. An import runs in steps: the source is analyzed (what
@@ -6,7 +6,7 @@ import type { StateType } from './constants.ts';
  * a dry run reports what would happen, and the run writes it.
  */
 
-export const IMPORT_SOURCES = ['csv'] as const;
+export const IMPORT_SOURCES = ['csv', 'linear'] as const;
 export type ImportSource = (typeof IMPORT_SOURCES)[number];
 
 export const IMPORT_STATUSES = [
@@ -45,12 +45,34 @@ export interface ImportSourceNamed {
   count: number;
 }
 
+/** A project, with what an API source knows about it. Its teams and lead are source ids. */
+export interface ImportSourceProject extends ImportSourceNamed {
+  teamIds?: string[];
+  description?: string | null;
+  status?: ProjectStatus;
+  leadId?: string | null;
+  startDate?: string | null;
+  targetDate?: string | null;
+}
+
+/** A cycle of a source team. Cycles are imported into teams the import creates. */
+export interface ImportSourceCycle {
+  id: string;
+  teamId: string;
+  number: number;
+  name: string | null;
+  /** YYYY-MM-DD */
+  startsAt: string;
+  endsAt: string;
+}
+
 /** What analysis found. */
 export interface ImportSummary {
   teams: ImportSourceTeam[];
   users: ImportSourceUser[];
   labels: ImportSourceNamed[];
-  projects: ImportSourceNamed[];
+  projects: ImportSourceProject[];
+  cycles?: ImportSourceCycle[];
   counts: { issues: number; comments: number };
   warnings: string[];
   /** CSV: the file's columns, which Ordo field each one feeds, and the first rows. */
@@ -97,8 +119,10 @@ export interface ImportReport {
     people: number;
     labels: number;
     projects: number;
+    cycles: number;
     issues: number;
     comments: number;
+    relations: number;
   };
   /** Items already imported by an earlier attempt of this import. */
   existing: number;

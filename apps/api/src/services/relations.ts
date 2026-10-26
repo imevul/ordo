@@ -6,11 +6,15 @@ import { canReadTeam } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { getIssue, updateIssue } from './issues.ts';
 
-/** Links two issues the caller can both read. One relation per pair; a new one replaces the old. */
+/**
+ * Links two issues the caller can both read. One relation per pair; a new one replaces the old.
+ * Imports pass `imported`: their issues already have the status the source gave them.
+ */
 export async function createRelation(
   ctx: Ctx,
   issueIdOrIdentifier: string,
   input: CreateRelationInput,
+  imported = false,
 ) {
   const issue = await getIssue(ctx.tx, ctx.access, issueIdOrIdentifier);
   const other = await getIssue(ctx.tx, ctx.access, input.relatedIssueId);
@@ -44,7 +48,7 @@ export async function createRelation(
     .values({ issueId: from.id, relatedIssueId: to.id, type, createdBy: ctx.userId })
     .returning();
   // Marking a duplicate closes it, like Linear does.
-  if (type === 'duplicate') {
+  if (type === 'duplicate' && !imported) {
     const states = await ctx.tx
       .select()
       .from(workflowStates)

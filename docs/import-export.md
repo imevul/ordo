@@ -1,7 +1,7 @@
 # Importing data
 
-Workspace admins can bring issues in from other tools. Imports so far read **CSV files**; importers for Linear,
-GitHub Issues and Jira, workspace export, and a settings page for all of it are on the
+Workspace admins can bring issues in from other tools: **CSV files** and **Linear** so far. Importers for GitHub
+Issues and Jira, workspace export, and a settings page for all of it are on the
 [roadmap](../ROADMAP.md#phase-9--importers-and-export). Until the page lands, imports run through the
 [API](api.md#imports).
 
@@ -23,11 +23,30 @@ GitHub Issues and Jira, workspace export, and a settings page for all of it are 
 4. **Run.** Issues are created in pages by background jobs. You can cancel; what's imported so far stays.
 
 What an import keeps: titles, descriptions, statuses, priorities, assignees, creators, labels, projects,
-estimates, due dates, sub-issues, and when issues were created, updated and completed. Each issue links back to
-its source URL when the file has one. Imports are silent: nobody is notified and no webhooks fire.
+estimates, due dates, sub-issues, and when issues were created, updated and completed. From sources that have them
+it also keeps comments (with their authors, dates and threads), relations (blocks, related, duplicate — a
+duplicate keeps the status it had), cycles and links. Each issue links back to where it came from. Imports are
+silent: nobody is notified and no webhooks fire.
 
 Running an import again (after a failure, a cancel, or to be sure) skips everything it already imported. Deleting
 an import only forgets it and its file; the imported issues stay.
+
+## Linear
+
+Create a personal API key in Linear (in your account's settings, next to its security settings) and start an
+import with it (`POST /imports` with `{ "source": "linear", "apiKey": "lin_api_…" }`). Ordo checks the key, keeps
+it encrypted until you delete the import, and reads the whole workspace the key can see:
+
+- Teams keep their keys, statuses map by name, and issue numbers stay the same in new teams.
+- Labels with the same name in several Linear teams become one label; label groups aren't imported.
+- Projects keep their status, dates, lead (if a member) and teams.
+- Cycles are imported into teams the import creates. Existing teams have cycles of their own, so their Linear
+  cycles are left out (the report says so).
+- Pull requests and other attachments become links on their issues.
+- Archived issues aren't imported, nor are Linear's "similar issue" suggestions.
+
+Linear limits how fast an API key can read. A large workspace may hit that limit; the import then waits and carries
+on by itself, and says so while it waits.
 
 ## Placeholders
 

@@ -975,7 +975,7 @@ export const importItems = pgTable(
       .notNull()
       .references(() => imports.id, { onDelete: 'cascade' }),
     kind: text('kind')
-      .$type<'team' | 'label' | 'project' | 'user' | 'issue' | 'comment'>()
+      .$type<'team' | 'user' | 'label' | 'project' | 'cycle' | 'issue' | 'comment' | 'relation'>()
       .notNull(),
     externalId: text('external_id').notNull(),
     entityId: uuid('entity_id').notNull(),

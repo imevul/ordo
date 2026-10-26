@@ -342,7 +342,7 @@ Admins only. How imports work, and the CSV columns Ordo reads, are in [Importing
 | Method | Path                   |                                                                                                 |
 | ------ | ---------------------- | ----------------------------------------------------------------------------------------------- |
 | GET    | `/imports`             | The latest 50                                                                                   |
-| POST   | `/imports`             | Multipart: `file` (and `source: csv`). Starts the analysis                                      |
+| POST   | `/imports`             | Multipart `file` (`source: csv`), or JSON `{ source: "linear", apiKey }`. Starts the analysis   |
 | GET    | `/imports/:id`         | `{ status, summary, mapping, report, progress, error, … }`                                      |
 | PATCH  | `/imports/:id`         | `{ mapping? }` saves the mapping; `{ config: { columns } }` changes CSV columns and re-analyzes |
 | POST   | `/imports/:id/dry-run` | Reports what a run would do, in `report`                                                        |
