@@ -1,4 +1,5 @@
 import type {
+  Account,
   ApiKey,
   Bootstrap,
   Comment,
@@ -13,6 +14,7 @@ import type {
   Notification,
   ProjectUpdate,
   SearchResults,
+  SessionInfo,
   UpdateIssueInput,
 } from '@ordo/shared';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,6 +24,8 @@ import { ApiError, api, wsPath } from './client.ts';
 export const keys = {
   config: ['config'] as const,
   me: ['me'] as const,
+  account: ['account'] as const,
+  sessions: ['sessions'] as const,
   apiKeys: ['apiKeys'] as const,
   ws: (slug: string) => ['ws', slug] as const,
   bootstrap: (slug: string) => ['ws', slug, 'bootstrap'] as const,
@@ -108,6 +112,12 @@ export const useInvites = (slug: string, enabled: boolean) =>
     queryFn: () => api.get<Invite[]>(wsPath(slug, '/invites')),
     enabled,
   });
+
+export const useAccount = () =>
+  useQuery({ queryKey: keys.account, queryFn: () => api.get<Account>('/me/account') });
+
+export const useSessions = () =>
+  useQuery({ queryKey: keys.sessions, queryFn: () => api.get<SessionInfo[]>('/me/sessions') });
 
 export const useApiKeys = () =>
   useQuery({ queryKey: keys.apiKeys, queryFn: () => api.get<ApiKey[]>('/me/api-keys') });

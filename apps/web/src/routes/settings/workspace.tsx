@@ -172,7 +172,7 @@ export function MembersSection() {
       <SettingsCard title={`Members · ${ws.members.length}`}>
         {ws.members.map((m) => (
           <div key={m.id} className="flex h-12 items-center gap-3 border-b border-border-soft">
-            <Avatar name={m.name} color={m.avatarColor} size={24} />
+            <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={24} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13.5px]">
                 {m.name} {m.id === ws.me.id && <span className="text-index">(you)</span>}

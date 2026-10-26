@@ -54,7 +54,7 @@ export const assigneeOptions = (ws: WorkspaceData): Option[] => [
       value: m.id,
       label: m.id === ws.me.id ? `${m.name} (you)` : m.name,
       keywords: `${m.username} ${m.email}`,
-      icon: <Avatar name={m.name} color={m.avatarColor} size={16} />,
+      icon: <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={16} />,
     })),
 ];
 
@@ -283,7 +283,12 @@ export function AssigneeProp({ issue, onPatch, variant = 'chip' }: IssuePropProp
           aria-label={`Assignee: ${m?.name ?? 'none'}`}
         >
           {m ? (
-            <Avatar name={m.name} color={m.avatarColor} size={variant === 'icon' ? 18 : 16} />
+            <Avatar
+              name={m.name}
+              color={m.avatarColor}
+              src={m.avatarUrl}
+              size={variant === 'icon' ? 18 : 16}
+            />
           ) : variant === 'icon' ? (
             <EmptyAvatar />
           ) : (

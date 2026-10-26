@@ -110,11 +110,39 @@ Notable choices:
 - Instance settings (`services/settings.ts`): env → `instance_settings` table → default, cached per instance and
   reloaded on `NOTIFY ordo_settings`.
 - Passwords: Node's built-in scrypt (N=2¹⁵, r=8, p=1) — no native modules.
+- Two-factor: TOTP (RFC 6238, ±1 step), secret encrypted with the keyring; ten single-use recovery codes stored as
+  hashes. Logging in with 2FA returns a short-lived `mfa` token instead of a session; `POST /auth/mfa` completes it.
+- Email links (reset, verification, email change) are single-use tokens stored as hashes in `auth_tokens` with short
+  expiries; a reset signs out every session.
 - Sessions: 32 random bytes in an `HttpOnly`, `SameSite=Lax` cookie; stored as SHA-256; 30-day sliding expiry.
 - API keys: `ordo_` + 24 random bytes, stored as SHA-256, shown once.
 - CSRF: `SameSite=Lax` cookies plus JSON-only bodies.
 - Login/sign-up rate-limited; constant-time hash comparison runs even for unknown emails.
 - Tenant isolation: every query filters by the workspace from the membership check.
+
+## Background work
+
+`lib/jobs` is a job queue on Postgres itself (no Redis):
+
+- `enqueue(tx, name, payload, opts)` inserts in the caller's transaction, so a job exists only if the change
+  committed; `pg_notify('ordo_jobs')` wakes idle workers on commit.
+- Every API instance runs workers that claim jobs with a short `UPDATE … FOR UPDATE SKIP LOCKED`, run them outside a
+  transaction, delete them on success and retry with exponential backoff on failure, finally marking them `dead`.
+- `orderingKey` serialises related jobs (oldest first); `dedupeKey` makes enqueueing idempotent.
+- `jobs.every(name, seconds)` schedules recurring work; whichever instance advances the schedule row runs it.
+- `Leases` (with fencing tokens) keep singleton work — long-lived bot connections — on one instance.
+
+Jobs are registered in `src/jobs.ts`: email delivery, notification digests (every minute) and cleanup (hourly).
+
+## Email and files
+
+- `Mailer` sends through nodemailer using the SMTP setting (env or encrypted in the database); `queueEmail(tx, …)`
+  delivers via the job queue. Templates (`services/mail-templates.ts`) are inline-styled Hotline Pink HTML with a
+  plain-text twin.
+- `Storage` (`lib/storage`) is local disk or S3-compatible (a built-in SigV4 signer, no SDK). Uploads are
+  recorded in `files`; images are identified by their bytes, never the client's claim, and served from
+  `/api/files/:id` with an HMAC-signed, expiring URL, `nosniff`, a sandboxing CSP, and `attachment` disposition for
+  anything that isn't an image.
 
 ## Frontend
 

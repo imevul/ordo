@@ -159,7 +159,7 @@ function PlainIssueRow({ issue, right }: { issue: Issue; right?: React.ReactNode
       <span className="hidden font-mono text-[11px] text-index sm:block">
         {shortDate(issue.updatedAt)}
       </span>
-      {a && <Avatar name={a.name} color={a.avatarColor} />}
+      {a && <Avatar name={a.name} color={a.avatarColor} src={a.avatarUrl} />}
       {right}
     </div>
   );

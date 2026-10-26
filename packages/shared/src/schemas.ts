@@ -3,6 +3,7 @@ import {
   ESTIMATE_SCALE_NAMES,
   FAVORITE_KINDS,
   MEMBER_ROLES,
+  NOTIFICATION_TYPES,
   PROJECT_HEALTH,
   PROJECT_STATUSES,
   SLUG_PATTERN,
@@ -46,6 +47,52 @@ export const changePasswordSchema = z.object({
 });
 
 export const createApiKeySchema = z.object({ name: name });
+
+export const forgotPasswordSchema = z.object({ email: z.email() });
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(10).max(200),
+  password: passwordSchema,
+});
+
+export const tokenSchema = z.object({ token: z.string().min(10).max(200) });
+
+/** Second login step when two-factor authentication is on: a TOTP code or a recovery code. */
+export const mfaLoginSchema = z.object({
+  mfaToken: z.string().min(10).max(200),
+  code: z.string().trim().min(6).max(20),
+});
+
+export const changeEmailSchema = z.object({
+  email: z.email().max(254),
+  password: z.string().max(200).optional(),
+});
+
+export const passwordConfirmSchema = z.object({ password: z.string().max(200).optional() });
+
+export const totpCodeSchema = z.object({
+  code: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, 'Enter the 6-digit code'),
+});
+
+export const disableTwoFactorSchema = z.object({
+  password: z.string().max(200).optional(),
+  code: z.string().trim().min(6).max(20),
+});
+
+export const updatePreferencesSchema = z.object({
+  timezone: z.string().max(64).nullable().optional(),
+  weekStartsOn: z.union([z.literal(0), z.literal(1)]).optional(),
+  notifications: z
+    .object({
+      emailDigest: z.enum(['off', 'instant', 'hourly', 'daily']).optional(),
+      // partialRecord: in Zod 4 an enum-keyed record would require every key.
+      email: z.partialRecord(z.enum(NOTIFICATION_TYPES), z.boolean()).optional(),
+    })
+    .optional(),
+});
 
 export const createWorkspaceSchema = z.object({
   name: name,

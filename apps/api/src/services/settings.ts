@@ -16,6 +16,12 @@ const SCHEMAS: { [K in keyof InstanceSettings]: z.ZodType<InstanceSettings[K]> }
   signupMode: z.enum(['open', 'invite']),
   allowWorkspaceCreation: z.boolean(),
   allowPrivateNetworkTargets: z.boolean(),
+  smtp: z
+    .object({
+      url: z.string().min(1),
+      from: z.string().min(3),
+    })
+    .nullable(),
 };
 
 export const SETTING_KEYS = Object.keys(SCHEMAS) as (keyof InstanceSettings)[];

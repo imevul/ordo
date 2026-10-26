@@ -121,7 +121,12 @@ export function InboxPage() {
               >
                 <span className="mt-1">
                   {actor ? (
-                    <Avatar name={actor.name} color={actor.avatarColor} size={20} />
+                    <Avatar
+                      name={actor.name}
+                      color={actor.avatarColor}
+                      src={actor.avatarUrl}
+                      size={20}
+                    />
                   ) : (
                     <span className="block h-5 w-5 bg-border" />
                   )}

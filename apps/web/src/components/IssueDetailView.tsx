@@ -367,7 +367,12 @@ export function IssueDetailView({
                       <span className="chip [--chip:var(--color-success)]">done</span>
                     )}
                     {assignee && (
-                      <Avatar name={assignee.name} color={assignee.avatarColor} size={16} />
+                      <Avatar
+                        name={assignee.name}
+                        color={assignee.avatarColor}
+                        src={assignee.avatarUrl}
+                        size={16}
+                      />
                     )}
                   </div>
                 );

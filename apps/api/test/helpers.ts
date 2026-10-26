@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { FastifyInstance, LightMyRequestResponse } from 'fastify';
 import postgres from 'postgres';
 import { buildApp } from '../src/app.ts';
@@ -8,6 +11,7 @@ export async function testApp(overrides: Parameters<typeof loadEnv>[0] = {}) {
   const app = await buildApp(
     loadEnv({
       databaseUrl: process.env.TEST_DATABASE_URL!,
+      storage: { driver: 'local', dir: mkdtempSync(join(tmpdir(), 'ordo-test-uploads-')) },
       ...overrides,
       settingsFromEnv: { signupMode: 'open', ...overrides.settingsFromEnv },
     }),
@@ -80,3 +84,15 @@ export async function freshDatabase(name: string) {
   base.pathname = `/${name}`;
   return base.toString();
 }
+
+/** Captures outgoing email instead of talking SMTP. Returns the inbox. */
+export function captureMail(app: FastifyInstance) {
+  const inbox: { to: string; subject: string; text: string }[] = [];
+  app.mailer.send = async (to, email) => {
+    inbox.push({ to, subject: email.subject, text: email.text });
+  };
+  return inbox;
+}
+
+/** The first URL in a captured email. */
+export const linkIn = (text: string) => /https?:\/\/\S+/.exec(text)?.[0] ?? '';

@@ -144,7 +144,7 @@ export function MarkdownEditor({
                 insertMention(m.username);
               }}
             >
-              <Avatar name={m.name} color={m.avatarColor} size={16} />
+              <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={16} />
               <span className="truncate">{m.name}</span>
               <span className="ml-auto font-mono text-[11px] text-index">@{m.username}</span>
             </button>

@@ -5,4 +5,5 @@ dist/
 .DS_Store
 coverage/
 backups/
+apps/api/data/
 apps/web/tsconfig.tsbuildinfo

@@ -10,12 +10,17 @@ import type { Sql } from 'postgres';
 import { ZodError } from 'zod';
 import { createDb, type Db } from './db/client.ts';
 import type { Env } from './env.ts';
+import { registerJobs } from './jobs.ts';
 import { authorizeWorkspace, resolveUser } from './lib/auth.ts';
 import { HttpError, validationError } from './lib/errors.ts';
+import { JobQueue, Leases } from './lib/jobs/index.ts';
 import { Keyring } from './lib/secrets.ts';
+import { createStorage, type Storage } from './lib/storage/index.ts';
 import { Realtime } from './realtime.ts';
+import { accountRoutes } from './routes/account.ts';
 import { authRoutes } from './routes/auth.ts';
 import { cycleRoutes } from './routes/cycles.ts';
+import { fileRoutes } from './routes/files.ts';
 import { issueRoutes } from './routes/issues.ts';
 import { labelRoutes } from './routes/labels.ts';
 import { notificationRoutes } from './routes/notifications.ts';
@@ -25,6 +30,7 @@ import { searchRoutes } from './routes/search.ts';
 import { teamRoutes } from './routes/teams.ts';
 import { viewRoutes } from './routes/views.ts';
 import { workspaceRoutes } from './routes/workspaces.ts';
+import { Mailer } from './services/mailer.ts';
 import { Settings } from './services/settings.ts';
 
 declare module 'fastify' {
@@ -35,6 +41,10 @@ declare module 'fastify' {
     realtime: Realtime;
     settings: Settings;
     keyring: Keyring;
+    jobs: JobQueue;
+    leases: Leases;
+    storage: Storage;
+    mailer: Mailer;
     /** Every registered route; tests use it to make sure each one is covered by access checks. */
     routeList: { method: string; url: string }[];
   }
@@ -68,9 +78,16 @@ export async function buildApp(
   app.decorate('realtime', new Realtime(client, app.log));
   app.decorate('settings', new Settings(db, client, env.settingsFromEnv, app.log));
   app.decorate('keyring', new Keyring(env.secretKey, env.previousSecretKey));
+  const jobQueue = new JobQueue(db, client, app.log);
+  app.decorate('jobs', jobQueue);
+  app.decorate('leases', new Leases(db, jobQueue.workerId));
+  app.decorate('storage', createStorage(env.storage));
+  app.decorate('mailer', new Mailer(app));
+  registerJobs(app);
   if (!env.secretKey)
     app.log.warn('ORDO_SECRET_KEY is not set: storing secrets (SSO, integrations) is disabled');
   app.addHook('onClose', async () => {
+    await app.jobs.stop();
     await client.end({ timeout: 5 });
   });
 
@@ -119,10 +136,17 @@ export async function buildApp(
 
   app.get('/api/health', async () => {
     await db.execute(sql`select 1`);
-    return { ok: true, version: env.version, realtimeConnections: app.realtime.connectionCount };
+    return {
+      ok: true,
+      version: env.version,
+      realtimeConnections: app.realtime.connectionCount,
+      jobs: await app.jobs.stats(),
+    };
   });
 
   await app.register(authRoutes, { prefix: '/api' });
+  await app.register(accountRoutes, { prefix: '/api' });
+  await app.register(fileRoutes, { prefix: '/api' });
   await app.register(realtimeRoutes, { prefix: '/api' });
 
   // Everything under /api/w/:ws is scoped to a workspace the caller belongs to.

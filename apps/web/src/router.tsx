@@ -7,10 +7,13 @@ import {
 } from '@tanstack/react-router';
 import { Toaster } from 'sonner';
 import {
+  EmailLinkPage,
+  ForgotPasswordPage,
   IndexRedirect,
   InvitePage,
   LoginPage,
   OnboardingPage,
+  ResetPasswordPage,
   SignupPage,
 } from './routes/auth.tsx';
 import { CycleDetailPage, CyclesPage } from './routes/cycles.tsx';
@@ -72,6 +75,26 @@ const inviteRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/invite/$token',
   component: InvitePage,
+});
+const forgotRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/forgot-password',
+  component: ForgotPasswordPage,
+});
+const resetRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reset-password/$token',
+  component: ResetPasswordPage,
+});
+const verifyEmailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/verify-email/$token',
+  component: () => <EmailLinkPage kind="verify" />,
+});
+const confirmEmailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/confirm-email/$token',
+  component: () => <EmailLinkPage kind="change" />,
 });
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -171,6 +194,10 @@ const routeTree = rootRoute.addChildren([
   loginRoute,
   signupRoute,
   inviteRoute,
+  forgotRoute,
+  resetRoute,
+  verifyEmailRoute,
+  confirmEmailRoute,
   onboardingRoute,
   wsRoute.addChildren([
     wsIndexRoute,

@@ -9,6 +9,7 @@ try {
   await runMigrations(app.db);
   await app.settings.start();
   await app.realtime.start();
+  await app.jobs.start();
   await app.listen({ host: env.host, port: env.port });
   app.log.info(`Ordo ${env.version} ready on ${env.publicUrl}`);
 } catch (err) {

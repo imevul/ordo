@@ -13,9 +13,11 @@ import type {
   StateType,
   TeamRole,
   UserKind,
+  UserPreferences,
 } from '@ordo/shared';
 import { sql } from 'drizzle-orm';
 import {
+  bigserial,
   boolean,
   customType,
   date,
@@ -60,6 +62,11 @@ export const users = pgTable('users', {
   isInstanceAdmin: boolean('is_instance_admin').notNull().default(false),
   emailVerifiedAt: ts('email_verified_at'),
   disabledAt: ts('disabled_at'),
+  avatarFileId: uuid('avatar_file_id'),
+  /** TOTP secret, encrypted with the keyring (aad users:<id>:totp_secret). Set but unused until enabled. */
+  totpSecret: text('totp_secret'),
+  totpEnabledAt: ts('totp_enabled_at'),
+  preferences: jsonb('preferences').$type<Partial<UserPreferences>>().notNull().default({}),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -418,6 +425,8 @@ export const notifications = pgTable(
     actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
     readAt: ts('read_at'),
+    /** Set once the notification went out by email (or was skipped by preferences). */
+    emailedAt: ts('emailed_at'),
     createdAt: createdAt(),
   },
   (t) => [index('notifications_user_idx').on(t.userId, t.workspaceId)],
@@ -489,4 +498,98 @@ export const instanceSettings = pgTable('instance_settings', {
   value: jsonb('value').$type<unknown>().notNull(),
   updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
   updatedAt: updatedAt(),
+});
+
+/** One-time tokens sent by email (password reset, email verification/change) or used between login steps (MFA). */
+export const authTokens = pgTable(
+  'auth_tokens',
+  {
+    id: pk(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    kind: text('kind')
+      .$type<'password_reset' | 'email_verify' | 'email_change' | 'mfa'>()
+      .notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    expiresAt: ts('expires_at').notNull(),
+    usedAt: ts('used_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('auth_tokens_user_idx').on(t.userId, t.kind)],
+);
+
+export const recoveryCodes = pgTable(
+  'mfa_recovery_codes',
+  {
+    id: pk(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    codeHash: text('code_hash').notNull(),
+    usedAt: ts('used_at'),
+  },
+  (t) => [index('mfa_recovery_codes_user_idx').on(t.userId)],
+);
+
+/** Uploaded files. The bytes live in the storage backend under `storage_key`. */
+export const files = pgTable(
+  'files',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    kind: text('kind').$type<'avatar' | 'logo' | 'attachment' | 'import'>().notNull(),
+    storageKey: text('storage_key').notNull().unique(),
+    filename: text('filename').notNull(),
+    contentType: text('content_type').notNull(),
+    size: integer('size').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('files_workspace_idx').on(t.workspaceId)],
+);
+
+/**
+ * Background jobs. Workers claim rows with FOR UPDATE SKIP LOCKED; jobs sharing an
+ * ordering_key run one at a time in id order. Finished jobs are deleted; dead ones are kept.
+ */
+export const jobs = pgTable(
+  'jobs',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    name: text('name').notNull(),
+    payload: jsonb('payload').$type<unknown>().notNull().default({}),
+    status: text('status').$type<'pending' | 'running' | 'dead'>().notNull().default('pending'),
+    attempts: integer('attempts').notNull().default(0),
+    maxAttempts: integer('max_attempts').notNull().default(8),
+    runAt: ts('run_at').notNull().default(sql`now()`),
+    lockedUntil: ts('locked_until'),
+    lockedBy: text('locked_by'),
+    lastError: text('last_error'),
+    orderingKey: text('ordering_key'),
+    dedupeKey: text('dedupe_key'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('jobs_runnable_idx').on(t.status, t.runAt),
+    index('jobs_ordering_idx').on(t.orderingKey, t.id),
+    uniqueIndex('jobs_dedupe_idx').on(t.dedupeKey).where(sql`${t.dedupeKey} is not null`),
+  ],
+);
+
+/** Recurring jobs: whichever instance advances `next_run_at` first enqueues the run. */
+export const schedules = pgTable('schedules', {
+  name: text('name').primaryKey(),
+  intervalSeconds: integer('interval_seconds').notNull(),
+  nextRunAt: ts('next_run_at').notNull(),
+  lastRunAt: ts('last_run_at'),
+});
+
+/** Time-limited leases for singleton work (long-lived connectors); `fencing` increases on every takeover. */
+export const leases = pgTable('leases', {
+  key: text('key').primaryKey(),
+  holder: text('holder').notNull(),
+  fencing: integer('fencing').notNull().default(1),
+  expiresAt: ts('expires_at').notNull(),
 });

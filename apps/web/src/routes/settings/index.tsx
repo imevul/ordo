@@ -3,13 +3,20 @@ import type { ReactNode } from 'react';
 import { TeamIcon } from '../../components/icons.tsx';
 import { PageHeader, Sep } from '../../components/PageHeader.tsx';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { AccountSection, ApiKeysSection } from './account.tsx';
+import {
+  AccountSection,
+  ApiKeysSection,
+  NotificationsSection,
+  SecuritySection,
+} from './account.tsx';
 import { LabelsSection } from './labels.tsx';
 import { TeamSettings, TeamsSection } from './teams.tsx';
 import { MembersSection, WorkspaceSection } from './workspace.tsx';
 
 const SECTIONS: { key: string; label: string; group: string; admin?: boolean }[] = [
   { key: 'account', label: 'Profile', group: 'Account' },
+  { key: 'security', label: 'Security', group: 'Account' },
+  { key: 'notifications', label: 'Notifications', group: 'Account' },
   { key: 'api', label: 'API keys', group: 'Account' },
   { key: 'workspace', label: 'General', group: 'Workspace', admin: true },
   { key: 'members', label: 'Members', group: 'Workspace' },
@@ -90,6 +97,10 @@ export function SettingsPage() {
   const body =
     section === 'api' ? (
       <ApiKeysSection />
+    ) : section === 'security' ? (
+      <SecuritySection />
+    ) : section === 'notifications' ? (
+      <NotificationsSection />
     ) : section === 'workspace' ? (
       <WorkspaceSection />
     ) : section === 'members' ? (

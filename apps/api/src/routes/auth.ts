@@ -3,16 +3,28 @@ import {
   changePasswordSchema,
   createApiKeySchema,
   createWorkspaceSchema,
+  forgotPasswordSchema,
   type InstanceConfig,
   loginSchema,
   type Me,
+  mfaLoginSchema,
+  resetPasswordSchema,
   signupSchema,
+  tokenSchema,
   updateMeSchema,
 } from '@ordo/shared';
-import { and, count, desc, eq, gt, isNull, ne } from 'drizzle-orm';
+import { and, count, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { Tx } from '../db/client.ts';
-import { apiKeys, invites, sessions, users, workspaceMembers, workspaces } from '../db/schema.ts';
+import {
+  apiKeys,
+  authTokens,
+  invites,
+  sessions,
+  users,
+  workspaceMembers,
+  workspaces,
+} from '../db/schema.ts';
 import { API_KEY_PREFIX, clearSessionCookie, createSession, requireUser } from '../lib/auth.ts';
 import { hashPassword, randomToken, sha256, verifyPassword } from '../lib/crypto.ts';
 import {
@@ -28,7 +40,12 @@ import { requestMeta } from '../lib/mutate.ts';
 import { systemAccess } from '../services/access.ts';
 import { audit, auditCtx } from '../services/audit.ts';
 import type { Ctx } from '../services/context.ts';
+import { signedFileUrl } from '../services/files.ts';
+import { passwordResetEmail, securityEmail, verifyEmailEmail } from '../services/mail-templates.ts';
+import { queueEmail } from '../services/mailer.ts';
+import { verifySecondFactor } from '../services/mfa.ts';
 import { createTeam } from '../services/teams.ts';
+import { consumeToken, createToken } from '../services/tokens.ts';
 
 // A well-formed hash nobody can match, compared against when the account doesn't exist.
 const DUMMY_HASH =
@@ -110,6 +127,7 @@ export async function authRoutes(app: FastifyInstance) {
     return {
       signupMode: settings.get('signupMode'),
       hasUsers: n > 0,
+      emailEnabled: app.mailer.enabled,
       allowWorkspaceCreation: settings.get('allowWorkspaceCreation'),
       version: env.version,
     };
@@ -148,6 +166,14 @@ export async function authRoutes(app: FastifyInstance) {
         requestMeta(req),
       );
       const workspaceSlug = invite ? await acceptInvite(tx, invite, user!.id, email) : null;
+      if (app.mailer.enabled) {
+        const token = await createToken(tx, user!.id, 'email_verify', 48 * 60, { email });
+        await queueEmail(
+          tx,
+          email,
+          verifyEmailEmail(input.name, `${env.publicUrl}/verify-email/${token}`),
+        );
+      }
       return { userId: user!.id, workspaceSlug };
     });
     await createSession(app, reply, result.userId, req);
@@ -171,12 +197,153 @@ export async function authRoutes(app: FastifyInstance) {
     }
     if (user.disabledAt)
       throw forbidden('This account has been disabled. Contact your administrator.');
+    if (user.totpEnabledAt) {
+      // Password was right; the session is created only after the second factor.
+      const mfaToken = await createToken(db, user.id, 'mfa', 10);
+      return { ok: false, mfaRequired: true, mfaToken };
+    }
     await audit(
       db,
       { action: 'auth.login', actorId: user.id, data: { method: 'password' } },
       requestMeta(req),
     );
     await createSession(app, reply, user.id, req);
+    return { ok: true };
+  });
+
+  app.post('/auth/mfa', authLimit, async (req, reply) => {
+    const input = parse(mfaLoginSchema, req.body);
+    const userId = await db.transaction(async (tx) => {
+      const token = await consumeToken(tx, 'mfa', input.mfaToken);
+      const [user] = await tx.select().from(users).where(eq(users.id, token.userId));
+      if (!user || user.disabledAt || !user.totpEnabledAt) throw unauthorized('Sign in again');
+      if (!(await verifySecondFactor(tx, app.keyring, user, input.code))) return null;
+      await audit(
+        tx,
+        { action: 'auth.login', actorId: user.id, data: { method: 'password+totp' } },
+        requestMeta(req),
+      );
+      return user.id;
+    });
+    if (!userId) {
+      // A wrong code doesn't burn the step: reissue the token so they can try again.
+      const [row] = await db
+        .select({ userId: authTokens.userId })
+        .from(authTokens)
+        .where(eq(authTokens.tokenHash, sha256(input.mfaToken)));
+      await audit(
+        db,
+        { action: 'auth.login_failed', actorId: row?.userId ?? null, data: { method: 'totp' } },
+        requestMeta(req),
+      );
+      if (row)
+        await db
+          .update(authTokens)
+          .set({ usedAt: null })
+          .where(eq(authTokens.tokenHash, sha256(input.mfaToken)));
+      throw unauthorized('That code is not valid');
+    }
+    await createSession(app, reply, userId, req);
+    return { ok: true };
+  });
+
+  app.post('/auth/forgot', authLimit, async (req) => {
+    const { email } = parse(forgotPasswordSchema, req.body);
+    if (!app.mailer.enabled) {
+      throw badRequest(
+        "Email isn't set up on this instance. Ask an administrator to reset your password.",
+      );
+    }
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+    // Same answer whether or not the account exists.
+    if (user && user.kind === 'human' && !user.disabledAt) {
+      await db.transaction(async (tx) => {
+        const token = await createToken(tx, user.id, 'password_reset', 60);
+        await queueEmail(
+          tx,
+          user.email,
+          passwordResetEmail(user.name, `${env.publicUrl}/reset-password/${token}`),
+        );
+      });
+    }
+    return { ok: true };
+  });
+
+  app.post('/auth/reset', authLimit, async (req, reply) => {
+    const input = parse(resetPasswordSchema, req.body);
+    const passwordHash = await hashPassword(input.password);
+    const userId = await db.transaction(async (tx) => {
+      const token = await consumeToken(tx, 'password_reset', input.token);
+      // Resetting by email also proves the address.
+      await tx
+        .update(users)
+        .set({ passwordHash, emailVerifiedAt: sql`coalesce(${users.emailVerifiedAt}, now())` })
+        .where(eq(users.id, token.userId));
+      await tx.delete(sessions).where(eq(sessions.userId, token.userId));
+      await audit(
+        tx,
+        { action: 'auth.password_changed', actorId: token.userId, data: { via: 'reset' } },
+        requestMeta(req),
+      );
+      return token.userId;
+    });
+    const [user] = await db
+      .select({ totp: users.totpEnabledAt })
+      .from(users)
+      .where(eq(users.id, userId));
+    // With 2FA on, a reset link alone doesn't sign you in.
+    if (user?.totp) return { ok: true, signedIn: false };
+    await createSession(app, reply, userId, req);
+    return { ok: true, signedIn: true };
+  });
+
+  app.post('/auth/verify-email', async (req) => {
+    const { token } = parse(tokenSchema, req.body);
+    await db.transaction(async (tx) => {
+      const row = await consumeToken(tx, 'email_verify', token);
+      await tx
+        .update(users)
+        .set({ emailVerifiedAt: new Date().toISOString() })
+        .where(and(eq(users.id, row.userId), eq(users.email, String(row.data.email))));
+    });
+    return { ok: true };
+  });
+
+  app.post('/auth/confirm-email-change', async (req) => {
+    const { token } = parse(tokenSchema, req.body);
+    try {
+      await db.transaction(async (tx) => {
+        const row = await consumeToken(tx, 'email_change', token);
+        const [user] = await tx.select().from(users).where(eq(users.id, row.userId));
+        if (!user) throw badRequest('This link is invalid or has expired');
+        const next = String(row.data.email);
+        await tx
+          .update(users)
+          .set({
+            email: next,
+            emailVerifiedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(users.id, user.id));
+        await audit(
+          tx,
+          { action: 'auth.email_changed', actorId: user.id, data: { from: user.email, to: next } },
+          requestMeta(req),
+        );
+        // Tell the old address, in case the change wasn't wanted.
+        await queueEmail(
+          tx,
+          user.email,
+          securityEmail({
+            title: 'Your Ordo email address changed',
+            body: `Your account now uses ${next}.`,
+          }),
+        );
+      });
+    } catch (err) {
+      if (isUniqueViolation(err)) throw conflict('Another account already uses that email');
+      throw err;
+    }
     return { ok: true };
   });
 
@@ -202,7 +369,8 @@ export async function authRoutes(app: FastifyInstance) {
       .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
       .where(eq(workspaceMembers.userId, user.id))
       .orderBy(workspaces.name);
-    return { ...user, workspaces: memberships };
+    const { avatarFileId, ...rest } = user;
+    return { ...rest, avatarUrl: signedFileUrl(app, avatarFileId), workspaces: memberships };
   });
 
   app.patch('/me', async (req) => {

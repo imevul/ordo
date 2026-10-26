@@ -458,7 +458,7 @@ function TeamMembers({ team }: { team: Team }) {
               label: m.name,
               hint: MEMBER_ROLE_LABELS[m.role],
               keywords: `${m.username} ${m.email}`,
-              icon: <Avatar name={m.name} color={m.avatarColor} size={16} />,
+              icon: <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={16} />,
             }))}
             selected={[]}
             onSelect={(id) => add.mutate(id)}
@@ -475,7 +475,7 @@ function TeamMembers({ team }: { team: Team }) {
         if (!m) return null;
         return (
           <div key={userId} className="flex h-11 items-center gap-3 border-b border-border-soft">
-            <Avatar name={m.name} color={m.avatarColor} size={20} />
+            <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={20} />
             <span className="min-w-0 flex-1 truncate text-[13.5px]">
               {m.name}
               {m.role === 'guest' && <span className="ml-2 tag font-mono">guest</span>}
