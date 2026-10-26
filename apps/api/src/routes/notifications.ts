@@ -1,9 +1,10 @@
 import type { Notification } from '@ordo/shared';
-import { and, desc, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { issues, notifications, teams } from '../db/schema.ts';
 import { requireUser, requireWorkspace } from '../lib/auth.ts';
 import { mutate } from '../lib/mutate.ts';
+import { teamScope } from '../services/access.ts';
 import { emit } from '../services/context.ts';
 
 export async function notificationRoutes(app: FastifyInstance) {
@@ -25,7 +26,16 @@ export async function notificationRoutes(app: FastifyInstance) {
       .from(notifications)
       .leftJoin(issues, eq(issues.id, notifications.issueId))
       .leftJoin(teams, eq(teams.id, issues.teamId))
-      .where(and(eq(notifications.workspaceId, ws.id), eq(notifications.userId, user.id)))
+      .where(
+        and(
+          eq(notifications.workspaceId, ws.id),
+          eq(notifications.userId, user.id),
+          // Hide notifications about issues in teams the user can no longer see.
+          ws.access.isAdmin
+            ? undefined
+            : or(isNull(notifications.issueId), teamScope(ws.access, issues.teamId)),
+        ),
+      )
       .orderBy(desc(notifications.createdAt))
       .limit(200);
     return rows.map(({ n, issue, teamKey }) => ({

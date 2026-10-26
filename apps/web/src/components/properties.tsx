@@ -313,7 +313,7 @@ export function LabelsProp({ issue, onPatch, variant = 'chip' }: IssuePropProps)
       options={labelOptions(ws, issue.teamId)}
       selected={issue.labelIds}
       onSelect={(v) => onPatch(patchFor('labels', v, issue))}
-      onCreate={create}
+      onCreate={ws.isGuest ? undefined : create}
       trigger={
         variant === 'field' ? (
           <button

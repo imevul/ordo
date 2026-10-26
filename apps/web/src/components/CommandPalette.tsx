@@ -305,12 +305,14 @@ export function CommandPalette() {
                   <Plus size={15} /> New issue
                   <kbd className="kbd ml-auto">C</kbd>
                 </Command.Item>
-                <Command.Item
-                  value="create new project"
-                  onSelect={() => go(`/${ws.slug}/projects?new=1`)}
-                >
-                  <Hexagon size={15} /> New project
-                </Command.Item>
+                {!ws.isGuest && (
+                  <Command.Item
+                    value="create new project"
+                    onSelect={() => go(`/${ws.slug}/projects?new=1`)}
+                  >
+                    <Hexagon size={15} /> New project
+                  </Command.Item>
+                )}
               </Command.Group>
 
               <Command.Group heading="Navigate">

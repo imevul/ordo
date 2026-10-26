@@ -8,6 +8,7 @@ import {
   Hexagon,
   Inbox,
   Layers,
+  Lock,
   LogOut,
   Plus,
   RefreshCcw,
@@ -95,7 +96,7 @@ export function Sidebar({
     writePref('sidebar:closedTeams', next);
   };
   const p = { slug: ws.slug };
-  const isAdmin = ws.role === 'admin';
+  const isAdmin = ws.isAdmin;
 
   const logout = async () => {
     await api.post('/auth/logout');
@@ -258,6 +259,9 @@ export function Sidebar({
               >
                 <TeamIcon color={t.color} label={t.key} />
                 <span className="truncate">{t.name}</span>
+                {t.private && (
+                  <Lock size={11} className="flex-none text-index" aria-label="Private team" />
+                )}
                 <ChevronRight
                   size={12}
                   className={`ml-auto text-index transition-transform ${open ? 'rotate-90' : ''}`}

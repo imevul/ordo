@@ -3,6 +3,7 @@ import { and, eq, gt, isNull } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Db } from '../db/client.ts';
 import { apiKeys, sessions, users, workspaceMembers, workspaces } from '../db/schema.ts';
+import { type Access, computeAccess } from '../services/access.ts';
 import { randomToken, sha256 } from './crypto.ts';
 import { forbidden, notFound, unauthorized } from './errors.ts';
 
@@ -25,6 +26,7 @@ export interface WorkspaceCtx {
   slug: string;
   name: string;
   role: MemberRole;
+  access: Access;
 }
 
 declare module 'fastify' {
@@ -139,10 +141,15 @@ export function requireUser(req: FastifyRequest): AuthUser {
   return req.user;
 }
 
-export async function resolveWorkspace(
+/**
+ * Resolves a workspace by slug for a signed-in user and computes their access. Used by every
+ * workspace route and by the WebSocket, so membership rules are enforced in one place.
+ * Non-members get "not found", so the workspace's existence doesn't leak.
+ */
+export async function authorizeWorkspace(
   db: Db,
-  userId: string,
-  slug: string,
+  user: AuthUser,
+  ref: string | { id: string },
 ): Promise<WorkspaceCtx> {
   const [row] = await db
     .select({
@@ -154,11 +161,11 @@ export async function resolveWorkspace(
     .from(workspaces)
     .innerJoin(
       workspaceMembers,
-      and(eq(workspaceMembers.workspaceId, workspaces.id), eq(workspaceMembers.userId, userId)),
+      and(eq(workspaceMembers.workspaceId, workspaces.id), eq(workspaceMembers.userId, user.id)),
     )
-    .where(eq(workspaces.slug, slug));
+    .where(typeof ref === 'string' ? eq(workspaces.slug, ref) : eq(workspaces.id, ref.id));
   if (!row) throw notFound('Workspace');
-  return row;
+  return { ...row, access: await computeAccess(db, user.id, row.id, row.role) };
 }
 
 export function requireWorkspace(req: FastifyRequest): WorkspaceCtx {
@@ -166,8 +173,17 @@ export function requireWorkspace(req: FastifyRequest): WorkspaceCtx {
   return req.workspace;
 }
 
+export const requireAccess = (req: FastifyRequest): Access => requireWorkspace(req).access;
+
+/** Owners and admins. */
 export function requireAdmin(req: FastifyRequest): WorkspaceCtx {
   const ws = requireWorkspace(req);
-  if (ws.role !== 'admin') throw forbidden('Only workspace admins can do this');
+  if (!ws.access.isAdmin) throw forbidden('Only workspace admins can do this');
+  return ws;
+}
+
+export function requireOwner(req: FastifyRequest): WorkspaceCtx {
+  const ws = requireWorkspace(req);
+  if (!ws.access.isOwner) throw forbidden('Only workspace owners can do this');
   return ws;
 }

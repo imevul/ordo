@@ -50,18 +50,16 @@ function SettingsShell({
               <div className="mb-1 px-2 font-mono text-[10.5px] font-semibold tracking-[0.2em] text-index uppercase">
                 {g}
               </div>
-              {SECTIONS.filter((s) => s.group === g && (!s.admin || ws.role === 'admin')).map(
-                (s) => (
-                  <Link
-                    key={s.key}
-                    to="/$slug/settings/$section"
-                    params={{ slug: ws.slug, section: s.key }}
-                    className={`nav-item ${active === s.key ? 'active' : ''}`}
-                  >
-                    {s.label}
-                  </Link>
-                ),
-              )}
+              {SECTIONS.filter((s) => s.group === g && (!s.admin || ws.isAdmin)).map((s) => (
+                <Link
+                  key={s.key}
+                  to="/$slug/settings/$section"
+                  params={{ slug: ws.slug, section: s.key }}
+                  className={`nav-item ${active === s.key ? 'active' : ''}`}
+                >
+                  {s.label}
+                </Link>
+              ))}
             </div>
           ))}
           <div className="mb-1 px-2 font-mono text-[10.5px] font-semibold tracking-[0.2em] text-index uppercase">

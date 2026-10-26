@@ -174,9 +174,11 @@ export function ProjectsPage() {
         }
         title={team ? `${team.name} projects` : 'Projects'}
         actions={
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
-            <Plus size={13} /> New project
-          </button>
+          !ws.isGuest && (
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
+              <Plus size={13} /> New project
+            </button>
+          )
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
@@ -185,9 +187,11 @@ export function ProjectsPage() {
             title="no projects yet"
             body="Projects group issues toward a goal with a target date, across one or more teams."
             action={
-              <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>
-                New project <span className="arrow">→</span>
-              </button>
+              !ws.isGuest && (
+                <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>
+                  New project <span className="arrow">→</span>
+                </button>
+              )
             }
           />
         ) : (

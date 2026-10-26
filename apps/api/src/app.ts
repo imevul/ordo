@@ -10,7 +10,7 @@ import type { Sql } from 'postgres';
 import { ZodError } from 'zod';
 import { createDb, type Db } from './db/client.ts';
 import type { Env } from './env.ts';
-import { resolveUser, resolveWorkspace } from './lib/auth.ts';
+import { authorizeWorkspace, resolveUser } from './lib/auth.ts';
 import { HttpError, validationError } from './lib/errors.ts';
 import { Keyring } from './lib/secrets.ts';
 import { Realtime } from './realtime.ts';
@@ -35,6 +35,8 @@ declare module 'fastify' {
     realtime: Realtime;
     settings: Settings;
     keyring: Keyring;
+    /** Every registered route; tests use it to make sure each one is covered by access checks. */
+    routeList: { method: string; url: string }[];
   }
 }
 
@@ -70,6 +72,13 @@ export async function buildApp(
     app.log.warn('ORDO_SECRET_KEY is not set: storing secrets (SSO, integrations) is disabled');
   app.addHook('onClose', async () => {
     await client.end({ timeout: 5 });
+  });
+
+  const routeList: { method: string; url: string }[] = [];
+  app.decorate('routeList', routeList);
+  app.addHook('onRoute', (r) => {
+    for (const method of [r.method].flat())
+      if (method !== 'HEAD') routeList.push({ method, url: r.url });
   });
 
   app.decorateRequest('user', null);
@@ -122,7 +131,7 @@ export async function buildApp(
       w.addHook('preHandler', async (req) => {
         if (!req.user) throw new HttpError(401, 'Not signed in', 'unauthorized');
         const { ws } = req.params as { ws: string };
-        req.workspace = await resolveWorkspace(db, req.user.id, ws);
+        req.workspace = await authorizeWorkspace(db, req.user, ws);
       });
       await w.register(workspaceRoutes);
       await w.register(teamRoutes);

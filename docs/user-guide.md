@@ -3,14 +3,21 @@
 Ordo is built around a few concepts borrowed from Linear. If you know Linear you'll feel at home; the
 [keyboard shortcuts](keyboard-shortcuts.md) are nearly the same.
 
-## Workspaces and members
+## Workspaces, members and roles
 
 A **workspace** is your organization: its URL is `ordo.example.com/<workspace>`. You can belong to several and
-switch from the menu under the Ordo logo. Members are **admins** (manage members, invites, workspace settings,
-delete teams, empty the trash) or **members** (everything else).
+switch from the menu under the Ordo logo. Everyone in a workspace has a role:
 
-Invite people from **Settings → Members**. An invite with an email address works once, for that address; an
-invite without one is a link anyone can use until it expires.
+| Role       | Can                                                                                                                                                                         |
+| ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Owner**  | Everything an admin can, plus grant or remove ownership. Every workspace keeps at least one owner.                                                                          |
+| **Admin**  | Manage members, invites, teams, workspace settings and the audit log; see every team, including private ones; delete issues permanently.                                    |
+| **Member** | Work in every public team and in private teams they belong to; create teams, projects, views and labels.                                                                    |
+| **Guest**  | Only see and work on issues in the teams they've been added to. Guests can't create teams, projects, views, labels or cycles, and don't see other people's email addresses. |
+
+Invite people from **Settings → Members**: choose member, guest or admin. An invite with an email address works
+once, for that address; an invite without one is a link anyone can use until it expires. A guest sees nothing until
+a team admin adds them to a team. Ownership is granted by an existing owner after someone has joined.
 
 ## Teams
 

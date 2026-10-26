@@ -1,5 +1,6 @@
 import type { RealtimeEvent } from '@ordo/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { type Access, systemAccess } from '../services/access.ts';
 import type { ActorSource, Ctx, RequestMeta } from '../services/context.ts';
 import { requireUser, requireWorkspace } from './auth.ts';
 
@@ -7,6 +8,8 @@ export interface RunOptions {
   workspaceId: string;
   actorId: string;
   source: ActorSource;
+  /** Defaults to system access (every team) — pass the user's access when acting for a person. */
+  access?: Access;
   silent?: boolean;
   meta?: RequestMeta | null;
 }
@@ -21,11 +24,13 @@ export async function runInWorkspace<T>(
   fn: (ctx: Ctx) => Promise<T>,
 ): Promise<T> {
   const events: RealtimeEvent[] = [];
+  const access = opts.access ?? systemAccess(opts.workspaceId, opts.actorId);
   const result = await app.db.transaction((tx) =>
     fn({
       tx,
       userId: opts.actorId,
       workspaceId: opts.workspaceId,
+      access,
       events,
       source: opts.source,
       silent: opts.silent ?? false,
@@ -52,6 +57,7 @@ export function mutate<T>(
     {
       workspaceId: requireWorkspace(req).id,
       actorId: requireUser(req).id,
+      access: requireWorkspace(req).access,
       source: req.authMethod === 'api_key' ? 'api' : 'web',
       meta: requestMeta(req),
     },

@@ -9,6 +9,7 @@ import type {
   View,
   WorkflowState,
 } from '@ordo/shared';
+import { isAdminRole } from '@ordo/shared';
 import { createContext, type ReactNode, useContext, useMemo } from 'react';
 
 export interface WorkspaceData extends Bootstrap {
@@ -22,7 +23,13 @@ export interface WorkspaceData extends Bootstrap {
   projectById: Map<string, Project>;
   cycleById: Map<string, Cycle>;
   viewById: Map<string, View>;
+  /** Teams the user has joined (or every visible team, if none). Drives the sidebar. */
   myTeams: Team[];
+  isOwner: boolean;
+  isAdmin: boolean;
+  isGuest: boolean;
+  /** Workspace admins, and team admins of this team. */
+  canAdminTeam: (teamId: string) => boolean;
 }
 
 const Ctx = createContext<WorkspaceData | null>(null);
@@ -56,6 +63,14 @@ export function WorkspaceProvider({
       cycleById: byId(data.cycles),
       viewById: byId(data.views),
       myTeams: mine.length ? mine : data.teams,
+      isOwner: data.role === 'owner',
+      isAdmin: isAdminRole(data.role),
+      isGuest: data.role === 'guest',
+      canAdminTeam: (teamId: string) =>
+        isAdminRole(data.role) ||
+        !!data.teams
+          .find((t) => t.id === teamId)
+          ?.members.some((m) => m.userId === me.id && m.role === 'admin'),
     };
   }, [data, me, slug]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

@@ -38,9 +38,15 @@ import {
   projects,
   teams,
   workflowStates,
-  workspaceMembers,
 } from '../db/schema.ts';
 import { badRequest, notFound } from '../lib/errors.ts';
+import {
+  type Access,
+  assertTeamAccess,
+  canReadTeam,
+  teamScope,
+  usersWithTeamAccess,
+} from './access.ts';
 import { type Ctx, emit } from './context.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 
@@ -97,10 +103,13 @@ function baseQuery(db: DbOrTx) {
   return db.select(issueSelect).from(issues).innerJoin(teams, eq(teams.id, issues.teamId));
 }
 
-/** Translates an IssueFilter into SQL conditions. `me` resolves to `userId`. */
-export function filterConditions(workspaceId: string, userId: string, f: IssueFilter): SQL[] {
+/** Translates an IssueFilter into SQL conditions, limited to teams `access` can read. `me` is the viewer. */
+export function filterConditions(access: Access, f: IssueFilter): SQL[] {
+  const userId = access.userId;
   const me = (v: string) => (v === 'me' ? userId : v);
-  const conds: SQL[] = [eq(issues.workspaceId, workspaceId)];
+  const conds: SQL[] = [eq(issues.workspaceId, access.workspaceId)];
+  const scope = teamScope(access, issues.teamId);
+  if (scope) conds.push(scope);
   conds.push(f.trashed ? isNotNull(issues.deletedAt) : isNull(issues.deletedAt));
   if (f.teamId) conds.push(eq(issues.teamId, f.teamId));
   if (f.stateIds?.length) conds.push(inArray(issues.stateId, f.stateIds));
@@ -163,23 +172,19 @@ export function filterConditions(workspaceId: string, userId: string, f: IssueFi
 
 export async function queryIssues(
   db: DbOrTx,
-  workspaceId: string,
-  userId: string,
+  access: Access,
   filter: IssueFilter,
   limit = 2000,
 ): Promise<Issue[]> {
   const rows = await baseQuery(db)
-    .where(and(...filterConditions(workspaceId, userId, filter)))
+    .where(and(...filterConditions(access, filter)))
     .orderBy(asc(issues.sortOrder), desc(issues.createdAt))
     .limit(limit);
   return rows.map(toIssue);
 }
 
-export async function getIssue(
-  db: DbOrTx,
-  workspaceId: string,
-  idOrIdentifier: string,
-): Promise<Issue> {
+/** One issue by id or identifier; "not found" if it's outside the teams `access` can read. */
+export async function getIssue(db: DbOrTx, access: Access, idOrIdentifier: string): Promise<Issue> {
   let where: SQL | undefined;
   if (UUID_RE.test(idOrIdentifier)) where = eq(issues.id, idOrIdentifier);
   else {
@@ -187,7 +192,9 @@ export async function getIssue(
     if (!m) throw notFound('Issue');
     where = and(eq(teams.key, m[1]!), eq(issues.number, Number(m[2])));
   }
-  const [row] = await baseQuery(db).where(and(eq(issues.workspaceId, workspaceId), where));
+  const [row] = await baseQuery(db).where(
+    and(eq(issues.workspaceId, access.workspaceId), teamScope(access, issues.teamId), where),
+  );
   if (!row) throw notFound('Issue');
   return toIssue(row);
 }
@@ -218,32 +225,33 @@ const toRef = (r: {
 
 export async function getIssueDetail(
   db: DbOrTx,
-  workspaceId: string,
-  userId: string,
+  access: Access,
   idOrIdentifier: string,
 ): Promise<IssueDetail> {
-  const issue = await getIssue(db, workspaceId, idOrIdentifier);
+  const issue = await getIssue(db, access, idOrIdentifier);
+  // References to issues in teams the viewer can't read are left out.
+  const visible = teamScope(access, issues.teamId);
   const [parentRows, subIssues, outgoing, incoming, subs] = await Promise.all([
     issue.parentId
       ? db
           .select(refSelect)
           .from(issues)
           .innerJoin(teams, eq(teams.id, issues.teamId))
-          .where(eq(issues.id, issue.parentId))
+          .where(and(eq(issues.id, issue.parentId), visible))
       : Promise.resolve([]),
-    queryIssues(db, workspaceId, userId, { parentId: issue.id }),
+    queryIssues(db, access, { parentId: issue.id }),
     db
       .select({ relId: issueRelations.id, type: issueRelations.type, ...refSelect })
       .from(issueRelations)
       .innerJoin(issues, eq(issues.id, issueRelations.relatedIssueId))
       .innerJoin(teams, eq(teams.id, issues.teamId))
-      .where(and(eq(issueRelations.issueId, issue.id), isNull(issues.deletedAt))),
+      .where(and(eq(issueRelations.issueId, issue.id), isNull(issues.deletedAt), visible)),
     db
       .select({ relId: issueRelations.id, type: issueRelations.type, ...refSelect })
       .from(issueRelations)
       .innerJoin(issues, eq(issues.id, issueRelations.issueId))
       .innerJoin(teams, eq(teams.id, issues.teamId))
-      .where(and(eq(issueRelations.relatedIssueId, issue.id), isNull(issues.deletedAt))),
+      .where(and(eq(issueRelations.relatedIssueId, issue.id), isNull(issues.deletedAt), visible)),
     db
       .select({ userId: issueSubscribers.userId })
       .from(issueSubscribers)
@@ -288,6 +296,7 @@ async function teamOf(ctx: Ctx, teamId: string) {
     .from(teams)
     .where(and(eq(teams.id, teamId), eq(teams.workspaceId, ctx.workspaceId)));
   if (!team) throw badRequest('Unknown team');
+  assertTeamAccess(ctx.access, team.id);
   return team;
 }
 
@@ -315,14 +324,10 @@ async function defaultState(ctx: Ctx, team: typeof teams.$inferSelect) {
   return pick;
 }
 
-async function assertMember(ctx: Ctx, userId: string) {
-  const [m] = await ctx.tx
-    .select({ userId: workspaceMembers.userId })
-    .from(workspaceMembers)
-    .where(
-      and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)),
-    );
-  if (!m) throw badRequest('Assignee is not a member of this workspace');
+/** Assignees must be able to see the issue's team. */
+async function assertAssignee(ctx: Ctx, teamId: string, userId: string) {
+  const [ok] = await usersWithTeamAccess(ctx.tx, ctx.workspaceId, teamId, [userId]);
+  if (!ok) throw badRequest("Assignee isn't a member of this workspace, or can't access this team");
 }
 
 async function assertProject(ctx: Ctx, projectId: string) {
@@ -358,10 +363,18 @@ async function assertParent(ctx: Ctx, issueId: string | null, parentId: string) 
   let cursor: string | null = parentId;
   for (let depth = 0; cursor && depth < 50; depth++) {
     const [row] = await ctx.tx
-      .select({ id: issues.id, parentId: issues.parentId, workspaceId: issues.workspaceId })
+      .select({
+        id: issues.id,
+        parentId: issues.parentId,
+        workspaceId: issues.workspaceId,
+        teamId: issues.teamId,
+      })
       .from(issues)
       .where(eq(issues.id, cursor));
     if (!row || row.workspaceId !== ctx.workspaceId) throw badRequest('Unknown parent issue');
+    // The parent itself must be visible; ancestors beyond it are only walked to detect loops.
+    if (depth === 0 && !canReadTeam(ctx.access, row.teamId))
+      throw badRequest('Unknown parent issue');
     if (issueId && row.parentId === issueId) throw badRequest('That would create a sub-issue loop');
     cursor = row.parentId;
   }
@@ -388,7 +401,7 @@ export async function createIssue(ctx: Ctx, input: CreateIssueInput): Promise<Is
   const state = input.stateId
     ? await stateOf(ctx, team.id, input.stateId)
     : await defaultState(ctx, team);
-  if (input.assigneeId) await assertMember(ctx, input.assigneeId);
+  if (input.assigneeId) await assertAssignee(ctx, team.id, input.assigneeId);
   if (input.projectId) await assertProject(ctx, input.projectId);
   if (input.cycleId) await assertCycle(ctx, team.id, input.cycleId);
   if (input.parentId) await assertParent(ctx, null, input.parentId);
@@ -444,7 +457,7 @@ export async function createIssue(ctx: Ctx, input: CreateIssueInput): Promise<Is
   emit(ctx, { kind: 'issue', action: 'created', id, teamId: team.id });
   if (input.parentId)
     emit(ctx, { kind: 'issue', action: 'updated', id: input.parentId, teamId: team.id });
-  return getIssue(ctx.tx, ctx.workspaceId, id);
+  return getIssue(ctx.tx, ctx.access, id);
 }
 
 export async function updateIssue(
@@ -455,7 +468,13 @@ export async function updateIssue(
   const [current] = await ctx.tx
     .select()
     .from(issues)
-    .where(and(eq(issues.id, issueId), eq(issues.workspaceId, ctx.workspaceId)));
+    .where(
+      and(
+        eq(issues.id, issueId),
+        eq(issues.workspaceId, ctx.workspaceId),
+        teamScope(ctx.access, issues.teamId),
+      ),
+    );
   if (!current) throw notFound('Issue');
 
   const set: Partial<typeof issues.$inferInsert> = {};
@@ -523,7 +542,7 @@ export async function updateIssue(
   }
   if (patch.priority !== undefined) change('priority', 'priority', patch.priority);
   if (patch.assigneeId !== undefined) {
-    if (patch.assigneeId) await assertMember(ctx, patch.assigneeId);
+    if (patch.assigneeId) await assertAssignee(ctx, teamId, patch.assigneeId);
     change('assigneeId', 'assignee', patch.assigneeId);
   }
   if (patch.projectId !== undefined) {
@@ -602,7 +621,7 @@ export async function updateIssue(
       if (parent) emit(ctx, { kind: 'issue', action: 'updated', id: parent, teamId });
     }
   }
-  return getIssue(ctx.tx, ctx.workspaceId, issueId);
+  return getIssue(ctx.tx, ctx.access, issueId);
 }
 
 /** Soft delete: the issue moves to the trash and can be restored. */
@@ -613,7 +632,13 @@ export async function trashIssue(ctx: Ctx, issueId: string, restore = false) {
       deletedAt: restore ? null : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     })
-    .where(and(eq(issues.id, issueId), eq(issues.workspaceId, ctx.workspaceId)))
+    .where(
+      and(
+        eq(issues.id, issueId),
+        eq(issues.workspaceId, ctx.workspaceId),
+        teamScope(ctx.access, issues.teamId),
+      ),
+    )
     .returning({ id: issues.id, teamId: issues.teamId, parentId: issues.parentId });
   if (!row) throw notFound('Issue');
   await recordHistory(ctx, issueId, [
@@ -636,6 +661,7 @@ export async function purgeIssue(ctx: Ctx, issueId: string) {
       and(
         eq(issues.id, issueId),
         eq(issues.workspaceId, ctx.workspaceId),
+        teamScope(ctx.access, issues.teamId),
         isNotNull(issues.deletedAt),
       ),
     )

@@ -9,6 +9,7 @@ import type { RealtimeEvent } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import { loadEnv } from '../env.ts';
 import { hashPassword } from '../lib/crypto.ts';
+import { systemAccess } from '../services/access.ts';
 import type { Ctx } from '../services/context.ts';
 import { createIssue, updateIssue } from '../services/issues.ts';
 import { createTeam } from '../services/teams.ts';
@@ -109,7 +110,7 @@ async function main() {
       ids.map((userId, i) => ({
         workspaceId: ws!.id,
         userId,
-        role: i === 0 ? ('admin' as const) : ('member' as const),
+        role: i === 0 ? ('owner' as const) : ('member' as const),
       })),
     );
 
@@ -118,6 +119,7 @@ async function main() {
       tx,
       userId,
       workspaceId: ws!.id,
+      access: systemAccess(ws!.id, userId),
       events,
       source: 'system',
       silent: false,

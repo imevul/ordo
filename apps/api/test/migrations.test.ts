@@ -49,4 +49,36 @@ describe('migrations', () => {
       ['second@x.test', false],
     ]);
   });
+
+  it('gives every workspace an owner: its earliest admin, else its earliest member', async () => {
+    const url = await freshDatabase('ordo_test_migrations_owner');
+    const { db, sql } = createDb(url);
+    cleanup.push(() => sql.end());
+
+    const before = folderUpTo(entryIndex('0004_backfill_owners'));
+    cleanup.push(() => rmSync(before, { recursive: true, force: true }));
+    await migrate(db, { migrationsFolder: before });
+    const [a, b, c] = await sql<
+      { id: string }[]
+    >`insert into users (email, name, username, password_hash) values
+      ('a@x.test', 'A', 'a', 'x'), ('b@x.test', 'B', 'b', 'x'), ('c@x.test', 'C', 'c', 'x') returning id`;
+    const [w1, w2] = await sql<{ id: string }[]>`insert into workspaces (name, slug) values
+      ('One', 'one'), ('Two', 'two') returning id`;
+    await sql`insert into workspace_members (workspace_id, user_id, role, joined_at) values
+      (${w1!.id}, ${a!.id}, 'member', now() - interval '3 days'),
+      (${w1!.id}, ${b!.id}, 'admin', now() - interval '2 days'),
+      (${w1!.id}, ${c!.id}, 'admin', now() - interval '1 day'),
+      (${w2!.id}, ${b!.id}, 'member', now() - interval '1 day'),
+      (${w2!.id}, ${c!.id}, 'member', now() - interval '2 days')`;
+
+    await migrate(db, { migrationsFolder: migrationsFolder() });
+    const owners = await sql<{ slug: string; email: string }[]>`
+      select w.slug, u.email from workspace_members m
+      join workspaces w on w.id = m.workspace_id join users u on u.id = m.user_id
+      where m.role = 'owner' order by w.slug`;
+    expect(owners.map((o) => [o.slug, o.email])).toEqual([
+      ['one', 'b@x.test'],
+      ['two', 'c@x.test'],
+    ]);
+  });
 });

@@ -144,9 +144,11 @@ export function CyclesPage() {
         }
         title="Cycles"
         actions={
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
-            <Plus size={13} /> New cycle
-          </button>
+          !ws.isGuest && (
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
+              <Plus size={13} /> New cycle
+            </button>
+          )
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
@@ -155,9 +157,11 @@ export function CyclesPage() {
             title="no cycles yet"
             body="Cycles are time-boxed iterations, typically one or two weeks. Plan what the team will finish in each."
             action={
-              <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>
-                Create first cycle <span className="arrow">→</span>
-              </button>
+              !ws.isGuest && (
+                <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>
+                  Create first cycle <span className="arrow">→</span>
+                </button>
+              )
             }
           />
         ) : (

@@ -242,7 +242,7 @@ export function IssuesView(props: Props) {
                 <Save size={13} /> Save
               </button>
             )}
-            {!view && hasUserFilters(userFilter) && (
+            {!view && !ws.isGuest && hasUserFilters(userFilter) && (
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"

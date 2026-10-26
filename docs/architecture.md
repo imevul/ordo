@@ -21,12 +21,30 @@ everything and also carries realtime events between API instances.
 | `apps/api`        | Fastify server. `app.ts` wires plugins and routes; `routes/` are thin HTTP handlers; `services/` hold domain logic; `db/` has the schema, migrations runner and demo seed. |
 | `apps/web`        | React SPA. `router.tsx` (TanStack Router, code-based), `api/` (fetch + React Query + socket), `components/`, `routes/` (pages), `lib/` (context, hotkeys, store).          |
 
+## Access control
+
+`services/access.ts` turns a user's workspace role and team memberships into an `Access` object:
+readable team ids, administered team ids, and flags (`isOwner`, `isAdmin`, `isGuest`). It is computed once per
+request in `authorizeWorkspace` (shared by HTTP routes and the WebSocket) and carried on `req.workspace.access`
+and `ctx.access`. Every query helper takes it:
+
+- `teamScope(access, column)` adds `team_id in (…)` (nothing for admins) — used by issue filters, `getIssue`,
+  progress counts, cycles, labels and notifications.
+- `assertTeamAccess(access, teamId, 'read' | 'admin')` guards writes; unreadable teams are reported as 404.
+- `can(access, action)` covers workspace-level actions (guests can't create teams, projects, views, labels).
+- `usersWithTeamAccess` filters notification recipients and @mentions.
+
+Realtime clients keep their own `Access`, drop events for teams they can't read, and re-check (or are disconnected)
+when team or membership events arrive. `test/access.test.ts` runs a role × endpoint matrix and a route inventory
+that fails when a new workspace route isn't accounted for.
+
 ## Request lifecycle
 
 1. `onRequest` hook resolves the caller from the `ordo_session` cookie (SHA-256 of the token is the session id)
    or an `Authorization: Bearer ordo_…` API key.
-2. Routes under `/api/w/:ws` run a `preHandler` that loads the workspace by slug and checks membership →
-   `req.workspace = { id, slug, role }`. Non-members get 404, so workspace existence isn't leaked.
+2. Routes under `/api/w/:ws` run a `preHandler` (`authorizeWorkspace`) that loads the workspace by slug, checks
+   membership and computes access → `req.workspace = { id, slug, role, access }`. Non-members get 404, so
+   workspace existence isn't leaked.
 3. Handlers validate input with shared Zod schemas (`parse()`), then call services.
 4. Writes run inside `mutate()`: one transaction, a `Ctx` carrying `{ tx, userId, workspaceId, events }`.
    Services push `RealtimeEvent`s with `emit()`; they're published only after commit.

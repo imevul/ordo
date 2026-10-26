@@ -93,7 +93,21 @@ export const PROJECT_HEALTH_LABELS: Record<ProjectHealth, string> = {
 export const RELATION_TYPES = ['blocks', 'related', 'duplicate'] as const;
 export type RelationType = (typeof RELATION_TYPES)[number];
 
-export const MEMBER_ROLES = ['admin', 'member'] as const;
+/**
+ * owner: everything, including ownership and deleting the org. admin: manage members, teams and settings.
+ * member: work in every public team and their private teams. guest: only teams they were added to.
+ */
+export const MEMBER_ROLES = ['owner', 'admin', 'member', 'guest'] as const;
+export const MEMBER_ROLE_LABELS = {
+  owner: 'Owner',
+  admin: 'Admin',
+  member: 'Member',
+  guest: 'Guest',
+} as const;
+export const isAdminRole = (role: string) => role === 'owner' || role === 'admin';
+
+export const TEAM_ROLES = ['admin', 'member'] as const;
+export type TeamRole = (typeof TEAM_ROLES)[number];
 
 /** Only humans sign in. Bots act for integrations; placeholders stand in for unmapped imported people. */
 export const USER_KINDS = ['human', 'bot', 'placeholder'] as const;
@@ -118,6 +132,9 @@ export const AUDIT_ACTIONS = [
   'team.created',
   'team.updated',
   'team.deleted',
+  'team.member_added',
+  'team.member_removed',
+  'team.member_role_changed',
   'settings.updated',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];

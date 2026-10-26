@@ -22,6 +22,20 @@
       "when": 1793026782748,
       "tag": "0002_backfill_instance_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793027157277,
+      "tag": "0003_roles_private_teams",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793027157575,
+      "tag": "0004_backfill_owners",
+      "breakpoints": true
     }
   ]
 }

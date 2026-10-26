@@ -1,0 +1,448 @@
+import type { Bootstrap, Issue, IssueDetail, Notification, RealtimeEvent } from '@ordo/shared';
+import type { FastifyInstance } from 'fastify';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { computeAccess } from '../src/services/access.ts';
+import { type Client, signup, testApp } from './helpers.ts';
+
+/**
+ * Access matrix. One workspace with a public team (PUB) and a private team (PRV):
+ *   owner, admin            — see everything
+ *   insider                 — member of PRV
+ *   member                  — plain member, sees PUB only
+ *   guest                   — guest added to PUB only
+ *   outsider                — not in the workspace
+ */
+let app: FastifyInstance;
+const ws = '/api/w/acl';
+const c: Record<'owner' | 'admin' | 'insider' | 'member' | 'guest' | 'outsider', Client> =
+  {} as never;
+const ids: Record<string, string> = {};
+let boot: Bootstrap;
+
+const ALLOWED = ['owner', 'admin', 'insider'] as const;
+const DENIED = ['member', 'guest'] as const;
+
+async function invite(role: 'admin' | 'member' | 'guest') {
+  return (await c.owner.post(`${ws}/invites`, { role })).data.token as string;
+}
+
+beforeAll(async () => {
+  app = await testApp();
+  c.owner = (await signup(app, 'Olga Owner')).client;
+  await c.owner.post('/api/workspaces', {
+    name: 'ACL',
+    slug: 'acl',
+    teamName: 'Public',
+    teamKey: 'PUB',
+  });
+  c.admin = (await signup(app, 'Adam Admin', { inviteToken: await invite('admin') })).client;
+  c.insider = (await signup(app, 'Ines Insider', { inviteToken: await invite('member') })).client;
+  c.member = (await signup(app, 'Mona Member', { inviteToken: await invite('member') })).client;
+  c.guest = (await signup(app, 'Gus Guest', { inviteToken: await invite('guest') })).client;
+  c.outsider = (await signup(app, 'Otto Outsider')).client;
+  for (const k of Object.keys(c) as (keyof typeof c)[])
+    ids[k] = (await c[k].get('/api/auth/me')).data.id;
+
+  const prv = (await c.owner.post(`${ws}/teams`, { name: 'Private', key: 'PRV', private: true }))
+    .data;
+  boot = (await c.owner.get(`${ws}/bootstrap`)).data;
+  ids.pub = boot.teams.find((t) => t.key === 'PUB')!.id;
+  ids.prv = prv.id;
+  expect(
+    (await c.owner.post(`${ws}/teams/${ids.prv}/members`, { userId: ids.insider })).statusCode,
+  ).toBe(200);
+  expect(
+    (await c.owner.post(`${ws}/teams/${ids.pub}/members`, { userId: ids.guest })).statusCode,
+  ).toBe(200);
+
+  const label = (
+    await c.owner.post(`${ws}/labels`, { name: 'Classified', color: '#ef4444', teamId: ids.prv })
+  ).data;
+  ids.label = label.id;
+  ids.secretProject = (
+    await c.owner.post(`${ws}/projects`, { name: 'Secret plan', teamIds: [ids.prv] })
+  ).data.id;
+  ids.mixedProject = (
+    await c.owner.post(`${ws}/projects`, { name: 'Mixed bag', teamIds: [ids.pub, ids.prv] })
+  ).data.id;
+  ids.cycle = (
+    await c.owner.post(`${ws}/teams/${ids.prv}/cycles`, {
+      startsAt: '2026-01-01',
+      endsAt: '2026-01-15',
+    })
+  ).data.id;
+
+  const priv = (
+    await c.owner.post(`${ws}/issues`, {
+      teamId: ids.prv,
+      title: 'Zebra classified launch',
+      labelIds: [ids.label],
+      projectId: ids.mixedProject,
+      cycleId: ids.cycle,
+      assigneeId: ids.insider,
+    })
+  ).data as Issue;
+  ids.priv = priv.id;
+  const pub = (
+    await c.owner.post(`${ws}/issues`, {
+      teamId: ids.pub,
+      title: 'Public roadmap',
+      projectId: ids.mixedProject,
+    })
+  ).data as Issue;
+  ids.pubIssue = pub.id;
+  ids.relation = (
+    await c.owner.post(`${ws}/issues/${pub.id}/relations`, {
+      type: 'blocked_by',
+      relatedIssueId: priv.id,
+    })
+  ).data.id;
+});
+
+afterAll(() => app.close());
+
+describe('private team issues', () => {
+  const reads = (who: keyof typeof c) => [
+    c[who].get(`${ws}/issues/PRV-1`),
+    c[who].get(`${ws}/issues/${ids.priv}/history`),
+    c[who].get(`${ws}/issues/${ids.priv}/comments`),
+  ];
+
+  it('are readable by owner, admin and team members only', async () => {
+    for (const who of ALLOWED)
+      for (const r of await Promise.all(reads(who))) expect(r.statusCode, who).toBe(200);
+    for (const who of DENIED)
+      for (const r of await Promise.all(reads(who))) expect(r.statusCode, who).toBe(404);
+    expect((await c.outsider.get(`${ws}/issues/PRV-1`)).statusCode).toBe(404);
+  });
+
+  it('are writable by the same people only', async () => {
+    for (const who of DENIED) {
+      expect(
+        (await c[who].patch(`${ws}/issues/${ids.priv}`, { priority: 1 })).statusCode,
+        who,
+      ).toBe(404);
+      expect(
+        (await c[who].post(`${ws}/issues/${ids.priv}/comments`, { body: 'hi' })).statusCode,
+        who,
+      ).toBe(404);
+      expect((await c[who].post(`${ws}/issues/${ids.priv}/subscription`)).statusCode, who).toBe(
+        404,
+      );
+      expect(
+        (await c[who].post(`${ws}/issues/batch`, { ids: [ids.priv], patch: { priority: 2 } }))
+          .statusCode,
+        who,
+      ).toBe(404);
+      expect(
+        (await c[who].post(`${ws}/issues/batch-delete`, { ids: [ids.priv] })).statusCode,
+        who,
+      ).toBe(404);
+      expect((await c[who].del(`${ws}/issues/${ids.priv}`)).statusCode, who).toBe(404);
+      expect(
+        (await c[who].post(`${ws}/issues`, { teamId: ids.prv, title: 'sneaky' })).statusCode,
+        who,
+      ).toBe(404);
+      expect((await c[who].del(`${ws}/relations/${ids.relation}`)).statusCode, who).toBe(404);
+    }
+    for (const who of ALLOWED) {
+      expect(
+        (await c[who].patch(`${ws}/issues/${ids.priv}`, { priority: 3 })).statusCode,
+        who,
+      ).toBe(200);
+      expect(
+        (await c[who].post(`${ws}/issues/${ids.priv}/comments`, { body: `ok from ${who}` }))
+          .statusCode,
+        who,
+      ).toBe(200);
+    }
+  });
+
+  it("can't be reached sideways: moves, parents, relations, assignees", async () => {
+    expect(
+      (await c.member.patch(`${ws}/issues/${ids.pubIssue}`, { teamId: ids.prv })).statusCode,
+    ).toBe(404);
+    expect(
+      (await c.member.patch(`${ws}/issues/${ids.pubIssue}`, { parentId: ids.priv })).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await c.member.post(`${ws}/issues/${ids.pubIssue}/relations`, {
+          type: 'related',
+          relatedIssueId: ids.priv,
+        })
+      ).statusCode,
+    ).toBe(404);
+    // Assigning a private-team issue to someone who can't see the team is refused.
+    expect(
+      (await c.owner.patch(`${ws}/issues/${ids.priv}`, { assigneeId: ids.member })).statusCode,
+    ).toBe(400);
+    expect(
+      (await c.owner.patch(`${ws}/issues/${ids.priv}`, { assigneeId: ids.insider })).statusCode,
+    ).toBe(200);
+  });
+
+  it('are absent from lists, search, relations and detail references', async () => {
+    const titles = async (who: keyof typeof c) =>
+      ((await c[who].post(`${ws}/issues/query`, { filter: {} })).data as Issue[]).map(
+        (i) => i.title,
+      );
+    for (const who of ALLOWED) expect(await titles(who), who).toContain('Zebra classified launch');
+    for (const who of DENIED)
+      expect(await titles(who), who).not.toContain('Zebra classified launch');
+
+    for (const who of DENIED) {
+      const search = (await c[who].get(`${ws}/search?q=zebra`)).data;
+      expect(search.issues, who).toHaveLength(0);
+      expect((await c[who].get(`${ws}/search?q=secret`)).data.projects, who).toHaveLength(0);
+    }
+    expect((await c.insider.get(`${ws}/search?q=zebra`)).data.issues).toHaveLength(1);
+
+    const detail = (await c.member.get(`${ws}/issues/${ids.pubIssue}`)).data as IssueDetail;
+    expect(detail.relations).toHaveLength(0);
+    const ownerDetail = (await c.owner.get(`${ws}/issues/${ids.pubIssue}`)).data as IssueDetail;
+    expect(ownerDetail.relations).toHaveLength(1);
+  });
+});
+
+describe('bootstrap', () => {
+  const load = async (who: keyof typeof c) =>
+    (await c[who].get(`${ws}/bootstrap`)).data as Bootstrap;
+
+  it('shows only visible teams, labels, projects and cycles, with honest progress', async () => {
+    for (const who of ALLOWED) {
+      const b = await load(who);
+      expect(b.teams.map((t) => t.key).sort(), who).toEqual(['PRV', 'PUB']);
+      expect(
+        b.labels.map((l) => l.name),
+        who,
+      ).toContain('Classified');
+      expect(b.projects.map((p) => p.name).sort(), who).toEqual(['Mixed bag', 'Secret plan']);
+      expect(b.projects.find((p) => p.name === 'Mixed bag')!.progress.total, who).toBe(2);
+      expect(
+        b.cycles.map((x) => x.id),
+        who,
+      ).toContain(ids.cycle);
+    }
+    const member = await load('member');
+    expect(member.teams.map((t) => t.key)).toEqual(['PUB']);
+    expect(member.labels.map((l) => l.name)).not.toContain('Classified');
+    expect(member.projects.map((p) => p.name)).toEqual(['Mixed bag']);
+    expect(member.projects[0]!.progress.total).toBe(1);
+    expect(member.projects[0]!.teamIds).toEqual([ids.pub]);
+    expect(member.cycles).toHaveLength(0);
+
+    const guest = await load('guest');
+    expect(guest.teams.map((t) => t.key)).toEqual(['PUB']);
+    expect(guest.members.find((m) => m.id === ids.owner)!.email).toBe('');
+    expect(guest.members.find((m) => m.id === ids.guest)!.email).not.toBe('');
+  });
+
+  it('keeps the workspace hidden from outsiders', async () => {
+    expect((await c.outsider.get(`${ws}/bootstrap`)).statusCode).toBe(404);
+  });
+});
+
+describe('notifications', () => {
+  it("never reach people who can't see the issue", async () => {
+    const members = ((await c.owner.get(`${ws}/bootstrap`)).data as Bootstrap).members;
+    const handle = (id: string) => members.find((m) => m.id === id)!.username;
+    await c.owner.post(`${ws}/issues/${ids.priv}/comments`, {
+      body: `Ping @${handle(ids.member!)} and @${handle(ids.insider!)}`,
+    });
+    const types = async (who: keyof typeof c) =>
+      ((await c[who].get(`${ws}/notifications`)).data as Notification[])
+        .filter((n) => n.issueId === ids.priv)
+        .map((n) => n.type);
+    expect(await types('insider')).toContain('issue_mention');
+    expect(await types('member')).toHaveLength(0);
+  });
+});
+
+describe('roles and teams', () => {
+  it('lets only team admins change team settings and membership', async () => {
+    expect((await c.member.patch(`${ws}/teams/${ids.pub}`, { name: 'Hijacked' })).statusCode).toBe(
+      403,
+    );
+    expect(
+      (
+        await c.member.post(`${ws}/teams/${ids.pub}/states`, {
+          name: 'Nope',
+          type: 'started',
+          color: '#ffffff',
+        })
+      ).statusCode,
+    ).toBe(403);
+    expect(
+      (await c.member.post(`${ws}/teams/${ids.pub}/members`, { userId: ids.outsider })).statusCode,
+    ).toBe(403);
+    expect(
+      (await c.member.post(`${ws}/teams/${ids.pub}/members`, { role: 'admin' })).statusCode,
+    ).toBe(403);
+    // Joining a public team yourself is fine; a private one isn't even visible.
+    expect((await c.member.post(`${ws}/teams/${ids.pub}/members`, {})).statusCode).toBe(200);
+    expect((await c.member.post(`${ws}/teams/${ids.prv}/members`, {})).statusCode).toBe(404);
+    // Team admins don't need to be workspace admins.
+    await c.owner.patch(`${ws}/teams/${ids.prv}/members/${ids.insider}`, { role: 'admin' });
+    expect(
+      (await c.insider.patch(`${ws}/teams/${ids.prv}`, { description: 'Run by Ines' })).statusCode,
+    ).toBe(200);
+    await c.owner.patch(`${ws}/teams/${ids.prv}/members/${ids.insider}`, { role: 'member' });
+  });
+
+  it('keeps guests to issue work', async () => {
+    expect((await c.guest.post(`${ws}/teams`, { name: 'Guest team', key: 'GST' })).statusCode).toBe(
+      403,
+    );
+    expect(
+      (await c.guest.post(`${ws}/projects`, { name: 'Guest project', teamIds: [ids.pub] }))
+        .statusCode,
+    ).toBe(403);
+    expect(
+      (await c.guest.post(`${ws}/views`, { name: 'Guest view', filters: {} })).statusCode,
+    ).toBe(403);
+    expect(
+      (await c.guest.post(`${ws}/labels`, { name: 'Guest label', color: '#ffffff' })).statusCode,
+    ).toBe(403);
+    expect(
+      (
+        await c.guest.post(`${ws}/teams/${ids.pub}/cycles`, {
+          startsAt: '2026-02-01',
+          endsAt: '2026-02-14',
+        })
+      ).statusCode,
+    ).toBe(403);
+    // …but guests do work on issues in their team.
+    expect(
+      (await c.guest.post(`${ws}/issues`, { teamId: ids.pub, title: 'Guest bug report' }))
+        .statusCode,
+    ).toBe(200);
+  });
+
+  it('protects ownership', async () => {
+    expect((await c.admin.patch(`${ws}/members/${ids.member}`, { role: 'owner' })).statusCode).toBe(
+      403,
+    );
+    expect((await c.admin.patch(`${ws}/members/${ids.owner}`, { role: 'member' })).statusCode).toBe(
+      403,
+    );
+    expect((await c.admin.del(`${ws}/members/${ids.owner}`)).statusCode).toBe(403);
+    expect((await c.owner.patch(`${ws}/members/${ids.owner}`, { role: 'admin' })).statusCode).toBe(
+      400,
+    );
+    expect((await c.owner.patch(`${ws}/members/${ids.admin}`, { role: 'owner' })).statusCode).toBe(
+      200,
+    );
+    expect((await c.owner.patch(`${ws}/members/${ids.owner}`, { role: 'admin' })).statusCode).toBe(
+      200,
+    );
+    expect((await c.admin.patch(`${ws}/members/${ids.owner}`, { role: 'owner' })).statusCode).toBe(
+      200,
+    );
+    expect(
+      (await c.member.patch(`${ws}/members/${ids.guest}`, { role: 'member' })).statusCode,
+    ).toBe(403);
+    expect((await c.owner.post(`${ws}/invites`, { role: 'owner' })).statusCode).toBe(400);
+  });
+});
+
+describe('realtime', () => {
+  it('drops events for teams a client cannot read', async () => {
+    const received: RealtimeEvent[] = [];
+    const access = await computeAccess(app.db, ids.member!, boot.workspace.id, 'member');
+    const remove = app.realtime.add({
+      userId: ids.member!,
+      workspaceId: boot.workspace.id,
+      access,
+      send: (d) => received.push(JSON.parse(d)),
+    });
+    const base = { kind: 'issue', action: 'updated', workspaceId: boot.workspace.id } as const;
+    app.realtime.publish([
+      { ...base, id: ids.priv!, teamId: ids.prv },
+      { ...base, id: ids.pubIssue!, teamId: ids.pub },
+    ]);
+    remove();
+    expect(received.map((e) => e.id)).toEqual([ids.pubIssue]);
+  });
+});
+
+/**
+ * Every workspace route must be accounted for: exercised by this matrix, or listed with the reason
+ * it needs no team check. A new route that is in neither list fails the build.
+ */
+describe('route inventory', () => {
+  const COVERED = new Set([
+    'POST /issues/query',
+    'GET /issues/:id',
+    'POST /issues',
+    'PATCH /issues/:id',
+    'POST /issues/batch',
+    'POST /issues/batch-delete',
+    'DELETE /issues/:id',
+    'GET /issues/:id/history',
+    'POST /issues/:id/subscription',
+    'POST /issues/:id/relations',
+    'DELETE /relations/:id',
+    'GET /issues/:id/comments',
+    'POST /issues/:id/comments',
+    'GET /bootstrap',
+    'GET /search',
+    'GET /notifications',
+    'POST /teams',
+    'PATCH /teams/:teamId',
+    'POST /teams/:teamId/members',
+    'PATCH /teams/:teamId/members/:userId',
+    'POST /teams/:teamId/states',
+    'POST /teams/:teamId/cycles',
+    'POST /projects',
+    'POST /views',
+    'POST /labels',
+    'PATCH /members/:userId',
+    'DELETE /members/:userId',
+    'POST /invites',
+  ]);
+  // Routes that go through the same service as a covered route, or have no team-scoped data.
+  const ALLOWLISTED: Record<string, string> = {
+    'POST /issues/:id/restore': 'trashIssue, like DELETE /issues/:id',
+    'DELETE /issues/:id/purge': 'admin only; purgeIssue is team-scoped',
+    'DELETE /issues/:id/subscription': 'resolveIssue, like POST',
+    'PATCH /comments/:id': 'loadComment checks the issue team',
+    'DELETE /comments/:id': 'loadComment checks the issue team',
+    'GET /teams': 'listTeams, same as bootstrap',
+    'DELETE /teams/:teamId': 'workspace admins only',
+    'DELETE /teams/:teamId/members/:userId': 'loadTeam(read|admin)',
+    'PATCH /states/:stateId': 'loadState requires team admin',
+    'DELETE /states/:stateId': 'loadState requires team admin',
+    'GET /cycles': 'listCycles, same as bootstrap',
+    'PATCH /cycles/:id': 'loadCycle checks team access',
+    'DELETE /cycles/:id': 'loadCycle checks team access',
+    'GET /projects': 'listProjects, same as bootstrap',
+    'GET /projects/:id': 'listProjects',
+    'PATCH /projects/:id': 'loadProject',
+    'DELETE /projects/:id': 'loadProject',
+    'GET /projects/:id/updates': 'listProjects',
+    'POST /projects/:id/updates': 'loadProject',
+    'DELETE /project-updates/:id': 'listProjects',
+    'PATCH /labels/:id': 'loadLabel',
+    'DELETE /labels/:id': 'loadLabel',
+    'PATCH /views/:id': 'owner or admin; results are filtered when queried',
+    'DELETE /views/:id': 'owner or admin',
+    'PATCH /': 'workspace admins only',
+    'GET /invites': 'workspace admins only',
+    'DELETE /invites/:id': 'workspace admins only',
+    'GET /audit-log': 'workspace admins only',
+    'POST /favorites': "the caller's own data; bootstrap hides invisible targets",
+    'DELETE /favorites/:id': "the caller's own data",
+    'POST /notifications/read': "the caller's own notifications",
+    'POST /notifications/delete': "the caller's own notifications",
+  };
+
+  it('accounts for every workspace route', () => {
+    const prefix = '/api/w/:ws';
+    const routes = app.routeList
+      .filter((r) => r.url.startsWith(prefix))
+      .map((r) => `${r.method} ${r.url.slice(prefix.length) || '/'}`);
+    const unknown = routes.filter((r) => !COVERED.has(r) && !(r in ALLOWLISTED));
+    expect(unknown).toEqual([]);
+  });
+});

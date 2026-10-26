@@ -25,6 +25,7 @@ import {
   unauthorized,
 } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
+import { systemAccess } from '../services/access.ts';
 import { audit, auditCtx } from '../services/audit.ts';
 import type { Ctx } from '../services/context.ts';
 import { createTeam } from '../services/teams.ts';
@@ -358,11 +359,12 @@ export async function authRoutes(app: FastifyInstance) {
           .returning();
         await tx
           .insert(workspaceMembers)
-          .values({ workspaceId: ws!.id, userId: user.id, role: 'admin' });
+          .values({ workspaceId: ws!.id, userId: user.id, role: 'owner' });
         const ctx: Ctx = {
           tx,
           userId: user.id,
           workspaceId: ws!.id,
+          access: systemAccess(ws!.id, user.id),
           events: [],
           source: req.authMethod === 'api_key' ? 'api' : 'web',
           silent: false,

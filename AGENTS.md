@@ -45,9 +45,12 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
 - **Validate at the edge with shared Zod schemas.** Request bodies are parsed with `parse(schema, req.body)`
   (`apps/api/src/lib/errors.ts`). Add new payload schemas to `packages/shared/src/schemas.ts` so the web client
   can reuse them. Response shapes live in `packages/shared/src/types.ts`.
-- **Every workspace route is tenant-scoped.** Routes under `/api/w/:ws` get `req.workspace` from a preHandler
-  that checks membership. Every query must filter by `workspaceId` (directly or via a join). Use
-  `requireAdmin(req)` for admin-only actions.
+- **Every workspace route is tenant- and team-scoped.** Routes under `/api/w/:ws` get `req.workspace` (with
+  `access`) from `authorizeWorkspace`. Every query must filter by `workspaceId` **and** by team access: use
+  `teamScope(access, column)` in queries, `assertTeamAccess` before writes, `can(access, action)` for
+  workspace-level actions, and `requireAdmin` / `requireOwner` for admin areas. Never compare roles as strings
+  (`isAdminRole` in shared). New `/api/w/*` routes must be added to the matrix or allowlist in
+  `test/access.test.ts`, which fails otherwise.
 - **Mutations go through `mutate(app, req, async (ctx) => …)`**, or `runInWorkspace(app, opts, fn)` when there is
   no request (jobs, webhooks, imports). Both open a transaction and give you a `Ctx` (`tx`, `userId`,
   `workspaceId`, `events`, `source`, `silent`, `meta`), then publish realtime events after commit. Call
@@ -67,7 +70,8 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
   directly from routes.
 - **Schema changes:** edit `schema.ts`, run `pnpm db:generate --name <what>`, commit the generated SQL. Data
   backfills go in a separate `pnpm exec drizzle-kit generate --custom --name <what>` file, with a test in
-  `test/migrations.test.ts`.
+  `test/migrations.test.ts`. Stop `pnpm dev` while writing a custom migration: the watcher restarts the
+  API, which applies the still-empty generated file and records it as done.
   Migrations run automatically on boot. Only `import type` from `@ordo/shared` inside `schema.ts`.
 - **Timestamps** are ISO-8601 strings everywhere (custom `timestamptz` column type). Calendar dates
   (`dueDate`, cycle dates) are `YYYY-MM-DD` strings.

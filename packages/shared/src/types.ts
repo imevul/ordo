@@ -7,6 +7,7 @@ import type {
   ProjectHealth,
   ProjectStatus,
   StateType,
+  TeamRole,
 } from './constants.ts';
 import type { IssueDisplay, IssueFilter } from './schemas.ts';
 
@@ -57,7 +58,10 @@ export interface Team {
   triageEnabled: boolean;
   cyclesEnabled: boolean;
   defaultStateId: string | null;
+  /** Private teams are visible only to their members and workspace admins. */
+  private: boolean;
   memberIds: string[];
+  members: { userId: string; role: TeamRole }[];
   states: WorkflowState[];
 }
 

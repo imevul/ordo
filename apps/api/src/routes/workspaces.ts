@@ -23,8 +23,16 @@ import {
 } from '../db/schema.ts';
 import { requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { randomToken } from '../lib/crypto.ts';
-import { badRequest, conflict, forbidden, isUniqueViolation, parse } from '../lib/errors.ts';
+import {
+  badRequest,
+  conflict,
+  forbidden,
+  isUniqueViolation,
+  notFound,
+  parse,
+} from '../lib/errors.ts';
 import { mutate, requestMeta } from '../lib/mutate.ts';
+import { teamScope } from '../services/access.ts';
 import { audit, auditCtx } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { listCycles } from '../services/cycles.ts';
@@ -38,6 +46,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
   app.get('/bootstrap', async (req): Promise<Bootstrap> => {
     const user = requireUser(req);
     const ws = requireWorkspace(req);
+    const access = ws.access;
     const [workspace, members, teams, labelRows, projects, cycles, viewRows, favoriteRows, unread] =
       await Promise.all([
         db.select().from(workspaces).where(eq(workspaces.id, ws.id)),
@@ -55,10 +64,22 @@ export async function workspaceRoutes(app: FastifyInstance) {
           .innerJoin(users, eq(users.id, workspaceMembers.userId))
           .where(eq(workspaceMembers.workspaceId, ws.id))
           .orderBy(asc(users.name)),
-        listTeams(db, ws.id),
-        db.select().from(labels).where(eq(labels.workspaceId, ws.id)).orderBy(asc(labels.name)),
-        listProjects(db, ws.id),
-        listCycles(db, ws.id),
+        listTeams(db, access),
+        // Workspace labels, plus labels of teams the viewer can read.
+        db
+          .select()
+          .from(labels)
+          .where(
+            and(
+              eq(labels.workspaceId, ws.id),
+              access.isAdmin
+                ? undefined
+                : or(isNull(labels.teamId), teamScope(access, labels.teamId)),
+            ),
+          )
+          .orderBy(asc(labels.name)),
+        listProjects(db, access),
+        listCycles(db, access),
         db
           .select()
           .from(views)
@@ -85,21 +106,35 @@ export async function workspaceRoutes(app: FastifyInstance) {
             ),
           ),
       ]);
+    // Favorites only for things still visible.
+    const visibleTarget = (kind: string, id: string) =>
+      kind === 'project'
+        ? projects.some((p) => p.id === id)
+        : kind === 'team'
+          ? teams.some((t) => t.id === id)
+          : kind === 'view'
+            ? viewRows.some((v) => v.id === id)
+            : true;
     return {
       workspace: workspace[0]!,
       role: ws.role,
-      members,
+      // Guests don't see other people's email addresses.
+      members: access.isGuest
+        ? members.map((m) => ({ ...m, email: m.id === user.id ? m.email : '' }))
+        : members,
       teams,
       labels: labelRows.map(toLabel),
       projects,
       cycles,
       views: viewRows.map(toView),
-      favorites: favoriteRows.map((f) => ({
-        id: f.id,
-        kind: f.kind,
-        targetId: f.targetId,
-        sortOrder: f.sortOrder,
-      })),
+      favorites: favoriteRows
+        .filter((f) => visibleTarget(f.kind, f.targetId))
+        .map((f) => ({
+          id: f.id,
+          kind: f.kind,
+          targetId: f.targetId,
+          sortOrder: f.sortOrder,
+        })),
       unreadCount: unread[0]?.n ?? 0,
     };
   });
@@ -129,12 +164,22 @@ export async function workspaceRoutes(app: FastifyInstance) {
     }
   });
 
+  /**
+   * Admins manage members, admins and guests. Only owners can touch owners — granting ownership,
+   * demoting an owner — and the last owner can't be demoted.
+   */
   app.patch('/members/:userId', async (req) => {
-    requireAdmin(req);
+    const ws = requireAdmin(req);
     const { userId } = req.params as { userId: string };
     const { role } = parse(updateMemberSchema, req.body);
     return mutate(app, req, async (ctx) => {
-      if (role !== 'admin') await assertNotLastAdmin(ctx.tx, ctx.workspaceId, userId);
+      const current = await memberRole(ctx.tx, ctx.workspaceId, userId);
+      if (!current) throw notFound('Member');
+      if ((role === 'owner' || current === 'owner') && !ws.access.isOwner) {
+        throw forbidden('Only owners can grant or change ownership');
+      }
+      if (current === 'owner' && role !== 'owner')
+        await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
       await ctx.tx
         .update(workspaceMembers)
         .set({ role })
@@ -159,10 +204,15 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     const ws = requireWorkspace(req);
     const { userId } = req.params as { userId: string };
-    if (userId !== user.id && ws.role !== 'admin')
-      throw forbidden('Only admins can remove members');
+    if (userId !== user.id && !ws.access.isAdmin) throw forbidden('Only admins can remove members');
     return mutate(app, req, async (ctx) => {
-      await assertNotLastAdmin(ctx.tx, ctx.workspaceId, userId);
+      const current = await memberRole(ctx.tx, ctx.workspaceId, userId);
+      if (!current) throw notFound('Member');
+      if (current === 'owner') {
+        if (userId !== user.id && !ws.access.isOwner)
+          throw forbidden('Only owners can remove an owner');
+        await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
+      }
       await ctx.tx
         .delete(workspaceMembers)
         .where(
@@ -306,11 +356,20 @@ export async function workspaceRoutes(app: FastifyInstance) {
   });
 }
 
-async function assertNotLastAdmin(tx: DbOrTx, workspaceId: string, userId: string) {
-  const admins = await tx
+async function memberRole(tx: DbOrTx, workspaceId: string, userId: string) {
+  const [row] = await tx
+    .select({ role: workspaceMembers.role })
+    .from(workspaceMembers)
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.userId, userId)));
+  return row?.role ?? null;
+}
+
+async function assertNotLastOwner(tx: DbOrTx, workspaceId: string, userId: string) {
+  const owners = await tx
     .select({ userId: workspaceMembers.userId })
     .from(workspaceMembers)
-    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.role, 'admin')));
-  if (admins.length === 1 && admins[0]!.userId === userId)
-    throw badRequest('A workspace needs at least one admin');
+    .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.role, 'owner')));
+  if (owners.length === 1 && owners[0]!.userId === userId) {
+    throw badRequest('A workspace needs at least one owner. Make someone else an owner first.');
+  }
 }
