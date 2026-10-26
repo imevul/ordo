@@ -2,7 +2,7 @@ import type { Bootstrap, Issue, IssueDetail } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { deriveKey } from '../src/routes/auth.ts';
-import { extractMentions } from '../src/routes/issues.ts';
+import { extractMentions } from '../src/services/comments.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -57,7 +57,7 @@ describe('auth & workspaces', () => {
 
   it('bootstraps the workspace with a default team and workflow', () => {
     expect(boot.workspace.slug).toBe('acme');
-    expect(boot.role).toBe('admin');
+    expect(boot.role).toBe('owner');
     expect(boot.members).toHaveLength(2);
     expect(team().key).toBe('ENG');
     expect(team().states.map((s) => s.type)).toContain('completed');

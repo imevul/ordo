@@ -1,37 +1,50 @@
 import {
+  addTeamMemberSchema,
   createStateSchema,
   createTeamSchema,
   SORT_GAP,
   updateStateSchema,
+  updateTeamMemberSchema,
   updateTeamSchema,
 } from '@ordo/shared';
 import { and, count, eq, max, ne } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import type { DbOrTx } from '../db/client.ts';
-import { issues, teamMembers, teams, workflowStates } from '../db/schema.ts';
-import { requireAdmin } from '../lib/auth.ts';
-import { badRequest, conflict, isUniqueViolation, notFound, parse } from '../lib/errors.ts';
+import { issues, teamMembers, teams, workflowStates, workspaceMembers } from '../db/schema.ts';
+import { requireAccess, requireAdmin, requireWorkspace } from '../lib/auth.ts';
+import {
+  badRequest,
+  conflict,
+  forbidden,
+  isUniqueViolation,
+  notFound,
+  parse,
+} from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
+import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
-import { emit } from '../services/context.ts';
+import { type Ctx, emit } from '../services/context.ts';
 import { createTeam, listTeams } from '../services/teams.ts';
 
-async function loadTeam(tx: DbOrTx, workspaceId: string, teamId: string) {
-  const [team] = await tx
+/** Loads a team of the workspace and checks the caller's access to it. */
+async function loadTeam(ctx: Ctx, teamId: string, need: 'read' | 'admin' = 'read') {
+  const [team] = await ctx.tx
     .select()
     .from(teams)
-    .where(and(eq(teams.id, teamId), eq(teams.workspaceId, workspaceId)));
+    .where(and(eq(teams.id, teamId), eq(teams.workspaceId, ctx.workspaceId)));
   if (!team) throw notFound('Team');
+  assertTeamAccess(ctx.access, team.id, need);
   return team;
 }
 
-async function loadState(tx: DbOrTx, workspaceId: string, stateId: string) {
-  const [row] = await tx
+/** Workflow states are managed by team admins. */
+async function loadState(ctx: Ctx, stateId: string) {
+  const [row] = await ctx.tx
     .select({ state: workflowStates })
     .from(workflowStates)
     .innerJoin(teams, eq(teams.id, workflowStates.teamId))
-    .where(and(eq(workflowStates.id, stateId), eq(teams.workspaceId, workspaceId)));
+    .where(and(eq(workflowStates.id, stateId), eq(teams.workspaceId, ctx.workspaceId)));
   if (!row) throw notFound('Status');
+  assertTeamAccess(ctx.access, row.state.teamId, 'admin');
   return row.state;
 }
 
@@ -41,9 +54,10 @@ const keyTaken = (err: unknown) => {
 };
 
 export async function teamRoutes(app: FastifyInstance) {
-  app.get('/teams', async (req) => listTeams(app.db, req.workspace!.id));
+  app.get('/teams', async (req) => listTeams(app.db, requireAccess(req)));
 
   app.post('/teams', async (req) => {
+    assertCan(requireAccess(req), 'teams.create', 'Guests cannot create teams');
     const input = parse(createTeamSchema, req.body);
     try {
       const id = await mutate(app, req, async (ctx) => {
@@ -52,11 +66,14 @@ export async function teamRoutes(app: FastifyInstance) {
           action: 'team.created',
           targetType: 'team',
           targetId: teamId,
-          data: { name: input.name, key: input.key },
+          data: { name: input.name, key: input.key, private: input.private ?? false },
         });
         return teamId;
       });
-      return (await listTeams(app.db, req.workspace!.id)).find((t) => t.id === id);
+      // Recompute access: the creator just joined (and administers) the new team.
+      const ws = requireWorkspace(req);
+      const access = await computeAccess(app.db, ws.access.userId, ws.id, ws.role);
+      return (await listTeams(app.db, access)).find((t) => t.id === id);
     } catch (err) {
       throw keyTaken(err);
     }
@@ -67,10 +84,13 @@ export async function teamRoutes(app: FastifyInstance) {
     const input = parse(updateTeamSchema, req.body);
     try {
       await mutate(app, req, async (ctx) => {
-        await loadTeam(ctx.tx, ctx.workspaceId, teamId);
+        await loadTeam(ctx, teamId, 'admin');
         if (input.defaultStateId) {
-          const state = await loadState(ctx.tx, ctx.workspaceId, input.defaultStateId);
-          if (state.teamId !== teamId) throw badRequest('Default status must belong to the team');
+          const [state] = await ctx.tx
+            .select({ teamId: workflowStates.teamId })
+            .from(workflowStates)
+            .where(eq(workflowStates.id, input.defaultStateId));
+          if (state?.teamId !== teamId) throw badRequest('Default status must belong to the team');
         }
         await ctx.tx
           .update(teams)
@@ -87,14 +107,14 @@ export async function teamRoutes(app: FastifyInstance) {
     } catch (err) {
       throw keyTaken(err);
     }
-    return (await listTeams(app.db, req.workspace!.id)).find((t) => t.id === teamId);
+    return (await listTeams(app.db, requireAccess(req))).find((t) => t.id === teamId);
   });
 
   app.delete('/teams/:teamId', async (req) => {
     requireAdmin(req);
     const { teamId } = req.params as { teamId: string };
     return mutate(app, req, async (ctx) => {
-      const team = await loadTeam(ctx.tx, ctx.workspaceId, teamId);
+      const team = await loadTeam(ctx, teamId, 'admin');
       const [{ n }] = (await ctx.tx
         .select({ n: count() })
         .from(teams)
@@ -114,28 +134,92 @@ export async function teamRoutes(app: FastifyInstance) {
     });
   });
 
+  /**
+   * Adds a member. Anyone but guests may join a public team themselves; adding someone else,
+   * joining a private team, or granting team admin requires being a team admin.
+   */
   app.post('/teams/:teamId/members', async (req) => {
     const { teamId } = req.params as { teamId: string };
-    const { userId } = (req.body ?? {}) as { userId?: string };
+    const input = parse(addTeamMemberSchema, req.body);
     return mutate(app, req, async (ctx) => {
-      await loadTeam(ctx.tx, ctx.workspaceId, teamId);
+      const team = await loadTeam(ctx, teamId);
+      const userId = input.userId ?? ctx.userId;
+      const selfJoin =
+        userId === ctx.userId && input.role === 'member' && !team.private && !ctx.access.isGuest;
+      if (!selfJoin && !canAdminTeam(ctx.access, teamId)) {
+        throw forbidden('Only team admins can add people to this team');
+      }
+      const [member] = await ctx.tx
+        .select({ userId: workspaceMembers.userId })
+        .from(workspaceMembers)
+        .where(
+          and(
+            eq(workspaceMembers.workspaceId, ctx.workspaceId),
+            eq(workspaceMembers.userId, userId),
+          ),
+        );
+      if (!member) throw badRequest('That person is not a member of this workspace');
       await ctx.tx
         .insert(teamMembers)
-        .values({ teamId, userId: userId ?? ctx.userId })
-        .onConflictDoNothing();
+        .values({ teamId, userId, role: input.role })
+        .onConflictDoUpdate({
+          target: [teamMembers.teamId, teamMembers.userId],
+          set: { role: input.role },
+        });
       emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
+      emit(ctx, { kind: 'member', action: 'updated', id: userId });
+      await auditCtx(ctx, {
+        action: 'team.member_added',
+        targetType: 'team',
+        targetId: teamId,
+        data: { userId, role: input.role },
+      });
       return { ok: true };
     });
   });
 
+  app.patch('/teams/:teamId/members/:userId', async (req) => {
+    const { teamId, userId } = req.params as { teamId: string; userId: string };
+    const { role } = parse(updateTeamMemberSchema, req.body);
+    return mutate(app, req, async (ctx) => {
+      await loadTeam(ctx, teamId, 'admin');
+      const [row] = await ctx.tx
+        .update(teamMembers)
+        .set({ role })
+        .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
+        .returning();
+      if (!row) throw notFound('Team member');
+      emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
+      emit(ctx, { kind: 'member', action: 'updated', id: userId });
+      await auditCtx(ctx, {
+        action: 'team.member_role_changed',
+        targetType: 'team',
+        targetId: teamId,
+        data: { userId, role },
+      });
+      return { ok: true };
+    });
+  });
+
+  /** Leaving is always allowed; removing someone else requires being a team admin. */
   app.delete('/teams/:teamId/members/:userId', async (req) => {
     const { teamId, userId } = req.params as { teamId: string; userId: string };
     return mutate(app, req, async (ctx) => {
-      await loadTeam(ctx.tx, ctx.workspaceId, teamId);
-      await ctx.tx
+      await loadTeam(ctx, teamId, userId === ctx.userId ? 'read' : 'admin');
+      const removed = await ctx.tx
         .delete(teamMembers)
-        .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)));
-      emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
+        .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
+        .returning({ userId: teamMembers.userId });
+      if (removed.length) {
+        emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
+        emit(ctx, { kind: 'member', action: 'updated', id: userId });
+        await auditCtx(ctx, {
+          action: 'team.member_removed',
+          targetType: 'team',
+          targetId: teamId,
+          data: { userId },
+        });
+      }
       return { ok: true };
     });
   });
@@ -144,7 +228,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const { teamId } = req.params as { teamId: string };
     const input = parse(createStateSchema, req.body);
     return mutate(app, req, async (ctx) => {
-      await loadTeam(ctx.tx, ctx.workspaceId, teamId);
+      await loadTeam(ctx, teamId, 'admin');
       const [{ last }] = (await ctx.tx
         .select({ last: max(workflowStates.position) })
         .from(workflowStates)
@@ -162,7 +246,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const { stateId } = req.params as { stateId: string };
     const input = parse(updateStateSchema, req.body);
     return mutate(app, req, async (ctx) => {
-      const state = await loadState(ctx.tx, ctx.workspaceId, stateId);
+      const state = await loadState(ctx, stateId);
       const [row] = await ctx.tx
         .update(workflowStates)
         .set(input)
@@ -178,7 +262,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const { stateId } = req.params as { stateId: string };
     const { moveTo } = (req.query ?? {}) as { moveTo?: string };
     return mutate(app, req, async (ctx) => {
-      const state = await loadState(ctx.tx, ctx.workspaceId, stateId);
+      const state = await loadState(ctx, stateId);
       const siblings = await ctx.tx
         .select()
         .from(workflowStates)
@@ -186,7 +270,7 @@ export async function teamRoutes(app: FastifyInstance) {
       if (state.type !== 'triage' && !siblings.some((s) => s.type === state.type)) {
         throw badRequest(`A team needs at least one ${state.type} status`);
       }
-      const team = await loadTeam(ctx.tx, ctx.workspaceId, state.teamId);
+      const team = await loadTeam(ctx, state.teamId, 'admin');
       const target =
         siblings.find((s) => s.id === moveTo) ??
         siblings.find((s) => s.type === state.type) ??

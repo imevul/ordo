@@ -1,6 +1,7 @@
 import type { RealtimeEvent } from '@ordo/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Sql } from 'postgres';
+import { type Access, canReadTeam } from './services/access.ts';
 
 const CHANNEL = 'ordo_events';
 /** Postgres NOTIFY payloads are capped at 8000 bytes; stay well below. */
@@ -9,7 +10,11 @@ const MAX_PAYLOAD = 7000;
 interface Client {
   userId: string;
   workspaceId: string;
+  /** Updated by `refresh` when memberships change, so events for hidden teams are dropped. */
+  access: Access;
   send: (data: string) => void;
+  /** Re-checks membership and access; called after team or member changes in the workspace. */
+  refresh?: () => void;
 }
 
 /**
@@ -88,8 +93,14 @@ export class Realtime {
     const set = this.clients.get(e.workspaceId);
     if (!set) return;
     const data = JSON.stringify(e);
+    // Membership or team changes can change what each client may see.
+    const recheck = e.kind === 'team' || e.kind === 'member';
     for (const c of set) {
+      if (recheck) c.refresh?.();
       if (e.userId && c.userId !== e.userId) continue;
+      // Events about a team the client can't read are dropped. When someone gains access, the
+      // accompanying `member` event (which has no team) tells their client to refetch.
+      if (e.teamId && !canReadTeam(c.access, e.teamId)) continue;
       try {
         c.send(data);
       } catch {

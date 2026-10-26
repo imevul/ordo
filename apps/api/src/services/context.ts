@@ -1,5 +1,6 @@
 import type { RealtimeEvent } from '@ordo/shared';
 import type { DbOrTx } from '../db/client.ts';
+import type { Access } from './access.ts';
 
 /** What caused a change. Integrations use this to ignore their own echoes. */
 export type ActorSource = 'web' | 'api' | 'system' | 'import' | `integration:${string}`;
@@ -15,6 +16,8 @@ export interface Ctx {
   tx: DbOrTx;
   userId: string;
   workspaceId: string;
+  /** What the actor may see and do; services scope every query by it. */
+  access: Access;
   events: RealtimeEvent[];
   source: ActorSource;
   /** Suppresses notifications (imports, bulk system changes). */

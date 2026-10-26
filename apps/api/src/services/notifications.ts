@@ -1,6 +1,7 @@
 import type { NotificationType } from '@ordo/shared';
-import { and, eq, inArray } from 'drizzle-orm';
-import { issueSubscribers, notifications, workspaceMembers } from '../db/schema.ts';
+import { eq } from 'drizzle-orm';
+import { issueSubscribers, issues, notifications } from '../db/schema.ts';
+import { usersWithTeamAccess } from './access.ts';
 import { type Ctx, emit } from './context.ts';
 
 export async function subscribe(ctx: Ctx, issueId: string, userIds: (string | null | undefined)[]) {
@@ -20,7 +21,10 @@ export async function subscriberIds(ctx: Ctx, issueId: string): Promise<string[]
   return rows.map((r) => r.userId);
 }
 
-/** Creates notifications for each recipient except the actor, skipping non-members. */
+/**
+ * Creates notifications for each recipient except the actor, skipping anyone who can't see the
+ * issue's team (non-members, guests outside it, members of the workspace outside a private team).
+ */
 export async function notify(
   ctx: Ctx,
   input: {
@@ -34,19 +38,19 @@ export async function notify(
   if (ctx.silent) return;
   const ids = [...new Set(input.userIds.filter((x): x is string => !!x && x !== ctx.userId))];
   if (ids.length === 0) return;
-  const members = await ctx.tx
-    .select({ userId: workspaceMembers.userId })
-    .from(workspaceMembers)
-    .where(
-      and(eq(workspaceMembers.workspaceId, ctx.workspaceId), inArray(workspaceMembers.userId, ids)),
-    );
-  if (members.length === 0) return;
+  const [issue] = await ctx.tx
+    .select({ teamId: issues.teamId })
+    .from(issues)
+    .where(eq(issues.id, input.issueId));
+  if (!issue) return;
+  const recipients = await usersWithTeamAccess(ctx.tx, ctx.workspaceId, issue.teamId, ids);
+  if (recipients.length === 0) return;
   const rows = await ctx.tx
     .insert(notifications)
     .values(
-      members.map((m) => ({
+      recipients.map((userId) => ({
         workspaceId: ctx.workspaceId,
-        userId: m.userId,
+        userId,
         type: input.type,
         issueId: input.issueId,
         commentId: input.commentId ?? null,

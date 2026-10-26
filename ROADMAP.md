@@ -49,11 +49,12 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ Cross-site write protection; deleting users keeps their issues and comments
 - ✅ Bundle check and CI workflow
 
-### Phase 2 — Access control
+### Phase 2 — Access control ✅
 
-- ⬜ Roles: owner, admin, member, guest; team admins
-- ⬜ Private teams; guests see only their teams
-- ⬜ Access enforced on every read and write path, progress counts, search, notifications and realtime events
+- ✅ Roles: owner, admin, member, guest; team admins
+- ✅ Private teams; guests see only their teams
+- ✅ Access enforced on every read and write path, progress counts, search, notifications and realtime events
+- ✅ Role × endpoint test matrix and route inventory
 
 ### Phase 3 — Jobs, email, storage, account area
 

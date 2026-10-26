@@ -2,9 +2,10 @@ import { createProjectSchema, createProjectUpdateSchema, updateProjectSchema } f
 import { and, desc, eq, inArray, min } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { projects, projectTeams, projectUpdates, teams, workspaceMembers } from '../db/schema.ts';
-import { requireWorkspace } from '../lib/auth.ts';
+import { requireAccess } from '../lib/auth.ts';
 import { badRequest, forbidden, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
+import { assertCan, canReadTeam } from '../services/access.ts';
 import { type Ctx, emit } from '../services/context.ts';
 import { listProjects } from '../services/projects.ts';
 
@@ -13,7 +14,9 @@ async function assertTeams(ctx: Ctx, teamIds: string[]) {
     .select({ id: teams.id })
     .from(teams)
     .where(and(eq(teams.workspaceId, ctx.workspaceId), inArray(teams.id, teamIds)));
-  if (rows.length !== new Set(teamIds).size) throw badRequest('Unknown team');
+  if (rows.length !== new Set(teamIds).size || teamIds.some((t) => !canReadTeam(ctx.access, t))) {
+    throw badRequest('Unknown team');
+  }
 }
 
 async function assertLead(ctx: Ctx, leadId: string | null | undefined) {
@@ -27,28 +30,29 @@ async function assertLead(ctx: Ctx, leadId: string | null | undefined) {
   if (!m) throw badRequest('Lead is not a workspace member');
 }
 
+/** A project the caller can see and change: visible through one of its teams, and not a guest. */
 async function loadProject(ctx: Ctx, id: string) {
-  const [p] = await ctx.tx
-    .select()
-    .from(projects)
-    .where(and(eq(projects.id, id), eq(projects.workspaceId, ctx.workspaceId)));
-  if (!p) throw notFound('Project');
-  return p;
+  const [visible] = await listProjects(ctx.tx, ctx.access, id);
+  if (!visible) throw notFound('Project');
+  if (ctx.access.isGuest) throw forbidden('Guests cannot change projects');
+  const [p] = await ctx.tx.select().from(projects).where(eq(projects.id, id));
+  return p!;
 }
 
 export async function projectRoutes(app: FastifyInstance) {
   const { db } = app;
 
-  app.get('/projects', async (req) => listProjects(db, requireWorkspace(req).id));
+  app.get('/projects', async (req) => listProjects(db, requireAccess(req)));
 
   app.get('/projects/:id', async (req) => {
     const { id } = req.params as { id: string };
-    const [project] = await listProjects(db, requireWorkspace(req).id, id);
+    const [project] = await listProjects(db, requireAccess(req), id);
     if (!project) throw notFound('Project');
     return project;
   });
 
   app.post('/projects', async (req) => {
+    assertCan(requireAccess(req), 'projects.create', 'Guests cannot create projects');
     const input = parse(createProjectSchema, req.body);
     const id = await mutate(app, req, async (ctx) => {
       await assertTeams(ctx, input.teamIds);
@@ -73,7 +77,7 @@ export async function projectRoutes(app: FastifyInstance) {
       emit(ctx, { kind: 'project', action: 'created', id: row!.id });
       return row!.id;
     });
-    return (await listProjects(db, requireWorkspace(req).id, id))[0];
+    return (await listProjects(db, requireAccess(req), id))[0];
   });
 
   app.patch('/projects/:id', async (req) => {
@@ -96,7 +100,7 @@ export async function projectRoutes(app: FastifyInstance) {
         .where(eq(projects.id, id));
       emit(ctx, { kind: 'project', action: 'updated', id });
     });
-    return (await listProjects(db, requireWorkspace(req).id, id))[0];
+    return (await listProjects(db, requireAccess(req), id))[0];
   });
 
   app.delete('/projects/:id', async (req) => {
@@ -113,11 +117,7 @@ export async function projectRoutes(app: FastifyInstance) {
 
   app.get('/projects/:id/updates', async (req) => {
     const { id } = req.params as { id: string };
-    const ws = requireWorkspace(req);
-    const [p] = await db
-      .select({ id: projects.id })
-      .from(projects)
-      .where(and(eq(projects.id, id), eq(projects.workspaceId, ws.id)));
+    const [p] = await listProjects(db, requireAccess(req), id);
     if (!p) throw notFound('Project');
     return db
       .select()
@@ -143,7 +143,6 @@ export async function projectRoutes(app: FastifyInstance) {
 
   app.delete('/project-updates/:id', async (req) => {
     const { id } = req.params as { id: string };
-    const ws = requireWorkspace(req);
     return mutate(app, req, async (ctx) => {
       const [row] = await ctx.tx
         .select({ update: projectUpdates, workspaceId: projects.workspaceId })
@@ -151,7 +150,9 @@ export async function projectRoutes(app: FastifyInstance) {
         .innerJoin(projects, eq(projects.id, projectUpdates.projectId))
         .where(eq(projectUpdates.id, id));
       if (!row || row.workspaceId !== ctx.workspaceId) throw notFound('Project update');
-      if (row.update.authorId !== ctx.userId && ws.role !== 'admin') throw forbidden();
+      const [visible] = await listProjects(ctx.tx, ctx.access, row.update.projectId);
+      if (!visible) throw notFound('Project update');
+      if (row.update.authorId !== ctx.userId && !ctx.access.isAdmin) throw forbidden();
       await ctx.tx.delete(projectUpdates).where(eq(projectUpdates.id, id));
       emit(ctx, { kind: 'projectUpdate', action: 'deleted', id });
       emit(ctx, { kind: 'project', action: 'updated', id: row.update.projectId });

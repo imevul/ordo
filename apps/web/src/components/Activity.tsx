@@ -206,7 +206,7 @@ function CommentItem({
                 <Reply size={13} />
               </button>
             )}
-            {(mine || ws.role === 'admin') && (
+            {(mine || ws.isAdmin) && (
               <Popover
                 placement="bottom-end"
                 width={160}

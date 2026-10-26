@@ -274,7 +274,7 @@ export function TrashPage() {
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => restore(i)}>
                   <RotateCcw size={12} /> Restore
                 </button>
-                {ws.role === 'admin' && (
+                {ws.isAdmin && (
                   <button
                     type="button"
                     className="btn btn-danger btn-sm"

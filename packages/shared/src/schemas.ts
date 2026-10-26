@@ -8,6 +8,7 @@ import {
   SLUG_PATTERN,
   STATE_TYPES,
   TEAM_KEY_PATTERN,
+  TEAM_ROLES,
   USERNAME_PATTERN,
 } from './constants.ts';
 
@@ -60,13 +61,22 @@ export const updateWorkspaceSchema = z.object({
 
 export const createInviteSchema = z.object({
   email: z.email().optional(),
-  role: z.enum(MEMBER_ROLES).default('member'),
+  // Ownership is granted by an owner after joining, never through an invite link.
+  role: z.enum(['admin', 'member', 'guest']).default('member'),
   expiresInDays: z.number().int().min(1).max(90).default(14),
 });
 
 export const updateMemberSchema = z.object({ role: z.enum(MEMBER_ROLES) });
 
+export const addTeamMemberSchema = z.object({
+  userId: id.optional(),
+  role: z.enum(TEAM_ROLES).default('member'),
+});
+
+export const updateTeamMemberSchema = z.object({ role: z.enum(TEAM_ROLES) });
+
 export const createTeamSchema = z.object({
+  private: z.boolean().optional(),
   name: name,
   key: z.string().regex(TEAM_KEY_PATTERN, 'Uppercase letters and digits, max 7, e.g. ENG'),
   description: z.string().max(2000).nullish(),
@@ -81,6 +91,7 @@ export const updateTeamSchema = z.object({
   estimateScale: z.enum(ESTIMATE_SCALE_NAMES as [string, ...string[]]).optional(),
   triageEnabled: z.boolean().optional(),
   cyclesEnabled: z.boolean().optional(),
+  private: z.boolean().optional(),
   defaultStateId: id.nullish(),
 });
 
@@ -207,12 +218,16 @@ export const createCommentSchema = z.object({
   parentId: id.nullish(),
 });
 
+export type CreateCommentInput = z.infer<typeof createCommentSchema>;
+
 export const updateCommentSchema = z.object({ body: z.string().trim().min(1).max(50_000) });
 
 export const createRelationSchema = z.object({
   type: z.enum(['blocks', 'blocked_by', 'related', 'duplicate_of']),
   relatedIssueId: id,
 });
+
+export type CreateRelationInput = z.infer<typeof createRelationSchema>;
 
 export const createProjectSchema = z.object({
   name: name,

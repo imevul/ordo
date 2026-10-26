@@ -1,4 +1,4 @@
-import { MEMBER_ROLES } from '@ordo/shared';
+import { MEMBER_ROLE_LABELS, MEMBER_ROLES, type MemberRole } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Copy, Trash2 } from 'lucide-react';
@@ -30,8 +30,7 @@ export function WorkspaceSection() {
       toast.error(err instanceof Error ? err.message : 'Failed');
     }
   };
-  if (ws.role !== 'admin')
-    return <p className="text-muted">Only admins can change workspace settings.</p>;
+  if (!ws.isAdmin) return <p className="text-muted">Only admins can change workspace settings.</p>;
   return (
     <SettingsCard title="Workspace">
       <form onSubmit={save}>
@@ -62,10 +61,10 @@ export function WorkspaceSection() {
 
 export function MembersSection() {
   const ws = useWorkspace();
-  const isAdmin = ws.role === 'admin';
+  const isAdmin = ws.isAdmin;
   const { data: invites = [] } = useInvites(ws.slug, isAdmin);
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'member' | 'admin'>('member');
+  const [role, setRole] = useState<Exclude<MemberRole, 'owner'>>('member');
   const inv = [keys.invites(ws.slug) as unknown as unknown[]];
   const createInvite = useWsMutation(
     ws.slug,
@@ -96,7 +95,7 @@ export function MembersSection() {
       {isAdmin && (
         <SettingsCard
           title="Invite"
-          description="Create a link and share it however you like. Links with an email are single-use and only work for that address; links without one can be used by anyone until they expire (14 days)."
+          description="Create a link and share it however you like. Links with an email are single-use and only work for that address; links without one can be used by anyone until they expire (14 days). Guests only see the teams you add them to."
         >
           <form
             className="flex flex-wrap gap-2"
@@ -123,11 +122,12 @@ export function MembersSection() {
             <select
               className="input w-32"
               value={role}
-              onChange={(e) => setRole(e.target.value as 'member' | 'admin')}
+              onChange={(e) => setRole(e.target.value as Exclude<MemberRole, 'owner'>)}
+              aria-label="Role for the invite"
             >
-              {MEMBER_ROLES.map((r) => (
+              {(['member', 'guest', 'admin'] as const).map((r) => (
                 <option key={r} value={r}>
-                  {r}
+                  {MEMBER_ROLE_LABELS[r]}
                 </option>
               ))}
             </select>
@@ -143,7 +143,7 @@ export function MembersSection() {
                   <span className="min-w-0 flex-1 truncate">
                     {i.email ?? <span className="text-muted">Anyone with the link</span>}
                   </span>
-                  <span className="tag font-mono">{i.role}</span>
+                  <span className="tag font-mono">{MEMBER_ROLE_LABELS[i.role]}</span>
                   <span className="hidden font-mono text-[11px] text-index sm:block">
                     expires {shortDate(i.expiresAt)}
                   </span>
@@ -184,21 +184,22 @@ export function MembersSection() {
             <span className="hidden font-mono text-[11px] text-index md:block">
               joined {relativeTime(m.joinedAt)}
             </span>
-            {isAdmin ? (
+            {/* Admins manage roles; only owners can grant or take away ownership. */}
+            {isAdmin && (ws.isOwner || m.role !== 'owner') ? (
               <select
                 className="h-7 border border-border bg-bg px-2 text-[12px] outline-none focus:border-primary"
                 value={m.role}
                 onChange={(e) => setMemberRole.mutate({ userId: m.id, role: e.target.value })}
                 aria-label={`Role of ${m.name}`}
               >
-                {MEMBER_ROLES.map((r) => (
+                {MEMBER_ROLES.filter((r) => ws.isOwner || r !== 'owner').map((r) => (
                   <option key={r} value={r}>
-                    {r}
+                    {MEMBER_ROLE_LABELS[r]}
                   </option>
                 ))}
               </select>
             ) : (
-              <span className="tag font-mono">{m.role}</span>
+              <span className="tag font-mono">{MEMBER_ROLE_LABELS[m.role]}</span>
             )}
             {(isAdmin || m.id === ws.me.id) && (
               <button

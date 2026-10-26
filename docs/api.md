@@ -24,6 +24,13 @@ curl -H "Authorization: Bearer $KEY" $ORDO/auth/me
 
 The browser uses an `ordo_session` cookie instead (`POST /auth/login`).
 
+## Access
+
+Every workspace request is answered from the caller's point of view. Issues, comments, history, projects, cycles,
+labels, search results, notifications, progress counts and realtime events only cover teams the caller can see
+(see roles in the [user guide](user-guide.md#workspaces-members-and-roles)). Anything outside them returns **404**,
+the same as something that doesn't exist; actions the caller can see but isn't allowed to take return **403**.
+
 ## Errors
 
 ```json
@@ -63,30 +70,32 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 
 ### Workspace
 
-| Method     | Path               |                                                                                                                |
-| ---------- | ------------------ | -------------------------------------------------------------------------------------------------------------- |
-| GET        | `/bootstrap`       | Workspace, your role, members, teams (with statuses), labels, projects, cycles, views, favorites, unread count |
-| PATCH      | `/`                | _Admin._ `{ name?, slug? }`                                                                                    |
-| PATCH      | `/members/:userId` | _Admin._ `{ role: "admin" \| "member" }`                                                                       |
-| DELETE     | `/members/:userId` | _Admin_, or yourself to leave                                                                                  |
-| GET / POST | `/invites`         | _Admin._ List / create `{ email?, role?, expiresInDays? }`                                                     |
-| DELETE     | `/invites/:id`     | _Admin._ Revoke                                                                                                |
-| POST       | `/favorites`       | `{ kind: "project" \| "view" \| "team" \| "issue" \| "cycle", targetId }`                                      |
-| DELETE     | `/favorites/:id`   |                                                                                                                |
+| Method     | Path                        |                                                                                                                |
+| ---------- | --------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| GET        | `/bootstrap`                | Workspace, your role, members, teams (with statuses), labels, projects, cycles, views, favorites, unread count |
+| PATCH      | `/`                         | _Admin._ `{ name?, slug? }`                                                                                    |
+| PATCH      | `/members/:userId`          | _Admin._ `{ role: "owner" \| "admin" \| "member" \| "guest" }` — only owners grant or change ownership         |
+| DELETE     | `/members/:userId`          | _Admin_, or yourself to leave                                                                                  |
+| GET / POST | `/invites`                  | _Admin._ List / create `{ email?, role?, expiresInDays? }`                                                     |
+| DELETE     | `/invites/:id`              | _Admin._ Revoke                                                                                                |
+| GET        | `/audit-log?before=&limit=` | _Admin._ Recent security-relevant actions in this workspace                                                    |
+| POST       | `/favorites`                | `{ kind: "project" \| "view" \| "team" \| "issue" \| "cycle", targetId }`                                      |
+| DELETE     | `/favorites/:id`            |                                                                                                                |
 
 ### Teams & workflow
 
-| Method | Path                           |                                                                                            |
-| ------ | ------------------------------ | ------------------------------------------------------------------------------------------ |
-| GET    | `/teams`                       |                                                                                            |
-| POST   | `/teams`                       | `{ name, key, description?, color? }` — creates the default workflow                       |
-| PATCH  | `/teams/:id`                   | `{ name?, key?, color?, estimateScale?, triageEnabled?, cyclesEnabled?, defaultStateId? }` |
-| DELETE | `/teams/:id`                   | _Admin._ Deletes the team **and its issues**                                               |
-| POST   | `/teams/:id/members`           | Join (or `{ userId }` to add someone)                                                      |
-| DELETE | `/teams/:id/members/:userId`   | Leave / remove                                                                             |
-| POST   | `/teams/:id/states`            | `{ name, type, color, description? }`                                                      |
-| PATCH  | `/states/:id`                  | `{ name?, color?, description?, position? }`                                               |
-| DELETE | `/states/:id?moveTo=<stateId>` | Issues move to `moveTo` or another status of the same type                                 |
+| Method | Path                           |                                                                                                                    |
+| ------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/teams`                       |                                                                                                                    |
+| POST   | `/teams`                       | `{ name, key, description?, color?, private? }` — creates the default workflow; you become its team admin          |
+| PATCH  | `/teams/:id`                   | _Team admin._ `{ name?, key?, color?, private?, estimateScale?, triageEnabled?, cyclesEnabled?, defaultStateId? }` |
+| DELETE | `/teams/:id`                   | _Admin._ Deletes the team **and its issues**                                                                       |
+| POST   | `/teams/:id/members`           | `{ userId?, role? }` — join a public team yourself, or (team admin) add someone; `role` is `member` or `admin`     |
+| PATCH  | `/teams/:id/members/:userId`   | _Team admin._ `{ role }`                                                                                           |
+| DELETE | `/teams/:id/members/:userId`   | Leave, or (team admin) remove someone                                                                              |
+| POST   | `/teams/:id/states`            | `{ name, type, color, description? }`                                                                              |
+| PATCH  | `/states/:id`                  | `{ name?, color?, description?, position? }`                                                                       |
+| DELETE | `/states/:id?moveTo=<stateId>` | Issues move to `moveTo` or another status of the same type                                                         |
 
 ### Issues
 

@@ -78,7 +78,7 @@ export function ViewPage() {
     success: 'View deleted',
   });
   if (!view) return <EmptyState title="view not found" />;
-  const canEdit = view.ownerId === ws.me.id || ws.role === 'admin';
+  const canEdit = view.ownerId === ws.me.id || ws.isAdmin;
   return (
     <>
       <IssuesView

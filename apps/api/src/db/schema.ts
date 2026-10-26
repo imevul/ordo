@@ -11,6 +11,7 @@ import type {
   ProjectStatus,
   RelationType,
   StateType,
+  TeamRole,
   UserKind,
 } from '@ordo/shared';
 import { sql } from 'drizzle-orm';
@@ -149,6 +150,8 @@ export const teams = pgTable(
     cycleCounter: integer('cycle_counter').notNull().default(0),
     estimateScale: text('estimate_scale').$type<EstimateScale>().notNull().default('fibonacci'),
     triageEnabled: boolean('triage_enabled').notNull().default(false),
+    /** Private teams are visible only to their members and workspace admins. */
+    private: boolean('private').notNull().default(false),
     cyclesEnabled: boolean('cycles_enabled').notNull().default(true),
     defaultStateId: uuid('default_state_id'),
     createdAt: createdAt(),
@@ -165,8 +168,13 @@ export const teamMembers = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /** Team admins manage the team's settings, workflow and membership. */
+    role: text('role').$type<TeamRole>().notNull().default('member'),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.userId] })],
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.userId] }),
+    index('team_members_user_idx').on(t.userId),
+  ],
 );
 
 export const workflowStates = pgTable(
