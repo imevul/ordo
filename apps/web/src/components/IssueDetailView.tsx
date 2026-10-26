@@ -152,7 +152,7 @@ export function IssueDetailView({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const patch = (p: UpdateIssueInput) => update.mutate({ id: issue.id, patch: p });
   const team = ws.teamById.get(issue.teamId)!;
-  const creator = ws.memberById.get(issue.creatorId);
+  const creator = issue.creatorId ? ws.memberById.get(issue.creatorId) : undefined;
   const subscribed = issue.subscriberIds.includes(ws.me.id);
   const p = { slug: ws.slug };
 

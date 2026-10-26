@@ -85,7 +85,9 @@ describe('auth & workspaces', () => {
   });
 
   it('enforces invite-only signups', async () => {
-    const closed = await (await import('./helpers.ts')).testApp({ signupMode: 'invite' });
+    const closed = await (await import('./helpers.ts')).testApp({
+      settingsFromEnv: { signupMode: 'invite' },
+    });
     const res = await closed.inject({
       method: 'POST',
       url: '/api/auth/signup',

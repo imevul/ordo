@@ -1,4 +1,5 @@
 import {
+  type AuditEntry,
   type Bootstrap,
   createFavoriteSchema,
   createInviteSchema,
@@ -6,10 +7,11 @@ import {
   updateMemberSchema,
   updateWorkspaceSchema,
 } from '@ordo/shared';
-import { and, asc, count, eq, gt, isNull, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, isNull, lt, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import {
+  auditLog,
   favorites,
   invites,
   labels,
@@ -22,7 +24,8 @@ import {
 import { requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { randomToken } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, isUniqueViolation, parse } from '../lib/errors.ts';
-import { mutate } from '../lib/mutate.ts';
+import { mutate, requestMeta } from '../lib/mutate.ts';
+import { audit, auditCtx } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { listCycles } from '../services/cycles.ts';
 import { listProjects } from '../services/projects.ts';
@@ -112,6 +115,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
           .where(eq(workspaces.id, ctx.workspaceId))
           .returning();
         emit(ctx, { kind: 'workspace', action: 'updated', id: ctx.workspaceId });
+        await auditCtx(ctx, {
+          action: 'workspace.updated',
+          targetType: 'workspace',
+          targetId: ctx.workspaceId,
+          data: input,
+        });
         return ws;
       });
     } catch (err) {
@@ -136,6 +145,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
           ),
         );
       emit(ctx, { kind: 'member', action: 'updated', id: userId });
+      await auditCtx(ctx, {
+        action: 'member.role_changed',
+        targetType: 'user',
+        targetId: userId,
+        data: { role },
+      });
       return { ok: true };
     });
   });
@@ -157,6 +172,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
           ),
         );
       emit(ctx, { kind: 'member', action: 'deleted', id: userId });
+      await auditCtx(ctx, {
+        action: 'member.removed',
+        targetType: 'user',
+        targetId: userId,
+        data: { self: userId === user.id },
+      });
       return { ok: true };
     });
   });
@@ -202,14 +223,56 @@ export async function workspaceRoutes(app: FastifyInstance) {
         expiresAt: new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString(),
       })
       .returning();
+    await audit(
+      db,
+      {
+        action: 'invite.created',
+        workspaceId: ws.id,
+        actorId: user.id,
+        targetType: 'invite',
+        targetId: row!.id,
+        data: { email: row!.email, role: row!.role },
+      },
+      requestMeta(req),
+    );
     return toInvite(row!);
   });
 
   app.delete('/invites/:id', async (req) => {
     const ws = requireAdmin(req);
     const { id } = req.params as { id: string };
-    await db.delete(invites).where(and(eq(invites.id, id), eq(invites.workspaceId, ws.id)));
+    const [removed] = await db
+      .delete(invites)
+      .where(and(eq(invites.id, id), eq(invites.workspaceId, ws.id)))
+      .returning({ id: invites.id });
+    if (removed) {
+      await audit(
+        db,
+        {
+          action: 'invite.revoked',
+          workspaceId: ws.id,
+          actorId: req.user!.id,
+          targetType: 'invite',
+          targetId: id,
+        },
+        requestMeta(req),
+      );
+    }
     return { ok: true };
+  });
+
+  app.get('/audit-log', async (req): Promise<AuditEntry[]> => {
+    const ws = requireAdmin(req);
+    const { before, limit } = req.query as { before?: string; limit?: string };
+    const rows = await db
+      .select()
+      .from(auditLog)
+      .where(
+        and(eq(auditLog.workspaceId, ws.id), before ? lt(auditLog.createdAt, before) : undefined),
+      )
+      .orderBy(desc(auditLog.createdAt))
+      .limit(Math.min(Number(limit) || 100, 500));
+    return rows.map(({ userAgent: _ua, ...r }) => r);
   });
 
   app.post('/favorites', async (req) => {

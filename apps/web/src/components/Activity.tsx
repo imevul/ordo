@@ -161,7 +161,7 @@ function CommentItem({
   issueId: string;
 }) {
   const ws = useWorkspace();
-  const author = ws.memberById.get(comment.authorId);
+  const author = comment.authorId ? ws.memberById.get(comment.authorId) : undefined;
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(comment.body);
   const [replying, setReplying] = useState(false);

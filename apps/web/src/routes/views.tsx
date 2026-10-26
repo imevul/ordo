@@ -32,7 +32,7 @@ export function ViewsPage() {
           />
         ) : (
           ws.views.map((v) => {
-            const owner = ws.memberById.get(v.ownerId);
+            const owner = v.ownerId ? ws.memberById.get(v.ownerId) : undefined;
             const team = v.teamId ? ws.teamById.get(v.teamId) : null;
             return (
               <Link

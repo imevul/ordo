@@ -1,4 +1,5 @@
 import type {
+  AuditAction,
   EstimateScale,
   FavoriteKind,
   HistoryChange,
@@ -10,6 +11,7 @@ import type {
   ProjectStatus,
   RelationType,
   StateType,
+  UserKind,
 } from '@ordo/shared';
 import { sql } from 'drizzle-orm';
 import {
@@ -49,8 +51,14 @@ export const users = pgTable('users', {
   email: text('email').notNull().unique(),
   name: text('name').notNull(),
   username: text('username').notNull().unique(),
-  passwordHash: text('password_hash').notNull(),
+  /** Null for accounts that only sign in through SSO, and for bot/placeholder users. */
+  passwordHash: text('password_hash'),
   avatarColor: text('avatar_color').notNull().default('#ff1493'),
+  /** human: a person; bot: acts for an integration; placeholder: an unmapped imported person. Only humans log in. */
+  kind: text('kind').$type<UserKind>().notNull().default('human'),
+  isInstanceAdmin: boolean('is_instance_admin').notNull().default(false),
+  emailVerifiedAt: ts('email_verified_at'),
+  disabledAt: ts('disabled_at'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -65,6 +73,11 @@ export const sessions = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     expiresAt: ts('expires_at').notNull(),
     userAgent: text('user_agent'),
+    ip: text('ip'),
+    lastSeenAt: ts('last_seen_at'),
+    /** Set when the session came from an organisation's SSO provider (see Phase 5). */
+    authProviderId: uuid('auth_provider_id'),
+    ssoExpiresAt: ts('sso_expires_at'),
     createdAt: createdAt(),
   },
   (t) => [index('sessions_user_idx').on(t.userId)],
@@ -230,9 +243,7 @@ export const projectUpdates = pgTable(
     projectId: uuid('project_id')
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
-    authorId: uuid('author_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
     body: text('body').notNull(),
     health: text('health').$type<ProjectHealth>().notNull(),
     createdAt: createdAt(),
@@ -275,9 +286,7 @@ export const issues = pgTable(
       .references(() => workflowStates.id),
     priority: integer('priority').notNull().default(0),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
-    creatorId: uuid('creator_id')
-      .notNull()
-      .references(() => users.id),
+    creatorId: uuid('creator_id').references(() => users.id, { onDelete: 'set null' }),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
     cycleId: uuid('cycle_id').references(() => cycles.id, { onDelete: 'set null' }),
     parentId: uuid('parent_id'),
@@ -375,9 +384,7 @@ export const comments = pgTable(
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issues.id, { onDelete: 'cascade' }),
-    authorId: uuid('author_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    authorId: uuid('author_id').references(() => users.id, { onDelete: 'set null' }),
     parentId: uuid('parent_id'),
     body: text('body').notNull(),
     createdAt: createdAt(),
@@ -415,9 +422,7 @@ export const views = pgTable(
     workspaceId: uuid('workspace_id')
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
-    ownerId: uuid('owner_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
     teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     description: text('description'),
@@ -447,3 +452,33 @@ export const favorites = pgTable(
   },
   (t) => [uniqueIndex('favorites_unique_idx').on(t.userId, t.workspaceId, t.kind, t.targetId)],
 );
+
+/** Security-relevant actions, written in the same transaction as the change they record. */
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: pk(),
+    /** Null for instance-level events (sign-in, instance settings…). */
+    workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    action: text('action').$type<AuditAction>().notNull(),
+    targetType: text('target_type'),
+    targetId: text('target_id'),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    ip: text('ip'),
+    userAgent: text('user_agent'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('audit_log_workspace_idx').on(t.workspaceId, t.createdAt),
+    index('audit_log_actor_idx').on(t.actorId, t.createdAt),
+  ],
+);
+
+/** Instance-wide settings managed by instance admins; environment variables take precedence. */
+export const instanceSettings = pgTable('instance_settings', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').$type<unknown>().notNull(),
+  updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: updatedAt(),
+});

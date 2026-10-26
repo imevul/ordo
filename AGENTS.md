@@ -35,6 +35,7 @@ pnpm lint / pnpm format     # Biome
 pnpm db:generate            # after editing apps/api/src/db/schema.ts → new file in apps/api/drizzle/
 pnpm db:seed                # demo workspace "demo", login demo@ordo.test / ordo-demo-password
 pnpm build                  # web → apps/web/dist, API → apps/api/dist/server.mjs (+ seed.mjs)
+make check-bundle           # boots the built API with no node_modules (CI runs this too)
 ```
 
 Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
@@ -47,13 +48,26 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
 - **Every workspace route is tenant-scoped.** Routes under `/api/w/:ws` get `req.workspace` from a preHandler
   that checks membership. Every query must filter by `workspaceId` (directly or via a join). Use
   `requireAdmin(req)` for admin-only actions.
-- **Mutations go through `mutate(app, req, async (ctx) => …)`.** It opens a transaction, gives you a `Ctx`
-  (`tx`, `userId`, `workspaceId`, `events`) and publishes realtime events after commit. Call
-  `emit(ctx, { kind, action, id, teamId? })` for anything clients should refetch.
+- **Mutations go through `mutate(app, req, async (ctx) => …)`**, or `runInWorkspace(app, opts, fn)` when there is
+  no request (jobs, webhooks, imports). Both open a transaction and give you a `Ctx` (`tx`, `userId`,
+  `workspaceId`, `events`, `source`, `silent`, `meta`), then publish realtime events after commit. Call
+  `emit(ctx, { kind, action, id, teamId? })` for anything clients should refetch. `source` says who caused the
+  change (`web`, `api`, `system`, `import`, `integration:<id>`); `silent` suppresses notifications.
+- **Audit security-relevant actions** with `audit(tx, entry, meta)` / `auditCtx(ctx, entry)`
+  (`services/audit.ts`) in the same transaction as the change. Add new action names to `AUDIT_ACTIONS` in shared.
+- **Secrets at rest** (tokens, client secrets) are encrypted with `app.keyring.encrypt(value, 'table:id:column')`.
+  Never store them in plain text and never return them from the API.
+- **Outbound requests to URLs a user typed** must use `safeFetch` (`lib/safeFetch.ts`) with
+  `allowPrivate: app.settings.get('allowPrivateNetworkTargets')`. Plain `fetch` is only for fixed, well-known hosts.
+- **Instance settings** come from `app.settings.get(key)` (env → DB → default), never from `app.env` directly.
+- **Only enabled humans authenticate.** `users.kind` is `human | bot | placeholder`; `disabled_at` blocks sign-in and
+  kills sessions. Authors and creators are nullable (deleted users).
 - **Issue changes go through `services/issues.ts`** (`createIssue`, `updateIssue`, `trashIssue`). They handle
   numbering, state timestamps, history, subscriptions and notifications. Do not update the `issues` table
   directly from routes.
-- **Schema changes:** edit `schema.ts`, run `pnpm db:generate --name <what>`, commit the generated SQL.
+- **Schema changes:** edit `schema.ts`, run `pnpm db:generate --name <what>`, commit the generated SQL. Data
+  backfills go in a separate `pnpm exec drizzle-kit generate --custom --name <what>` file, with a test in
+  `test/migrations.test.ts`.
   Migrations run automatically on boot. Only `import type` from `@ordo/shared` inside `schema.ts`.
 - **Timestamps** are ISO-8601 strings everywhere (custom `timestamptz` column type). Calendar dates
   (`dueDate`, cycle dates) are `YYYY-MM-DD` strings.

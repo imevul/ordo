@@ -5,8 +5,8 @@ DEV_COMPOSE  ?= docker compose -f docker-compose.dev.yml
 BACKUP_DIR   ?= backups
 
 .DEFAULT_GOAL := help
-.PHONY: help up down restart update logs ps status seed backup restore psql \
-        dev dev-db dev-down install build test typecheck lint format db-generate clean
+.PHONY: help up down restart update logs ps status seed backup restore psql ensure-secret \
+        dev dev-db dev-down install build test typecheck lint format db-generate check-bundle clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\n\033[1mOrdo\033[0m — make <target>\n\n"} \
@@ -22,7 +22,19 @@ help: ## Show this help
 		sed -i.bak "s/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=$$pw/" .env && rm -f .env.bak
 	@echo "Created .env with a random database password — review it before going public."
 
-up: .env ## Build and start Ordo in the background
+# Adds ORDO_SECRET_KEY to .env when missing (new installs, and installs older than v0.2).
+ensure-secret: .env
+	@grep -qE '^ORDO_SECRET_KEY=.+' .env || { \
+		key=$$(head -c 32 /dev/urandom | base64 | tr -d '\n'); \
+		if grep -q '^ORDO_SECRET_KEY=' .env; then \
+			sed -i.bak "s|^ORDO_SECRET_KEY=.*|ORDO_SECRET_KEY=$$key|" .env && rm -f .env.bak; \
+		else \
+			printf '\n# Encrypts stored secrets (SSO, integrations). Back it up together with your database.\nORDO_SECRET_KEY=%s\n' "$$key" >> .env; \
+		fi; \
+		echo "Added ORDO_SECRET_KEY to .env — keep a copy with your backups."; \
+	}
+
+up: .env ensure-secret ## Build and start Ordo in the background
 	$(COMPOSE) up -d --build --wait
 	@. ./.env; echo; echo "  Ordo is up → $${ORDO_PUBLIC_URL:-http://localhost:3000}"; echo
 
@@ -33,7 +45,7 @@ restart: ## Restart the running containers
 	$(COMPOSE) restart
 	@$(COMPOSE) ps
 
-update: .env ## Pull the latest code, rebuild and restart (migrations run on boot)
+update: .env ensure-secret ## Pull the latest code, rebuild and restart (migrations run on boot)
 	@if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git remote | grep -q .; then \
 		git pull --ff-only; \
 	else \
@@ -101,6 +113,9 @@ format: ## Apply formatting and safe lint fixes
 
 db-generate: ## Generate a migration after editing apps/api/src/db/schema.ts
 	pnpm db:generate
+
+check-bundle: dev-db ## Build, then boot the API bundle without node_modules
+	./scripts/check-bundle.sh
 
 clean: ## Remove build output
 	rm -rf apps/*/dist

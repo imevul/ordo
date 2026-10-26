@@ -34,63 +34,76 @@ we are. ✅ shipped · 🟡 partial · ⬜ planned. Items within a milestone are
 - ✅ Docker Compose deployment, `make up|down|restart|update|backup|restore`, auto-migrations, demo seed
 - ✅ Hotline Pink design system UI, mobile-friendly navigation
 
-## v0.2 — Daily-driver polish
+## v0.2 → v1.0, in order
 
-- ⬜ Rich text editor for descriptions/comments (Tiptap/ProseMirror) with slash commands and paste-to-link
-- ⬜ File attachments and images (local disk or S3-compatible storage)
-- ⬜ Email notifications + digest (SMTP), per-user notification preferences
-- ⬜ Snooze notifications, "remind me", inbox filters
-- ⬜ Comment reactions (emoji)
-- ⬜ Issue templates per team
-- ⬜ Postgres full-text search (tsvector + ranking), search filters
-- ⬜ Pagination / virtualized lists for very large teams
-- ⬜ Light theme (Hotline Pink is dark-only today)
-- ⬜ Cycle automation: auto-create upcoming cycles, roll over unfinished issues
-- ⬜ Auto-archive completed issues after N months; archive view
-- ⬜ Customer-facing "copy issue as markdown"
-- ⬜ Profile pictures
+Each phase ships on its own. The detailed design lives in the planning notes behind each phase; this is the summary.
 
-## v0.3 — Planning
+### Phase 1 — Foundations ✅
 
-- ⬜ Project milestones
-- ⬜ Initiatives (groups of projects) and roadmap/timeline view
-- ⬜ Cycle burn-up / burndown charts; team insights (throughput, cycle time, lead time)
-- ⬜ SLA rules and due-date reminders
-- ⬜ Recurring issues
-- ⬜ Project documents
-- ⬜ Team-level and project-level views; view folders
-- ⬜ Custom fields? (decide whether they're worth it)
+- ✅ Secret keyring (`ORDO_SECRET_KEY`, rotation via `ORDO_SECRET_KEY_PREVIOUS`) for secrets at rest
+- ✅ `runInWorkspace` contexts with actor source and silent mode, for jobs, webhooks and imports
+- ✅ Account kinds (human, bot, placeholder), disabled accounts, instance admin (first user), SSO-ready sessions
+- ✅ Audit log of security-relevant actions; workspace audit-log API
+- ✅ Instance settings (env → database → default), changeable without restart
+- ✅ Hardened outbound fetch (no private/loopback targets unless allowed, rebinding-safe)
+- ✅ Cross-site write protection; deleting users keeps their issues and comments
+- ✅ Bundle check and CI workflow
 
-## v0.4 — Integrations & automation
+### Phase 2 — Access control
 
-- ⬜ Outgoing webhooks with signed payloads, retries and a delivery log
-- ⬜ GitHub / GitLab / Forgejo: link branches and PRs, auto-move status on open/merge (magic words)
-- ⬜ Slack / Discord / Matrix notifications; create issues from messages
-- ⬜ Workflow automations (on status change, on label, on PR merge…)
-- ⬜ Importers: Linear (API/CSV), Jira, GitHub Issues, Trello, CSV
-- ⬜ Export (CSV / JSON), full workspace export
-- ⬜ GraphQL API and a typed TypeScript SDK
-- ⬜ CLI (`ordo issue create …`)
-- ⬜ MCP server for AI assistants
-- ⬜ Asks / intake forms and a public issue intake email address
+- ⬜ Roles: owner, admin, member, guest; team admins
+- ⬜ Private teams; guests see only their teams
+- ⬜ Access enforced on every read and write path, progress counts, search, notifications and realtime events
 
-## v0.5 — Teams at scale
+### Phase 3 — Jobs, email, storage, account area
 
-- ⬜ SSO: OIDC (Authentik, Keycloak, Google, GitHub), SAML
-- ⬜ SCIM provisioning
-- ⬜ Guests and private teams; granular permissions
-- ⬜ Audit log
-- ⬜ Two-factor authentication (TOTP, passkeys)
-- ⬜ Sub-teams
-- ⬜ Rate limiting per API key; API usage page
+- ⬜ Postgres job queue with retries, ordering, schedules and leases
+- ⬜ SMTP email: invites, password reset, verification, notification digests
+- ⬜ File storage (local volume or S3-compatible)
+- ⬜ Account area: avatar, email change, password reset, sessions, TOTP 2FA, notification preferences, connected accounts
 
-## Later / exploring
+### Phase 4 — Organisation settings, invites, instance admin
 
-- ⬜ Offline-first sync engine (local IndexedDB store + delta sync)
-- ⬜ Desktop app (Tauri) and mobile apps / PWA with push notifications
-- ⬜ AI features (triage suggestions, duplicate detection, summaries) using a configurable model provider
-- ⬜ Helm chart, prebuilt multi-arch images on a registry, one-click installers
-- ⬜ i18n
+- ⬜ Org settings: general, members, security, audit log, danger zone
+- ⬜ Emailed and bulk invites into teams, guest invites, verified-domain auto-join
+- ⬜ Instance admin: users, organisations, settings, health; recovery CLI
+
+### Phase 5 — Per-organisation OIDC SSO
+
+- ⬜ Providers per organisation, verified domains, email-first login, just-in-time accounts
+- ⬜ Require SSO with owner fallback, group → role mapping
+
+### Phase 6 — Events and integration framework
+
+- ⬜ Transactional event outbox
+- ⬜ Signed outgoing webhooks with delivery log
+- ⬜ Integration framework: inbound webhooks, polling, long-lived connectors; issue links (PRs, branches, messages)
+
+### Phase 7 — Git forges
+
+- ⬜ GitHub (App or token), GitLab, Forgejo/Gitea: link branches, commits and PRs; magic words; status automation
+
+### Phase 8 — Chat
+
+- ⬜ Slack, Discord, Matrix, Telegram: channel subscriptions, personal notifications, create issues from messages,
+  link unfurls; works behind NAT
+
+### Phase 9 — Importers and export
+
+- ⬜ Jira, Linear, GitHub Issues, CSV importers with mapping and dry run
+- ⬜ Workspace export (JSON, CSV)
+
+### Phase 10 — Product depth
+
+- ⬜ Rich text editor and attachments; comment reactions; issue templates
+- ⬜ Full-text search; pagination for very large teams
+- ⬜ Cycle automation; auto-archive
+- ⬜ Project milestones; initiatives and roadmap timeline; insights and charts
+- ⬜ SLAs, recurring issues, triage rules; customer requests and intake by email
+- ⬜ Project documents; notification snooze
+- ⬜ PWA and push; light theme; i18n
+- ⬜ GraphQL API, TypeScript SDK, CLI, MCP server; optional AI assistance
+- ⬜ Later: passkeys, SCIM, SAML, offline-first sync, desktop app, Helm chart and prebuilt images
 
 ## Known limitations
 

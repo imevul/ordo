@@ -82,6 +82,15 @@ Notable choices:
 
 ## Security
 
+- Stored secrets: AES-256-GCM via `Keyring` (`lib/secrets.ts`), keyed by `ORDO_SECRET_KEY` through HKDF subkeys,
+  bound to their row and column with associated data; `ORDO_SECRET_KEY_PREVIOUS` supports rotation.
+- Audit log: `audit_log` rows written in the same transaction as the change (`services/audit.ts`).
+- Outbound requests to admin-supplied URLs go through `safeFetch`, which checks every redirect and validates the
+  resolved address at connect time (no DNS rebinding) against loopback/private/link-local ranges.
+- Cross-site writes: besides `SameSite=Lax` cookies and JSON-only bodies, state-changing cookie requests with
+  `Sec-Fetch-Site: cross-site` or a foreign `Origin` are rejected (`rejectCrossSite` in `app.ts`).
+- Instance settings (`services/settings.ts`): env → `instance_settings` table → default, cached per instance and
+  reloaded on `NOTIFY ordo_settings`.
 - Passwords: Node's built-in scrypt (N=2¹⁵, r=8, p=1) — no native modules.
 - Sessions: 32 random bytes in an `HttpOnly`, `SameSite=Lax` cookie; stored as SHA-256; 30-day sliding expiry.
 - API keys: `ordo_` + 24 random bytes, stored as SHA-256, shown once.

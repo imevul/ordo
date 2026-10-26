@@ -5,19 +5,37 @@ repository root (created from `.env.example` by `make up`).
 
 ## Compose variables (`.env`)
 
-| Variable                        | Default                 | Description                                                                                                                                                       |
-| ------------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ORDO_PORT`                     | `3000`                  | Host port Ordo is published on.                                                                                                                                   |
-| `ORDO_BIND`                     | `0.0.0.0`               | Host interface to bind. Use `127.0.0.1` when a reverse proxy runs on the same host.                                                                               |
-| `ORDO_PUBLIC_URL`               | `http://localhost:3000` | The URL people use to reach Ordo. Used for invite links. An `https://` URL turns on `Secure` cookies.                                                             |
-| `ORDO_SIGNUP_MODE`              | `invite`                | `invite`: only people with an invite link can create accounts (the very first user always can). `open`: anyone who can reach the instance can sign up.            |
-| `ORDO_ALLOW_WORKSPACE_CREATION` | `true`                  | Whether signed-in users who already belong to a workspace may create more. Users without a workspace can always create their first one.                           |
-| `POSTGRES_USER`                 | `ordo`                  | Database user for the bundled Postgres.                                                                                                                           |
-| `POSTGRES_PASSWORD`             | random                  | Database password. `make up` generates one if `.env` doesn't exist. **Required.**                                                                                 |
-| `POSTGRES_DB`                   | `ordo`                  | Database name.                                                                                                                                                    |
-| `ORDO_TRUST_PROXY`              | `true`                  | Trust `X-Forwarded-*` headers for the client IP (used by rate limits). Set `false` when Ordo is exposed without a reverse proxy, so clients can't spoof their IP. |
-| `LOG_LEVEL`                     | `info`                  | `fatal`, `error`, `warn`, `info`, `debug` or `trace`.                                                                                                             |
-| `ORDO_VERSION`                  | `latest`                | Tag used for the locally built image.                                                                                                                             |
+| Variable                   | Default                 | Description                                                                                                                                                                                     |
+| -------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ORDO_PORT`                | `3000`                  | Host port Ordo is published on.                                                                                                                                                                 |
+| `ORDO_BIND`                | `0.0.0.0`               | Host interface to bind. Use `127.0.0.1` when a reverse proxy runs on the same host.                                                                                                             |
+| `ORDO_PUBLIC_URL`          | `http://localhost:3000` | The URL people use to reach Ordo. Used for invite links. An `https://` URL turns on `Secure` cookies.                                                                                           |
+| `ORDO_SECRET_KEY`          | generated               | Encrypts secrets Ordo stores (SSO client secrets, integration tokens). `make up` / `make update` generate it. **Back it up with your database**: without it, stored secrets can't be decrypted. |
+| `ORDO_SECRET_KEY_PREVIOUS` | empty                   | During a key rotation, the old key; values encrypted with it still decrypt.                                                                                                                     |
+| `POSTGRES_USER`            | `ordo`                  | Database user for the bundled Postgres.                                                                                                                                                         |
+| `POSTGRES_PASSWORD`        | random                  | Database password. `make up` generates one if `.env` doesn't exist. **Required.**                                                                                                               |
+| `POSTGRES_DB`              | `ordo`                  | Database name.                                                                                                                                                                                  |
+| `ORDO_TRUST_PROXY`         | `true`                  | Trust `X-Forwarded-*` headers for the client IP (used by rate limits). Set `false` when Ordo is exposed without a reverse proxy, so clients can't spoof their IP.                               |
+| `LOG_LEVEL`                | `info`                  | `fatal`, `error`, `warn`, `info`, `debug` or `trace`.                                                                                                                                           |
+| `ORDO_VERSION`             | `latest`                | Tag used for the locally built image.                                                                                                                                                           |
+
+## Instance settings
+
+These can be changed by an instance admin in the app. Leave the variable empty to manage a setting there;
+setting it pins the value and shows it as locked in the UI. Precedence: environment → stored value → default.
+
+| Variable                             | Default  | Description                                                                                                                                                                                                        |
+| ------------------------------------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ORDO_SIGNUP_MODE`                   | `invite` | `invite`: only people with an invite link can create accounts (the very first user always can, and becomes the instance admin). `open`: anyone who can reach the instance can sign up.                             |
+| `ORDO_ALLOW_WORKSPACE_CREATION`      | `true`   | Whether signed-in users who already belong to a workspace may create more. Users without a workspace can always create their first one.                                                                            |
+| `ORDO_ALLOW_PRIVATE_NETWORK_TARGETS` | `false`  | Let outbound requests Ordo makes on an admin's behalf (SSO discovery, webhooks, forge and chat integrations) reach loopback, private and link-local addresses. Turn on when your IdP or Forgejo lives on your LAN. |
+
+## Key rotation
+
+1. Move the current value of `ORDO_SECRET_KEY` to `ORDO_SECRET_KEY_PREVIOUS`.
+2. Put a new key in `ORDO_SECRET_KEY` (`head -c 32 /dev/urandom | base64`).
+3. `make restart`. Existing secrets keep working through the previous key; they are re-encrypted with the new key
+   as they're saved again.
 
 ## Application variables
 

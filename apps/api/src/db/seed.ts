@@ -81,7 +81,9 @@ async function main() {
 
   await db.transaction(async (tx) => {
     const ids: string[] = [];
-    for (const p of PEOPLE) {
+    // On an empty instance the demo admin also administers the instance.
+    const emptyInstance = (await tx.select({ id: users.id }).from(users).limit(1)).length === 0;
+    for (const [i, p] of PEOPLE.entries()) {
       const [found] = await tx.select({ id: users.id }).from(users).where(eq(users.email, p.email));
       if (found) {
         ids.push(found.id);
@@ -95,6 +97,7 @@ async function main() {
           username: p.email.split('@')[0]!,
           passwordHash: await hashPassword(PASSWORD),
           avatarColor: p.color,
+          isInstanceAdmin: emptyInstance && i === 0,
         })
         .returning({ id: users.id });
       ids.push(u!.id);
@@ -111,7 +114,15 @@ async function main() {
     );
 
     const events: RealtimeEvent[] = [];
-    const ctx = (userId: string): Ctx => ({ tx, userId, workspaceId: ws!.id, events });
+    const ctx = (userId: string): Ctx => ({
+      tx,
+      userId,
+      workspaceId: ws!.id,
+      events,
+      source: 'system',
+      silent: false,
+      meta: null,
+    });
 
     const eng = await createTeam(ctx(admin), { name: 'Engineering', key: 'ENG', color: '#ff1493' });
     const des = await createTeam(ctx(ada), { name: 'Design', key: 'DES', color: '#2de2e6' });
