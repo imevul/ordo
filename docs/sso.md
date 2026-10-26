@@ -5,7 +5,7 @@ Authelia, Zitadel, Microsoft Entra ID, Google Workspace, Okta, Dex, GitLab, Forg
 
 ## Before you start
 
-1. **Verify your email domain** under **Settings → Security → Domains** (a DNS TXT record, or ask an instance admin to
+1. **Verify your email domain** under **Settings → Access → Domains** (a DNS TXT record, or ask an instance admin to
    approve it). SSO only creates accounts, or matches existing ones by email, for _verified_ addresses at _verified_
    domains. This stops a misconfigured provider from signing in as someone else.
 2. Make sure `ORDO_PUBLIC_URL` is the address people use, and `ORDO_SECRET_KEY` is set (`make up` does this).
@@ -50,7 +50,7 @@ of being matched automatically.
   account (or matches the existing one with that address) and adds it to the workspace with the provider's default
   role (member or guest).
 - **Anyone else** (other domains, unverified addresses, existing accounts with a different address) links the identity
-  themselves: sign in as usual, then **Settings → Security → Connected accounts → Connect**.
+  themselves: sign in as usual, then **Settings → Connected accounts → Connect**.
 - People can unlink identities, except their only way to sign in.
 
 ## Groups → roles

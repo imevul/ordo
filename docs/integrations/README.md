@@ -60,7 +60,7 @@ issues stay canceled. Closing a PR without merging changes nothing.
 
 ## Credit where it's due
 
-Everyone can add their forge usernames under **Settings → Security → Git usernames**. Pull requests they open then
+Everyone can add their forge usernames under **Settings → Connected accounts → Git usernames**. Pull requests they open then
 show as theirs. Claims aren't verified with the forge; each username can be claimed once per workspace.
 
 ## "Copy git branch name"

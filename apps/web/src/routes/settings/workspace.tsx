@@ -32,7 +32,7 @@ import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime, shortDate } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { FormRow, SettingsCard } from './index.tsx';
+import { FormRow, SettingsCard } from './ui.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
 

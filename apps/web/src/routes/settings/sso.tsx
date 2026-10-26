@@ -10,7 +10,7 @@ import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime } from '../../lib/format.ts';
 import { ssoStartUrl } from '../../lib/sso.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { FormRow, SettingsCard } from './index.tsx';
+import { FormRow, SettingsCard } from './ui.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
 const here = () => window.location.pathname;
