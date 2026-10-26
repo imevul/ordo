@@ -506,3 +506,9 @@ export const updateImportSchema = z.object({
 });
 
 export const mergePlaceholderSchema = z.object({ userId: id });
+
+/** Starts an import from another tracker's API (file sources are uploaded instead). */
+export const createApiImportSchema = z.object({
+  source: z.enum(['linear']),
+  apiKey: z.string().trim().min(10).max(500),
+});

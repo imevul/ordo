@@ -30,20 +30,27 @@ import { enqueue, type JobContext } from '../../lib/jobs/index.ts';
 import { runInWorkspace } from '../../lib/mutate.ts';
 import { usersWithTeamAccess } from '../access.ts';
 import { audit } from '../audit.ts';
+import { createComment } from '../comments.ts';
 import { type Ctx, emit, type RequestMeta } from '../context.ts';
+import { createCycle } from '../cycles.ts';
 import { createIssue, type ImportedIssueFields, setImportedParent } from '../issues.ts';
 import { createLabel } from '../labels.ts';
 import { upsertIssueLink } from '../links.ts';
 import { createPlaceholder } from '../placeholders.ts';
 import { createProject } from '../projects.ts';
+import { createRelation } from '../relations.ts';
 import { createTeam } from '../teams.ts';
 import { csvSource } from './csv.ts';
+import { linearSource } from './linear.ts';
 import {
   ImportAbort,
   type ImportAdapter,
+  ImportRetryLater,
   type ImportRow,
+  type SourceComment,
   type SourceContext,
   type SourceIssue,
+  type SourceRelation,
 } from './types.ts';
 
 /**
@@ -56,7 +63,7 @@ import {
  * create as PLANNED items (so sub-issue links can be checked), and removes them when it ends.
  */
 
-const ADAPTERS: Record<string, ImportAdapter> = { csv: csvSource };
+const ADAPTERS: Record<string, ImportAdapter> = { csv: csvSource, linear: linearSource };
 export const importAdapter = (source: string) => ADAPTERS[source];
 
 /** How long one job works before handing over to the next, well inside the job lease. */
@@ -65,7 +72,19 @@ export const importLimits = { timeBudgetMs: 30_000 };
 const MAX_LISTED = 200;
 const PLANNED = '00000000-0000-0000-0000-000000000000';
 
-type Phase = 'setup' | 'issues' | 'parents' | 'done';
+/** Kinds of things an import records under their source ids. */
+type ItemKind = (typeof importItems.$inferSelect)['kind'];
+
+type Phase = 'setup' | 'issues' | 'parents' | 'relations' | 'comments' | 'done';
+const PHASES: Phase[] = ['setup', 'issues', 'parents', 'relations', 'comments', 'done'];
+
+/** The phase after `phase`, skipping kinds of items the source doesn't have. */
+function nextPhase(adapter: ImportAdapter, phase: Phase): Phase {
+  const next = PHASES[PHASES.indexOf(phase) + 1]!;
+  if ((next === 'relations' && !adapter.relations) || (next === 'comments' && !adapter.comments))
+    return nextPhase(adapter, next);
+  return next;
+}
 
 interface Cursor {
   phase: Phase;
@@ -91,7 +110,16 @@ const newCursor = (): Cursor => ({
 
 const emptyReport = (dryRun: boolean): ImportReport => ({
   dryRun,
-  created: { teams: 0, people: 0, labels: 0, projects: 0, issues: 0, comments: 0 },
+  created: {
+    teams: 0,
+    people: 0,
+    labels: 0,
+    projects: 0,
+    cycles: 0,
+    issues: 0,
+    comments: 0,
+    relations: 0,
+  },
   existing: 0,
   skipped: [],
   skippedCount: 0,
@@ -438,6 +466,10 @@ export async function runAnalyze(
       })
       .where(and(eq(imports.id, row.id), eq(imports.status, 'analyzing')));
   } catch (err) {
+    if (err instanceof ImportRetryLater) {
+      await waitFor(app, row, err, 'import.analyze', { importId: row.id });
+      return;
+    }
     if (!(err instanceof ImportAbort) && job.attempt < job.maxAttempts) throw err;
     await app.db
       .update(imports)
@@ -474,6 +506,10 @@ export async function runImport(
     }
   } catch (err) {
     if (!row) throw err;
+    if (err instanceof ImportRetryLater) {
+      await waitFor(app, row, err, 'import.run', p);
+      return;
+    }
     if (!(err instanceof ImportAbort) && job.attempt < job.maxAttempts) {
       // Shown while it retries.
       await app.db
@@ -484,6 +520,23 @@ export async function runImport(
     }
     await fail(app, row, p.dryRun, err);
   }
+}
+
+/** Picks the work up again later, saying why in the meantime (the step's work was rolled back). */
+async function waitFor(
+  app: FastifyInstance,
+  row: ImportRow,
+  err: ImportRetryLater,
+  job: 'import.run' | 'import.analyze',
+  payload: object,
+) {
+  await app.db.update(imports).set({ error: err.message }).where(eq(imports.id, row.id));
+  await enqueue(app.db, job, payload, {
+    orderingKey: `import:${row.id}`,
+    runAt: err.at,
+    maxAttempts: 4,
+  });
+  publish(app, row);
 }
 
 async function fail(app: FastifyInstance, row: ImportRow, dryRun: boolean, err: unknown) {
@@ -520,7 +573,7 @@ interface RunState {
   report: ImportReport;
   data: WorkspaceData;
   /** What earlier steps created, by kind and source id. */
-  created: Record<'team' | 'user' | 'label' | 'project', Map<string, string>>;
+  created: Record<'team' | 'user' | 'label' | 'project' | 'cycle', Map<string, string>>;
   canAssign: Map<string, boolean>;
 }
 
@@ -530,9 +583,15 @@ async function step(app: FastifyInstance, row: ImportRow, dryRun: boolean, job: 
   const cursor = { ...newCursor(), ...(row.cursor as Partial<Cursor> | null) };
   // Fetch before the transaction: sources can be slow.
   const page =
-    cursor.phase === 'issues' || cursor.phase === 'parents'
+    cursor.phase === 'issues'
       ? await adapter.issues(sctx, cursor.page)
-      : null;
+      : cursor.phase === 'parents'
+        ? await (adapter.children ?? adapter.issues)(sctx, cursor.page)
+        : cursor.phase === 'relations'
+          ? await adapter.relations!(sctx, cursor.page)
+          : cursor.phase === 'comments'
+            ? await adapter.comments!(sctx, cursor.page)
+            : null;
 
   const items = await app.db
     .select()
@@ -540,7 +599,7 @@ async function step(app: FastifyInstance, row: ImportRow, dryRun: boolean, job: 
     .where(
       and(
         eq(importItems.importId, row.id),
-        inArray(importItems.kind, ['team', 'user', 'label', 'project']),
+        inArray(importItems.kind, ['team', 'user', 'label', 'project', 'cycle']),
       ),
     );
   const created: RunState['created'] = {
@@ -548,6 +607,7 @@ async function step(app: FastifyInstance, row: ImportRow, dryRun: boolean, job: 
     user: new Map(),
     label: new Map(),
     project: new Map(),
+    cycle: new Map(),
   };
   for (const i of items) created[i.kind as keyof typeof created].set(i.externalId, i.entityId);
 
@@ -567,18 +627,15 @@ async function step(app: FastifyInstance, row: ImportRow, dryRun: boolean, job: 
     app,
     { workspaceId: row.workspaceId, actorId: row.createdById!, source: 'import', silent: true },
     async (ctx) => {
-      if (cursor.phase === 'setup') {
-        await setup(ctx, st);
-        cursor.phase = 'issues';
-      } else if (cursor.phase === 'issues') {
-        await importIssues(ctx, st, page!.items);
-        cursor.page = page!.next;
-        if (!page!.next) Object.assign(cursor, { phase: 'parents', done: 0 });
-      } else if (cursor.phase === 'parents') {
-        await linkParents(ctx, st, page!.items);
-        cursor.page = page!.next;
-        if (!page!.next) cursor.phase = 'done';
-      }
+      if (cursor.phase === 'setup') await setup(ctx, st);
+      else if (cursor.phase === 'issues') await importIssues(ctx, st, page!.items as SourceIssue[]);
+      else if (cursor.phase === 'parents') await linkParents(ctx, st, page!.items as SourceIssue[]);
+      else if (cursor.phase === 'relations')
+        await importRelations(ctx, st, page!.items as SourceRelation[]);
+      else if (cursor.phase === 'comments')
+        await importComments(ctx, st, page!.items as SourceComment[]);
+      cursor.page = page?.next ?? null;
+      if (!cursor.page) Object.assign(cursor, { phase: nextPhase(adapter, cursor.phase), done: 0 });
       cursor.step++;
       const done = cursor.phase === 'done';
       const now = new Date().toISOString();
@@ -587,9 +644,16 @@ async function step(app: FastifyInstance, row: ImportRow, dryRun: boolean, job: 
         .set({
           cursor: cursor as unknown as Record<string, unknown>,
           report: st.report,
-          progress: { phase: cursor.phase, done: cursor.done, total: st.summary.counts.issues },
+          progress: {
+            phase: cursor.phase,
+            done: cursor.done,
+            total:
+              cursor.phase === 'comments' ? st.summary.counts.comments : st.summary.counts.issues,
+          },
           updatedAt: now,
-          ...(done && { status: dryRun ? 'ready' : 'completed', error: null }),
+          // A step that went through clears an earlier "retrying" or "waiting" message.
+          error: null,
+          ...(done && { status: dryRun ? 'ready' : 'completed' }),
           ...(done && !dryRun && { completedAt: now }),
         })
         .where(eq(imports.id, row.id));
@@ -626,7 +690,7 @@ async function finish(ctx: Ctx, st: RunState) {
 async function remember(
   ctx: Ctx,
   importId: string,
-  kind: 'team' | 'user' | 'label' | 'project' | 'issue',
+  kind: ItemKind,
   externalId: string,
   entityId: string,
 ) {
@@ -659,15 +723,6 @@ async function setup(ctx: Ctx, st: RunState) {
     st.created.team.set(t.id, id);
   }
 
-  for (const u of summary.users) {
-    if (mapping.users[u.id] !== 'placeholder' || st.created.user.has(u.id)) continue;
-    report.created.people++;
-    if (st.dryRun) continue;
-    const id = await createPlaceholder(ctx, { name: u.name, email: u.email });
-    await remember(ctx, row.id, 'user', u.id, id);
-    st.created.user.set(u.id, id);
-  }
-
   const targets = new Map<string, number>();
   const sourcesPerTarget = new Map<string, number>();
   for (const t of summary.teams) {
@@ -695,9 +750,48 @@ async function setup(ctx: Ctx, st: RunState) {
     if (!targets.size) break;
     report.created.projects++;
     if (st.dryRun) continue;
-    // Projects made by an import belong to every team it imports into.
-    const id = await createProject(ctx, { name: p.name.slice(0, 120), teamIds: realTargets });
+    // A project belongs to the targets of its source teams; without those, to every target.
+    const own = [
+      ...new Set((p.teamIds ?? []).map((t) => targetOf(st, t)).filter((t): t is string => !!t)),
+    ];
+    const lead = p.leadId ? mapping.users[p.leadId] : null;
+    const id = await createProject(ctx, {
+      name: p.name.slice(0, 120),
+      teamIds: own.length ? own : realTargets,
+      description: p.description ?? null,
+      status: p.status,
+      startDate: p.startDate ?? null,
+      targetDate: p.targetDate ?? null,
+      leadId: lead && st.data.members.some((m) => m.id === lead) ? lead : null,
+    });
     await remember(ctx, row.id, 'project', p.id, id);
+  }
+
+  // Cycles only go into teams the import makes: an existing team's cycles have their own dates.
+  const elsewhere = new Map<string, number>();
+  for (const c of summary.cycles ?? []) {
+    const target = targetOf(st, c.teamId);
+    if (!target || st.created.cycle.has(c.id)) continue;
+    if (!isNewTeam(st, target)) {
+      elsewhere.set(c.teamId, (elsewhere.get(c.teamId) ?? 0) + 1);
+      continue;
+    }
+    report.created.cycles++;
+    if (st.dryRun) continue;
+    const endsAt =
+      c.endsAt > c.startsAt
+        ? c.endsAt
+        : new Date(Date.parse(c.startsAt) + 86_400_000).toISOString().slice(0, 10);
+    const cycle = await createCycle(ctx, target, {
+      name: c.name,
+      startsAt: c.startsAt,
+      endsAt,
+    });
+    await remember(ctx, row.id, 'cycle', c.id, cycle.id);
+  }
+  for (const [teamId, n] of elsewhere) {
+    const name = summary.teams.find((t) => t.id === teamId)?.name ?? teamId;
+    warn(report, undefined, `${n} cycles of ${name} weren't imported: they only go into new teams`);
   }
 
   for (const [target, count] of targets) {
@@ -745,14 +839,31 @@ function stateFor(st: RunState, item: SourceIssue, target: string) {
   return states.find((s) => s.id === value)?.id;
 }
 
+/**
+ * The Ordo user for a source person: a member, or a placeholder — made the first time someone is
+ * actually referred to, since API sources list everyone in their organisation.
+ */
+async function personFor(ctx: Ctx, st: RunState, sourceId: string | undefined) {
+  if (!sourceId) return null;
+  const value = st.mapping.users[sourceId];
+  if (value !== 'placeholder') return value ?? null;
+  const made = st.created.user.get(sourceId);
+  if (made) return made;
+  const source = st.summary.users.find((u) => u.id === sourceId);
+  if (!source) return null;
+  st.report.created.people++;
+  const id = st.dryRun
+    ? PLANNED
+    : await createPlaceholder(ctx, { name: source.name, email: source.email });
+  await remember(ctx, st.row.id, 'user', sourceId, id);
+  st.created.user.set(sourceId, id);
+  return id;
+}
+
 async function issueInput(ctx: Ctx, st: RunState, item: SourceIssue, target: string) {
   const { mapping, report, data } = st;
-  const person = (id: string | undefined) => {
-    const value = id ? mapping.users[id] : null;
-    return value === 'placeholder' ? (st.created.user.get(id!) ?? null) : (value ?? null);
-  };
 
-  let assigneeId = person(item.assigneeId);
+  let assigneeId = await personFor(ctx, st, item.assigneeId);
   if (assigneeId && !(await assignable(ctx, st, target, assigneeId))) {
     const name = data.members.find((m) => m.id === assigneeId)?.name ?? 'The assignee';
     warn(report, item.ref, `${name} can't see its team, so it's unassigned`);
@@ -804,13 +915,14 @@ async function issueInput(ctx: Ctx, st: RunState, item: SourceIssue, target: str
     priority: item.priority,
     assigneeId,
     projectId,
+    cycleId: item.cycleId ? st.created.cycle.get(item.cycleId) : undefined,
     estimate: item.estimate,
     dueDate: item.dueDate,
     labelIds,
     sortOrder: sort.base + sort.next++ * SORT_GAP,
   };
   const imported: ImportedIssueFields = {
-    creatorId: person(item.creatorId) ?? ctx.userId,
+    creatorId: (await personFor(ctx, st, item.creatorId)) ?? ctx.userId,
     number,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -868,14 +980,18 @@ async function importIssues(ctx: Ctx, st: RunState, items: SourceIssue[]) {
       await ctx.tx.transaction(async (tx) => {
         const sub: Ctx = { ...ctx, tx };
         const issue = await createIssue(sub, input.issue, input.imported);
-        if (item.url) {
+        const links = [
+          ...(item.url ? [{ url: item.url, title: `${item.ref} (imported)` }] : []),
+          ...(item.links ?? []),
+        ];
+        for (const link of links) {
           await upsertIssueLink(sub, {
             issueId: issue.id,
             provider: row.source,
             kind: 'link',
-            externalId: item.id,
-            url: item.url,
-            title: `${item.ref} (imported)`,
+            externalId: link.url === item.url ? item.id : link.url,
+            url: link.url,
+            title: link.title || link.url,
           });
         }
         await remember(sub, row.id, 'issue', item.id, issue.id);
@@ -919,6 +1035,114 @@ async function linkParents(ctx: Ctx, st: RunState, items: SourceIssue[]) {
     } catch (err) {
       if (!(err instanceof HttpError) || err.statusCode >= 500) throw err;
       warn(report, item.ref, `Not made a sub-issue: ${err.message}`);
+    }
+  }
+}
+
+/** Ordo ids of things this import already made, by source id. */
+async function importedIds(ctx: Ctx, st: RunState, kind: ItemKind, externalIds: string[]) {
+  const ids = [...new Set(externalIds)];
+  if (!ids.length) return new Map<string, string>();
+  const rows = await ctx.tx
+    .select({ externalId: importItems.externalId, entityId: importItems.entityId })
+    .from(importItems)
+    .where(
+      and(
+        eq(importItems.importId, st.row.id),
+        eq(importItems.kind, kind),
+        inArray(importItems.externalId, ids),
+      ),
+    );
+  return new Map(rows.map((r) => [r.externalId, r.entityId]));
+}
+
+async function importRelations(ctx: Ctx, st: RunState, items: SourceRelation[]) {
+  const { report } = st;
+  st.cursor.done += items.length;
+  const issueIds = await importedIds(
+    ctx,
+    st,
+    'issue',
+    items.flatMap((r) => [r.issueId, r.relatedIssueId]),
+  );
+  const done = await importedIds(
+    ctx,
+    st,
+    'relation',
+    items.map((r) => r.id),
+  );
+  for (const r of items) {
+    if (done.has(r.id)) {
+      report.existing++;
+      continue;
+    }
+    const from = issueIds.get(r.issueId);
+    const to = issueIds.get(r.relatedIssueId);
+    // One side wasn't imported (skipped, or outside the import): nothing to link.
+    if (!from || !to) continue;
+    report.created.relations++;
+    if (st.dryRun) continue;
+    try {
+      const relation = await ctx.tx.transaction((tx) =>
+        createRelation(
+          { ...ctx, tx },
+          from,
+          { type: r.type === 'duplicate' ? 'duplicate_of' : r.type, relatedIssueId: to },
+          true,
+        ),
+      );
+      await remember(ctx, st.row.id, 'relation', r.id, relation.id);
+    } catch (err) {
+      if (!(err instanceof HttpError) || err.statusCode >= 500) throw err;
+      report.created.relations--;
+      warn(report, undefined, `A relation wasn't imported: ${err.message}`);
+    }
+  }
+}
+
+async function importComments(ctx: Ctx, st: RunState, items: SourceComment[]) {
+  const { report } = st;
+  st.cursor.done += items.length;
+  const issueIds = await importedIds(
+    ctx,
+    st,
+    'issue',
+    items.map((c) => c.issueId),
+  );
+  const commentIds = await importedIds(ctx, st, 'comment', [
+    ...items.map((c) => c.id),
+    ...items.flatMap((c) => (c.parentId ? [c.parentId] : [])),
+  ]);
+  for (const c of items) {
+    if (commentIds.has(c.id)) {
+      report.existing++;
+      continue;
+    }
+    const issueId = issueIds.get(c.issueId);
+    if (!issueId || !c.body.trim()) continue;
+    // Unknown authors stay unknown ("Someone") rather than becoming the importer.
+    const authorId = await personFor(ctx, st, c.authorId);
+    report.created.comments++;
+    if (st.dryRun) {
+      await remember(ctx, st.row.id, 'comment', c.id, PLANNED);
+      continue;
+    }
+    const parentId = c.parentId ? commentIds.get(c.parentId) : undefined;
+    try {
+      const comment = await ctx.tx.transaction((tx) =>
+        createComment(
+          { ...ctx, tx },
+          issueId,
+          { body: c.body, parentId },
+          { authorId, createdAt: c.createdAt },
+        ),
+      );
+      await remember(ctx, st.row.id, 'comment', c.id, comment.id);
+      commentIds.set(c.id, comment.id);
+    } catch (err) {
+      if (!(err instanceof HttpError) || err.statusCode >= 500) throw err;
+      report.created.comments--;
+      skip(report, undefined, `A comment wasn't imported: ${err.message}`);
     }
   }
 }

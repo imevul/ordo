@@ -1,7 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import multipart from '@fastify/multipart';
-import { type ImportSource, updateImportSchema } from '@ordo/shared';
+import { createApiImportSchema, type ImportSource, updateImportSchema } from '@ordo/shared';
 import { and, eq } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { importItems, imports } from '../db/schema.ts';
 import { requireAdmin, requireUser } from '../lib/auth.ts';
 import { badRequest, conflict, notFound, parse } from '../lib/errors.ts';
@@ -15,6 +16,7 @@ import {
   startRun,
   suggestMapping,
 } from '../services/imports/engine.ts';
+import { linearQuery, linearSecretsAad, ORGANIZATION } from '../services/imports/linear.ts';
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 /** Sources that start from an uploaded file. */
@@ -128,10 +130,47 @@ export async function importRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  // Uploads: multipart is only parsed in this scope.
+  /** Another tracker's API: check the key works, keep it encrypted, analyze. */
+  async function startApiImport(req: FastifyRequest) {
+    const ws = requireAdmin(req);
+    const user = requireUser(req);
+    const input = parse(createApiImportSchema, req.body);
+    if (!app.keyring.available)
+      throw badRequest('Set ORDO_SECRET_KEY before importing from Linear');
+    let organization: { name: string };
+    try {
+      ({ organization } = await linearQuery<{ organization: { name: string } }>(
+        app,
+        input.apiKey,
+        ORGANIZATION,
+      ));
+    } catch (err) {
+      throw badRequest(err instanceof Error ? err.message : String(err));
+    }
+    const id = randomUUID();
+    const [row] = await db
+      .insert(imports)
+      .values({
+        id,
+        workspaceId: ws.id,
+        source: input.source,
+        name: `Linear: ${organization.name}`.slice(0, 200),
+        secrets: app.keyring.encrypt(
+          JSON.stringify({ apiKey: input.apiKey }),
+          linearSecretsAad(id),
+        ),
+        createdById: user.id,
+      })
+      .returning();
+    await startAnalysis(app, row!);
+    return show(ws.id, id);
+  }
+
+  // Files are multipart, and multipart is only parsed in this scope; API sources send JSON.
   await app.register(async (uploads) => {
     await uploads.register(multipart, { limits: { fileSize: MAX_FILE_BYTES, files: 1 } });
     uploads.post('/imports', async (req) => {
+      if (!req.isMultipart()) return startApiImport(req);
       const ws = requireAdmin(req);
       const user = requireUser(req);
       const file = await req.file();

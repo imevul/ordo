@@ -50,11 +50,17 @@ export async function listComments(
     .orderBy(asc(comments.createdAt));
 }
 
+/**
+ * Comments on an issue. Imports pass `imported` to keep the source's author and date; the issue
+ * then keeps its own updated time, and the importer isn't subscribed.
+ */
 export async function createComment(
   ctx: Ctx,
   issueIdOrIdentifier: string,
   input: CreateCommentInput,
+  imported?: { authorId: string | null; createdAt?: string },
 ) {
+  const authorId = imported ? imported.authorId : ctx.userId;
   const issue = await getIssue(ctx.tx, ctx.access, issueIdOrIdentifier);
   if (input.parentId) {
     const [parent] = await ctx.tx
@@ -67,14 +73,16 @@ export async function createComment(
     .insert(comments)
     .values({
       issueId: issue.id,
-      authorId: ctx.userId,
+      authorId,
       body: input.body,
       parentId: input.parentId ?? null,
+      createdAt: imported?.createdAt,
+      updatedAt: imported?.createdAt,
     })
     .returning();
   const mentioned = await mentionedUserIds(ctx, issue.teamId, input.body);
   const subscribers = await subscriberIds(ctx, issue.id);
-  await subscribe(ctx, issue.id, [ctx.userId, ...mentioned]);
+  await subscribe(ctx, issue.id, [authorId, ...mentioned]);
   await notify(ctx, {
     userIds: mentioned,
     type: 'issue_mention',
@@ -87,10 +95,12 @@ export async function createComment(
     issueId: issue.id,
     commentId: comment!.id,
   });
-  await ctx.tx
-    .update(issues)
-    .set({ updatedAt: new Date().toISOString() })
-    .where(eq(issues.id, issue.id));
+  if (!imported) {
+    await ctx.tx
+      .update(issues)
+      .set({ updatedAt: new Date().toISOString() })
+      .where(eq(issues.id, issue.id));
+  }
   emit(ctx, {
     kind: 'comment',
     action: 'created',
