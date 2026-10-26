@@ -1,5 +1,5 @@
-import { SLUG_PATTERN, TEAM_KEY_PATTERN } from '@ordo/shared';
-import { useQueryClient } from '@tanstack/react-query';
+import { type JoinableWorkspace, SLUG_PATTERN, TEAM_KEY_PATTERN } from '@ordo/shared';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { ApiError, api } from '../api/client.ts';
@@ -459,12 +459,19 @@ export function InvitePage() {
   const [info, setInfo] = useState<{
     workspace: { name: string; slug: string };
     email: string | null;
+    role: string;
+    teams: string[];
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api
-      .get<{ workspace: { name: string; slug: string }; email: string | null }>(`/invites/${token}`)
+      .get<{
+        workspace: { name: string; slug: string };
+        email: string | null;
+        role: string;
+        teams: string[];
+      }>(`/invites/${token}`)
       .then(setInfo)
       .catch((err) => setError(message(err)));
   }, [token]);
@@ -483,6 +490,18 @@ export function InvitePage() {
   return (
     <AuthLayout kicker="invite" title={info ? `Join ${info.workspace.name}.` : 'Invitation'}>
       <ErrorLine error={error} />
+      {info && (
+        <p className="mb-4 text-[13px] text-muted">
+          You're invited as <span className="text-text">{info.role}</span>
+          {info.teams.length > 0 && (
+            <>
+              {' '}
+              to <span className="text-text">{info.teams.join(', ')}</span>
+            </>
+          )}
+          .
+        </p>
+      )}
       {info && me.data && (
         <>
           <p className="mb-5 text-[13.5px] text-muted">
@@ -538,9 +557,25 @@ export function OnboardingPage() {
   const [teamKey, setTeamKey] = useState('ENG');
   const [keyTouched, setKeyTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Workspaces this person may join through their verified email domain.
+  const joinable = useQuery({
+    queryKey: ['joinable'],
+    queryFn: () => api.get<JoinableWorkspace[]>('/workspaces/joinable'),
+    enabled: !!me.data,
+  });
 
   if (me.isLoading) return <Spinner />;
   if (!me.data) return <Navigate to="/login" search={{ redirect: '/onboarding' }} />;
+
+  const join = async (id: string) => {
+    try {
+      const res = await api.post<{ workspaceSlug: string }>(`/workspaces/${id}/join`);
+      qc.removeQueries({ queryKey: keys.me });
+      navigate({ to: '/$slug', params: { slug: res.workspaceSlug } });
+    } catch (err) {
+      setError(message(err));
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -565,6 +600,26 @@ export function OnboardingPage() {
 
   return (
     <AuthLayout kicker="new workspace" title="Create a workspace.">
+      {joinable.data && joinable.data.length > 0 && (
+        <div className="mb-6">
+          <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.16em] text-muted uppercase">
+            Or join your team
+          </div>
+          {joinable.data.map((w) => (
+            <button
+              type="button"
+              key={w.id}
+              onClick={() => join(w.id)}
+              className="panel panel-sm panel-interactive mb-2 flex w-full items-center gap-3 p-3 text-left"
+            >
+              {w.logoUrl && <img src={w.logoUrl} alt="" className="h-6 w-6 object-cover" />}
+              <span className="flex-1">{w.name}</span>
+              <span className="font-mono text-[11px] text-index">{w.memberCount} members</span>
+              <span className="arrow text-primary">→</span>
+            </button>
+          ))}
+        </div>
+      )}
       <form onSubmit={submit}>
         <ErrorLine error={error} />
         <TextField

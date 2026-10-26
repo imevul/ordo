@@ -1,3 +1,4 @@
+import { resolveTxt } from 'node:dns/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import cookie from '@fastify/cookie';
@@ -18,11 +19,14 @@ import { Keyring } from './lib/secrets.ts';
 import { createStorage, type Storage } from './lib/storage/index.ts';
 import { Realtime } from './realtime.ts';
 import { accountRoutes } from './routes/account.ts';
+import { adminRoutes } from './routes/admin.ts';
 import { authRoutes } from './routes/auth.ts';
 import { cycleRoutes } from './routes/cycles.ts';
 import { fileRoutes } from './routes/files.ts';
 import { issueRoutes } from './routes/issues.ts';
+import { joiningRoutes } from './routes/joining.ts';
 import { labelRoutes } from './routes/labels.ts';
+import { memberRoutes } from './routes/members.ts';
 import { notificationRoutes } from './routes/notifications.ts';
 import { projectRoutes } from './routes/projects.ts';
 import { realtimeRoutes } from './routes/realtime.ts';
@@ -45,6 +49,8 @@ declare module 'fastify' {
     leases: Leases;
     storage: Storage;
     mailer: Mailer;
+    /** DNS TXT lookup (domain verification); replaced in tests. */
+    resolveTxt: (name: string) => Promise<string[][]>;
     /** Every registered route; tests use it to make sure each one is covered by access checks. */
     routeList: { method: string; url: string }[];
   }
@@ -83,6 +89,7 @@ export async function buildApp(
   app.decorate('leases', new Leases(db, jobQueue.workerId));
   app.decorate('storage', createStorage(env.storage));
   app.decorate('mailer', new Mailer(app));
+  app.decorate('resolveTxt', resolveTxt);
   registerJobs(app);
   if (!env.secretKey)
     app.log.warn('ORDO_SECRET_KEY is not set: storing secrets (SSO, integrations) is disabled');
@@ -147,6 +154,8 @@ export async function buildApp(
   await app.register(authRoutes, { prefix: '/api' });
   await app.register(accountRoutes, { prefix: '/api' });
   await app.register(fileRoutes, { prefix: '/api' });
+  await app.register(joiningRoutes, { prefix: '/api' });
+  await app.register(adminRoutes, { prefix: '/api/admin' });
   await app.register(realtimeRoutes, { prefix: '/api' });
 
   // Everything under /api/w/:ws is scoped to a workspace the caller belongs to.
@@ -158,6 +167,7 @@ export async function buildApp(
         req.workspace = await authorizeWorkspace(db, req.user, ws);
       });
       await w.register(workspaceRoutes);
+      await w.register(memberRoutes);
       await w.register(teamRoutes);
       await w.register(cycleRoutes);
       await w.register(issueRoutes);

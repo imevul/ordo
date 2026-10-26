@@ -2,7 +2,7 @@
 import { build } from 'esbuild';
 
 await build({
-  entryPoints: { server: 'src/index.ts', seed: 'src/db/seed.ts' },
+  entryPoints: { server: 'src/index.ts', seed: 'src/db/seed.ts', cli: 'src/cli.ts' },
   outdir: 'dist',
   outExtension: { '.js': '.mjs' },
   bundle: true,

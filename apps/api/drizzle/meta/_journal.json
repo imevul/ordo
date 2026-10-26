@@ -43,6 +43,13 @@
       "when": 1793028402913,
       "tag": "0005_jobs_files_account",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793029161470,
+      "tag": "0006_org_settings_domains",
+      "breakpoints": true
     }
   ]
 }

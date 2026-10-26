@@ -14,6 +14,7 @@ import {
   RefreshCcw,
   Search,
   Settings,
+  Shield,
   SquarePen,
   Star,
   Target,
@@ -120,6 +121,9 @@ export function Sidebar({
               aria-label="Workspace menu"
             >
               <OrdoMark />
+              {ws.workspace.logoUrl && (
+                <img src={ws.workspace.logoUrl} alt="" className="h-4 w-4 flex-none object-cover" />
+              )}
               <span className="truncate text-[13px] text-muted">{ws.workspace.name}</span>
             </button>
           }
@@ -164,6 +168,11 @@ export function Sidebar({
                   className="menu-item"
                 >
                   <UserPlus size={14} /> Invite members
+                </Link>
+              )}
+              {ws.me.isInstanceAdmin && (
+                <Link to="/admin/$section" params={{ section: 'overview' }} className="menu-item">
+                  <Shield size={14} /> Instance admin
                 </Link>
               )}
               <button type="button" className="menu-item" onClick={logout}>

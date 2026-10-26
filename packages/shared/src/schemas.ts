@@ -104,16 +104,65 @@ export const createWorkspaceSchema = z.object({
 export const updateWorkspaceSchema = z.object({
   name: name.optional(),
   slug: z.string().regex(SLUG_PATTERN).optional(),
+  defaultTeamId: id.nullable().optional(),
+  settings: z
+    .object({
+      invitePolicy: z.enum(['admins', 'members']).optional(),
+      domainAutoJoin: z.boolean().optional(),
+      autoJoinRole: z.enum(['member', 'guest']).optional(),
+    })
+    .optional(),
+});
+
+export const addDomainSchema = z.object({
+  domain: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(
+      /^(?=.{3,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/,
+      'Enter a domain like example.com',
+    ),
+});
+
+export const transferOwnershipSchema = z.object({
+  userId: id,
+  /** Step down to admin after handing over. */
+  stepDown: z.boolean().default(true),
+});
+
+export const deleteWorkspaceSchema = z.object({ confirmSlug: z.string() });
+
+export const adminUpdateUserSchema = z.object({
+  disabled: z.boolean().optional(),
+  isInstanceAdmin: z.boolean().optional(),
+});
+
+export const adminSettingsSchema = z.object({
+  signupMode: z.enum(['open', 'invite']).optional(),
+  allowWorkspaceCreation: z.boolean().optional(),
+  allowPrivateNetworkTargets: z.boolean().optional(),
+  /** `url: ''` keeps the stored URL (the UI never sees it); `smtp: null` turns email off. */
+  smtp: z
+    .object({ url: z.string().max(2000), from: z.string().min(3).max(200) })
+    .nullable()
+    .optional(),
 });
 
 export const createInviteSchema = z.object({
+  /** One invite per address (emailed when SMTP is set up). Omit for a single shareable link. */
+  emails: z.array(z.email()).max(100).optional(),
   email: z.email().optional(),
   // Ownership is granted by an owner after joining, never through an invite link.
   role: z.enum(['admin', 'member', 'guest']).default('member'),
+  teamIds: z.array(id).max(50).default([]),
   expiresInDays: z.number().int().min(1).max(90).default(14),
 });
 
-export const updateMemberSchema = z.object({ role: z.enum(MEMBER_ROLES) });
+export const updateMemberSchema = z.object({
+  role: z.enum(MEMBER_ROLES).optional(),
+  suspended: z.boolean().optional(),
+});
 
 export const addTeamMemberSchema = z.object({
   userId: id.optional(),

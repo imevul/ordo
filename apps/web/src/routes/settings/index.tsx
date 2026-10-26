@@ -11,7 +11,12 @@ import {
 } from './account.tsx';
 import { LabelsSection } from './labels.tsx';
 import { TeamSettings, TeamsSection } from './teams.tsx';
-import { MembersSection, WorkspaceSection } from './workspace.tsx';
+import {
+  AuditSection,
+  MembersSection,
+  OrgSecuritySection,
+  WorkspaceSection,
+} from './workspace.tsx';
 
 const SECTIONS: { key: string; label: string; group: string; admin?: boolean }[] = [
   { key: 'account', label: 'Profile', group: 'Account' },
@@ -20,8 +25,10 @@ const SECTIONS: { key: string; label: string; group: string; admin?: boolean }[]
   { key: 'api', label: 'API keys', group: 'Account' },
   { key: 'workspace', label: 'General', group: 'Workspace', admin: true },
   { key: 'members', label: 'Members', group: 'Workspace' },
-  { key: 'labels', label: 'Labels', group: 'Workspace' },
   { key: 'teams', label: 'Teams', group: 'Workspace' },
+  { key: 'labels', label: 'Labels', group: 'Workspace' },
+  { key: 'org-security', label: 'Security', group: 'Workspace', admin: true },
+  { key: 'audit', label: 'Audit log', group: 'Workspace', admin: true },
 ];
 
 function SettingsShell({
@@ -105,6 +112,10 @@ export function SettingsPage() {
       <WorkspaceSection />
     ) : section === 'members' ? (
       <MembersSection />
+    ) : section === 'org-security' ? (
+      <OrgSecuritySection />
+    ) : section === 'audit' ? (
+      <AuditSection />
     ) : section === 'labels' ? (
       <LabelsSection />
     ) : section === 'teams' ? (

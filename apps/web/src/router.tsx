@@ -3,9 +3,11 @@ import {
   createRootRouteWithContext,
   createRoute,
   createRouter,
+  Navigate,
   Outlet,
 } from '@tanstack/react-router';
 import { Toaster } from 'sonner';
+import { AdminPage } from './routes/admin.tsx';
 import {
   EmailLinkPage,
   ForgotPasswordPage,
@@ -95,6 +97,16 @@ const confirmEmailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/confirm-email/$token',
   component: () => <EmailLinkPage kind="change" />,
+});
+const adminRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin/$section',
+  component: AdminPage,
+});
+const adminIndexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/admin',
+  component: () => <Navigate to="/admin/$section" params={{ section: 'overview' }} replace />,
 });
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -199,6 +211,8 @@ const routeTree = rootRoute.addChildren([
   verifyEmailRoute,
   confirmEmailRoute,
   onboardingRoute,
+  adminIndexRoute,
+  adminRoute,
   wsRoute.addChildren([
     wsIndexRoute,
     inboxRoute,

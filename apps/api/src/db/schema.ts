@@ -14,6 +14,7 @@ import type {
   TeamRole,
   UserKind,
   UserPreferences,
+  WorkspaceSettings,
 } from '@ordo/shared';
 import { sql } from 'drizzle-orm';
 import {
@@ -107,6 +108,10 @@ export const workspaces = pgTable('workspaces', {
   id: pk(),
   name: text('name').notNull(),
   slug: text('slug').notNull().unique(),
+  logoFileId: uuid('logo_file_id'),
+  /** Team new members join automatically, and the default for new issues. */
+  defaultTeamId: uuid('default_team_id'),
+  settings: jsonb('settings').$type<Partial<WorkspaceSettings>>().notNull().default({}),
   createdAt: createdAt(),
 });
 
@@ -121,6 +126,8 @@ export const workspaceMembers = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     role: text('role').$type<MemberRole>().notNull().default('member'),
     joinedAt: ts('joined_at').notNull().default(sql`now()`),
+    /** Suspended members keep their history but can't open the workspace. */
+    suspendedAt: ts('suspended_at'),
   },
   (t) => [
     primaryKey({ columns: [t.workspaceId, t.userId] }),
@@ -136,7 +143,10 @@ export const invites = pgTable('invites', {
   token: text('token').notNull().unique(),
   email: text('email'),
   role: text('role').$type<MemberRole>().notNull().default('member'),
+  /** Teams the invitee joins on accepting. */
+  teamIds: jsonb('team_ids').$type<string[]>().notNull().default([]),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  lastSentAt: ts('last_sent_at'),
   expiresAt: ts('expires_at').notNull(),
   acceptedAt: ts('accepted_at'),
   createdAt: createdAt(),
@@ -593,3 +603,27 @@ export const leases = pgTable('leases', {
   fencing: integer('fencing').notNull().default(1),
   expiresAt: ts('expires_at').notNull(),
 });
+
+/**
+ * Email domains a workspace has proven it owns (DNS TXT record, or approved by an instance admin).
+ * Verified domains enable auto-join and, later, SSO discovery.
+ */
+export const workspaceDomains = pgTable(
+  'workspace_domains',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    domain: text('domain').notNull(),
+    /** Value expected in the `_ordo-verify.<domain>` TXT record. */
+    verificationToken: text('verification_token').notNull(),
+    verifiedAt: ts('verified_at'),
+    verifiedBy: text('verified_by').$type<'dns' | 'instance_admin'>(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('workspace_domains_unique_idx').on(t.workspaceId, t.domain),
+    index('workspace_domains_domain_idx').on(t.domain),
+  ],
+);

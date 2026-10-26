@@ -13,7 +13,7 @@ import {
   tokenSchema,
   updateMeSchema,
 } from '@ordo/shared';
-import { and, count, desc, eq, gt, isNull, ne, sql } from 'drizzle-orm';
+import { and, count, desc, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { Tx } from '../db/client.ts';
 import {
@@ -21,6 +21,7 @@ import {
   authTokens,
   invites,
   sessions,
+  teams,
   users,
   workspaceMembers,
   workspaces,
@@ -46,6 +47,7 @@ import { queueEmail } from '../services/mailer.ts';
 import { verifySecondFactor } from '../services/mfa.ts';
 import { createTeam } from '../services/teams.ts';
 import { consumeToken, createToken } from '../services/tokens.ts';
+import { joinWorkspace } from '../services/workspaces.ts';
 
 // A well-formed hash nobody can match, compared against when the account doesn't exist.
 const DUMMY_HASH =
@@ -94,16 +96,14 @@ async function acceptInvite(
   if (invite.email && invite.email.toLowerCase() !== email.toLowerCase()) {
     throw forbidden('This invite was sent to a different email address');
   }
-  await tx
-    .insert(workspaceMembers)
-    .values({ workspaceId: invite.workspaceId, userId, role: invite.role })
-    .onConflictDoNothing();
+  await joinWorkspace(tx, invite.workspaceId, userId, invite.role, invite.teamIds);
   // Email-bound invites are single use; open invite links stay valid until they expire.
-  if (invite.email)
+  if (invite.email) {
     await tx
       .update(invites)
       .set({ acceptedAt: new Date().toISOString() })
       .where(eq(invites.id, invite.id));
+  }
   await audit(tx, {
     action: 'invite.accepted',
     workspaceId: invite.workspaceId,
@@ -496,7 +496,15 @@ export async function authRoutes(app: FastifyInstance) {
       .select({ name: workspaces.name, slug: workspaces.slug })
       .from(workspaces)
       .where(eq(workspaces.id, invite.workspaceId));
-    return { workspace: ws, email: invite.email, role: invite.role };
+    const teamRows = invite.teamIds.length
+      ? await db.select({ name: teams.name }).from(teams).where(inArray(teams.id, invite.teamIds))
+      : [];
+    return {
+      workspace: ws,
+      email: invite.email,
+      role: invite.role,
+      teams: teamRows.map((t) => t.name),
+    };
   });
 
   app.post('/invites/:token/accept', async (req) => {

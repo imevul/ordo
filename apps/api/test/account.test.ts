@@ -249,7 +249,7 @@ describe('notification emails', () => {
       teamName: 'Mail',
       teamKey: 'MAI',
     });
-    const invite = (await owner.post('/api/w/mailers/invites', {})).data;
+    const invite = (await owner.post('/api/w/mailers/invites', {})).data[0];
     const { client: dev, email: devEmail } = await signup(app, 'Dev Digest', {
       inviteToken: invite.token,
     });

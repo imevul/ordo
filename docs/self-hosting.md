@@ -23,8 +23,10 @@ make up
 3. starts Postgres and Ordo and waits until both report healthy,
 4. prints the URL.
 
-Open it and sign up — the first account is the instance's first admin and is guided through creating a
-workspace and its first team. Invite others from **Settings → Members**.
+Open it and sign up — the first account is the **instance admin** and is guided through creating a
+workspace and its first team. Invite others from **Settings → Members**. The admin area (users, workspaces, SMTP,
+jobs) is under **Instance admin** in the workspace menu; see [admin.md](admin.md), which also covers recovering
+access from the command line.
 
 Want to look around first? `make seed` creates a demo workspace; sign in as `demo@ordo.test` /
 `ordo-demo-password` (also `grace@`, `alan@`, `ada@ordo.test`). Don't seed a production instance.

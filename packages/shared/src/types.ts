@@ -32,12 +32,16 @@ export interface Workspace {
   id: string;
   name: string;
   slug: string;
+  logoUrl: string | null;
+  defaultTeamId: string | null;
+  settings: WorkspaceSettings;
   createdAt: string;
 }
 
 export interface Member extends User {
   role: MemberRole;
   joinedAt: string;
+  suspended: boolean;
 }
 
 export interface WorkflowState {
@@ -236,8 +240,10 @@ export interface Invite {
   token: string;
   email: string | null;
   role: MemberRole;
+  teamIds: string[];
   expiresAt: string;
   createdAt: string;
+  lastSentAt: string | null;
   url: string;
 }
 
@@ -363,4 +369,37 @@ export interface SessionInfo {
   createdAt: string;
   lastSeenAt: string | null;
   sso: boolean;
+}
+
+/** Organisation-level policy, editable by workspace admins. */
+export interface WorkspaceSettings {
+  /** Who may create invites: admins only, or members too (members can't invite admins). */
+  invitePolicy: 'admins' | 'members';
+  /** People with a verified email at a verified domain may join without an invite. */
+  domainAutoJoin: boolean;
+  /** Role given to people joining through a verified domain. */
+  autoJoinRole: 'member' | 'guest';
+}
+
+export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
+  invitePolicy: 'admins',
+  domainAutoJoin: false,
+  autoJoinRole: 'member',
+};
+
+export interface WorkspaceDomain {
+  id: string;
+  domain: string;
+  verificationToken: string;
+  verified: boolean;
+  verifiedBy: 'dns' | 'instance_admin' | null;
+  createdAt: string;
+}
+
+export interface JoinableWorkspace {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  memberCount: number;
 }

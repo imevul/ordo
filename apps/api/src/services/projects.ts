@@ -24,7 +24,7 @@ export async function listProjects(
             .from(projectTeams)
             .where(
               and(
-                eq(projectTeams.projectId, projects.id),
+                sql`${projectTeams.projectId} = "projects"."id"`,
                 inArray(projectTeams.teamId, access.teamIds),
               ),
             ),
