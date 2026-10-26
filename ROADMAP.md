@@ -107,7 +107,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   attachments as links; waits out rate limits
 - ✅ GitHub Issues importer: repositories as teams, open/closed statuses, labels, milestones as projects,
   comments, people by claimed usernames; GitHub Enterprise Server
-- ⬜ Jira importer
+- ✅ Jira importer (Cloud and Data Center): projects, epics as projects, sub-tasks, types and components as
+  labels, story points, links as relations, comments; wiki markup to Markdown
 - ⬜ Workspace export (JSON, CSV)
 - ⬜ Settings → Import & export, undo an import
 

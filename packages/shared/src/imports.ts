@@ -6,7 +6,7 @@ import type { ProjectStatus, StateType } from './constants.ts';
  * a dry run reports what would happen, and the run writes it.
  */
 
-export const IMPORT_SOURCES = ['csv', 'linear', 'github'] as const;
+export const IMPORT_SOURCES = ['csv', 'linear', 'github', 'jira'] as const;
 export type ImportSource = (typeof IMPORT_SOURCES)[number];
 
 export const IMPORT_STATUSES = [

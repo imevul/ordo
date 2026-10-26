@@ -1,7 +1,7 @@
 # Importing data
 
-Workspace admins can bring issues in from other tools: **CSV files**, **Linear** and **GitHub Issues** so far. A
-Jira importer, workspace export, and a settings page for all of it are on the
+Workspace admins can bring issues in from other tools: **CSV files**, **Linear**, **GitHub Issues** and **Jira**.
+Workspace export and a settings page for all of it are on the
 [roadmap](../ROADMAP.md#phase-9--importers-and-export). Until the page lands, imports run through the
 [API](api.md#imports).
 
@@ -71,6 +71,37 @@ repository, keeps the token encrypted until you delete the import, and then:
 
 Analysis reads every issue and comment once, to count them and to find everyone involved. GitHub's rate limits
 apply; a large import may pause and carry on by itself.
+
+## Jira
+
+Jira Cloud and Jira Data Center both work. For Cloud, use your account's email and an
+[API token](https://id.atlassian.com/manage-profile/security/api-tokens); for Data Center, a personal access token
+(leave out the email):
+
+```json
+{
+  "source": "jira",
+  "siteUrl": "https://acme.atlassian.net",
+  "email": "you@acme.com",
+  "token": "…",
+  "projects": ["ENG"]
+}
+```
+
+Leave out `projects` to import every project the credentials can see. Ordo checks the credentials and projects,
+keeps the token encrypted until you delete the import, and then:
+
+- Makes each project a source team with its key; statuses map by name, or by their category (to do, in progress,
+  done) when the name says nothing.
+- Turns epics into projects (their assignee leads, if a member), and puts the epic's issues in them — through the
+  issue's parent on Cloud, or the "Epic Link" field on Data Center.
+- Makes sub-tasks sub-issues, and issue types (Bug, Story, Task…) and components labels.
+- Keeps story points as estimates, and blocks, duplicates and other issue links as relations.
+- Converts descriptions and comments from Jira's wiki markup to Markdown: headings, emphasis, links, lists,
+  quotes, code and tables. Mentions become `@name`, or `@someone` where Jira only gives an account id.
+- Doesn't import sprints, attachments or worklogs; each issue links back to Jira.
+
+Analysis reads every issue and its comments once, to count them and find everyone involved.
 
 ## Placeholders
 
