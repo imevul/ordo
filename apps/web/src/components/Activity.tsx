@@ -15,6 +15,7 @@ import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 import { PriorityIcon, StatusIcon } from './icons.tsx';
 import { Markdown } from './Markdown.tsx';
 import { MarkdownEditor } from './MarkdownEditor.tsx';
+import { ReactionBar, ReactionPicker } from './Reactions.tsx';
 import { ActorName } from './ui/ActorName.tsx';
 import { Avatar } from './ui/Avatar.tsx';
 import { Popover } from './ui/Popover.tsx';
@@ -210,6 +211,7 @@ function CommentItem({
             {comment.editedAt && ' · edited'}
           </span>
           <div className="ml-auto flex items-center gap-1">
+            <ReactionPicker comment={comment} issueId={issueId} />
             {!comment.parentId && (
               <button
                 type="button"
@@ -302,7 +304,10 @@ function CommentItem({
               </div>
             </div>
           ) : (
-            <Markdown source={comment.body} />
+            <>
+              <Markdown source={comment.body} />
+              <ReactionBar comment={comment} issueId={issueId} />
+            </>
           )}
         </div>
       </div>

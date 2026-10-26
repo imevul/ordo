@@ -4,6 +4,7 @@ import type {
   Attachment,
   Bootstrap,
   Comment,
+  CommentReaction,
   CreateIssueInput,
   HistoryEntry,
   InstanceConfig,
@@ -223,6 +224,43 @@ export function useTrashIssues(slug: string) {
 }
 
 /** Generic mutation that refreshes the workspace afterwards. */
+/** Adds or removes the signed-in user's reaction, showing it at once. */
+export function useToggleReaction(slug: string, issueId: string, userId: string) {
+  const qc = useQueryClient();
+  const key = keys.comments(slug, issueId);
+  const apply = (commentId: string, update: (r: CommentReaction[]) => CommentReaction[]) =>
+    qc.setQueryData<Comment[]>(key, (list) =>
+      list?.map((c) => (c.id === commentId ? { ...c, reactions: update(c.reactions) } : c)),
+    );
+  return useMutation({
+    mutationFn: ({ commentId, emoji, on }: { commentId: string; emoji: string; on: boolean }) => {
+      const path = wsPath(slug, `/comments/${commentId}/reactions/${encodeURIComponent(emoji)}`);
+      return on ? api.put<CommentReaction[]>(path) : api.del<CommentReaction[]>(path);
+    },
+    onMutate: async ({ commentId, emoji, on }) => {
+      await qc.cancelQueries({ queryKey: key });
+      const before = qc.getQueryData<Comment[]>(key);
+      apply(commentId, (reactions) => {
+        const rest = reactions.map((r) =>
+          r.emoji === emoji ? { ...r, userIds: r.userIds.filter((u) => u !== userId) } : r,
+        );
+        const next = on
+          ? rest.some((r) => r.emoji === emoji)
+            ? rest.map((r) => (r.emoji === emoji ? { ...r, userIds: [...r.userIds, userId] } : r))
+            : [...rest, { emoji, userIds: [userId] }]
+          : rest;
+        return next.filter((r) => r.userIds.length > 0);
+      });
+      return { before };
+    },
+    onSuccess: (reactions, { commentId }) => apply(commentId, () => reactions),
+    onError: (err, _vars, saved) => {
+      if (saved?.before) qc.setQueryData(key, saved.before);
+      onError(err);
+    },
+  });
+}
+
 export function useWsMutation<TVars, TResult = unknown>(
   slug: string,
   fn: (vars: TVars) => Promise<TResult>,

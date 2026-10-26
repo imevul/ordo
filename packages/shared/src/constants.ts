@@ -181,8 +181,14 @@ export const NOTIFICATION_TYPES = [
   'issue_mention',
   'issue_status_changed',
   'issue_priority_urgent',
+  'comment_reaction',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
+
+/** The reactions offered first; any single emoji is accepted. */
+export const QUICK_REACTIONS = ['👍', '👎', '❤️', '🎉', '😄', '😕', '🚀', '👀'] as const;
+/** Distinct emoji one comment can collect, so reactions stay a row and not a wall. */
+export const MAX_REACTION_KINDS = 20;
 
 export const FAVORITE_KINDS = ['issue', 'project', 'view', 'cycle', 'team'] as const;
 export type FavoriteKind = (typeof FAVORITE_KINDS)[number];
@@ -236,6 +242,8 @@ export const DOMAIN_EVENT_TYPES = [
   'comment.created',
   'comment.updated',
   'comment.deleted',
+  'reaction.created',
+  'reaction.deleted',
   'relation.created',
   'relation.deleted',
   'project.created',

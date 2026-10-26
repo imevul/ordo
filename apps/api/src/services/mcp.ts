@@ -254,6 +254,9 @@ async function issueResult(c: McpCaller, dir: Directory, ref: string, withCommen
           replyTo: x.parentId ?? undefined,
           createdAt: x.createdAt,
           edited: !!x.editedAt || undefined,
+          reactions: x.reactions.length
+            ? x.reactions.map((r) => `${r.emoji} ${r.userIds.length}`).join('  ')
+            : undefined,
         }))
       : undefined,
   };

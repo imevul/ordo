@@ -675,6 +675,7 @@ const NOTIFICATION_LABELS: Record<NotificationType, string> = {
   issue_mention: 'Mentions',
   issue_status_changed: 'Status changes on issues I follow',
   issue_priority_urgent: 'My issues marked urgent',
+  comment_reaction: 'Reactions to my comments',
 };
 
 export function NotificationsSection() {

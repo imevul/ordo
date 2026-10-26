@@ -10,6 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import {
   attachments,
+  commentReactions,
   comments,
   files,
   issueHistory,
@@ -41,7 +42,7 @@ import { workspaceSettings } from './workspaces.ts';
 /**
  * Workspace exports, written by a job and kept for a week. JSON holds what belongs to the
  * workspace as a whole: people, teams, labels, projects, cycles, shared views, and issues with
- * their comments, history, relations, links and attachment metadata. CSV is the issues, in the columns Ordo's CSV
+ * their comments and reactions, history, relations, links and attachment metadata. CSV is the issues, in the columns Ordo's CSV
  * import reads, so it round-trips. Personal things (private views, favourites, notifications) and
  * anything secret (integrations, webhooks, SSO) are left out.
  */
@@ -277,6 +278,19 @@ async function jsonExport(
         .from(comments)
         .where(inArray(comments.issueId, ids))
         .orderBy(asc(comments.createdAt)),
+    ),
+    reactions: await perIssue((ids) =>
+      db
+        .select({
+          commentId: commentReactions.commentId,
+          userId: commentReactions.userId,
+          emoji: commentReactions.emoji,
+          createdAt: commentReactions.createdAt,
+        })
+        .from(commentReactions)
+        .innerJoin(comments, eq(comments.id, commentReactions.commentId))
+        .where(inArray(comments.issueId, ids))
+        .orderBy(asc(commentReactions.createdAt)),
     ),
     relations: await perIssue((ids) =>
       db.select().from(issueRelations).where(inArray(issueRelations.issueId, ids)),

@@ -80,6 +80,8 @@ in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L
   the team's _Duplicate_ (or first canceled) status.
 - **Comments** — rich text, replies, edits, `@username` mentions (with autocomplete). Mentioned people are notified
   and subscribed. Issue identifiers like `ENG-12` in text become links.
+- **Reactions** — the smiley on a comment adds an emoji; click a reaction to add or take back yours, hover it to see
+  who reacted. The comment's author finds reactions in their Inbox (not emailed unless they turn it on).
 - **Attachments** — paste or drop files into a description or comment (or use the paperclip), or drop them on the
   issue's _Attachments_ section. See below.
 - **Activity** — every property change is recorded with who and when.
@@ -154,7 +156,7 @@ update it. Star views and projects to pin them under _Favorites_.
 **My issues** has three tabs: assigned to you, created by you, and subscribed.
 
 The **Inbox** collects notifications: assigned / unassigned, mentions, comments and status changes on issues you
-follow, and issues marked urgent. Select one to read the issue alongside. `U` toggles read, `⌫` deletes;
+follow, issues marked urgent, and reactions to your comments. Select one to read the issue alongside. `U` toggles read, `⌫` deletes;
 the header buttons mark everything read or clear read notifications.
 
 ## Cycles
