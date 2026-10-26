@@ -9,7 +9,7 @@ export interface WorkspaceData extends Bootstrap {
   teamById: Map<string, Team>;
   teamByKey: Map<string, Team>;
   stateById: Map<string, WorkflowState>;
-  /** Members and the workspace's bots (flagged), for showing who did what. */
+  /** Members, and the workspace's bots and placeholders (flagged), for showing who did what. */
   memberById: Map<string, Person>;
   labelById: Map<string, Label>;
   projectById: Map<string, Project>;
@@ -50,10 +50,19 @@ export function WorkspaceProvider({
       teamById: byId(data.teams),
       teamByKey: new Map(data.teams.map((t) => [t.key, t])),
       stateById: byId(states),
-      // Bots aren't members (no pickers, no seats) but render as authors.
+      // Bots and placeholders aren't members (no pickers, no seats) but render where they appear.
       memberById: byId([
         ...(data.bots ?? []).map(
           (b): Person => ({ ...b, role: 'member', joinedAt: '', suspended: false, bot: true }),
+        ),
+        ...(data.placeholders ?? []).map(
+          (p): Person => ({
+            ...p,
+            role: 'member',
+            joinedAt: '',
+            suspended: false,
+            placeholder: true,
+          }),
         ),
         ...data.members,
       ]),

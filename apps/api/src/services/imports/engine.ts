@@ -34,6 +34,7 @@ import { type Ctx, emit, type RequestMeta } from '../context.ts';
 import { createIssue, type ImportedIssueFields, setImportedParent } from '../issues.ts';
 import { createLabel } from '../labels.ts';
 import { upsertIssueLink } from '../links.ts';
+import { createPlaceholder } from '../placeholders.ts';
 import { createProject } from '../projects.ts';
 import { createTeam } from '../teams.ts';
 import { csvSource } from './csv.ts';
@@ -90,7 +91,7 @@ const newCursor = (): Cursor => ({
 
 const emptyReport = (dryRun: boolean): ImportReport => ({
   dryRun,
-  created: { teams: 0, labels: 0, projects: 0, issues: 0, comments: 0 },
+  created: { teams: 0, people: 0, labels: 0, projects: 0, issues: 0, comments: 0 },
   existing: 0,
   skipped: [],
   skippedCount: 0,
@@ -159,7 +160,18 @@ async function workspaceData(db: DbOrTx, workspaceId: string) {
     .select({ id: projects.id, name: projects.name })
     .from(projects)
     .where(eq(projects.workspaceId, workspaceId));
-  return { teams: teamRows, states, members, labels: labelRows, projects: projectRows };
+  const placeholderRows = await db
+    .select({ id: users.id, name: users.name, importedEmail: users.importedEmail })
+    .from(users)
+    .where(and(eq(users.kind, 'placeholder'), eq(users.botWorkspaceId, workspaceId)));
+  return {
+    teams: teamRows,
+    states,
+    members,
+    placeholders: placeholderRows,
+    labels: labelRows,
+    projects: projectRows,
+  };
 }
 type WorkspaceData = Awaited<ReturnType<typeof workspaceData>>;
 
@@ -249,7 +261,14 @@ export async function suggestMapping(
       data.members.find(
         (m) => lower(m.name) === lower(u.name) || lower(m.username) === lower(u.name),
       );
-    mapping.users[u.id] = match ? match.id : null;
+    // Someone an earlier import already brought along keeps their placeholder.
+    const earlier =
+      (u.email &&
+        data.placeholders.find(
+          (p) => p.importedEmail && lower(p.importedEmail) === lower(u.email!),
+        )) ||
+      data.placeholders.find((p) => lower(p.name) === lower(u.name));
+    mapping.users[u.id] = match?.id ?? earlier?.id ?? 'placeholder';
   }
 
   for (const l of summary.labels) {
@@ -300,10 +319,12 @@ export async function mappingErrors(db: DbOrTx, row: ImportRow, mapping: ImportM
       if (!ok) errors.push(`The status chosen for "${name}" isn't one of ${t.name}'s target team`);
     }
   }
-  const memberIds = new Set(data.members.map((m) => m.id));
+  const people = new Set([...data.members, ...data.placeholders].map((m) => m.id));
   for (const u of summary.users) {
     const id = mapping.users[u.id];
-    if (id && !memberIds.has(id)) errors.push(`The person chosen for ${u.name} isn't a member`);
+    if (id && id !== 'placeholder' && !people.has(id)) {
+      errors.push(`The person chosen for ${u.name} isn't a member`);
+    }
   }
   const check = (kind: string, ids: Set<string>, values: Record<string, string>) => {
     for (const v of Object.values(values)) {
@@ -499,7 +520,7 @@ interface RunState {
   report: ImportReport;
   data: WorkspaceData;
   /** What earlier steps created, by kind and source id. */
-  created: Record<'team' | 'label' | 'project', Map<string, string>>;
+  created: Record<'team' | 'user' | 'label' | 'project', Map<string, string>>;
   canAssign: Map<string, boolean>;
 }
 
@@ -519,10 +540,15 @@ async function step(app: FastifyInstance, row: ImportRow, dryRun: boolean, job: 
     .where(
       and(
         eq(importItems.importId, row.id),
-        inArray(importItems.kind, ['team', 'label', 'project']),
+        inArray(importItems.kind, ['team', 'user', 'label', 'project']),
       ),
     );
-  const created: RunState['created'] = { team: new Map(), label: new Map(), project: new Map() };
+  const created: RunState['created'] = {
+    team: new Map(),
+    user: new Map(),
+    label: new Map(),
+    project: new Map(),
+  };
   for (const i of items) created[i.kind as keyof typeof created].set(i.externalId, i.entityId);
 
   const st: RunState = {
@@ -600,7 +626,7 @@ async function finish(ctx: Ctx, st: RunState) {
 async function remember(
   ctx: Ctx,
   importId: string,
-  kind: 'team' | 'label' | 'project' | 'issue',
+  kind: 'team' | 'user' | 'label' | 'project' | 'issue',
   externalId: string,
   entityId: string,
 ) {
@@ -631,6 +657,15 @@ async function setup(ctx: Ctx, st: RunState) {
     const id = await createTeam(ctx, target.create);
     await remember(ctx, row.id, 'team', t.id, id);
     st.created.team.set(t.id, id);
+  }
+
+  for (const u of summary.users) {
+    if (mapping.users[u.id] !== 'placeholder' || st.created.user.has(u.id)) continue;
+    report.created.people++;
+    if (st.dryRun) continue;
+    const id = await createPlaceholder(ctx, { name: u.name, email: u.email });
+    await remember(ctx, row.id, 'user', u.id, id);
+    st.created.user.set(u.id, id);
   }
 
   const targets = new Map<string, number>();
@@ -687,6 +722,11 @@ async function setup(ctx: Ctx, st: RunState) {
 async function assignable(ctx: Ctx, st: RunState, target: string, userId: string) {
   const key = `${target}:${userId}`;
   let ok = st.canAssign.get(key);
+  // Placeholders can't see anything, but imports may assign them (merging fixes that up).
+  const placeholder =
+    st.data.placeholders.some((p) => p.id === userId) ||
+    [...st.created.user.values()].includes(userId);
+  if (placeholder) return true;
   if (ok === undefined) {
     ok = target.startsWith('new:')
       ? st.data.members.some((m) => m.id === userId && m.role !== 'guest')
@@ -707,7 +747,10 @@ function stateFor(st: RunState, item: SourceIssue, target: string) {
 
 async function issueInput(ctx: Ctx, st: RunState, item: SourceIssue, target: string) {
   const { mapping, report, data } = st;
-  const person = (id: string | undefined) => (id ? (mapping.users[id] ?? null) : null);
+  const person = (id: string | undefined) => {
+    const value = id ? mapping.users[id] : null;
+    return value === 'placeholder' ? (st.created.user.get(id!) ?? null) : (value ?? null);
+  };
 
   let assigneeId = person(item.assigneeId);
   if (assigneeId && !(await assignable(ctx, st, target, assigneeId))) {

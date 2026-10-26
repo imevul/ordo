@@ -51,6 +51,7 @@ import {
 import { type Ctx, emit, record } from './context.ts';
 import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
+import { isWorkspacePlaceholder } from './placeholders.ts';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -347,10 +348,11 @@ async function defaultState(ctx: Ctx, team: typeof teams.$inferSelect) {
   return pick;
 }
 
-/** Assignees must be able to see the issue's team. */
-async function assertAssignee(ctx: Ctx, teamId: string, userId: string) {
+/** Assignees must be able to see the issue's team; imports may also assign their placeholders. */
+async function assertAssignee(ctx: Ctx, teamId: string, userId: string, imported = false) {
   const [ok] = await usersWithTeamAccess(ctx.tx, ctx.workspaceId, teamId, [userId]);
-  if (!ok) throw badRequest("Assignee isn't a member of this workspace, or can't access this team");
+  if (ok || (imported && (await isWorkspacePlaceholder(ctx.tx, ctx.workspaceId, userId)))) return;
+  throw badRequest("Assignee isn't a member of this workspace, or can't access this team");
 }
 
 async function assertProject(ctx: Ctx, projectId: string) {
@@ -465,7 +467,7 @@ export async function createIssue(
   const state = input.stateId
     ? await stateOf(ctx, team.id, input.stateId)
     : await defaultState(ctx, team);
-  if (input.assigneeId) await assertAssignee(ctx, team.id, input.assigneeId);
+  if (input.assigneeId) await assertAssignee(ctx, team.id, input.assigneeId, !!imported);
   if (input.projectId) await assertProject(ctx, input.projectId);
   if (input.cycleId) await assertCycle(ctx, team.id, input.cycleId);
   if (input.parentId) await assertParent(ctx, null, input.parentId);
@@ -626,7 +628,9 @@ export async function updateIssue(
   }
   if (patch.priority !== undefined) change('priority', 'priority', patch.priority);
   if (patch.assigneeId !== undefined) {
-    if (patch.assigneeId) await assertAssignee(ctx, teamId, patch.assigneeId);
+    // Re-sending an imported placeholder assignee is fine; choosing one isn't.
+    if (patch.assigneeId && patch.assigneeId !== current.assigneeId)
+      await assertAssignee(ctx, teamId, patch.assigneeId);
     change('assigneeId', 'assignee', patch.assigneeId);
   }
   if (patch.projectId !== undefined) {

@@ -29,6 +29,7 @@ import { emit } from '../services/context.ts';
 import { listCycles } from '../services/cycles.ts';
 import { deleteFile, saveFile, signedFileUrl } from '../services/files.ts';
 import { workspaceBots } from '../services/integrations.ts';
+import { workspacePlaceholders } from '../services/placeholders.ts';
 import { listProjects } from '../services/projects.ts';
 import { toLabel, toView } from '../services/serialize.ts';
 import { listTeams } from '../services/teams.ts';
@@ -52,6 +53,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       favoriteRows,
       unread,
       bots,
+      placeholders,
     ] = await Promise.all([
       db.select().from(workspaces).where(eq(workspaces.id, ws.id)),
       db
@@ -109,6 +111,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
           ),
         ),
       workspaceBots(db, ws.id),
+      workspacePlaceholders(db, ws.id),
     ]);
     // Favorites only for things still visible.
     const visibleTarget = (kind: string, id: string) =>
@@ -130,6 +133,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
         email: access.isGuest && m.id !== user.id ? '' : m.email,
       })),
       bots: bots.map((b) => ({ ...b, email: '', avatarUrl: null })),
+      placeholders,
       teams: teamList,
       labels: labelRows.map(toLabel),
       projects,
