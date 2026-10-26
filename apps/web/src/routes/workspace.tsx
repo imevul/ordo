@@ -1,5 +1,5 @@
-import { Link, Navigate, useLocation, useParams } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
+import { useEffect, useState } from 'react';
 import { ApiError } from '../api/client.ts';
 import { useBootstrap, useMe } from '../api/queries.ts';
 import { AppShell } from '../components/AppShell.tsx';
@@ -8,9 +8,17 @@ import { WorkspaceProvider } from '../lib/workspace.tsx';
 
 export function WorkspaceLayout() {
   const { slug } = useParams({ from: '/$slug' });
-  const location = useLocation();
+  const navigate = useNavigate();
+  // Captured once: during the redirect `useLocation()` already reports /login?redirect=…, and
+  // re-deriving the target from it would nest redirects forever and hang the tab.
+  const [returnTo] = useState(() => window.location.pathname + window.location.search);
   const me = useMe();
   const boot = useBootstrap(slug);
+  const signedOut = !me.isLoading && !me.data;
+
+  useEffect(() => {
+    if (signedOut) navigate({ to: '/login', search: { redirect: returnTo }, replace: true });
+  }, [signedOut, navigate, returnTo]);
 
   useEffect(() => {
     try {
@@ -18,8 +26,7 @@ export function WorkspaceLayout() {
     } catch {}
   }, [boot.data, slug]);
 
-  if (me.isLoading) return <Spinner label="booting" />;
-  if (!me.data) return <Navigate to="/login" search={{ redirect: location.href }} />;
+  if (!me.data) return <Spinner label="booting" />;
   if (boot.error) {
     const notFound = boot.error instanceof ApiError && boot.error.status === 404;
     return (
