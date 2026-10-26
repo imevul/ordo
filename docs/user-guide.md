@@ -187,9 +187,10 @@ none.
 
 ## Search and the command menu
 
-`/` opens search (title, description, or identifier). `Mod K` opens the command menu: type to jump anywhere,
-create things, or — with issues focused or selected — change their properties. Search results appear in the
-command menu after two characters.
+`/` opens search: words in titles, descriptions and comments (matched as you type, best matches first, any
+language), or an identifier like `ENG-12`. `Mod K` opens the command menu: type to jump anywhere, create things, or —
+with issues focused or selected — change their properties. Search results appear in the command menu after two
+characters.
 
 ## Your account
 

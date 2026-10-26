@@ -233,12 +233,12 @@ curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
 
 ### Notifications & search
 
-| Method | Path                    |                                          |
-| ------ | ----------------------- | ---------------------------------------- |
-| GET    | `/notifications`        | Latest 200                               |
-| POST   | `/notifications/read`   | `{ ids?, unread? }` — omit `ids` for all |
-| POST   | `/notifications/delete` | `{ ids }` or `{ read: true }`            |
-| GET    | `/search?q=`            | `{ issues, projects }`                   |
+| Method | Path                    |                                            |
+| ------ | ----------------------- | ------------------------------------------ |
+| GET    | `/notifications`        | Latest 200                                 |
+| POST   | `/notifications/read`   | `{ ids?, unread? }` — omit `ids` for all   |
+| POST   | `/notifications/delete` | `{ ids }` or `{ read: true }`              |
+| GET    | `/search?q=`            | `{ issues, projects }`, best matches first |
 
 ## Realtime
 

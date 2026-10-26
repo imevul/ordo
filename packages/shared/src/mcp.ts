@@ -55,7 +55,9 @@ export const mcpToolSchemas = {
       .string()
       .max(200)
       .optional()
-      .describe('Text in title or description, or an identifier'),
+      .describe(
+        'Words to find in titles, descriptions and comments (best matches first), or an identifier',
+      ),
     team: team.optional(),
     status: z.array(ref('Status name or id')).optional(),
     statusType: z.array(z.enum(STATE_TYPES)).optional(),

@@ -19,7 +19,6 @@ import {
   exists,
   getTableColumns,
   gt,
-  ilike,
   inArray,
   isNotNull,
   isNull,
@@ -54,6 +53,7 @@ import { type Ctx, emit, record } from './context.ts';
 import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 import { isWorkspacePlaceholder } from './placeholders.ts';
+import { matchingIssueIds, textQuery, textRank } from './search.ts';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -166,15 +166,30 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
       ),
     );
   }
-  if (f.q?.trim()) {
-    const q = f.q.trim();
-    const m = ISSUE_IDENTIFIER_PATTERN.exec(q.toUpperCase());
-    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-    const parts: SQL[] = [ilike(issues.title, like), ilike(issues.description, like)];
-    if (m) parts.push(and(eq(teams.key, m[1]!), eq(issues.number, Number(m[2])))!);
-    conds.push(or(...parts)!);
-  }
+  if (f.q?.trim()) conds.push(textConditions(f.q.trim()).match);
   return conds;
+}
+
+/**
+ * Text search: an identifier (ENG-12), or words in the title, description or comments (full
+ * text, as prefixes). `rank` orders matches by relevance.
+ */
+function textConditions(q: string) {
+  const m = ISSUE_IDENTIFIER_PATTERN.exec(q.toUpperCase());
+  const query = textQuery(q);
+  const lookups: SQL[] = [];
+  if (m) {
+    lookups.push(
+      sql`select i.id from issues i join teams t on t.id = i.team_id where t.key = ${m[1]!} and i.number = ${Number(m[2])}`,
+    );
+  }
+  if (query) lookups.push(matchingIssueIds(query));
+  const match = lookups.length
+    ? sql`"issues"."id" in (${sql.join(lookups, sql` union `)})`
+    : sql`false`;
+  const identifier = m ? and(eq(teams.key, m[1]!), eq(issues.number, Number(m[2])))! : sql`false`;
+  const rank = sql`(case when ${identifier} then 10 else 0 end)${query ? sql` + ${textRank(query)}` : sql``}`;
+  return { match, rank };
 }
 
 export async function queryIssues(
@@ -182,18 +197,21 @@ export async function queryIssues(
   access: Access,
   filter: IssueFilter,
   limit = 2000,
-  order: 'manual' | 'recent' | 'priority' = 'manual',
+  order: 'manual' | 'recent' | 'priority' | 'relevance' = 'manual',
 ): Promise<Issue[]> {
+  const q = filter.q?.trim();
   const orderBy =
-    order === 'recent'
-      ? [desc(issues.updatedAt)]
-      : order === 'priority'
-        ? // Urgent first, "no priority" last.
-          [
-            sql`case when ${issues.priority} = 0 then 5 else ${issues.priority} end`,
-            desc(issues.updatedAt),
-          ]
-        : [asc(issues.sortOrder), desc(issues.createdAt)];
+    order === 'relevance' && q
+      ? [desc(textConditions(q).rank), desc(issues.updatedAt)]
+      : order === 'recent'
+        ? [desc(issues.updatedAt)]
+        : order === 'priority'
+          ? // Urgent first, "no priority" last.
+            [
+              sql`case when ${issues.priority} = 0 then 5 else ${issues.priority} end`,
+              desc(issues.updatedAt),
+            ]
+          : [asc(issues.sortOrder), desc(issues.createdAt)];
   const rows = await baseQuery(db)
     .where(and(...filterConditions(access, filter)))
     .orderBy(...orderBy)

@@ -400,6 +400,11 @@ export const issues = pgTable(
     index('issues_project_idx').on(t.projectId),
     index('issues_cycle_idx').on(t.cycleId),
     index('issues_parent_idx').on(t.parentId),
+    // Full-text search; the expression must stay identical to issueDocument in services/search.ts.
+    index('issues_search_idx').using(
+      'gin',
+      sql`(setweight(to_tsvector('simple', ${t.title}), 'A') || setweight(to_tsvector('simple', ${t.description}), 'B'))`,
+    ),
   ],
 );
 
@@ -483,7 +488,11 @@ export const comments = pgTable(
     updatedAt: updatedAt(),
     editedAt: ts('edited_at'),
   },
-  (t) => [index('comments_issue_idx').on(t.issueId)],
+  (t) => [
+    index('comments_issue_idx').on(t.issueId),
+    // Full-text search; the expression must stay identical to commentDocument in services/search.ts.
+    index('comments_search_idx').using('gin', sql`to_tsvector('simple', ${t.body})`),
+  ],
 );
 
 export const commentReactions = pgTable(
