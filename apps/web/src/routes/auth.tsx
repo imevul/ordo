@@ -1,11 +1,13 @@
 import {
   type JoinableWorkspace,
   SLUG_PATTERN,
+  type SsoDiscovery,
   type SsoOption,
   TEAM_KEY_PATTERN,
 } from '@ordo/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { KeyRound } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { ApiError, api } from '../api/client.ts';
 import { keys, useConfig, useMe } from '../api/queries.ts';
@@ -94,46 +96,43 @@ export function IndexRedirect() {
   return <Navigate to="/$slug" params={{ slug: target.slug }} />;
 }
 
+type LoginStep = 'email' | 'password' | 'workspace';
+
+/**
+ * Email first: the domain decides what to offer — single sign-on buttons for workspaces that
+ * verified it, the password, or both (the password tucked away when SSO is required). "Sign in
+ * with SSO" asks for the workspace instead, for people whose address isn't on a verified domain.
+ */
 export function LoginPage() {
   const search = useSearch({ from: '/login' });
   const { redirect } = search;
   const qc = useQueryClient();
   const navigate = useNavigate();
   const config = useConfig();
+  const [step, setStep] = useState<LoginStep>(search.workspace ? 'workspace' : 'email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [discovery, setDiscovery] = useState<SsoDiscovery>({ options: [], ssoRequired: false });
+  const [showPassword, setShowPassword] = useState(false);
   // Set after a correct password when the account has two-factor authentication.
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
   // An SSO callback that failed sends people back here with ?error=.
   const [error, setError] = useState<string | null>(search.error ?? null);
-  const sso = useSsoOptions(email, search.workspace);
   const [busy, setBusy] = useState(false);
+  const after = redirect?.startsWith('/') ? redirect : undefined;
 
   const done = () => {
     qc.removeQueries({ queryKey: keys.me });
-    if (redirect?.startsWith('/')) navigate({ to: redirect });
-    else navigate({ to: '/' });
+    navigate({ to: after ?? '/' });
   };
 
-  const submit = async (e: FormEvent) => {
+  const run = (fn: () => Promise<void>) => async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      if (mfaToken) {
-        await api.post('/auth/mfa', { mfaToken, code });
-        return done();
-      }
-      const res = await api.post<{ ok: boolean; mfaRequired?: boolean; mfaToken?: string }>(
-        '/auth/login',
-        {
-          email,
-          password,
-        },
-      );
-      if (res.mfaRequired && res.mfaToken) setMfaToken(res.mfaToken);
-      else done();
+      await fn();
     } catch (err) {
       setError(message(err));
     } finally {
@@ -141,10 +140,30 @@ export function LoginPage() {
     }
   };
 
+  const continueWithEmail = run(async () => {
+    const found = await api.get<SsoDiscovery>(`/auth/discover?email=${encodeURIComponent(email)}`);
+    setDiscovery(found);
+    setShowPassword(!found.ssoRequired);
+    setStep('password');
+  });
+
+  const signIn = run(async () => {
+    if (mfaToken) {
+      await api.post('/auth/mfa', { mfaToken, code });
+      return done();
+    }
+    const res = await api.post<{ ok: boolean; mfaRequired?: boolean; mfaToken?: string }>(
+      '/auth/login',
+      { email, password },
+    );
+    if (res.mfaRequired && res.mfaToken) setMfaToken(res.mfaToken);
+    else done();
+  });
+
   if (mfaToken) {
     return (
       <AuthLayout kicker="two-factor" title="Enter your code.">
-        <form onSubmit={submit}>
+        <form onSubmit={signIn}>
           <ErrorLine error={error} />
           <p className="mb-5 text-[13px] text-muted">
             Open your authenticator app and enter the 6-digit code for Ordo. Lost your device? Use
@@ -162,125 +181,250 @@ export function LoginPage() {
           <button className="btn btn-primary mt-2 w-full" disabled={busy}>
             Verify <span className="arrow">→</span>
           </button>
-          <button
-            type="button"
-            className="mt-4 w-full text-center font-mono text-[11px] tracking-[0.1em] text-index uppercase hover:text-text"
+          <BackLink
             onClick={() => {
               setMfaToken(null);
               setCode('');
               setError(null);
             }}
           >
-            ← back
-          </button>
+            back
+          </BackLink>
         </form>
       </AuthLayout>
     );
   }
 
-  return (
-    <AuthLayout
-      kicker="sign in"
-      title="Welcome back."
-      footer={
-        config.data?.signupMode === 'open' || config.data?.hasUsers === false ? (
-          <>
-            New here?{' '}
-            <Link to="/signup" search={{}} className="text-highlight hover:text-text">
-              Create an account
+  const footer =
+    config.data?.signupMode === 'open' || config.data?.hasUsers === false ? (
+      <>
+        New here?{' '}
+        <Link to="/signup" search={{}} className="text-highlight hover:text-text">
+          Create an account
+        </Link>
+      </>
+    ) : (
+      <>Need an account? Ask a workspace admin for an invite link.</>
+    );
+
+  if (step === 'workspace') {
+    return (
+      <AuthLayout kicker="single sign-on" title="Which workspace?" footer={footer}>
+        <ErrorLine error={error} />
+        <WorkspaceSso
+          initial={search.workspace ?? ''}
+          redirect={after}
+          onBack={() => {
+            setError(null);
+            setStep('email');
+          }}
+        />
+      </AuthLayout>
+    );
+  }
+
+  if (step === 'password') {
+    const sso = discovery.options;
+    return (
+      <AuthLayout kicker="sign in" title="Welcome back." footer={footer}>
+        <ErrorLine error={error} />
+        <div className="mb-5 flex items-center gap-2 border border-border-soft bg-bg px-3 py-2">
+          <span className="min-w-0 flex-1 truncate text-[13.5px]">{email}</span>
+          <button
+            type="button"
+            className="font-mono text-[10.5px] tracking-[0.12em] text-index uppercase hover:text-text"
+            onClick={() => {
+              setStep('email');
+              setPassword('');
+              setError(null);
+            }}
+          >
+            change
+          </button>
+        </div>
+        {sso.length > 0 && (
+          <div className="mb-5">
+            <SsoButtons options={sso} redirect={after} />
+            {discovery.ssoRequired && (
+              <p className="mt-1 text-[12px] text-index">
+                Your organisation signs in with single sign-on.
+              </p>
+            )}
+          </div>
+        )}
+        {showPassword ? (
+          <form onSubmit={signIn}>
+            {/* Lets password managers pair the password with the address. */}
+            <input type="email" autoComplete="username" value={email} readOnly hidden />
+            <TextField
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              required
+              autoFocus
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              className={`btn mt-2 w-full ${sso.length ? 'btn-ghost' : 'btn-primary'}`}
+              disabled={busy}
+            >
+              Sign in with password <span className="arrow">→</span>
+            </button>
+            <Link
+              to="/forgot-password"
+              className="mt-4 block text-center font-mono text-[11px] tracking-[0.1em] text-index uppercase hover:text-text"
+            >
+              Forgot password?
             </Link>
-          </>
+          </form>
         ) : (
-          <>Need an account? Ask a workspace admin for an invite link.</>
-        )
-      }
-    >
-      <form onSubmit={submit}>
+          <BackLink onClick={() => setShowPassword(true)}>use a password instead</BackLink>
+        )}
+      </AuthLayout>
+    );
+  }
+
+  return (
+    <AuthLayout kicker="sign in" title="Welcome back." footer={footer}>
+      <form onSubmit={continueWithEmail}>
         <ErrorLine error={error} />
         <TextField
           label="Email"
           type="email"
-          autoComplete="email"
+          autoComplete="username"
           required
           autoFocus
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        {sso.length > 0 && (
-          <div className="mb-5">
-            {sso.map((o) => (
-              <a
-                key={o.providerId}
-                href={ssoStartUrl(o.providerId, {
-                  redirect: redirect?.startsWith('/') ? redirect : undefined,
-                })}
-                className="btn btn-primary mb-2 w-full"
-              >
-                Continue with {o.name}
-                {sso.length > 1 && <span className="text-[11px] opacity-70">· {o.workspace}</span>}
-                <span className="arrow">→</span>
-              </a>
-            ))}
-            <div className="mt-3 text-center font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-              or use your password
-            </div>
-          </div>
-        )}
-        <TextField
-          label="Password"
-          type="password"
-          autoComplete="current-password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-        />
-        <button
-          className={`btn mt-2 w-full ${sso.length ? 'btn-ghost' : 'btn-primary'}`}
-          disabled={busy}
-        >
-          Sign in <span className="arrow">→</span>
+        <button className="btn btn-primary mt-2 w-full" disabled={busy}>
+          Continue <span className="arrow">→</span>
         </button>
-        <Link
-          to="/forgot-password"
-          className="mt-4 block text-center font-mono text-[11px] tracking-[0.1em] text-index uppercase hover:text-text"
-        >
-          Forgot password?
-        </Link>
       </form>
+      <div className="my-5 flex items-center gap-3 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
+        <span className="h-px flex-1 bg-border-soft" />
+        or
+        <span className="h-px flex-1 bg-border-soft" />
+      </div>
+      <button
+        type="button"
+        className="btn btn-ghost w-full"
+        onClick={() => {
+          setError(null);
+          setStep('workspace');
+        }}
+      >
+        <KeyRound size={13} /> Sign in with SSO
+      </button>
     </AuthLayout>
   );
 }
 
-/** SSO buttons for the typed email's domain (debounced), or for ?workspace=<slug>. */
-function useSsoOptions(email: string, workspace?: string): SsoOption[] {
-  const [domainEmail, setDomainEmail] = useState('');
+function BackLink({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      className="mt-4 w-full text-center font-mono text-[11px] tracking-[0.1em] text-index uppercase hover:text-text"
+      onClick={onClick}
+    >
+      ← {children}
+    </button>
+  );
+}
+
+function SsoButtons({ options, redirect }: { options: SsoOption[]; redirect?: string }) {
+  // Several workspaces may share a domain; say which one each button is for.
+  const many = new Set(options.map((o) => o.workspace)).size > 1;
+  return options.map((o) => (
+    <a
+      key={o.providerId}
+      href={ssoStartUrl(o.providerId, { redirect })}
+      className="btn btn-primary mb-2 w-full"
+    >
+      Continue with {o.name}
+      {many && <span className="text-[11px] opacity-70">· {o.workspace}</span>}
+      <span className="arrow">→</span>
+    </a>
+  ));
+}
+
+/** "Sign in with SSO": the workspace's URL name → its providers. */
+function WorkspaceSso({
+  initial,
+  redirect,
+  onBack,
+}: {
+  initial: string;
+  redirect?: string;
+  onBack: () => void;
+}) {
+  const [slug, setSlug] = useState(initial);
+  const [found, setFound] = useState<SsoDiscovery | null>(null);
+  const [busy, setBusy] = useState(false);
+  const lookUp = async (value: string) => {
+    // Accept a pasted URL ("https://ordo.example.com/acme/") as well as the bare name.
+    const clean = value.trim().toLowerCase().replace(/\/+$/, '').replace(/^.*\//, '');
+    if (!clean) return;
+    setBusy(true);
+    try {
+      setFound(
+        await api.get<SsoDiscovery>(`/auth/providers?workspace=${encodeURIComponent(clean)}`),
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: look up a workspace from the link once
   useEffect(() => {
-    const t = setTimeout(
-      () => setDomainEmail(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : ''),
-      300,
-    );
-    return () => clearTimeout(t);
-  }, [email]);
-  const domain = domainEmail.split('@')[1]?.toLowerCase() ?? '';
-  const byDomain = useQuery({
-    queryKey: ['sso-discover', domain],
-    queryFn: () =>
-      api.get<{ options: SsoOption[] }>(
-        `/auth/discover?email=${encodeURIComponent(`x@${domain}`)}`,
-      ),
-    enabled: !!domain,
-    staleTime: 60_000,
-  });
-  const byWorkspace = useQuery({
-    queryKey: ['sso-workspace', workspace],
-    queryFn: () =>
-      api.get<{ options: SsoOption[] }>(
-        `/auth/providers?workspace=${encodeURIComponent(workspace!)}`,
-      ),
-    enabled: !!workspace,
-  });
-  const all = [...(byWorkspace.data?.options ?? []), ...(byDomain.data?.options ?? [])];
-  return all.filter((o, i) => all.findIndex((x) => x.providerId === o.providerId) === i);
+    if (initial) lookUp(initial);
+  }, []);
+  return (
+    <>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          lookUp(slug);
+        }}
+      >
+        <label className="mb-4 block">
+          <span className="mb-1 block font-mono text-[10.5px] font-semibold tracking-[0.16em] text-muted uppercase">
+            Workspace URL
+          </span>
+          <div className="input flex items-center gap-0 p-0">
+            <span className="pl-3 font-mono text-[12.5px] text-index">{location.host}/</span>
+            <input
+              className="min-w-0 flex-1 bg-transparent py-2 pr-3 font-mono text-[12.5px] outline-none"
+              required
+              autoFocus={!initial}
+              placeholder="acme"
+              value={slug}
+              onChange={(e) => {
+                setSlug(e.target.value);
+                setFound(null);
+              }}
+              aria-label="Workspace URL"
+            />
+          </div>
+        </label>
+        {!found?.options.length && (
+          <button className="btn btn-primary w-full" disabled={busy}>
+            Continue <span className="arrow">→</span>
+          </button>
+        )}
+      </form>
+      {found && found.options.length === 0 && (
+        <p className="mt-4 text-[13px] text-muted">
+          That workspace doesn't use single sign-on (or doesn't exist). Sign in with your email and
+          password instead.
+        </p>
+      )}
+      {found && found.options.length > 0 && (
+        <SsoButtons options={found.options} redirect={redirect} />
+      )}
+      <BackLink onClick={onBack}>sign in with email</BackLink>
+    </>
+  );
 }
 
 export function ForgotPasswordPage() {

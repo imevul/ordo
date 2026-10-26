@@ -166,6 +166,7 @@ Open **Settings** (workspace menu, or `G` then `S`):
   minutes, hourly, daily, or never). Anything you read in the app first isn't emailed.
 - **API keys** — personal keys for scripts and integrations ([API docs](api.md)).
 
-If your workspace uses single sign-on, type your work email on the sign-in page and pick **Continue with …**.
+If your workspace uses single sign-on, enter your work email on the sign-in page and pick **Continue with …**, or
+use **Sign in with SSO** and type your workspace's URL name.
 
 Forgot your password? Use **Forgot password?** on the sign-in page (needs email to be set up on the instance).

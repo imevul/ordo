@@ -445,6 +445,13 @@ export interface SsoOption {
   workspace: string;
 }
 
+/** What the sign-in page offers for an email domain or a workspace URL. */
+export interface SsoDiscovery {
+  options: SsoOption[];
+  /** A matching workspace requires SSO: offer the password only as a fallback (for owners). */
+  ssoRequired: boolean;
+}
+
 export interface LinkedIdentity {
   id: string;
   provider: string;
