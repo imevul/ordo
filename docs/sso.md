@@ -40,8 +40,12 @@ of being matched automatically.
 
 ## How people sign in
 
-- On the sign-in page, typing an address at a verified domain shows **Continue with <provider>**. Links like
-  `/login?workspace=<slug>` show the workspace's providers straight away.
+- **Email first.** People enter their email and press **Continue**. If its domain is verified by a workspace with a
+  provider, they get **Continue with <provider>** next to the password field. When that workspace requires SSO,
+  the password is tucked behind "use a password instead" (owners still need it as their fallback).
+- **Sign in with SSO.** For addresses outside your verified domains (or anyone who prefers it), this asks for the
+  workspace URL and shows its providers. Share `/login?workspace=<slug>` to skip that step.
+- Neither lookup reveals whether someone has an account: answers depend only on the domain or the workspace.
 - **First sign-in:** if the address is verified and its domain is verified for your workspace, Ordo creates the
   account (or matches the existing one with that address) and adds it to the workspace with the provider's default
   role (member or guest).

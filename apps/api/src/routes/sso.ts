@@ -1,4 +1,4 @@
-import type { LinkedIdentity, SsoOption } from '@ordo/shared';
+import type { LinkedIdentity, SsoDiscovery } from '@ordo/shared';
 import { and, count, eq, isNotNull } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import {
@@ -33,16 +33,20 @@ export async function ssoRoutes(app: FastifyInstance) {
   const loginError = (reply: FastifyReply, message: string) =>
     reply.redirect(`/login?error=${encodeURIComponent(message)}`);
 
-  /** Sign-in options for an email address: providers of workspaces that verified its domain. */
-  app.get('/auth/discover', async (req): Promise<{ options: SsoOption[] }> => {
+  /**
+   * Sign-in options for an email address: providers of workspaces that verified its domain.
+   * Answers per domain, never per person, so it can't be used to find out who has an account.
+   */
+  app.get('/auth/discover', async (req): Promise<SsoDiscovery> => {
     const { email = '' } = req.query as { email?: string };
     const domain = email.split('@')[1]?.toLowerCase().trim();
-    if (!domain) return { options: [] };
+    if (!domain) return { options: [], ssoRequired: false };
     const rows = await db
       .select({
         providerId: authProviders.id,
         name: authProviders.name,
         workspace: workspaces.name,
+        settings: workspaces.settings,
       })
       .from(workspaceDomains)
       .innerJoin(workspaces, eq(workspaces.id, workspaceDomains.workspaceId))
@@ -51,22 +55,29 @@ export async function ssoRoutes(app: FastifyInstance) {
         and(eq(authProviders.workspaceId, workspaces.id), eq(authProviders.enabled, true)),
       )
       .where(and(eq(workspaceDomains.domain, domain), isNotNull(workspaceDomains.verifiedAt)));
-    return { options: rows };
+    return {
+      options: rows.map(({ settings: _settings, ...o }) => o),
+      ssoRequired: rows.some((r) => r.settings?.requireSso),
+    };
   });
 
   /** Enabled providers of one workspace (for /login?workspace=… and the "SSO required" screen). */
-  app.get('/auth/providers', async (req): Promise<{ options: SsoOption[] }> => {
+  app.get('/auth/providers', async (req): Promise<SsoDiscovery> => {
     const { workspace = '' } = req.query as { workspace?: string };
     const rows = await db
       .select({
         providerId: authProviders.id,
         name: authProviders.name,
         workspace: workspaces.name,
+        settings: workspaces.settings,
       })
       .from(authProviders)
       .innerJoin(workspaces, eq(workspaces.id, authProviders.workspaceId))
       .where(and(eq(workspaces.slug, workspace), eq(authProviders.enabled, true)));
-    return { options: rows };
+    return {
+      options: rows.map(({ settings: _settings, ...o }) => o),
+      ssoRequired: rows.some((r) => r.settings?.requireSso),
+    };
   });
 
   app.get('/auth/oidc/:providerId/start', async (req, reply) => {

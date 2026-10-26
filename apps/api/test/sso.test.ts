@@ -104,6 +104,15 @@ describe('providers', () => {
     expect(p.groupRoles).toEqual({ 'ordo-admins': 'admin', contractors: 'guest' });
   });
 
+  it('is discoverable by workspace, and says when SSO is required', async () => {
+    const byWs = await new Client(app).get(`/api/auth/providers?workspace=${slug}`);
+    expect(byWs.data).toMatchObject({ ssoRequired: false, options: [{ providerId }] });
+    expect((await new Client(app).get('/api/auth/providers?workspace=nope')).data).toEqual({
+      options: [],
+      ssoRequired: false,
+    });
+  });
+
   it('is discoverable by email domain', async () => {
     const found = await new Client(app).get(`/api/auth/discover?email=x@${domain}`);
     expect(found.data.options).toEqual([{ providerId, name: 'Acme Identity', workspace: 'Acme' }]);
@@ -209,6 +218,14 @@ describe('require SSO', () => {
     passwordMember = (await signup(app, 'Password Member', { inviteToken: invite.token })).client;
     ssoMember = (await sso(person('enforced'))).client;
     await owner.patch(`${ws}/`, { settings: { requireSso: true, ssoSessionMaxAgeHours: 8 } });
+  });
+
+  it('tells the sign-in page to lead with SSO', async () => {
+    const found = await new Client(app).get(`/api/auth/discover?email=x@${domain}`);
+    expect(found.data.ssoRequired).toBe(true);
+    expect(
+      (await new Client(app).get(`/api/auth/providers?workspace=${slug}`)).data.ssoRequired,
+    ).toBe(true);
   });
 
   it('blocks password sessions with a pointer to the provider', async () => {
