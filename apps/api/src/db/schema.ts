@@ -2,6 +2,7 @@ import type {
   AuditAction,
   DomainEventType,
   EstimateScale,
+  ExportFormat,
   FavoriteKind,
   GitAutomation,
   HistoryChange,
@@ -595,7 +596,7 @@ export const files = pgTable(
     id: pk(),
     workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
     ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
-    kind: text('kind').$type<'avatar' | 'logo' | 'attachment' | 'import'>().notNull(),
+    kind: text('kind').$type<'avatar' | 'logo' | 'attachment' | 'import' | 'export'>().notNull(),
     storageKey: text('storage_key').notNull().unique(),
     filename: text('filename').notNull(),
     contentType: text('content_type').notNull(),
@@ -982,4 +983,24 @@ export const importItems = pgTable(
     createdAt: createdAt(),
   },
   (t) => [primaryKey({ columns: [t.importId, t.kind, t.externalId] })],
+);
+
+/** A workspace export: a job writes the file, which is kept for a week. */
+export const workspaceExports = pgTable(
+  'workspace_exports',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    format: text('format').$type<ExportFormat>().notNull(),
+    status: text('status').$type<'running' | 'ready' | 'failed'>().notNull().default('running'),
+    fileId: uuid('file_id').references(() => files.id, { onDelete: 'set null' }),
+    size: integer('size'),
+    error: text('error'),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    completedAt: ts('completed_at'),
+  },
+  (t) => [index('workspace_exports_workspace_idx').on(t.workspaceId)],
 );

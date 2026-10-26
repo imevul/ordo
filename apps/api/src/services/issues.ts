@@ -18,6 +18,7 @@ import {
   eq,
   exists,
   getTableColumns,
+  gt,
   ilike,
   inArray,
   isNotNull,
@@ -184,6 +185,20 @@ export async function queryIssues(
   const rows = await baseQuery(db)
     .where(and(...filterConditions(access, filter)))
     .orderBy(asc(issues.sortOrder), desc(issues.createdAt))
+    .limit(limit);
+  return rows.map(toIssue);
+}
+
+/** Every issue of a workspace, trashed ones too, a page at a time in id order (for exports). */
+export async function workspaceIssuePage(
+  db: DbOrTx,
+  workspaceId: string,
+  after: string | null,
+  limit: number,
+): Promise<Issue[]> {
+  const rows = await baseQuery(db)
+    .where(and(eq(issues.workspaceId, workspaceId), after ? gt(issues.id, after) : undefined))
+    .orderBy(asc(issues.id))
     .limit(limit);
   return rows.map(toIssue);
 }

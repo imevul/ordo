@@ -1,0 +1,219 @@
+import { type Bootstrap, type Import, parseCsv, type WorkspaceExport } from '@ordo/shared';
+import { eq, sql } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { auditLog, files, workspaceExports } from '../src/db/schema.ts';
+import { purgeOldExports } from '../src/services/exports.ts';
+import { type Client, signup, testApp } from './helpers.ts';
+
+let app: FastifyInstance;
+let owner: Client;
+let member: Client;
+let boot: Bootstrap;
+const slug = `exp-${Date.now()}`;
+const ws = `/api/w/${slug}`;
+
+async function settle(rounds = 4) {
+  for (let i = 0; i < rounds; i++) {
+    await app.db.execute(sql`update jobs set run_at = now() where status = 'pending'`);
+    await app.jobs.drain();
+  }
+}
+
+async function exportAs(format: 'json' | 'csv') {
+  const res = await owner.post(`${ws}/exports`, { format });
+  expect(res.statusCode, res.body).toBe(200);
+  expect(res.data.status).toBe('running');
+  await settle();
+  const done = ((await owner.get(`${ws}/exports`)).data as WorkspaceExport[]).find(
+    (e) => e.id === res.data.id,
+  )!;
+  expect(done.status, done.error ?? '').toBe('ready');
+  const file = await app.inject({ method: 'GET', url: done.url! });
+  expect(file.statusCode).toBe(200);
+  expect(file.headers['content-disposition']).toContain(`ordo-${slug}-`);
+  return { done, body: file.body };
+}
+
+beforeAll(async () => {
+  app = await testApp();
+  owner = (await signup(app, 'Olive Owner')).client;
+  await owner.post('/api/workspaces', { name: 'Export', slug, teamName: 'Alpha', teamKey: 'ALP' });
+  const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0];
+  member = (await signup(app, 'Bob Member', { inviteToken: invite.token })).client;
+  await owner.post(`${ws}/teams`, { name: 'Secret', key: 'SEC', private: true });
+  boot = (await owner.get(`${ws}/bootstrap`)).data;
+  const alpha = boot.teams.find((t) => t.key === 'ALP')!;
+  const secret = boot.teams.find((t) => t.key === 'SEC')!;
+  const label = (await owner.post(`${ws}/labels`, { name: 'bug', color: '#ff1493' })).data;
+  const project = (await owner.post(`${ws}/projects`, { name: 'Launch', teamIds: [alpha.id] }))
+    .data;
+  const parent = (
+    await owner.post(`${ws}/issues`, {
+      teamId: alpha.id,
+      title: 'Parent, with "quotes"',
+      description: 'Line one\nLine two',
+      priority: 1,
+      labelIds: [label.id],
+      projectId: project.id,
+      estimate: 3,
+    })
+  ).data;
+  const child = (
+    await owner.post(`${ws}/issues`, { teamId: alpha.id, title: 'Child', parentId: parent.id })
+  ).data;
+  await owner.post(`${ws}/issues/${parent.id}/comments`, { body: 'First comment' });
+  await owner.post(`${ws}/issues/${parent.id}/relations`, {
+    type: 'blocks',
+    relatedIssueId: child.id,
+  });
+  await owner.post(`${ws}/issues`, { teamId: secret.id, title: 'Private plan' });
+  const trashed = (await owner.post(`${ws}/issues`, { teamId: alpha.id, title: 'Trashed' })).data;
+  await owner.del(`${ws}/issues/${trashed.id}`);
+  await owner.post(`${ws}/views`, { name: 'Shared view', filters: {}, shared: true });
+  await member.post(`${ws}/views`, { name: "Bob's own view", filters: {}, shared: false });
+});
+afterAll(async () => {
+  await app.close();
+});
+
+describe('workspace export', () => {
+  it('is for workspace admins only', async () => {
+    expect((await member.get(`${ws}/exports`)).statusCode).toBe(403);
+    expect((await member.post(`${ws}/exports`, { format: 'json' })).statusCode).toBe(403);
+  });
+
+  it('exports everything as JSON, one export at a time', async () => {
+    const first = await owner.post(`${ws}/exports`, { format: 'json' });
+    expect((await owner.post(`${ws}/exports`, { format: 'csv' })).statusCode).toBe(409);
+    await settle();
+    const done = ((await owner.get(`${ws}/exports`)).data as WorkspaceExport[]).find(
+      (e) => e.id === first.data.id,
+    )!;
+    expect(done.status).toBe('ready');
+    const body = (await app.inject({ method: 'GET', url: done.url! })).body;
+    const data = JSON.parse(body);
+    expect(done.size).toBe(Buffer.byteLength(body));
+
+    expect(data).toMatchObject({ format: 'ordo-workspace-export', version: 1 });
+    expect(data.workspace.slug).toBe(slug);
+    expect(data.members.map((m: { name: string }) => m.name).sort()).toEqual([
+      'Bob Member',
+      'Olive Owner',
+    ]);
+    expect(data.teams.map((t: { key: string }) => t.key).sort()).toEqual(['ALP', 'SEC']);
+    // Private teams' and trashed issues are the workspace's too.
+    const titles = data.issues.map((i: { title: string }) => i.title);
+    expect(titles).toEqual(
+      expect.arrayContaining(['Parent, with "quotes"', 'Child', 'Private plan', 'Trashed']),
+    );
+    expect(data.comments.map((c: { body: string }) => c.body)).toEqual(['First comment']);
+    expect(data.relations).toHaveLength(1);
+    expect(data.history.length).toBeGreaterThanOrEqual(5);
+    expect(data.projects.map((p: { name: string }) => p.name)).toEqual(['Launch']);
+    // Personal things stay personal; secrets stay secret.
+    expect(data.views.map((v: { name: string }) => v.name)).toEqual(['Shared view']);
+    expect(body).not.toMatch(/"(passwordHash|secrets|tokenHash|totpSecret|inboundToken)"/);
+
+    const audit = await app.db.select().from(auditLog).where(eq(auditLog.targetId, done.id));
+    expect(audit.map((a) => a.action)).toEqual(['workspace.exported']);
+  });
+
+  it('exports issues as CSV that imports back', async () => {
+    const { body } = await exportAs('csv');
+    const [header, ...rows] = parseCsv(body);
+    expect(header!.slice(0, 6)).toEqual([
+      'ID',
+      'Team',
+      'Title',
+      'Description',
+      'Status',
+      'Priority',
+    ]);
+    expect(rows.map((r) => r[2])).not.toContain('Trashed');
+    const parent = rows.find((r) => r[2] === 'Parent, with "quotes"')!;
+    expect(parent[3]).toBe('Line one\nLine two');
+    expect(parent[5]).toBe('Urgent');
+    expect(parent[8]).toBe('bug');
+    expect(rows.find((r) => r[2] === 'Child')![11]).toBe(parent[0]);
+
+    // Into a fresh workspace, through the CSV import.
+    const slug2 = `${slug}-copy`;
+    await owner.post('/api/workspaces', {
+      name: 'Copy',
+      slug: slug2,
+      teamName: 'Beta',
+      teamKey: 'BET',
+    });
+    const ws2 = `/api/w/${slug2}`;
+    const boundary = '----ordo-roundtrip';
+    const up = await app.inject({
+      method: 'POST',
+      url: `${ws2}/imports`,
+      payload: Buffer.concat([
+        Buffer.from(
+          `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="export.csv"\r\nContent-Type: text/csv\r\n\r\n`,
+        ),
+        Buffer.from(body),
+        Buffer.from(`\r\n--${boundary}--\r\n`),
+      ]),
+      headers: {
+        cookie: owner.cookie,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+    });
+    expect(up.statusCode, up.body).toBe(200);
+    await settle();
+    let imp = (await owner.get(`${ws2}/imports/${up.json().id}`)).data as Import;
+    expect(imp.summary!.csv!.columns).toMatchObject({
+      id: 'ID',
+      team: 'Team',
+      title: 'Title',
+      status: 'Status',
+      priority: 'Priority',
+      labels: 'Labels',
+      parent: 'Parent',
+    });
+    await owner.post(`${ws2}/imports/${imp.id}/run`);
+    await settle(6);
+    imp = (await owner.get(`${ws2}/imports/${imp.id}`)).data;
+    expect(imp.status, imp.error ?? '').toBe('completed');
+
+    const copy = (await owner.get(`${ws2}/issues/${parent[0]}`)).data;
+    expect(copy).toMatchObject({ title: 'Parent, with "quotes"', priority: 1, estimate: 3 });
+    expect(copy.description).toBe('Line one\nLine two');
+    expect(copy.subIssues.map((s: { title: string }) => s.title)).toEqual(['Child']);
+    const boot2 = (await owner.get(`${ws2}/bootstrap`)).data as Bootstrap;
+    expect(copy.labelIds.map((id: string) => boot2.labels.find((l) => l.id === id)!.name)).toEqual([
+      'bug',
+    ]);
+    expect(boot2.projects.map((p) => p.name)).toEqual(['Launch']);
+    const team = boot2.teams.find((t) => t.id === copy.teamId)!;
+    const original = boot.teams.find((t) => t.key === 'ALP')!;
+    expect(team.states.find((s) => s.id === copy.stateId)!.name).toBe(
+      original.states.find((s) => s.id === original.defaultStateId)!.name,
+    );
+  });
+
+  it('can be deleted, and is purged after a week', async () => {
+    const { done } = await exportAs('json');
+    const del = await owner.del(`${ws}/exports/${done.id}`);
+    expect(del.statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: done.url! })).statusCode).toBe(404);
+
+    const { done: old } = await exportAs('csv');
+    const [row] = await app.db
+      .select()
+      .from(workspaceExports)
+      .where(eq(workspaceExports.id, old.id));
+    await app.db
+      .update(workspaceExports)
+      .set({ createdAt: new Date(Date.now() - 8 * 86_400_000).toISOString() })
+      .where(eq(workspaceExports.id, old.id));
+    await purgeOldExports(app);
+    expect(
+      await app.db.select().from(workspaceExports).where(eq(workspaceExports.id, old.id)),
+    ).toHaveLength(0);
+    expect(await app.db.select().from(files).where(eq(files.id, row!.fileId!))).toHaveLength(0);
+  });
+});

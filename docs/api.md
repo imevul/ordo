@@ -230,7 +230,7 @@ curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
 ```
 
 `kind` is one of `issue`, `comment`, `project`, `projectUpdate`, `cycle`, `label`, `team`, `state`, `workspace`,
-`member`, `view`, `favorite`, `notification`, `import`; `action` is `created`, `updated` or `deleted`. Notification and
+`member`, `view`, `favorite`, `notification`, `import`, `export`; `action` is `created`, `updated` or `deleted`. Notification and
 favorite events are delivered only to their user. Events are hints — refetch what you display.
 
 A GraphQL API is on the [roadmap](../ROADMAP.md).
@@ -375,3 +375,13 @@ People imports brought along who aren't members ([details](import-export.md#plac
 | ------ | ------------------------- | ------------------------------------------------------------------------------ |
 | GET    | `/placeholders`           | _Admin._ With counts of what's attributed to each, and a `suggestedUserId`     |
 | POST   | `/placeholders/:id/merge` | _Admin._ `{ userId }` → `{ assigned, unassigned }`; the placeholder is deleted |
+
+### Exports
+
+Admins only ([what's in them](import-export.md#exporting)).
+
+| Method | Path           |                                                                       |
+| ------ | -------------- | --------------------------------------------------------------------- |
+| GET    | `/exports`     | The latest 20, with a signed download `url` once `status` is `ready`  |
+| POST   | `/exports`     | `{ format: "json" \| "csv" }`; 409 while another export is being made |
+| DELETE | `/exports/:id` | Deletes the export and its file (they go by themselves after a week)  |

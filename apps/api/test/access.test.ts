@@ -483,6 +483,9 @@ describe('route inventory', () => {
     'POST /imports/:id/cancel': 'workspace admins only',
     'DELETE /imports/:id': 'workspace admins only',
     'GET /placeholders': 'workspace admins only (placeholders.test.ts)',
+    'GET /exports': 'workspace admins only (exports.test.ts)',
+    'POST /exports': 'workspace admins only (exports.test.ts)',
+    'DELETE /exports/:id': 'workspace admins only',
     'POST /placeholders/:id/merge': 'workspace admins only (placeholders.test.ts)',
   };
 
