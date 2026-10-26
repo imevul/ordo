@@ -61,19 +61,39 @@ export async function providerConfig(
       headers: res.headers,
     });
   };
-  const config = await oidc.discovery(
-    new URL(provider.issuer),
-    provider.clientId,
-    app.keyring.decrypt(provider.clientSecret, secretAad(provider.id)),
-    undefined,
-    {
-      [oidc.customFetch]: customFetch,
-      // Plain-http issuers are only reachable on private networks (e.g. a LAN Keycloak), which the
-      // admin has to allow explicitly anyway.
-      execute:
-        provider.issuer.startsWith('http://') && allowPrivate ? [oidc.allowInsecureRequests] : [],
-    },
-  );
+  const discover = (issuer: string) =>
+    oidc.discovery(
+      new URL(issuer),
+      provider.clientId,
+      app.keyring.decrypt(provider.clientSecret, secretAad(provider.id)),
+      undefined,
+      {
+        [oidc.customFetch]: customFetch,
+        // Plain-http issuers are only reachable on private networks (e.g. a LAN Keycloak), which the
+        // admin has to allow explicitly anyway.
+        execute: issuer.startsWith('http://') && allowPrivate ? [oidc.allowInsecureRequests] : [],
+      },
+    );
+  let config: oidc.Configuration;
+  try {
+    config = await discover(provider.issuer);
+  } catch (err) {
+    // Issuers must match to the character, and some end in "/" (Authentik) while others don't
+    // (Keycloak). Admins paste either, so try the other spelling before giving up, and keep it.
+    const other = provider.issuer.endsWith('/')
+      ? provider.issuer.replace(/\/+$/, '')
+      : `${provider.issuer}/`;
+    try {
+      config = await discover(other);
+    } catch {
+      throw err;
+    }
+    await app.db
+      .update(authProviders)
+      .set({ issuer: other })
+      .where(eq(authProviders.id, provider.id));
+    provider.issuer = other;
+  }
   configs.set(key, { config, at: Date.now() });
   return config;
 }

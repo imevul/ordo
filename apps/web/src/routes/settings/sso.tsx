@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
 import { keys } from '../../api/queries.ts';
 import { Spinner } from '../../components/PageHeader.tsx';
-import { Modal } from '../../components/ui/Modal.tsx';
+import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime } from '../../lib/format.ts';
 import { ssoStartUrl } from '../../lib/sso.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
@@ -120,7 +120,13 @@ export function AuthenticationSection() {
               className="btn btn-danger btn-sm"
               aria-label={`Delete ${p.name}`}
               onClick={async () => {
-                if (!confirm(`Delete ${p.name}? People who only sign in with it lose access.`))
+                if (
+                  !(await confirmDialog({
+                    title: `Delete ${p.name}?`,
+                    body: 'People who only sign in with it lose access.',
+                    danger: true,
+                  }))
+                )
                   return;
                 await api.del(wsPath(ws.slug, `/auth-providers/${p.id}`));
                 reload();

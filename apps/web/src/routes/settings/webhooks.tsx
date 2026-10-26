@@ -12,7 +12,7 @@ import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
 import { TeamIcon } from '../../components/icons.tsx';
 import { Spinner } from '../../components/PageHeader.tsx';
-import { Modal } from '../../components/ui/Modal.tsx';
+import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './index.tsx';
@@ -116,7 +116,13 @@ export function WebhooksSection() {
                 className="btn btn-danger btn-sm"
                 aria-label={`Delete ${h.url}`}
                 onClick={async () => {
-                  if (!confirm(`Delete the webhook to ${h.url}?`)) return;
+                  if (
+                    !(await confirmDialog({
+                      title: `Delete the webhook to ${h.url}?`,
+                      danger: true,
+                    }))
+                  )
+                    return;
                   await api.del(wsPath(ws.slug, `/webhooks/${h.id}`));
                   reload();
                 }}

@@ -266,3 +266,39 @@ describe('require SSO', () => {
     expect((await client.get('/api/auth/me')).statusCode).toBe(401);
   });
 });
+
+describe('issuer spelling', () => {
+  it('accepts an issuer pasted without the trailing slash the provider uses, and keeps the right one', async () => {
+    const authentikLike = await startMockIdp(0, '/application/o/ordo/');
+    try {
+      const pasted = authentikLike.issuer.replace(/\/$/, '');
+      const created = await owner.post(`${ws}/auth-providers`, {
+        name: 'Slashy',
+        issuer: pasted,
+        clientId: authentikLike.clientId,
+        clientSecret: authentikLike.clientSecret,
+      });
+      expect(created.data.issuer).toBe(pasted);
+      authentikLike.next = person('slashy');
+      const start = await app.inject({
+        method: 'GET',
+        url: `/api/auth/oidc/${created.data.id}/start`,
+      });
+      expect(start.statusCode).toBe(302);
+      const authorize = await fetch(start.headers.location as string, { redirect: 'manual' });
+      const back = new URL(authorize.headers.get('location')!);
+      const res = await app.inject({
+        method: 'GET',
+        url: back.pathname + back.search,
+        headers: { cookie: cookieOf(start.headers['set-cookie'], 'ordo_oidc')! },
+      });
+      expect(res.headers.location).toBe(`/${slug}`);
+      const [stored] = (await owner.get(`${ws}/auth-providers`)).data.providers.filter(
+        (p: { id: string }) => p.id === created.data.id,
+      );
+      expect(stored.issuer).toBe(authentikLike.issuer);
+    } finally {
+      await authentikLike.close();
+    }
+  });
+});

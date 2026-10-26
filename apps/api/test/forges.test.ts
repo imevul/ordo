@@ -1,4 +1,6 @@
 import { createHmac, generateKeyPairSync } from 'node:crypto';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import type { Bootstrap, IssueDetail } from '@ordo/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -418,6 +420,24 @@ describe('GitLab', () => {
 });
 
 describe('Forgejo', () => {
+  it('says why it could not connect', async () => {
+    // A port that was just free: nothing listens there.
+    const closed = createServer();
+    await new Promise<void>((r) => closed.listen(0, '127.0.0.1', () => r()));
+    const port = (closed.address() as AddressInfo).port;
+    await new Promise((r) => closed.close(r));
+    const res = await owner.post(`${ws}/integrations`, {
+      provider: 'forgejo',
+      config: { baseUrl: `http://127.0.0.1:${port}`, repos: 'acme/app', delivery: 'poll' },
+      secrets: { token: 'fj' },
+    });
+    expect(res.data).toMatchObject({
+      status: 'error',
+      lastError: `127.0.0.1:${port}: couldn't connect (ECONNREFUSED)`,
+    });
+    await owner.del(`${ws}/integrations/${res.data.id}`);
+  });
+
   it('verifies signatures and treats WIP titles as drafts', async () => {
     forge.on('GET', '/api/v1/repos/acme/app', { id: 5 });
     forge.on('POST', '/api/v1/repos/acme/app/hooks', { id: 77 });

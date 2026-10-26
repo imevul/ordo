@@ -11,6 +11,7 @@ import { IssuesView } from '../components/IssuesView.tsx';
 import { StatusIcon, TeamIcon } from '../components/icons.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
+import { confirmDialog } from '../components/ui/Modal.tsx';
 import { relativeTime, shortDate } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
@@ -238,7 +239,15 @@ export function TrashPage() {
     toast.success(`${issue.identifier} restored`);
   };
   const purge = async (issue: Issue) => {
-    if (!confirm(`Permanently delete ${issue.identifier}? This cannot be undone.`)) return;
+    if (
+      !(await confirmDialog({
+        title: `Permanently delete ${issue.identifier}?`,
+        body: 'This cannot be undone.',
+        confirmLabel: 'Delete forever',
+        danger: true,
+      }))
+    )
+      return;
     await api.del(wsPath(ws.slug, `/issues/${issue.id}/purge`));
     invalidateIssues(qc, ws.slug);
   };

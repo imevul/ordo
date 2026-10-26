@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api, wsPath } from '../../api/client.ts';
 import { useWsMutation } from '../../api/queries.ts';
+import { confirmDialog } from '../../components/ui/Modal.tsx';
 import { Popover } from '../../components/ui/Popover.tsx';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { SettingsCard } from './index.tsx';
@@ -64,7 +65,10 @@ function LabelRow({ label }: { label: Label }) {
       <button
         type="button"
         className="btn btn-danger btn-sm"
-        onClick={() => confirm(`Delete label “${label.name}”?`) && remove.mutate(undefined)}
+        onClick={async () => {
+          if (await confirmDialog({ title: `Delete label “${label.name}”?`, danger: true }))
+            remove.mutate(undefined);
+        }}
         aria-label={`Delete ${label.name}`}
       >
         <Trash2 size={12} />

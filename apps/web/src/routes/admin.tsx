@@ -8,6 +8,7 @@ import { api } from '../api/client.ts';
 import { useMe } from '../api/queries.ts';
 import { OrdoMark } from '../components/icons.tsx';
 import { PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
+import { confirmDialog } from '../components/ui/Modal.tsx';
 import { relativeTime, shortDate } from '../lib/format.ts';
 
 /**
@@ -303,11 +304,14 @@ function Users({ myId }: { myId: string }) {
                   type="button"
                   className="btn btn-danger btn-sm"
                   aria-label={`Delete ${u.name}`}
-                  onClick={() =>
-                    confirm(
-                      `Delete ${u.email}? Their issues and comments stay, attributed to a former member.`,
-                    ) && act(() => api.del(`/admin/users/${u.id}`), 'User deleted')
-                  }
+                  onClick={async () => {
+                    const ok = await confirmDialog({
+                      title: `Delete ${u.email}?`,
+                      body: 'Their issues and comments stay, attributed to a former member.',
+                      danger: true,
+                    });
+                    if (ok) act(() => api.del(`/admin/users/${u.id}`), 'User deleted');
+                  }}
                 >
                   <Trash2 size={12} />
                 </button>
