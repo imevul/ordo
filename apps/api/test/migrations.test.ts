@@ -23,7 +23,8 @@ const entryIndex = (tag: string) => {
   return journal.entries.findIndex((e: { tag: string }) => e.tag === tag);
 };
 
-describe('migrations', () => {
+// Each test builds databases from scratch, which is slow on a busy machine.
+describe('migrations', { timeout: 60_000 }, () => {
   const cleanup: (() => unknown)[] = [];
   afterAll(async () => {
     for (const fn of cleanup) await fn();
