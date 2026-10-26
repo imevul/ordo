@@ -57,7 +57,13 @@ export function WorkspaceProvider({
       teamById: byId(data.teams),
       teamByKey: new Map(data.teams.map((t) => [t.key, t])),
       stateById: byId(states),
-      memberById: byId(data.members),
+      // Bots aren't members (no pickers, no seats) but render as authors.
+      memberById: byId([
+        ...(data.bots ?? []).map(
+          (b): Member => ({ ...b, role: 'member', joinedAt: '', suspended: false }),
+        ),
+        ...data.members,
+      ]),
       labelById: byId(data.labels),
       projectById: byId(data.projects),
       cycleById: byId(data.cycles),

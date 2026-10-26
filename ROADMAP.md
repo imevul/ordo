@@ -75,11 +75,13 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   just-in-time accounts with an account-takeover guard, connected accounts
 - ✅ Require SSO with an audited owner fallback, SSO session length, API-key policy, group → role mapping
 
-### Phase 6 — Events and integration framework
+### Phase 6 — Events and integration framework ✅
 
-- ⬜ Transactional event outbox
-- ⬜ Signed outgoing webhooks with delivery log
-- ⬜ Integration framework: inbound webhooks, polling, long-lived connectors; issue links (PRs, branches, messages)
+- ✅ Transactional event outbox (issues, comments, relations, projects, project updates, cycles)
+- ✅ Signed outgoing webhooks with filters, delivery log, ping, redelivery and auto-disable
+- ✅ Integration framework: inbound webhooks, polling, domain events, bot accounts; issue links (PRs, branches,
+  messages, plain links)
+- ⬜ Long-lived connectors under leases (lands with chat in Phase 8)
 
 ### Phase 7 — Git forges
 

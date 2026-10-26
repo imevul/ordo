@@ -121,6 +121,7 @@ async function main() {
       workspaceId: ws!.id,
       access: systemAccess(ws!.id, userId),
       events,
+      domainEvents: [],
       source: 'system',
       silent: false,
       meta: null,

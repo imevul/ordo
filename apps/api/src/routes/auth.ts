@@ -542,6 +542,7 @@ export async function authRoutes(app: FastifyInstance) {
           workspaceId: ws!.id,
           access: systemAccess(ws!.id, user.id),
           events: [],
+          domainEvents: [],
           source: req.authMethod === 'api_key' ? 'api' : 'web',
           silent: false,
           meta: requestMeta(req),

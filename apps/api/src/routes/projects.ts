@@ -6,7 +6,7 @@ import { requireAccess } from '../lib/auth.ts';
 import { badRequest, forbidden, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertCan, canReadTeam } from '../services/access.ts';
-import { type Ctx, emit } from '../services/context.ts';
+import { type Ctx, emit, record } from '../services/context.ts';
 import { listProjects } from '../services/projects.ts';
 
 async function assertTeams(ctx: Ctx, teamIds: string[]) {
@@ -75,6 +75,8 @@ export async function projectRoutes(app: FastifyInstance) {
         .insert(projectTeams)
         .values(teamIds.map((teamId) => ({ projectId: row!.id, teamId })));
       emit(ctx, { kind: 'project', action: 'created', id: row!.id });
+      const [project] = await listProjects(ctx.tx, ctx.access, row!.id);
+      record(ctx, 'project.created', project!, { teamIds: project!.teamIds });
       return row!.id;
     });
     return (await listProjects(db, requireAccess(req), id))[0];
@@ -99,6 +101,8 @@ export async function projectRoutes(app: FastifyInstance) {
         .set({ ...rest, updatedAt: new Date().toISOString() })
         .where(eq(projects.id, id));
       emit(ctx, { kind: 'project', action: 'updated', id });
+      const [project] = await listProjects(ctx.tx, ctx.access, id);
+      record(ctx, 'project.updated', project!, { teamIds: project!.teamIds });
     });
     return (await listProjects(db, requireAccess(req), id))[0];
   });
@@ -107,6 +111,8 @@ export async function projectRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     return mutate(app, req, async (ctx) => {
       await loadProject(ctx, id);
+      const [before] = await listProjects(ctx.tx, ctx.access, id);
+      record(ctx, 'project.deleted', { id, name: before?.name }, { teamIds: before?.teamIds });
       // Issues keep existing; their project is cleared by the FK's ON DELETE SET NULL.
       await ctx.tx.delete(projects).where(eq(projects.id, id));
       emit(ctx, { kind: 'project', action: 'deleted', id });
@@ -137,6 +143,13 @@ export async function projectRoutes(app: FastifyInstance) {
         .returning();
       emit(ctx, { kind: 'projectUpdate', action: 'created', id: row!.id });
       emit(ctx, { kind: 'project', action: 'updated', id });
+      const [project] = await listProjects(ctx.tx, ctx.access, id);
+      record(
+        ctx,
+        'project_update.created',
+        { update: row!, project: { id, name: project?.name } },
+        { teamIds: project?.teamIds },
+      );
       return row;
     });
   });

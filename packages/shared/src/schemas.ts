@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  DOMAIN_EVENT_TYPES,
   ESTIMATE_SCALE_NAMES,
   FAVORITE_KINDS,
   MEMBER_ROLES,
@@ -426,3 +427,26 @@ export const updateAuthProviderSchema = z
     /** Empty keeps the stored secret. */
     clientSecret: z.string().max(2000).optional(),
   });
+
+export const createWebhookSchema = z.object({
+  url: z.url().max(2000),
+  description: z.string().trim().max(200).default(''),
+  eventTypes: z.array(z.enum(DOMAIN_EVENT_TYPES)).default([]),
+  teamIds: z.array(z.uuid()).default([]),
+  enabled: z.boolean().default(true),
+});
+
+export const updateWebhookSchema = z
+  .object({
+    url: z.url().max(2000),
+    description: z.string().trim().max(200),
+    eventTypes: z.array(z.enum(DOMAIN_EVENT_TYPES)),
+    teamIds: z.array(z.uuid()),
+    enabled: z.boolean(),
+  })
+  .partial();
+
+export const createIssueLinkSchema = z.object({
+  url: z.url().max(2000),
+  title: z.string().trim().max(300).optional(),
+});

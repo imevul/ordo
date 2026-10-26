@@ -28,6 +28,7 @@ import { audit, auditCtx } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { listCycles } from '../services/cycles.ts';
 import { deleteFile, saveFile, signedFileUrl } from '../services/files.ts';
+import { workspaceBots } from '../services/integrations.ts';
 import { listProjects } from '../services/projects.ts';
 import { toLabel, toView } from '../services/serialize.ts';
 import { listTeams } from '../services/teams.ts';
@@ -50,6 +51,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       viewRows,
       favoriteRows,
       unread,
+      bots,
     ] = await Promise.all([
       db.select().from(workspaces).where(eq(workspaces.id, ws.id)),
       db
@@ -106,6 +108,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
             isNull(notifications.readAt),
           ),
         ),
+      workspaceBots(db, ws.id),
     ]);
     // Favorites only for things still visible.
     const visibleTarget = (kind: string, id: string) =>
@@ -126,6 +129,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
         // Guests don't see other people's email addresses.
         email: access.isGuest && m.id !== user.id ? '' : m.email,
       })),
+      bots: bots.map((b) => ({ ...b, email: '', avatarUrl: null })),
       teams: teamList,
       labels: labelRows.map(toLabel),
       projects,

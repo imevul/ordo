@@ -1,13 +1,16 @@
 import type {
   AuditAction,
+  DomainEventType,
   EstimateScale,
   FavoriteKind,
+  IssueLinkKind,
   MemberRole,
   NotificationType,
   ProjectHealth,
   ProjectStatus,
   StateType,
   TeamRole,
+  UserKind,
 } from './constants.ts';
 import type { IssueDisplay, IssueFilter } from './schemas.ts';
 
@@ -175,6 +178,7 @@ export interface IssueDetail extends Issue {
   subIssues: Issue[];
   relations: IssueRelation[];
   subscriberIds: string[];
+  links: IssueLink[];
 }
 
 export interface Comment {
@@ -260,6 +264,8 @@ export interface Bootstrap {
   workspace: Workspace;
   role: MemberRole;
   members: Member[];
+  /** Integration accounts: not members, but they appear as authors of what integrations do. */
+  bots: User[];
   teams: Team[];
   labels: Label[];
   projects: Project[];
@@ -439,5 +445,89 @@ export interface LinkedIdentity {
   workspace: string;
   email: string | null;
   lastLoginAt: string | null;
+  createdAt: string;
+}
+
+/** Something outside Ordo attached to an issue: a pull request, branch, commit, chat message or plain link. */
+export interface IssueLink {
+  id: string;
+  issueId: string;
+  /** `web` for links people add by hand; otherwise the integration's provider (github, slack…). */
+  provider: string;
+  kind: IssueLinkKind;
+  url: string;
+  title: string;
+  /** Provider state, e.g. open | draft | merged | closed for pull requests. */
+  state: string | null;
+  /** Display name at the provider. */
+  author: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The body of every webhook delivery. */
+export interface WebhookPayload {
+  /** Unique per event; the same across redeliveries. */
+  id: string;
+  type: DomainEventType | 'ping';
+  createdAt: string;
+  workspace: { id: string; slug: string; name: string };
+  actor: { id: string; name: string; username: string; kind: UserKind } | null;
+  /** web | api | system | import | integration:<id> */
+  source: string;
+  data: Record<string, unknown>;
+  /** For `*.updated`: what changed. */
+  changes?: HistoryChange[];
+}
+
+export interface Webhook {
+  id: string;
+  url: string;
+  description: string;
+  /** Empty: every event. */
+  eventTypes: DomainEventType[];
+  /** Empty: every team. */
+  teamIds: string[];
+  enabled: boolean;
+  /** Consecutive deliveries that failed after all retries. */
+  failureCount: number;
+  disabledReason: string | null;
+  lastDeliveryAt: string | null;
+  lastStatus: number | null;
+  createdAt: string;
+}
+
+export interface WebhookDelivery {
+  id: string;
+  webhookId: string;
+  eventId: string | null;
+  eventType: string;
+  status: 'pending' | 'success' | 'failed';
+  attempts: number;
+  responseStatus: number | null;
+  responseBody: string | null;
+  error: string | null;
+  durationMs: number | null;
+  createdAt: string;
+  deliveredAt: string | null;
+}
+
+export interface IntegrationProviderInfo {
+  key: string;
+  name: string;
+  description: string;
+  category: 'forge' | 'chat' | 'other';
+}
+
+export interface Integration {
+  id: string;
+  provider: string;
+  name: string;
+  status: 'active' | 'error' | 'disabled';
+  lastError: string | null;
+  lastEventAt: string | null;
+  config: Record<string, unknown>;
+  /** Where the provider should send events, when it pushes them. */
+  inboundUrl: string | null;
   createdAt: string;
 }

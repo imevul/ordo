@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, or } from 'drizzle-orm';
 import { issueRelations, issues, workflowStates } from '../db/schema.ts';
 import { badRequest, notFound } from '../lib/errors.ts';
 import { canReadTeam } from './access.ts';
-import { type Ctx, emit } from './context.ts';
+import { type Ctx, emit, record } from './context.ts';
 import { getIssue, updateIssue } from './issues.ts';
 
 /** Links two issues the caller can both read. One relation per pair; a new one replaces the old. */
@@ -56,6 +56,12 @@ export async function createRelation(
   }
   emit(ctx, { kind: 'issue', action: 'updated', id: issue.id, teamId: issue.teamId });
   emit(ctx, { kind: 'issue', action: 'updated', id: other.id, teamId: other.teamId });
+  record(
+    ctx,
+    'relation.created',
+    { id: row!.id, type, issueId: row!.issueId, relatedIssueId: row!.relatedIssueId },
+    { teamIds: [issue.teamId, other.teamId] },
+  );
   return row!;
 }
 
@@ -76,4 +82,10 @@ export async function deleteRelation(ctx: Ctx, id: string) {
   await ctx.tx.delete(issueRelations).where(eq(issueRelations.id, id));
   for (const end of ends)
     emit(ctx, { kind: 'issue', action: 'updated', id: end.id, teamId: end.teamId });
+  record(
+    ctx,
+    'relation.deleted',
+    { id, type: rel.type, issueId: rel.issueId, relatedIssueId: rel.relatedIssueId },
+    { teamIds: ends.map((e) => e.teamId) },
+  );
 }

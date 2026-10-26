@@ -129,6 +129,13 @@ export const AUDIT_ACTIONS = [
   'sso.provider_created',
   'sso.provider_updated',
   'sso.provider_deleted',
+  'webhook.created',
+  'webhook.updated',
+  'webhook.deleted',
+  'webhook.disabled',
+  'integration.created',
+  'integration.updated',
+  'integration.deleted',
   'api_key.created',
   'api_key.revoked',
   'workspace.created',
@@ -203,3 +210,28 @@ export const SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$/;
 export const USERNAME_PATTERN = /^[a-z0-9._-]{2,32}$/;
 /** Matches identifiers like ENG-123. */
 export const ISSUE_IDENTIFIER_PATTERN = /^([A-Z][A-Z0-9]{0,6})-(\d+)$/;
+
+/** Events in the outbox, delivered to webhooks and integrations. Names are part of the public API. */
+export const DOMAIN_EVENT_TYPES = [
+  'issue.created',
+  'issue.updated',
+  'issue.trashed',
+  'issue.restored',
+  'issue.deleted',
+  'comment.created',
+  'comment.updated',
+  'comment.deleted',
+  'relation.created',
+  'relation.deleted',
+  'project.created',
+  'project.updated',
+  'project.deleted',
+  'project_update.created',
+  'cycle.created',
+  'cycle.updated',
+  'cycle.deleted',
+] as const;
+export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
+
+export const ISSUE_LINK_KINDS = ['pull_request', 'branch', 'commit', 'message', 'link'] as const;
+export type IssueLinkKind = (typeof ISSUE_LINK_KINDS)[number];

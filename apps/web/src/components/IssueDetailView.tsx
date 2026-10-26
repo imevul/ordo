@@ -11,6 +11,7 @@ import { useHotkey } from '../lib/hotkeys.ts';
 import { ui } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Activity } from './Activity.tsx';
+import { IssueLinks } from './IssueLinks.tsx';
 import { IssueSearchPicker } from './IssueSearchPicker.tsx';
 import { StatusIcon, TeamIcon } from './icons.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -444,6 +445,8 @@ export function IssueDetailView({
                 );
               })}
             </section>
+
+            <IssueLinks issue={issue} onChange={done} />
 
             <Activity issue={issue} />
           </div>

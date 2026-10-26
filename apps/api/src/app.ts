@@ -24,6 +24,8 @@ import { authRoutes } from './routes/auth.ts';
 import { authProviderRoutes } from './routes/authProviders.ts';
 import { cycleRoutes } from './routes/cycles.ts';
 import { fileRoutes } from './routes/files.ts';
+import { hookRoutes } from './routes/hooks.ts';
+import { integrationRoutes } from './routes/integrations.ts';
 import { issueRoutes } from './routes/issues.ts';
 import { joiningRoutes } from './routes/joining.ts';
 import { labelRoutes } from './routes/labels.ts';
@@ -35,6 +37,7 @@ import { searchRoutes } from './routes/search.ts';
 import { ssoRoutes } from './routes/sso.ts';
 import { teamRoutes } from './routes/teams.ts';
 import { viewRoutes } from './routes/views.ts';
+import { webhookRoutes } from './routes/webhooks.ts';
 import { workspaceRoutes } from './routes/workspaces.ts';
 import { Mailer } from './services/mailer.ts';
 import { Settings } from './services/settings.ts';
@@ -160,6 +163,7 @@ export async function buildApp(
   await app.register(fileRoutes, { prefix: '/api' });
   await app.register(joiningRoutes, { prefix: '/api' });
   await app.register(ssoRoutes, { prefix: '/api' });
+  await app.register(hookRoutes, { prefix: '/api/hooks' });
   await app.register(adminRoutes, { prefix: '/api/admin' });
   await app.register(realtimeRoutes, { prefix: '/api' });
 
@@ -182,6 +186,8 @@ export async function buildApp(
       await w.register(viewRoutes);
       await w.register(notificationRoutes);
       await w.register(searchRoutes);
+      await w.register(webhookRoutes);
+      await w.register(integrationRoutes);
     },
     { prefix: '/api/w/:ws' },
   );
