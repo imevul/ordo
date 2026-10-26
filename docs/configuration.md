@@ -80,6 +80,15 @@ These are set by `docker-compose.yml` or the Dockerfile; you only need them when
 | `NODE_ENV`            | `production` in the image                  | Enables JSON logs instead of pretty logs.                                        |
 | `SEED_PASSWORD`       | `ordo-demo-password`                       | Password for the users created by the demo seed.                                 |
 
+## GitHub Enterprise Server
+
+| Variable              | Default                  | Description                                           |
+| --------------------- | ------------------------ | ----------------------------------------------------- |
+| `ORDO_GITHUB_URL`     | `https://github.com`     | Where the GitHub App is created and installed         |
+| `ORDO_GITHUB_API_URL` | `https://api.github.com` | Its API (`https://host/api/v3` for Enterprise Server) |
+
+Token-based GitHub integrations take these per integration instead.
+
 ## Using an external Postgres
 
 Remove the `db` service from `docker-compose.yml` (or use an override file) and set `DATABASE_URL` for the

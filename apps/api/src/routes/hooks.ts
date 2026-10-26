@@ -6,7 +6,7 @@ import type { InboundRequest } from '../integrations/types.ts';
 import { sha256 } from '../lib/crypto.ts';
 import { notFound, unauthorized } from '../lib/errors.ts';
 import { enqueue } from '../lib/jobs/index.ts';
-import { readSecrets } from '../services/integrations.ts';
+import { allSecrets } from '../services/integrations.ts';
 
 const BODY_LIMIT = 25 * 1024 * 1024;
 
@@ -47,9 +47,11 @@ export async function hookRoutes(app: FastifyInstance) {
     // A switched-off integration looks like no integration at all.
     const live = rows.filter((r) => r.status !== 'disabled');
     if (!live.length) throw notFound('Hook');
-    const accepted = live.filter(
-      (r) => !provider.verify || provider.verify(inbound, r, readSecrets(app, r)),
-    );
+    const accepted: typeof live = [];
+    for (const row of live) {
+      if (!provider.verify || provider.verify(inbound, row, await allSecrets(app, row)))
+        accepted.push(row);
+    }
     if (!accepted.length) throw unauthorized('Signature mismatch');
 
     const deliveryId = provider.deliveryId?.(inbound) ?? sha256(inbound.body);

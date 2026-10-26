@@ -1,5 +1,9 @@
 import {
+  defaultGitAutomation,
   ESTIMATE_SCALE_NAMES,
+  GIT_EVENT_LABELS,
+  GIT_EVENTS,
+  type GitAutomation,
   LABEL_COLORS,
   MEMBER_ROLE_LABELS,
   STATE_TYPE_LABELS,
@@ -386,6 +390,8 @@ export function TeamSettings({ team }: { team: Team }) {
             </div>
           ))}
         </SettingsCard>
+
+        <GitAutomationCard team={team} onSave={(gitAutomation) => save.mutate({ gitAutomation })} />
       </fieldset>
 
       {(member || !ws.isGuest) && (
@@ -509,6 +515,51 @@ function TeamMembers({ team }: { team: Team }) {
       {team.members.length === 0 && (
         <p className="font-mono text-[12px] text-index">// nobody has joined yet</p>
       )}
+    </SettingsCard>
+  );
+}
+
+/** Where linked branches and pull requests move this team's issues. */
+function GitAutomationCard({
+  team,
+  onSave,
+}: {
+  team: Team;
+  onSave: (automation: GitAutomation) => void;
+}) {
+  const defaults = defaultGitAutomation(team.states);
+  const name = (id: string | null) => team.states.find((s) => s.id === id)?.name ?? 'no change';
+  return (
+    <SettingsCard
+      title="Git automation"
+      description="Issues named in a branch, pull request title, or after “fixes” in a description or commit move through these statuses. They only ever move forward."
+    >
+      {GIT_EVENTS.map((event) => (
+        <label
+          key={event}
+          className="flex items-center justify-between border-b border-border-soft py-2.5 text-[13.5px]"
+        >
+          {GIT_EVENT_LABELS[event]}
+          <select
+            className="input w-52"
+            value={team.gitAutomation[event] ?? ''}
+            onChange={(e) => {
+              const next: GitAutomation = { ...team.gitAutomation };
+              if (e.target.value) next[event] = e.target.value;
+              else delete next[event];
+              onSave(next);
+            }}
+          >
+            <option value="">Default ({name(defaults[event])})</option>
+            <option value="none">No change</option>
+            {team.states.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
     </SettingsCard>
   );
 }

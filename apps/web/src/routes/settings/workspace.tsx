@@ -1,5 +1,6 @@
 import {
   type AuditEntry,
+  branchName,
   type Invite,
   MEMBER_ROLE_LABELS,
   MEMBER_ROLES,
@@ -159,8 +160,58 @@ export function WorkspaceSection() {
         </select>
       </SettingsCard>
 
+      <BranchFormatCard />
+
       {ws.isOwner && <DangerZone />}
     </>
+  );
+}
+
+function BranchFormatCard() {
+  const ws = useWorkspace();
+  const qc = useQueryClient();
+  const [format, setFormat] = useState(ws.workspace.settings.gitBranchFormat);
+  const example = branchName(format, {
+    identifier: 'ENG-42',
+    title: 'Fix the flux capacitor',
+    username: ws.me.username,
+  });
+  return (
+    <SettingsCard
+      title="Git branch names"
+      description={
+        <>
+          What “Copy git branch name” produces. Use{' '}
+          <code className="font-mono">{'{identifier}'}</code>,{' '}
+          <code className="font-mono">{'{title}'}</code> and{' '}
+          <code className="font-mono">{'{username}'}</code>. Branches containing the identifier link
+          to the issue.
+        </>
+      }
+    >
+      <form
+        className="flex gap-2"
+        onSubmit={async (e) => {
+          e.preventDefault();
+          try {
+            await api.patch(wsPath(ws.slug, '/'), { settings: { gitBranchFormat: format } });
+            qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
+            toast.success('Saved');
+          } catch (err) {
+            toast.error(errMsg(err));
+          }
+        }}
+      >
+        <input
+          className="input w-72 font-mono"
+          value={format}
+          onChange={(e) => setFormat(e.target.value)}
+          aria-label="Branch name format"
+        />
+        <button className="btn btn-primary">Save</button>
+      </form>
+      <p className="mt-2 font-mono text-[11.5px] text-index">→ {example}</p>
+    </SettingsCard>
   );
 }
 

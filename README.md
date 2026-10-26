@@ -27,6 +27,8 @@ Then open <http://localhost:3000>. The first person to sign up becomes the admin
 - **Command menu** (`⌘K` / `Ctrl K`) and **keyboard shortcuts** for nearly everything (`?` lists them).
 - **Realtime** — every change shows up for everyone instantly, over a WebSocket fed by Postgres `LISTEN/NOTIFY`.
 - **Workspaces, members, roles and invite links**; invite-only or open sign-up.
+- **GitHub, GitLab and Forgejo/Gitea**: PRs, branches and commits link to issues and move them along; works
+  behind NAT by polling.
 - **Single sign-on** per workspace with any OpenID Connect provider, group → role mapping and "require SSO".
 - **REST API** with personal API keys, and signed **webhooks** for issue, comment, project and cycle events.
 
@@ -90,6 +92,7 @@ chamfered corners instead of rounded ones ([docs/design.md](docs/design.md)).
 | [docs/configuration.md](docs/configuration.md)           | Environment variables                              |
 | [docs/admin.md](docs/admin.md)                           | Instance administration and recovery               |
 | [docs/sso.md](docs/sso.md)                               | Single sign-on (OpenID Connect) per workspace      |
+| [docs/integrations/](docs/integrations/README.md)        | GitHub, GitLab, Forgejo/Gitea                      |
 | [docs/api.md](docs/api.md)                               | REST API, webhooks and realtime events             |
 | [docs/architecture.md](docs/architecture.md)             | How it's built, data model                         |
 | [docs/development.md](docs/development.md)               | Working on Ordo                                    |

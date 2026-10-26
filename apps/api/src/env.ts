@@ -79,6 +79,8 @@ export interface Env {
   settingsFromEnv: SettingsFromEnv;
   /** Where uploads live. Configured by environment only: switching backends means moving files. */
   storage: StorageConfig;
+  /** GitHub for the GitHub App flow; point at GitHub Enterprise Server to use that instead. */
+  github: { apiUrl: string; webUrl: string };
 }
 
 // Used only outside production when no key is configured, so dev and tests just work.
@@ -101,6 +103,10 @@ export function loadEnv(overrides: Partial<Env> = {}): Env {
     version: process.env.ORDO_VERSION ?? readVersion(),
     secretKey: parseKey(process.env.ORDO_SECRET_KEY) ?? (production ? null : DEV_SECRET_KEY),
     previousSecretKey: parseKey(process.env.ORDO_SECRET_KEY_PREVIOUS),
+    github: {
+      apiUrl: (process.env.ORDO_GITHUB_API_URL || 'https://api.github.com').replace(/\/$/, ''),
+      webUrl: (process.env.ORDO_GITHUB_URL || 'https://github.com').replace(/\/$/, ''),
+    },
     settingsFromEnv: {
       signupMode: signupMode === 'open' || signupMode === 'invite' ? signupMode : undefined,
       allowWorkspaceCreation: optionalBool(process.env.ORDO_ALLOW_WORKSPACE_CREATION),

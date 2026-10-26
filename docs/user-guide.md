@@ -31,6 +31,7 @@ Admins can **suspend** a member — they keep their history but can't open the w
   one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.
 - **Authentication** — single sign-on with your own identity provider (OpenID Connect), group → role mapping, and
   **require SSO**. See [SSO](sso.md).
+- **Integrations** — connect GitHub, GitLab or Forgejo/Gitea; see [integrations](integrations/README.md).
 - **Webhooks** — send issue, comment, project and cycle events to your own endpoints, signed, with a delivery log,
   test button and redelivery ([API docs](api.md#webhooks)).
 - **Audit log** — security-relevant changes: invites, role changes, team changes, domains, and more.
@@ -85,8 +86,14 @@ in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L
 ### Links
 
 The **Links** section of an issue collects what lives elsewhere: pull requests, branches and commits from connected
-forges, chat messages, and any URL you add with **Add link**. Forge links show their state (open, draft, merged,
-closed).
+forges, chat messages, and any URL you add with **Add link**. Forge links show their state (open, draft, review,
+merged, closed).
+
+With a forge connected, name your branch after the issue (**Copy git branch name** in the issue menu, or
+`Mod Shift .`) or put its identifier in the PR title, and the issue moves along by itself: in progress when the PR
+opens, in review when someone's asked to review, done when it merges. Write `Fixes ENG-42` in a description or
+commit to do the same from there; `Part of ENG-42` only links. Each team picks the statuses under **Team settings →
+Git automation**. Details: [integrations](integrations/README.md).
 
 ## Lists and boards
 

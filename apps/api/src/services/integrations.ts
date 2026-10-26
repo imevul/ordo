@@ -3,7 +3,7 @@ import { AVATAR_COLORS, type Integration, type IntegrationProviderInfo } from '@
 import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
-import { domainEvents, integrations, users } from '../db/schema.ts';
+import { domainEvents, integrationApps, integrations, users } from '../db/schema.ts';
 import { getProvider, listProviders } from '../integrations/registry.ts';
 import type {
   InboundRequest,
@@ -37,6 +37,27 @@ export function readSecrets(app: FastifyInstance, row: IntegrationRow): Secrets 
     : {};
 }
 
+export const appSecretAad = (id: string) => `integration_apps:${id}:secrets`;
+
+type AppRow = typeof integrationApps.$inferSelect;
+
+export function readAppSecrets(app: FastifyInstance, row: AppRow): Secrets {
+  return row.secrets ? JSON.parse(app.keyring.decrypt(row.secrets, appSecretAad(row.id))) : {};
+}
+
+export const sealAppSecrets = (app: FastifyInstance, id: string, secrets: Secrets) =>
+  app.keyring.encrypt(JSON.stringify(secrets), appSecretAad(id));
+
+/** An integration's secrets, plus its app's (e.g. the GitHub App's webhook secret and key). */
+export async function allSecrets(app: FastifyInstance, row: IntegrationRow): Promise<Secrets> {
+  if (!row.appId) return readSecrets(app, row);
+  const [appRow] = await app.db
+    .select()
+    .from(integrationApps)
+    .where(eq(integrationApps.id, row.appId));
+  return { ...(appRow ? readAppSecrets(app, appRow) : {}), ...readSecrets(app, row) };
+}
+
 export function sealSecrets(app: FastifyInstance, id: string, secrets: Secrets) {
   return Object.keys(secrets).length
     ? app.keyring.encrypt(JSON.stringify(secrets), integrationSecretAad(id))
@@ -62,8 +83,9 @@ export function toIntegration(app: FastifyInstance, row: IntegrationRow): Integr
     lastError: row.lastError,
     lastEventAt: row.lastEventAt,
     config: row.config,
+    // App-based integrations share their app's webhook URL instead.
     inboundUrl:
-      provider?.handleInbound && !provider.resolveInbound
+      provider?.handleInbound && !row.appId
         ? `${app.env.publicUrl}/api/hooks/${row.provider}/${row.inboundToken}`
         : null,
     createdAt: row.createdAt,

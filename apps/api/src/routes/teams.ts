@@ -9,7 +9,14 @@ import {
 } from '@ordo/shared';
 import { and, count, eq, max, ne } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { issues, teamMembers, teams, workflowStates, workspaceMembers } from '../db/schema.ts';
+import {
+  issues,
+  teamKeyAliases,
+  teamMembers,
+  teams,
+  workflowStates,
+  workspaceMembers,
+} from '../db/schema.ts';
 import { requireAccess, requireAdmin, requireWorkspace } from '../lib/auth.ts';
 import {
   badRequest,
@@ -84,7 +91,34 @@ export async function teamRoutes(app: FastifyInstance) {
     const input = parse(updateTeamSchema, req.body);
     try {
       await mutate(app, req, async (ctx) => {
-        await loadTeam(ctx, teamId, 'admin');
+        const before = await loadTeam(ctx, teamId, 'admin');
+        if (input.gitAutomation) {
+          const ids = Object.values(input.gitAutomation).filter((v) => v && v !== 'none');
+          const own = await ctx.tx
+            .select({ id: workflowStates.id })
+            .from(workflowStates)
+            .where(eq(workflowStates.teamId, teamId));
+          if (ids.some((sid) => !own.some((s) => s.id === sid)))
+            throw badRequest('Automation statuses must belong to the team');
+        }
+        if (input.key && input.key !== before.key) {
+          // The old key keeps resolving (branches, commits, old links); the new one is live now.
+          await ctx.tx
+            .delete(teamKeyAliases)
+            .where(
+              and(
+                eq(teamKeyAliases.workspaceId, ctx.workspaceId),
+                eq(teamKeyAliases.key, input.key),
+              ),
+            );
+          await ctx.tx
+            .insert(teamKeyAliases)
+            .values({ workspaceId: ctx.workspaceId, key: before.key, teamId })
+            .onConflictDoUpdate({
+              target: [teamKeyAliases.workspaceId, teamKeyAliases.key],
+              set: { teamId },
+            });
+        }
         if (input.defaultStateId) {
           const [state] = await ctx.tx
             .select({ teamId: workflowStates.teamId })
