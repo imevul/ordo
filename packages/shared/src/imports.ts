@@ -294,3 +294,33 @@ export function parsePriority(value: string): number | null {
   if (/low|minor|trivial|p3|p4/.test(v)) return 4;
   return null;
 }
+
+/** Fields → CSV text: quotes where needed, CRLF line ends, a BOM so spreadsheets read UTF-8. */
+export function toCsv(rows: (string | number | null | undefined)[][]): string {
+  const field = (v: string | number | null | undefined) => {
+    const s = v == null ? '' : String(v);
+    return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return `\ufeff${rows.map((r) => r.map(field).join(',')).join('\r\n')}\r\n`;
+}
+
+// ─── exports ──────────────────────────────────────────────────────────────
+
+export const EXPORT_FORMATS = ['json', 'csv'] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+
+export interface WorkspaceExport {
+  id: string;
+  format: ExportFormat;
+  status: 'running' | 'ready' | 'failed';
+  /** Bytes, once ready. */
+  size: number | null;
+  /** A signed download link, once ready. */
+  url: string | null;
+  error: string | null;
+  createdBy: { id: string; name: string } | null;
+  createdAt: string;
+  completedAt: string | null;
+  /** When the file is deleted. */
+  expiresAt: string;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectCsvColumns, guessStateType, parseCsv, parsePriority } from './imports.ts';
+import { detectCsvColumns, guessStateType, parseCsv, parsePriority, toCsv } from './imports.ts';
 
 describe('parseCsv', () => {
   it('reads quoted fields, doubled quotes and line breaks inside quotes', () => {
@@ -64,5 +64,22 @@ describe('parsePriority', () => {
     expect(parsePriority('Medium')).toBe(3);
     expect(parsePriority('')).toBe(0);
     expect(parsePriority('whenever')).toBeNull();
+  });
+});
+
+describe('toCsv', () => {
+  it('quotes what needs quoting and reads back the same', () => {
+    const rows = [
+      ['ID', 'Title'],
+      ['ENG-1', 'Say "hi", then\nleave'],
+      ['ENG-2', null],
+    ];
+    const csv = toCsv(rows);
+    expect(csv.startsWith('\ufeffID,Title\r\n')).toBe(true);
+    expect(parseCsv(csv)).toEqual([
+      ['ID', 'Title'],
+      ['ENG-1', 'Say "hi", then\nleave'],
+      ['ENG-2', ''],
+    ]);
   });
 });

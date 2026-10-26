@@ -15,7 +15,7 @@ import {
   USERNAME_PATTERN,
 } from './constants.ts';
 import { GIT_EVENTS } from './git.ts';
-import { CSV_FIELDS } from './imports.ts';
+import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
 import { HEX_COLOR } from './theme.ts';
 
 /** Request payload schemas, shared by the API (validation) and the web client (forms). */
@@ -576,3 +576,5 @@ export const createApiImportSchema = z.discriminatedUnion('source', [
   }),
 ]);
 export type CreateApiImportInput = z.infer<typeof createApiImportSchema>;
+
+export const createExportSchema = z.object({ format: z.enum(EXPORT_FORMATS) });

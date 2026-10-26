@@ -139,6 +139,7 @@ export const UNMERGED_COLUMNS: Record<string, string> = {
   'issue_subscribers.user_id': 'moved separately (part of the primary key)',
   'audit_log.actor_id': 'audit entries stay as they happened',
   'imports.created_by_id': 'imports are started by members',
+  'workspace_exports.created_by_id': 'exports are made by admins',
   'api_keys.user_id': 'placeholders never sign in',
   'auth_states.user_id': 'placeholders never sign in',
   'auth_tokens.user_id': 'placeholders never sign in',

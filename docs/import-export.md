@@ -1,10 +1,9 @@
 # Importing data
 
 Workspace admins can bring issues in from other tools: **CSV files**, **Linear**, **GitHub Issues**,
-**Forgejo/Gitea**, **GitLab** and **Jira**.
-Workspace export and a settings page for all of it are on the
-[roadmap](../ROADMAP.md#phase-9--importers-and-export). Until the page lands, imports run through the
-[API](api.md#imports).
+**Forgejo/Gitea**, **GitLab** and **Jira**, and [export](#exporting) a workspace as JSON or CSV. A settings page for
+all of it is on the [roadmap](../ROADMAP.md#phase-9--importers-and-export); until it lands, imports and exports run
+through the [API](api.md#imports).
 
 ## How an import runs
 
@@ -172,3 +171,18 @@ which field:
 | URL         | URL, Link                              | Becomes a link on the issue                    |
 
 Files can be up to 25 MB and 50 000 rows.
+
+## Exporting
+
+Admins can export a workspace (`POST /exports` with `{ "format": "json" }` or `"csv"`). A background job writes the
+file; the export's `url` is a download link once it's ready. Exports are kept for a week, one runs at a time, and
+each is recorded in the audit log.
+
+- **JSON** holds everything that belongs to the workspace as a whole: members (with emails), placeholders, teams
+  with their statuses and members, labels, projects and their updates, cycles, shared views, and every issue
+  (private teams' and trashed ones too) with comments, history, relations and links.
+- **CSV** holds the issues that aren't in the trash, in the columns the CSV import reads: an export imports into
+  another workspace or instance as it is, sub-issues and labels included.
+
+Personal things (private views, favourites, notifications) aren't exported, nor is anything secret (integrations,
+webhooks, SSO settings, passwords).

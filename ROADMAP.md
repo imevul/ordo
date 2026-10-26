@@ -111,7 +111,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   labels, story points, links as relations, comments; wiki markup to Markdown
 - ✅ Forgejo/Gitea and GitLab importers: repositories or projects as teams, labels, milestones as projects,
   comments (GitLab notes), people by claimed usernames
-- ⬜ Workspace export (JSON, CSV)
+- ✅ Workspace export: JSON of the whole workspace, CSV of issues that imports back; kept a week, audited
 - ⬜ Settings → Import & export, undo an import
 
 ### Phase 10 — Product depth

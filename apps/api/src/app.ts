@@ -24,6 +24,7 @@ import { adminRoutes } from './routes/admin.ts';
 import { authRoutes } from './routes/auth.ts';
 import { authProviderRoutes } from './routes/authProviders.ts';
 import { cycleRoutes } from './routes/cycles.ts';
+import { exportRoutes } from './routes/exports.ts';
 import { fileRoutes } from './routes/files.ts';
 import { githubCallbackRoutes, githubWorkspaceRoutes } from './routes/github.ts';
 import { hookRoutes } from './routes/hooks.ts';
@@ -200,6 +201,7 @@ export async function buildApp(
       await w.register(webhookRoutes);
       await w.register(integrationRoutes);
       await w.register(importRoutes);
+      await w.register(exportRoutes);
       await w.register(placeholderRoutes);
       await w.register(githubWorkspaceRoutes);
       await w.register(externalAccountRoutes);
