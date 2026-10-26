@@ -5,6 +5,7 @@ import {
   createIssueSchema,
   createRelationSchema,
   issueFilterSchema,
+  reactionEmojiSchema,
   updateCommentSchema,
   updateIssueSchema,
 } from '@ordo/shared';
@@ -15,7 +16,14 @@ import { requireAccess } from '../lib/auth.ts';
 import { parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertCan } from '../services/access.ts';
-import { createComment, deleteComment, listComments, updateComment } from '../services/comments.ts';
+import {
+  addReaction,
+  createComment,
+  deleteComment,
+  listComments,
+  removeReaction,
+  updateComment,
+} from '../services/comments.ts';
 import { emit } from '../services/context.ts';
 import {
   createIssue,
@@ -174,5 +182,17 @@ export async function issueRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     await mutate(app, req, (ctx) => deleteComment(ctx, id));
     return { ok: true };
+  });
+
+  // The emoji is URL-encoded in the path; both calls return the comment's reactions.
+  app.put('/comments/:id/reactions/:emoji', async (req) => {
+    const { id, emoji } = req.params as { id: string; emoji: string };
+    const valid = parse(reactionEmojiSchema, emoji);
+    return mutate(app, req, (ctx) => addReaction(ctx, id, valid));
+  });
+
+  app.delete('/comments/:id/reactions/:emoji', async (req) => {
+    const { id, emoji } = req.params as { id: string; emoji: string };
+    return mutate(app, req, (ctx) => removeReaction(ctx, id, emoji));
   });
 }

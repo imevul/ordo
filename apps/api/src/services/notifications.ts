@@ -60,7 +60,10 @@ export async function notify(
       })),
     )
     .returning({ id: notifications.id, userId: notifications.userId });
-  await queueChatNotifications(ctx.tx, ctx.workspaceId, rows);
+  // Reactions are too small for a direct message; they wait in the inbox.
+  if (input.type !== 'comment_reaction') {
+    await queueChatNotifications(ctx.tx, ctx.workspaceId, rows);
+  }
   for (const r of rows)
     emit(ctx, {
       kind: 'notification',

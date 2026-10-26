@@ -128,27 +128,28 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 
 ### Issues
 
-| Method         | Path                       |                                                                                              |
-| -------------- | -------------------------- | -------------------------------------------------------------------------------------------- |
-| POST           | `/issues/query`            | `{ filter, limit? }` → `Issue[]` (see below)                                                 |
-| GET            | `/issues/:idOrIdentifier`  | Issue with parent, sub-issues, relations, subscribers, links, attachments                    |
-| POST           | `/issues`                  | Create (see example)                                                                         |
-| PATCH          | `/issues/:id`              | Any of the create fields, plus `teamId` (move), `addLabelIds`, `removeLabelIds`, `sortOrder` |
-| POST           | `/issues/batch`            | `{ ids, patch }` — same patch on up to 250 issues                                            |
-| DELETE         | `/issues/:id`              | Move to trash                                                                                |
-| POST           | `/issues/batch-delete`     | `{ ids }`                                                                                    |
-| POST           | `/issues/:id/restore`      | Restore from trash                                                                           |
-| POST           | `/issues/:id/links`        | Attach a link `{ url, title? }`                                                              |
-| DELETE         | `/issue-links/:id`         | Remove a link (any kind)                                                                     |
-| POST           | `/attachments?issueId=`    | Upload one file (multipart field `file`) → `Attachment`; see below                           |
-| DELETE         | `/attachments/:id`         | Remove an attachment (uploader, team admin or admin)                                         |
-| DELETE         | `/issues/:id/purge`        | _Admin._ Permanently delete a trashed issue                                                  |
-| GET            | `/issues/:id/history`      | Change log                                                                                   |
-| POST / DELETE  | `/issues/:id/subscription` | Subscribe / unsubscribe yourself                                                             |
-| POST           | `/issues/:id/relations`    | `{ type: "blocks" \| "blocked_by" \| "related" \| "duplicate_of", relatedIssueId }`          |
-| DELETE         | `/relations/:id`           |                                                                                              |
-| GET / POST     | `/issues/:id/comments`     | List / create `{ body, parentId? }` (`@username` notifies)                                   |
-| PATCH / DELETE | `/comments/:id`            | Edit (author) / delete (author or admin)                                                     |
+| Method         | Path                             |                                                                                              |
+| -------------- | -------------------------------- | -------------------------------------------------------------------------------------------- |
+| POST           | `/issues/query`                  | `{ filter, limit? }` → `Issue[]` (see below)                                                 |
+| GET            | `/issues/:idOrIdentifier`        | Issue with parent, sub-issues, relations, subscribers, links, attachments                    |
+| POST           | `/issues`                        | Create (see example)                                                                         |
+| PATCH          | `/issues/:id`                    | Any of the create fields, plus `teamId` (move), `addLabelIds`, `removeLabelIds`, `sortOrder` |
+| POST           | `/issues/batch`                  | `{ ids, patch }` — same patch on up to 250 issues                                            |
+| DELETE         | `/issues/:id`                    | Move to trash                                                                                |
+| POST           | `/issues/batch-delete`           | `{ ids }`                                                                                    |
+| POST           | `/issues/:id/restore`            | Restore from trash                                                                           |
+| POST           | `/issues/:id/links`              | Attach a link `{ url, title? }`                                                              |
+| DELETE         | `/issue-links/:id`               | Remove a link (any kind)                                                                     |
+| POST           | `/attachments?issueId=`          | Upload one file (multipart field `file`) → `Attachment`; see below                           |
+| DELETE         | `/attachments/:id`               | Remove an attachment (uploader, team admin or admin)                                         |
+| DELETE         | `/issues/:id/purge`              | _Admin._ Permanently delete a trashed issue                                                  |
+| GET            | `/issues/:id/history`            | Change log                                                                                   |
+| POST / DELETE  | `/issues/:id/subscription`       | Subscribe / unsubscribe yourself                                                             |
+| POST           | `/issues/:id/relations`          | `{ type: "blocks" \| "blocked_by" \| "related" \| "duplicate_of", relatedIssueId }`          |
+| DELETE         | `/relations/:id`                 |                                                                                              |
+| GET / POST     | `/issues/:id/comments`           | List / create `{ body, parentId? }` (`@username` notifies)                                   |
+| PATCH / DELETE | `/comments/:id`                  | Edit (author) / delete (author or admin)                                                     |
+| PUT / DELETE   | `/comments/:id/reactions/:emoji` | Add / remove your reaction (one URL-encoded emoji); returns the comment's `reactions`        |
 
 Create an issue:
 
@@ -281,6 +282,7 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 | `issue.created` `issue.updated` `issue.trashed` `issue.restored` | The issue (as `GET /issues/:id` without the detail lists); `changes` on updates |
 | `issue.deleted`                                                  | `{ id }` (permanently deleted from the trash)                                   |
 | `comment.created` `comment.updated` `comment.deleted`            | `{ comment, issue? }`                                                           |
+| `reaction.created` `reaction.deleted`                            | `{ reaction: { commentId, issueId, userId, emoji } }`                           |
 | `relation.created` `relation.deleted`                            | `{ id, type, issueId, relatedIssueId }`                                         |
 | `project.created` `project.updated` `project.deleted`            | The project (`{ id, name }` when deleted)                                       |
 | `project_update.created`                                         | `{ update, project }`                                                           |

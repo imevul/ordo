@@ -458,6 +458,21 @@ export const comments = pgTable(
   (t) => [index('comments_issue_idx').on(t.issueId)],
 );
 
+export const commentReactions = pgTable(
+  'comment_reactions',
+  {
+    commentId: uuid('comment_id')
+      .notNull()
+      .references(() => comments.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    emoji: text('emoji').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.commentId, t.userId, t.emoji] })],
+);
+
 export const notifications = pgTable(
   'notifications',
   {

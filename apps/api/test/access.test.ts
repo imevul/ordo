@@ -461,6 +461,9 @@ describe('route inventory', () => {
     'DELETE /issues/:id/purge': 'admin only; purgeIssue is team-scoped',
     'DELETE /issues/:id/subscription': 'resolveIssue, like POST',
     'PATCH /comments/:id': 'loadComment checks the issue team',
+    'PUT /comments/:id/reactions/:emoji': 'loadComment checks the issue team (reactions.test.ts)',
+    'DELETE /comments/:id/reactions/:emoji':
+      'loadComment checks the issue team (reactions.test.ts)',
     'DELETE /comments/:id': 'loadComment checks the issue team',
     'GET /teams': 'listTeams, same as bootstrap',
     'DELETE /teams/:teamId': 'workspace admins only',

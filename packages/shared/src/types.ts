@@ -230,6 +230,13 @@ export interface Comment {
   createdAt: string;
   updatedAt: string;
   editedAt: string | null;
+  /** In the order each emoji was first used. */
+  reactions: CommentReaction[];
+}
+
+export interface CommentReaction {
+  emoji: string;
+  userIds: string[];
 }
 
 export interface HistoryChange {
@@ -399,6 +406,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
       issue_mention: true,
       issue_status_changed: false,
       issue_priority_urgent: true,
+      comment_reaction: false,
     },
   },
 };

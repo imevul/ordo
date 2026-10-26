@@ -1,7 +1,20 @@
-import { type Comment, type CreateCommentInput, USERNAME_PATTERN } from '@ordo/shared';
-import { and, asc, eq, inArray, or } from 'drizzle-orm';
+import {
+  type Comment,
+  type CommentReaction,
+  type CreateCommentInput,
+  MAX_REACTION_KINDS,
+  USERNAME_PATTERN,
+} from '@ordo/shared';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
-import { comments, issues, users, workspaceMembers } from '../db/schema.ts';
+import {
+  commentReactions,
+  comments,
+  issues,
+  notifications,
+  users,
+  workspaceMembers,
+} from '../db/schema.ts';
 import { badRequest, forbidden, notFound } from '../lib/errors.ts';
 import { type Access, canReadTeam, usersWithTeamAccess } from './access.ts';
 import { claimAttachments } from './attachments.ts';
@@ -44,11 +57,42 @@ export async function listComments(
   issueIdOrIdentifier: string,
 ): Promise<Comment[]> {
   const issue = await getIssue(db, access, issueIdOrIdentifier);
-  return db
+  const rows = await db
     .select()
     .from(comments)
     .where(eq(comments.issueId, issue.id))
     .orderBy(asc(comments.createdAt));
+  return withReactions(db, rows);
+}
+
+/** Reactions per comment, grouped by emoji in the order each was first used. */
+export async function reactionsFor(db: DbOrTx, commentIds: string[]) {
+  const byComment = new Map<string, CommentReaction[]>();
+  if (commentIds.length === 0) return byComment;
+  const rows = await db
+    .select()
+    .from(commentReactions)
+    .where(inArray(commentReactions.commentId, commentIds))
+    .orderBy(asc(commentReactions.createdAt));
+  for (const r of rows) {
+    const list = byComment.get(r.commentId) ?? [];
+    const group = list.find((g) => g.emoji === r.emoji);
+    if (group) group.userIds.push(r.userId);
+    else list.push({ emoji: r.emoji, userIds: [r.userId] });
+    byComment.set(r.commentId, list);
+  }
+  return byComment;
+}
+
+async function withReactions(
+  db: DbOrTx,
+  rows: (typeof comments.$inferSelect)[],
+): Promise<Comment[]> {
+  const reactions = await reactionsFor(
+    db,
+    rows.map((c) => c.id),
+  );
+  return rows.map((c) => ({ ...c, reactions: reactions.get(c.id) ?? [] }));
 }
 
 /**
@@ -119,7 +163,7 @@ export async function createComment(
     },
     { teamIds: [issue.teamId] },
   );
-  return comment!;
+  return { ...comment!, reactions: [] } satisfies Comment;
 }
 
 /** A comment on an issue the caller can read. */
@@ -147,7 +191,93 @@ export async function updateComment(ctx: Ctx, id: string, body: string) {
   await claimAttachments(ctx, comment.issueId, body);
   emit(ctx, { kind: 'comment', action: 'updated', id, issueId: comment.issueId, teamId });
   record(ctx, 'comment.updated', { comment: publicComment(row!) }, { teamIds: [teamId] });
-  return row!;
+  return (await withReactions(ctx.tx, [row!]))[0]!;
+}
+
+/** Adds the caller's reaction (idempotent) and tells the comment's author in their inbox. */
+export async function addReaction(ctx: Ctx, commentId: string, emoji: string) {
+  const { comment, teamId } = await loadComment(ctx, commentId);
+  const kinds = await ctx.tx
+    .selectDistinct({ emoji: commentReactions.emoji })
+    .from(commentReactions)
+    .where(eq(commentReactions.commentId, commentId));
+  if (kinds.length >= MAX_REACTION_KINDS && !kinds.some((k) => k.emoji === emoji)) {
+    throw badRequest(`A comment can have at most ${MAX_REACTION_KINDS} different reactions`);
+  }
+  const [row] = await ctx.tx
+    .insert(commentReactions)
+    .values({ commentId, userId: ctx.userId, emoji })
+    .onConflictDoNothing()
+    .returning();
+  if (row) {
+    await notify(ctx, {
+      userIds: [comment.authorId],
+      type: 'comment_reaction',
+      issueId: comment.issueId,
+      commentId,
+      data: { emoji },
+    });
+    emit(ctx, {
+      kind: 'comment',
+      action: 'updated',
+      id: commentId,
+      issueId: comment.issueId,
+      teamId,
+    });
+    record(
+      ctx,
+      'reaction.created',
+      { reaction: { commentId, issueId: comment.issueId, userId: ctx.userId, emoji } },
+      { teamIds: [teamId] },
+    );
+  }
+  return (await reactionsFor(ctx.tx, [commentId])).get(commentId) ?? [];
+}
+
+export async function removeReaction(ctx: Ctx, commentId: string, emoji: string) {
+  const { comment, teamId } = await loadComment(ctx, commentId);
+  const [row] = await ctx.tx
+    .delete(commentReactions)
+    .where(
+      and(
+        eq(commentReactions.commentId, commentId),
+        eq(commentReactions.userId, ctx.userId),
+        eq(commentReactions.emoji, emoji),
+      ),
+    )
+    .returning();
+  if (row) {
+    // A reaction taken back before it was seen isn't news.
+    const gone = await ctx.tx
+      .delete(notifications)
+      .where(
+        and(
+          eq(notifications.commentId, commentId),
+          eq(notifications.type, 'comment_reaction'),
+          eq(notifications.actorId, ctx.userId),
+          isNull(notifications.readAt),
+          sql`${notifications.data}->>'emoji' = ${emoji}`,
+        ),
+      )
+      .returning({ id: notifications.id, userId: notifications.userId });
+    for (const n of gone) {
+      emit(ctx, { kind: 'notification', action: 'deleted', id: n.id, userId: n.userId });
+    }
+    emit(ctx, {
+      kind: 'comment',
+      action: 'updated',
+      id: commentId,
+      issueId: comment.issueId,
+      teamId,
+    });
+    record(
+      ctx,
+      'reaction.deleted',
+      { reaction: { commentId, issueId: comment.issueId, userId: ctx.userId, emoji } },
+      { teamIds: [teamId] },
+    );
+  }
+  return (await reactionsFor(ctx.tx, [commentId])).get(commentId) ?? [];
 }
 
 export async function deleteComment(ctx: Ctx, id: string) {

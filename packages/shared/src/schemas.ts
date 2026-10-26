@@ -338,6 +338,15 @@ export type CreateCommentInput = z.infer<typeof createCommentSchema>;
 
 export const updateCommentSchema = z.object({ body: z.string().trim().min(1).max(50_000) });
 
+/** One emoji, skin tones, flags, keycaps and ZWJ sequences included; no text. */
+export function isSingleEmoji(value: string) {
+  if (!value || value.length > 32 || /[\s\p{L}]/u.test(value)) return false;
+  if ([...new Intl.Segmenter().segment(value)].length !== 1) return false;
+  return /\p{Extended_Pictographic}|\p{Regional_Indicator}|\u20e3/u.test(value);
+}
+
+export const reactionEmojiSchema = z.string().refine(isSingleEmoji, 'Must be a single emoji');
+
 export const createRelationSchema = z.object({
   type: z.enum(['blocks', 'blocked_by', 'related', 'duplicate_of']),
   relatedIssueId: id,
