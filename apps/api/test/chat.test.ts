@@ -469,6 +469,27 @@ describe('Discord', () => {
       (reply!.body as { message_reference: { message_id: string } }).message_reference,
     ).toEqual({ message_id: 'msg1', fail_if_not_exists: false });
   });
+
+  it('colours project updates with the workspace accent', async () => {
+    await owner.patch(`${ws}/integrations/${discord.id}`, {
+      config: { channels: [{ id: 'CHP', events: ['project_update.created'] }] },
+    });
+    await owner.patch(`${ws}/`, { settings: { accentColor: '#3b82f6' } });
+    try {
+      const project = (
+        await owner.post(`${ws}/projects`, { name: 'Launch', teamIds: [alpha().id] })
+      ).data as { id: string };
+      await owner.post(`${ws}/projects/${project.id}/updates`, {
+        body: 'All good',
+        health: 'on_track',
+      });
+      await settle(3);
+      const [post] = mock.calls('POST', '/channels/CHP/messages');
+      expect(JSON.stringify(post!.body)).toContain(`"color":${0x3b82f6}`);
+    } finally {
+      await owner.patch(`${ws}/`, { settings: { accentColor: null } });
+    }
+  });
 });
 
 // ─── Telegram ─────────────────────────────────────────────────────────────
