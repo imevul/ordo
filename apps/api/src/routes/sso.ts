@@ -24,6 +24,7 @@ import {
 import { workspaceSettings } from '../services/workspaces.ts';
 
 const STATE_COOKIE = 'ordo_oidc';
+const LAST_SSO_COOKIE = 'ordo_last_sso';
 
 const esc = (s: string) =>
   s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -90,6 +91,11 @@ export async function ssoRoutes(app: FastifyInstance) {
       .select()
       .from(authProviders)
       .where(eq(authProviders.id, providerId));
+    // A remembered or bookmarked button whose provider is gone: back to the sign-in page, not a 404.
+    if (mode === 'login' && !provider?.enabled) {
+      reply.clearCookie(LAST_SSO_COOKIE, { path: '/' });
+      return loginError(reply, 'That sign-in method is no longer available. Sign in another way.');
+    }
     if (!provider) throw notFound('Sign-in method');
     if (mode === 'link' || mode === 'test') {
       const user = requireUser(req);
@@ -103,7 +109,7 @@ export async function ssoRoutes(app: FastifyInstance) {
         );
         if (!ws.access.isAdmin) throw notFound('Sign-in method');
       }
-    } else if (!provider.enabled) throw notFound('Sign-in method');
+    }
     let url: string;
     let state: string;
     try {
@@ -186,6 +192,19 @@ export async function ssoRoutes(app: FastifyInstance) {
         authProviderId: provider.id,
         ssoExpiresAt: maxAge ? new Date(Date.now() + maxAge * 3_600_000).toISOString() : null,
       });
+      // Lets the sign-in page offer this provider first next time, on this device only. Readable
+      // by the page on purpose; it holds nothing that isn't on the login screen anyway.
+      reply.setCookie(
+        LAST_SSO_COOKIE,
+        Buffer.from(
+          JSON.stringify({
+            providerId: provider.id,
+            name: provider.name,
+            workspace: ws?.name ?? '',
+          }),
+        ).toString('base64url'),
+        { path: '/', sameSite: 'lax', secure: app.env.secureCookies, maxAge: 365 * 86_400 },
+      );
       await audit(
         db,
         {

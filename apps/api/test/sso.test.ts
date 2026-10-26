@@ -142,6 +142,27 @@ describe('sign-in', () => {
     expect((await again.client.get('/api/auth/me')).data.id).toBe(me.id);
   });
 
+  it('remembers the provider on this device after a successful sign-in only', async () => {
+    const ok = await sso(person('remembered'));
+    const cookie = cookieOf(ok.res.headers['set-cookie'], 'ordo_last_sso')!;
+    const value = JSON.parse(Buffer.from(cookie.split('=')[1]!, 'base64url').toString());
+    expect(value).toEqual({ providerId, name: 'Acme Identity', workspace: 'Acme' });
+    const refused = await sso(person('nope', { email_verified: false }));
+    expect(cookieOf(refused.res.headers['set-cookie'], 'ordo_last_sso')).toBeUndefined();
+  });
+
+  it('sends a remembered but deleted provider back to the sign-in page', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/auth/oidc/00000000-0000-4000-8000-000000000000/start',
+    });
+    expect(res.statusCode).toBe(302);
+    expect(decodeURIComponent(String(res.headers.location))).toMatch(
+      /^\/login\?error=That sign-in method is no longer available/,
+    );
+    expect(String(res.headers['set-cookie'])).toContain('ordo_last_sso=;');
+  });
+
   it('refuses unverified emails and other domains (no account, no takeover)', async () => {
     const unverified = person('unverified', { email_verified: false });
     expect((await sso(unverified)).location).toMatch(/^\/login\?error=/);
