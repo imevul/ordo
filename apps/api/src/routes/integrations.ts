@@ -1,12 +1,12 @@
 import { createIssueLinkSchema } from '@ordo/shared';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, ne } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { integrations } from '../db/schema.ts';
+import { externalAccounts, integrations } from '../db/schema.ts';
 import { getProvider } from '../integrations/registry.ts';
-import type { IntegrationProvider } from '../integrations/types.ts';
-import { requireAccess, requireAdmin } from '../lib/auth.ts';
-import { badRequest, parse } from '../lib/errors.ts';
+import type { IntegrationProvider, IntegrationRow } from '../integrations/types.ts';
+import { requireAccess, requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
+import { badRequest, conflict, isUniqueViolation, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { canReadTeam } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
@@ -49,6 +49,31 @@ function configureOrReject(
   }
 }
 
+/** Runs the provider's install step; a failure keeps the integration but shows why it isn't working. */
+async function installOrFlag(
+  app: FastifyInstance,
+  provider: IntegrationProvider,
+  row: IntegrationRow,
+) {
+  try {
+    await provider.install!(integrationContext(app, row));
+    const [fresh] = await app.db
+      .update(integrations)
+      .set({ status: 'active', lastError: null })
+      .where(eq(integrations.id, row.id))
+      .returning();
+    return fresh!;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const [fresh] = await app.db
+      .update(integrations)
+      .set({ status: 'error', lastError: message })
+      .where(eq(integrations.id, row.id))
+      .returning();
+    return fresh!;
+  }
+}
+
 export async function integrationRoutes(app: FastifyInstance) {
   const { db } = app;
 
@@ -74,27 +99,14 @@ export async function integrationRoutes(app: FastifyInstance) {
     const row = await mutate(app, req, (ctx) =>
       createIntegration(app, ctx, { provider, name: input.name, config, secrets }),
     );
-    if (provider.install) {
-      try {
-        await provider.install(integrationContext(app, row));
-      } catch (err) {
-        // Keep the integration so the admin can fix its settings; show why it isn't working.
-        const message = err instanceof Error ? err.message : String(err);
-        await db
-          .update(integrations)
-          .set({ status: 'error', lastError: message })
-          .where(eq(integrations.id, row.id));
-        return toIntegration(app, { ...row, status: 'error', lastError: message });
-      }
-    }
-    return toIntegration(app, row);
+    return toIntegration(app, provider.install ? await installOrFlag(app, provider, row) : row);
   });
 
   app.patch('/integrations/:id', async (req) => {
     const ws = requireAdmin(req);
     const { id } = req.params as { id: string };
     const input = parse(updateSchema, req.body);
-    return mutate(app, req, async (ctx) => {
+    const saved = await mutate(app, req, async (ctx) => {
       const row = await loadIntegration(ctx.tx, ws.id, id);
       const provider = getProvider(row.provider);
       let { config } = row;
@@ -117,6 +129,8 @@ export async function integrationRoutes(app: FastifyInstance) {
           name: input.name,
           config,
           secrets: sealSecrets(app, id, secrets),
+          // New settings (say, switching to polling) take effect at the next tick, not an interval later.
+          ...((input.config || input.secrets) && { lastPolledAt: null }),
           ...(input.enabled !== undefined && {
             status: input.enabled ? 'active' : 'disabled',
             ...(input.enabled && { lastError: null }),
@@ -136,8 +150,14 @@ export async function integrationRoutes(app: FastifyInstance) {
           secrets: input.secrets ? 'changed' : undefined,
         },
       });
-      return toIntegration(app, saved!);
+      return saved!;
     });
+    // New settings may mean new repositories to hook up (providers reconcile, so this is safe to repeat).
+    const provider = getProvider(saved.provider);
+    if ((input.config || input.secrets) && provider?.install && saved.status !== 'disabled') {
+      return toIntegration(app, await installOrFlag(app, provider, saved));
+    }
+    return toIntegration(app, saved);
   });
 
   app.delete('/integrations/:id', async (req) => {
@@ -192,5 +212,106 @@ export async function integrationRoutes(app: FastifyInstance) {
       await deleteIssueLink(ctx, id, (teamId) => canReadTeam(access, teamId));
       return { ok: true };
     });
+  });
+}
+
+const claimSchema = z.object({
+  provider: z.string().min(1),
+  host: z.string().min(1).max(200),
+  username: z
+    .string()
+    .trim()
+    .min(1)
+    .max(100)
+    .regex(/^[\w.-]+$/, 'Usernames are letters, digits, dots, dashes and underscores'),
+});
+
+/**
+ * Forge and chat usernames people claim, so PR authors map to them. A claim isn't verified with
+ * the provider: it only affects attribution, and each username can be claimed once per workspace.
+ */
+export async function externalAccountRoutes(app: FastifyInstance) {
+  const { db } = app;
+
+  app.get('/me/external-accounts', async (req) => {
+    const ws = requireWorkspace(req);
+    const user = requireUser(req);
+    const rows = await db
+      .select()
+      .from(integrations)
+      .where(and(eq(integrations.workspaceId, ws.id), ne(integrations.status, 'disabled')));
+    const hosts = new Map<string, { provider: string; name: string; host: string }>();
+    for (const row of rows) {
+      const provider = getProvider(row.provider);
+      if (!provider?.accountHost) continue;
+      const host = provider.accountHost(row);
+      hosts.set(`${row.provider}:${host}`, { provider: row.provider, name: provider.name, host });
+    }
+    const claimed = await db
+      .select()
+      .from(externalAccounts)
+      .where(and(eq(externalAccounts.workspaceId, ws.id), eq(externalAccounts.userId, user.id)));
+    return {
+      services: [...hosts.values()],
+      accounts: claimed.map((a) => ({
+        id: a.id,
+        provider: a.provider,
+        host: a.host,
+        username: a.username ?? a.externalId,
+      })),
+    };
+  });
+
+  app.post('/me/external-accounts', async (req) => {
+    const ws = requireWorkspace(req);
+    const user = requireUser(req);
+    const input = parse(claimSchema, req.body);
+    const login = input.username.toLowerCase();
+    try {
+      const [row] = await db
+        .insert(externalAccounts)
+        .values({
+          workspaceId: ws.id,
+          provider: input.provider,
+          host: input.host,
+          externalId: login,
+          username: input.username,
+          userId: user.id,
+        })
+        .onConflictDoUpdate({
+          target: [
+            externalAccounts.workspaceId,
+            externalAccounts.provider,
+            externalAccounts.host,
+            externalAccounts.externalId,
+          ],
+          set: { username: input.username },
+          // Only your own claim can be refreshed; someone else's stays theirs.
+          setWhere: eq(externalAccounts.userId, user.id),
+        })
+        .returning();
+      if (!row) throw conflict(`${input.username} is already claimed by someone else here`);
+      return { id: row.id, provider: row.provider, host: row.host, username: row.username };
+    } catch (err) {
+      if (isUniqueViolation(err))
+        throw conflict(`${input.username} is already claimed by someone else here`);
+      throw err;
+    }
+  });
+
+  app.delete('/me/external-accounts/:id', async (req) => {
+    const ws = requireWorkspace(req);
+    const user = requireUser(req);
+    const { id } = req.params as { id: string };
+    await db
+      .delete(externalAccounts)
+      .where(
+        and(
+          eq(externalAccounts.id, id),
+          eq(externalAccounts.workspaceId, ws.id),
+          eq(externalAccounts.userId, user.id),
+        ),
+      );
+    return { ok: true };
   });
 }

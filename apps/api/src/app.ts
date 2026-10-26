@@ -11,6 +11,7 @@ import type { Sql } from 'postgres';
 import { ZodError } from 'zod';
 import { createDb, type Db } from './db/client.ts';
 import type { Env } from './env.ts';
+import { registerBuiltinProviders } from './integrations/index.ts';
 import { registerJobs } from './jobs.ts';
 import { authInfo, authorizeWorkspace, resolveUser } from './lib/auth.ts';
 import { HttpError, validationError } from './lib/errors.ts';
@@ -24,8 +25,9 @@ import { authRoutes } from './routes/auth.ts';
 import { authProviderRoutes } from './routes/authProviders.ts';
 import { cycleRoutes } from './routes/cycles.ts';
 import { fileRoutes } from './routes/files.ts';
+import { githubCallbackRoutes, githubWorkspaceRoutes } from './routes/github.ts';
 import { hookRoutes } from './routes/hooks.ts';
-import { integrationRoutes } from './routes/integrations.ts';
+import { externalAccountRoutes, integrationRoutes } from './routes/integrations.ts';
 import { issueRoutes } from './routes/issues.ts';
 import { joiningRoutes } from './routes/joining.ts';
 import { labelRoutes } from './routes/labels.ts';
@@ -95,6 +97,7 @@ export async function buildApp(
   app.decorate('storage', createStorage(env.storage));
   app.decorate('mailer', new Mailer(app));
   app.decorate('resolveTxt', resolveTxt);
+  registerBuiltinProviders();
   registerJobs(app);
   if (!env.secretKey)
     app.log.warn('ORDO_SECRET_KEY is not set: storing secrets (SSO, integrations) is disabled');
@@ -164,6 +167,7 @@ export async function buildApp(
   await app.register(joiningRoutes, { prefix: '/api' });
   await app.register(ssoRoutes, { prefix: '/api' });
   await app.register(hookRoutes, { prefix: '/api/hooks' });
+  await app.register(githubCallbackRoutes, { prefix: '/api' });
   await app.register(adminRoutes, { prefix: '/api/admin' });
   await app.register(realtimeRoutes, { prefix: '/api' });
 
@@ -188,6 +192,8 @@ export async function buildApp(
       await w.register(searchRoutes);
       await w.register(webhookRoutes);
       await w.register(integrationRoutes);
+      await w.register(githubWorkspaceRoutes);
+      await w.register(externalAccountRoutes);
     },
     { prefix: '/api/w/:ws' },
   );

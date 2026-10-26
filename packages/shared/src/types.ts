@@ -12,6 +12,7 @@ import type {
   TeamRole,
   UserKind,
 } from './constants.ts';
+import { DEFAULT_BRANCH_FORMAT, type GitAutomation } from './git.ts';
 import type { IssueDisplay, IssueFilter } from './schemas.ts';
 
 /** API response shapes. Dates are ISO strings on the wire. */
@@ -69,6 +70,8 @@ export interface Team {
   defaultStateId: string | null;
   /** Private teams are visible only to their members and workspace admins. */
   private: boolean;
+  /** Where linked pull requests move issues; missing events use `defaultGitAutomation`. */
+  gitAutomation: GitAutomation;
   memberIds: string[];
   members: { userId: string; role: TeamRole }[];
   states: WorkflowState[];
@@ -391,6 +394,8 @@ export interface WorkspaceSettings {
   ssoSessionMaxAgeHours: number | null;
   /** Whether personal API keys may be used while SSO is required. */
   allowApiKeysUnderSso: boolean;
+  /** Format of "Copy git branch name": {username}, {identifier}, {title}. */
+  gitBranchFormat: string;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -400,6 +405,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   requireSso: false,
   ssoSessionMaxAgeHours: null,
   allowApiKeysUnderSso: false,
+  gitBranchFormat: DEFAULT_BRANCH_FORMAT,
 };
 
 export interface WorkspaceDomain {

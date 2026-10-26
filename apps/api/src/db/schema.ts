@@ -3,6 +3,7 @@ import type {
   DomainEventType,
   EstimateScale,
   FavoriteKind,
+  GitAutomation,
   HistoryChange,
   IssueDisplay,
   IssueFilter,
@@ -175,9 +176,26 @@ export const teams = pgTable(
     private: boolean('private').notNull().default(false),
     cyclesEnabled: boolean('cycles_enabled').notNull().default(true),
     defaultStateId: uuid('default_state_id'),
+    gitAutomation: jsonb('git_automation').$type<GitAutomation>().notNull().default({}),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('teams_workspace_key_idx').on(t.workspaceId, t.key)],
+);
+
+/** Former team keys, so identifiers in old branches, commits and links keep resolving. */
+export const teamKeyAliases = pgTable(
+  'team_key_aliases',
+  {
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    key: text('key').notNull(),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.workspaceId, t.key] })],
 );
 
 export const teamMembers = pgTable(
@@ -523,7 +541,7 @@ export const authTokens = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     kind: text('kind')
-      .$type<'password_reset' | 'email_verify' | 'email_change' | 'mfa'>()
+      .$type<'password_reset' | 'email_verify' | 'email_change' | 'mfa' | 'integration_setup'>()
       .notNull(),
     tokenHash: text('token_hash').notNull().unique(),
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),

@@ -13,6 +13,7 @@ import {
   TEAM_ROLES,
   USERNAME_PATTERN,
 } from './constants.ts';
+import { GIT_EVENTS } from './git.ts';
 
 /** Request payload schemas, shared by the API (validation) and the web client (forms). */
 
@@ -120,6 +121,7 @@ export const updateWorkspaceSchema = z.object({
         .nullable()
         .optional(),
       allowApiKeysUnderSso: z.boolean().optional(),
+      gitBranchFormat: z.string().trim().min(1).max(100).optional(),
     })
     .optional(),
 });
@@ -199,6 +201,7 @@ export const updateTeamSchema = z.object({
   cyclesEnabled: z.boolean().optional(),
   private: z.boolean().optional(),
   defaultStateId: id.nullish(),
+  gitAutomation: z.partialRecord(z.enum(GIT_EVENTS), z.union([id, z.literal('none')])).optional(),
 });
 
 export const createStateSchema = z.object({

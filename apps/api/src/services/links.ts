@@ -54,8 +54,9 @@ export async function upsertIssueLink(ctx: Ctx, input: LinkInput): Promise<Issue
     url: input.url,
     title: input.title.slice(0, 300),
     state: input.state ?? null,
-    author: input.author ?? null,
-    authorUserId: input.authorUserId ?? null,
+    // Unknown authors (undefined) keep what an earlier event told us.
+    ...(input.author !== undefined && { author: input.author }),
+    ...(input.authorUserId !== undefined && { authorUserId: input.authorUserId }),
     data: input.data ?? {},
     updatedAt: new Date().toISOString(),
   };

@@ -83,9 +83,11 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   messages, plain links)
 - ⬜ Long-lived connectors under leases (lands with chat in Phase 8)
 
-### Phase 7 — Git forges
+### Phase 7 — Git forges ✅
 
-- ⬜ GitHub (App or token), GitLab, Forgejo/Gitea: link branches, commits and PRs; magic words; status automation
+- ✅ GitHub (one-click App from a manifest, or a token), GitLab, Forgejo/Gitea: link branches, commits and PRs/MRs
+- ✅ Magic words, per-team status automation (forward only), key aliases after renames, PR comments
+- ✅ Webhooks or polling for instances the forge can't reach; claimable forge usernames; branch name format
 
 ### Phase 8 — Chat
 

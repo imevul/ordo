@@ -64,6 +64,13 @@
       "when": 1793030938448,
       "tag": "0008_outbox_webhooks_integrations",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1793031859992,
+      "tag": "0009_forges",
+      "breakpoints": true
     }
   ]
 }

@@ -63,6 +63,12 @@ export interface IntegrationProvider extends IntegrationProviderInfo {
   /** Every domain event of the workspace, except the ones this integration caused. */
   onDomainEvent?(ictx: IntegrationContext, event: IntegrationEvent): Promise<void>;
 
+  /**
+   * For services with user accounts (forges, chat): the host people's usernames belong to, so
+   * they can claim them under Account → Connected accounts and get credit for their work.
+   */
+  accountHost?(integration: IntegrationRow): string;
+
   /** For services that can't reach this instance: fetch what changed. */
   poll?(ictx: IntegrationContext): Promise<void>;
   pollIntervalSeconds?: number;

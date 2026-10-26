@@ -1,4 +1,9 @@
-import type { IssueDetail, RelationView, UpdateIssueInput } from '@ordo/shared';
+import {
+  branchName,
+  type IssueDetail,
+  type RelationView,
+  type UpdateIssueInput,
+} from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { Bell, BellOff, Copy, Link2, MoreHorizontal, Plus, Trash2, X } from 'lucide-react';
@@ -208,6 +213,18 @@ export function IssueDetailView({
     toast.success(`Copied ${what}`);
   };
 
+  // Linking a PR is as easy as naming the branch after the issue.
+  const copyBranch = () =>
+    copy(
+      branchName(ws.workspace.settings.gitBranchFormat, {
+        identifier: issue.identifier,
+        title: issue.title,
+        username: ws.me.username,
+      }),
+      'branch name',
+    );
+  useHotkey('mod+>', copyBranch, { enabled: !compact });
+
   const [relType, setRelType] = useState<'blocks' | 'blocked_by' | 'related' | 'duplicate_of'>(
     'related',
   );
@@ -270,20 +287,7 @@ export function IssueDetailView({
                   >
                     <Copy size={14} /> Copy ID
                   </button>
-                  <button
-                    type="button"
-                    className="menu-item"
-                    onClick={() =>
-                      copy(
-                        `${issue.identifier.toLowerCase()}-${issue.title
-                          .toLowerCase()
-                          .replace(/[^a-z0-9]+/g, '-')
-                          .slice(0, 40)
-                          .replace(/-$/, '')}`,
-                        'branch name',
-                      )
-                    }
-                  >
+                  <button type="button" className="menu-item" onClick={copyBranch}>
                     <Copy size={14} /> Copy git branch name
                   </button>
                   <button

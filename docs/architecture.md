@@ -145,6 +145,17 @@ Notable choices:
   attributed to, a status and last error. `issue_links` holds PRs, branches, commits and messages per issue;
   `external_accounts` maps provider users to Ordo users.
 
+### Forges
+
+`services/forge.ts` holds what GitHub, GitLab and Forgejo share. Providers (`integrations/github.ts`,
+`gitlab.ts`, `forgejo.ts`) only translate payloads and API calls into `ForgePullRequest`, `ForgeCommit` and
+`ForgeBranch`; `applyPullRequest` / `applyCommits` / `applyBranch` then parse identifiers and magic words, resolve them
+through team keys and `team_key_aliases`, upsert `issue_links`, and call `automate`, which moves an issue only to a
+status further along (by status type, then position). Each provider supports webhooks (hooks it creates on install
+and removes on uninstall; `install` reconciles, so it reruns after settings change) and polling with cursors kept in
+`integrations.state`. The GitHub App lives in `integration_apps`: its private key signs a JWT for short-lived
+installation tokens, and its single webhook URL resolves to integrations by installation id.
+
 ## Background work
 
 `lib/jobs` is a job queue on Postgres itself (no Redis):

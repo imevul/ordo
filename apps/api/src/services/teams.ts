@@ -1,7 +1,7 @@
 import { DEFAULT_WORKFLOW_STATES, SORT_GAP, type Team } from '@ordo/shared';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
-import { teamMembers, teams, workflowStates } from '../db/schema.ts';
+import { teamKeyAliases, teamMembers, teams, workflowStates } from '../db/schema.ts';
 import { type Access, teamScope } from './access.ts';
 import { type Ctx, emit } from './context.ts';
 
@@ -27,6 +27,10 @@ export async function createTeam(
     })
     .returning({ id: teams.id });
   const teamId = team!.id;
+  // A live key beats a former one.
+  await ctx.tx
+    .delete(teamKeyAliases)
+    .where(and(eq(teamKeyAliases.workspaceId, ctx.workspaceId), eq(teamKeyAliases.key, input.key)));
   const states = await ctx.tx
     .insert(workflowStates)
     .values(DEFAULT_WORKFLOW_STATES.map((s, i) => ({ ...s, teamId, position: i * SORT_GAP })))
@@ -73,6 +77,7 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     cyclesEnabled: t.cyclesEnabled,
     defaultStateId: t.defaultStateId,
     private: t.private,
+    gitAutomation: t.gitAutomation,
     memberIds: members.filter((m) => m.teamId === t.id).map((m) => m.userId),
     members: members
       .filter((m) => m.teamId === t.id)

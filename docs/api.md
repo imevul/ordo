@@ -306,5 +306,21 @@ Ordo if an admin chose to send them.
 | GET            | `/webhooks/:id/deliveries/:deliveryId`           | _Admin._ One delivery with its payload                                                                  |
 | POST           | `/webhooks/:id/deliveries/:deliveryId/redeliver` | _Admin._ Send the same payload again                                                                    |
 
-Integrations (GitHub, GitLab, Forgejo, Slack, Discord, Matrix, Telegram) are listed at `GET /integrations` and
-managed by admins; their own docs explain how to connect them.
+## Integrations
+
+| Method     | Path                            |                                                                                                        |
+| ---------- | ------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| GET        | `/integrations`                 | _Admin._ `{ providers, integrations }` — what can be connected and what is                             |
+| POST       | `/integrations`                 | _Admin._ Connect with a token `{ provider, name?, config, secrets }` ([setup](integrations/README.md)) |
+| PATCH      | `/integrations/:id`             | _Admin._ `{ name?, config?, secrets?, enabled? }` — secrets merge; empty values keep the stored ones   |
+| DELETE     | `/integrations/:id`             | _Admin._ Disconnect (removes the webhooks Ordo created); links on issues stay                          |
+| GET        | `/integrations/github/app`      | _Admin._ The instance's GitHub App, if any                                                             |
+| POST       | `/integrations/github/manifest` | _Instance admin._ `{ org? }` → `{ action, manifest }` to POST to GitHub                                |
+| POST       | `/integrations/github/install`  | _Admin._ `{ url }` to install the GitHub App for this workspace                                        |
+| GET / POST | `/me/external-accounts`         | Your claimed forge usernames `{ provider, host, username }`                                            |
+| DELETE     | `/me/external-accounts/:id`     |                                                                                                        |
+
+Inbound webhooks from forges arrive at `/api/hooks/<provider>/<key>` (outside `/w/…`) and are verified per provider.
+
+Team settings take `gitAutomation: { branch?, draft?, open?, review?, merged? }` — a status id or `"none"`; missing
+events use the defaults. Workspace settings take `gitBranchFormat`.

@@ -170,7 +170,7 @@ export async function deliverWebhook(
     })
     .where(eq(webhooks.id, hook.id))
     .returning();
-  if (updated && updated.enabled && updated.failureCount >= DISABLE_AFTER_FAILURES) {
+  if (updated?.enabled && updated.failureCount >= DISABLE_AFTER_FAILURES) {
     const reason = `Switched off after ${updated.failureCount} failed deliveries in a row`;
     await app.db
       .update(webhooks)

@@ -9,6 +9,7 @@ import {
   NotificationsSection,
   SecuritySection,
 } from './account.tsx';
+import { IntegrationsSection } from './integrations.tsx';
 import { LabelsSection } from './labels.tsx';
 import { AuthenticationSection } from './sso.tsx';
 import { TeamSettings, TeamsSection } from './teams.tsx';
@@ -31,6 +32,7 @@ const SECTIONS: { key: string; label: string; group: string; admin?: boolean }[]
   { key: 'labels', label: 'Labels', group: 'Workspace' },
   { key: 'org-security', label: 'Security', group: 'Workspace', admin: true },
   { key: 'authentication', label: 'Authentication', group: 'Workspace', admin: true },
+  { key: 'integrations', label: 'Integrations', group: 'Workspace', admin: true },
   { key: 'webhooks', label: 'Webhooks', group: 'Workspace', admin: true },
   { key: 'audit', label: 'Audit log', group: 'Workspace', admin: true },
 ];
@@ -118,6 +120,8 @@ export function SettingsPage() {
       <MembersSection />
     ) : section === 'org-security' ? (
       <OrgSecuritySection />
+    ) : section === 'integrations' ? (
+      <IntegrationsSection />
     ) : section === 'webhooks' ? (
       <WebhooksSection />
     ) : section === 'authentication' ? (

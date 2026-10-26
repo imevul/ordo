@@ -36,6 +36,7 @@ import {
   issues,
   labels,
   projects,
+  teamKeyAliases,
   teams,
   workflowStates,
 } from '../db/schema.ts';
@@ -193,7 +194,25 @@ export async function getIssue(db: DbOrTx, access: Access, idOrIdentifier: strin
   else {
     const m = ISSUE_IDENTIFIER_PATTERN.exec(idOrIdentifier.toUpperCase());
     if (!m) throw notFound('Issue');
-    where = and(eq(teams.key, m[1]!), eq(issues.number, Number(m[2])));
+    where = and(
+      eq(issues.number, Number(m[2])),
+      // Former keys keep old identifiers working after a team is renamed.
+      or(
+        eq(teams.key, m[1]!),
+        inArray(
+          issues.teamId,
+          db
+            .select({ id: teamKeyAliases.teamId })
+            .from(teamKeyAliases)
+            .where(
+              and(
+                eq(teamKeyAliases.workspaceId, access.workspaceId),
+                eq(teamKeyAliases.key, m[1]!),
+              ),
+            ),
+        ),
+      ),
+    );
   }
   const [row] = await baseQuery(db).where(
     and(eq(issues.workspaceId, access.workspaceId), teamScope(access, issues.teamId), where),

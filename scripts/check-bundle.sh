@@ -4,9 +4,28 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# A throwaway database next to the dev one: the server runs migrations and job workers, which must
+# not touch (or steal jobs from) a real database.
+base="${DATABASE_URL:-postgres://ordo:ordo@localhost:5433/ordo}"
+check_db="ordo_bundle_check_$$"
+db() { (cd apps/api && node --input-type=module -e "
+  import postgres from 'postgres';
+  const sql = postgres(process.argv[1], { max: 1, onnotice: () => {} });
+  await sql.unsafe(process.argv[2]);
+  await sql.end();" "$base" "$1"); }
+
 pnpm build >/dev/null
 dir=$(mktemp -d)
-trap 'kill "${pid:-}" 2>/dev/null || true; rm -rf "$dir"' EXIT
+cleanup() {
+  if [ -n "${pid:-}" ]; then
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  fi
+  db "drop database if exists $check_db with (force)" || true
+  rm -rf "$dir"
+}
+trap cleanup EXIT
+db "create database $check_db"
 cp apps/api/dist/*.mjs apps/api/package.json "$dir/"
 cp -r apps/api/drizzle "$dir/drizzle"
 cp -r apps/web/dist "$dir/public"
@@ -15,10 +34,10 @@ port=$((20000 + RANDOM % 20000))
 (
   cd "$dir"
   NODE_ENV=production PORT=$port HOST=127.0.0.1 \
-    DATABASE_URL="${DATABASE_URL:-postgres://ordo:ordo@localhost:5433/ordo}" \
+    DATABASE_URL="${base%/*}/$check_db" \
     ORDO_SECRET_KEY="$(head -c 32 /dev/urandom | base64)" \
     ORDO_STATIC_DIR="$dir/public" ORDO_MIGRATIONS_DIR="$dir/drizzle" \
-    node server.mjs >"$dir/server.log" 2>&1
+    exec node server.mjs >"$dir/server.log" 2>&1
 ) &
 pid=$!
 
