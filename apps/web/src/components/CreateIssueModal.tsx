@@ -175,11 +175,9 @@ export function CreateIssueModal() {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
                 e.preventDefault();
-                (
-                  e.currentTarget.parentElement?.querySelector(
-                    'textarea',
-                  ) as HTMLTextAreaElement | null
-                )?.focus();
+                e.currentTarget.parentElement
+                  ?.querySelector<HTMLElement>('textarea, [contenteditable="true"]')
+                  ?.focus();
               }
             }}
             placeholder="Issue title"

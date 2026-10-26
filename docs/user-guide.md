@@ -67,7 +67,7 @@ status is where new issues land.
 
 ## Issues
 
-Create an issue with `C` (or the pen icon). Type a title, optionally a markdown description, then set
+Create an issue with `C` (or the pen icon). Type a title, optionally a description, then set
 properties with the chips below — or press `Mod Enter` straight away. Toggle **Create more** to keep the
 dialog open for the next one.
 
@@ -78,7 +78,7 @@ in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L
 - **Sub-issues** — _Add_ under _Sub-issues_ on an issue. The parent shows `done/total`.
 - **Relations** — _blocks_, _blocked by_, _related to_, _duplicate of_. Marking an issue as a duplicate moves it to
   the team's _Duplicate_ (or first canceled) status.
-- **Comments** — markdown, replies, edits, `@username` mentions (with autocomplete). Mentioned people are notified
+- **Comments** — rich text, replies, edits, `@username` mentions (with autocomplete). Mentioned people are notified
   and subscribed. Issue identifiers like `ENG-12` in text become links.
 - **Attachments** — paste or drop files into a description or comment (or use the paperclip), or drop them on the
   issue's _Attachments_ section. See below.
@@ -89,6 +89,19 @@ in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L
   matching status.
 - **Delete** moves the issue to the **Trash**, where anyone can restore it and admins can delete it for good.
 - **Copy git branch name** in the `…` menu gives you `eng-42-short-title`.
+
+### Writing descriptions and comments
+
+Descriptions, comments, project descriptions and project updates use a rich text editor: what you write shows
+formatted as you type. Markdown shortcuts work (`## ` for a heading, `- ` for a list, `[ ] ` for a checklist,
+`**bold**`, `` `code` ``, three backticks for a code block — see [keyboard shortcuts](keyboard-shortcuts.md#editing)),
+and selecting text brings up buttons for bold, italic, strikethrough, code and links. Pasting a link over selected
+text links it. Tables and images from Markdown are kept and editable.
+
+Prefer writing Markdown yourself? Click **// markdown** under the editor to edit the source (with a preview); your
+browser remembers the choice. Ordo stores everything as Markdown either way, so the API, MCP, webhooks and chat
+messages see the same text. Text containing raw HTML or footnotes always opens in the Markdown view, because the rich
+editor can't keep those.
 
 ### Attachments
 

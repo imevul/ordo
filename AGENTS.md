@@ -88,6 +88,10 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
 - **Imports use explicit `.ts`/`.tsx` extensions** (`allowImportingTsExtensions`).
 - **Web data flow:** read with the hooks in `src/api/queries.ts`; write with `useUpdateIssue` /
   `useWsMutation`. Realtime events only invalidate caches — never push data through the socket.
+- **Text editing:** `MarkdownEditor` is the one editor for long text: rich text (TipTap, `RichTextEditor.tsx`) or
+  Markdown source, chosen per browser. Markdown is the storage format, so the rich editor's schema
+  (`lib/richtext.ts`) holds only what GFM can store; extend it there and add a case to `richtext.test.ts`, which
+  checks that every document round-trips and loads.
 - **Keyboard:** register shortcuts with `useHotkey` (`src/lib/hotkeys.ts`). Modals push a scope via
   `useHotkeyScope` so page shortcuts don't fire underneath. Document new shortcuts in
   `components/ShortcutsHelp.tsx` and `docs/keyboard-shortcuts.md`.
@@ -101,7 +105,8 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
 
 API tests in `apps/api/test/api.test.ts` drive the real app through `app.inject` with a cookie-carrying
 `Client` (`test/helpers.ts`). Add a test for every new endpoint or rule. Shared logic gets unit tests next to
-the source (`*.test.ts`). The web app has no unit tests yet; verify UI changes in a browser with `pnpm dev`.
+the source (`*.test.ts`). The web app has unit tests only for pure logic (`src/lib/*.test.ts`); verify UI changes in a browser with
+`pnpm dev`.
 SSO tests run against an in-process OpenID provider (`test/mock-idp.ts`: discovery, PKCE-checking token endpoint,
 RS256 ID tokens); set `idp.next` to the claims of the next sign-in and `idp.tamper` to corrupt the next token.
 

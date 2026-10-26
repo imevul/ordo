@@ -48,6 +48,7 @@ export const SHORTCUTS: { section: string; items: [string, string][] }[] = [
       [`${modKey} ⌫`, 'Move to trash'],
       [`${modKey} Shift .`, 'Copy git branch name (open issue)'],
       [`${modKey} Enter`, 'Submit (forms, comments)'],
+      [`${modKey} B / ${modKey} I`, 'Bold / italic (in text)'],
     ],
   },
 ];
