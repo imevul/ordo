@@ -40,8 +40,8 @@ export class Client {
       headers: this.cookie ? { cookie: this.cookie } : {},
     });
     const set = res.headers['set-cookie'];
-    const first = Array.isArray(set) ? set[0] : set;
-    if (first?.startsWith('ordo_session=')) this.cookie = first.split(';')[0]!;
+    const session = (Array.isArray(set) ? set : [set]).find((c) => c?.startsWith('ordo_session='));
+    if (session) this.cookie = session.split(';')[0]!;
     let data: unknown = null;
     try {
       data = res.json();

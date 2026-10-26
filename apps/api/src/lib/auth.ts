@@ -1,11 +1,19 @@
 import type { MemberRole } from '@ordo/shared';
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Db } from '../db/client.ts';
-import { apiKeys, sessions, users, workspaceMembers, workspaces } from '../db/schema.ts';
+import {
+  apiKeys,
+  authProviders,
+  sessions,
+  users,
+  workspaceMembers,
+  workspaces,
+} from '../db/schema.ts';
 import { type Access, computeAccess } from '../services/access.ts';
+import { audit } from '../services/audit.ts';
 import { randomToken, sha256 } from './crypto.ts';
-import { forbidden, notFound, unauthorized } from './errors.ts';
+import { forbidden, HttpError, notFound, unauthorized } from './errors.ts';
 
 export const SESSION_COOKIE = 'ordo_session';
 const SESSION_DAYS = 30;
@@ -30,11 +38,26 @@ export interface WorkspaceCtx {
   access: Access;
 }
 
+/** Set when the session was created by an SSO login. */
+export interface SsoSession {
+  providerId: string;
+  expiresAt: string | null;
+}
+
+/** How the caller authenticated; require-SSO decides from this. */
+export interface AuthInfo {
+  method: 'session' | 'api_key';
+  sso: SsoSession | null;
+  /** Skips the require-SSO check (used to let admins test a provider before switching it on). */
+  ignoreSso?: boolean;
+}
+
 declare module 'fastify' {
   interface FastifyRequest {
     user: AuthUser | null;
     sessionId: string | null;
     authMethod: 'session' | 'api_key' | null;
+    sso: SsoSession | null;
     workspace: WorkspaceCtx | null;
   }
 }
@@ -60,6 +83,7 @@ export async function createSession(
   reply: FastifyReply,
   userId: string,
   req: FastifyRequest,
+  sso?: { authProviderId: string; ssoExpiresAt: string | null },
 ) {
   const token = randomToken();
   const now = new Date();
@@ -70,8 +94,38 @@ export async function createSession(
     ip: req.ip ?? null,
     lastSeenAt: now.toISOString(),
     expiresAt: new Date(now.getTime() + SESSION_DAYS * DAY).toISOString(),
+    authProviderId: sso?.authProviderId ?? null,
+    ssoExpiresAt: sso?.ssoExpiresAt ?? null,
   });
   setSessionCookie(app, reply, token);
+  if (!sso) await auditSsoBypass(app.db, userId, req);
+}
+
+/** Owners of require-SSO workspaces may still use their password; each such sign-in is audited there. */
+async function auditSsoBypass(db: Db, userId: string, req: FastifyRequest) {
+  const owned = await db
+    .select({ id: workspaces.id })
+    .from(workspaceMembers)
+    .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
+    .where(
+      and(
+        eq(workspaceMembers.userId, userId),
+        eq(workspaceMembers.role, 'owner'),
+        sql`(${workspaces.settings}->>'requireSso')::boolean is true`,
+      ),
+    );
+  for (const ws of owned) {
+    await audit(
+      db,
+      {
+        action: 'auth.sso_bypass',
+        actorId: userId,
+        workspaceId: ws.id,
+        data: { method: 'password' },
+      },
+      { ip: req.ip ?? null, userAgent: req.headers['user-agent']?.slice(0, 300) ?? null },
+    );
+  }
 }
 
 function setSessionCookie(app: FastifyInstance, reply: FastifyReply, token: string) {
@@ -92,7 +146,12 @@ export function clearSessionCookie(reply: FastifyReply) {
 export async function resolveUser(
   db: Db,
   req: FastifyRequest,
-): Promise<{ user: AuthUser; sessionId: string | null; method: 'session' | 'api_key' } | null> {
+): Promise<{
+  user: AuthUser;
+  sessionId: string | null;
+  method: 'session' | 'api_key';
+  sso: SsoSession | null;
+} | null> {
   const header = req.headers.authorization;
   if (header?.startsWith('Bearer ')) {
     const token = header.slice(7).trim();
@@ -107,19 +166,32 @@ export async function resolveUser(
       .set({ lastUsedAt: new Date().toISOString() })
       .where(eq(apiKeys.id, row.keyId))
       .catch(() => {});
-    return { user: row.user, sessionId: null, method: 'api_key' };
+    return { user: row.user, sessionId: null, method: 'api_key', sso: null };
   }
 
   const token = req.cookies[SESSION_COOKIE];
   if (!token) return null;
   const id = sha256(token);
   const [row] = await db
-    .select({ user: userColumns, expiresAt: sessions.expiresAt, lastSeenAt: sessions.lastSeenAt })
+    .select({
+      user: userColumns,
+      expiresAt: sessions.expiresAt,
+      lastSeenAt: sessions.lastSeenAt,
+      providerId: sessions.authProviderId,
+      ssoExpiresAt: sessions.ssoExpiresAt,
+    })
     .from(sessions)
     .innerJoin(users, eq(users.id, sessions.userId))
     .where(and(eq(sessions.id, id), gt(sessions.expiresAt, new Date().toISOString()), canSignIn));
   if (!row) return null;
   const now = Date.now();
+  // The org's "SSO session max age": the user has to go back through their IdP.
+  if (row.ssoExpiresAt && new Date(row.ssoExpiresAt).getTime() < now) {
+    db.delete(sessions)
+      .where(eq(sessions.id, id))
+      .catch(() => {});
+    return null;
+  }
   const patch: Partial<typeof sessions.$inferInsert> = {};
   // Sliding expiry: extend sessions that are past half their lifetime.
   if (new Date(row.expiresAt).getTime() - now < (SESSION_DAYS / 2) * DAY) {
@@ -135,7 +207,8 @@ export async function resolveUser(
       .where(eq(sessions.id, id))
       .catch(() => {});
   }
-  return { user: row.user, sessionId: id, method: 'session' };
+  const sso = row.providerId ? { providerId: row.providerId, expiresAt: row.ssoExpiresAt } : null;
+  return { user: row.user, sessionId: id, method: 'session', sso };
 }
 
 export function requireUser(req: FastifyRequest): AuthUser {
@@ -143,15 +216,21 @@ export function requireUser(req: FastifyRequest): AuthUser {
   return req.user;
 }
 
+export const authInfo = (req: FastifyRequest): AuthInfo => ({
+  method: req.authMethod ?? 'session',
+  sso: req.sso,
+});
+
 /**
  * Resolves a workspace by slug for a signed-in user and computes their access. Used by every
- * workspace route and by the WebSocket, so membership rules are enforced in one place.
- * Non-members get "not found", so the workspace's existence doesn't leak.
+ * workspace route and by the WebSocket, so membership and require-SSO rules are enforced in one
+ * place. Non-members get "not found", so the workspace's existence doesn't leak.
  */
 export async function authorizeWorkspace(
   db: Db,
   user: AuthUser,
   ref: string | { id: string },
+  auth: AuthInfo,
 ): Promise<WorkspaceCtx> {
   const [row] = await db
     .select({
@@ -159,6 +238,7 @@ export async function authorizeWorkspace(
       slug: workspaces.slug,
       name: workspaces.name,
       role: workspaceMembers.role,
+      settings: workspaces.settings,
     })
     .from(workspaces)
     .innerJoin(
@@ -174,7 +254,39 @@ export async function authorizeWorkspace(
     .innerJoin(users, and(eq(users.id, workspaceMembers.userId), isNull(users.disabledAt)))
     .where(typeof ref === 'string' ? eq(workspaces.slug, ref) : eq(workspaces.id, ref.id));
   if (!row) throw notFound('Workspace');
-  return { ...row, access: await computeAccess(db, user.id, row.id, row.role) };
+  if (row.settings?.requireSso && !auth.ignoreSso) await assertSso(db, row, auth);
+  const { settings: _settings, ...ws } = row;
+  return { ...ws, access: await computeAccess(db, user.id, row.id, row.role) };
+}
+
+/**
+ * Require SSO: the session must come from one of this workspace's providers. Owners keep their
+ * password as a break-glass (audited at login), so a broken IdP can't lock an org out.
+ */
+async function assertSso(
+  db: Db,
+  ws: {
+    id: string;
+    name: string;
+    role: MemberRole;
+    settings: { allowApiKeysUnderSso?: boolean } | null;
+  },
+  auth: AuthInfo,
+) {
+  if (ws.role === 'owner') return;
+  if (auth.method === 'api_key') {
+    if (ws.settings?.allowApiKeysUnderSso) return;
+    throw new HttpError(403, `${ws.name} doesn't allow API keys`, 'sso_required');
+  }
+  const providers = await db
+    .select({ providerId: authProviders.id, name: authProviders.name })
+    .from(authProviders)
+    .where(and(eq(authProviders.workspaceId, ws.id), eq(authProviders.enabled, true)));
+  if (auth.sso && providers.some((p) => p.providerId === auth.sso!.providerId)) return;
+  throw new HttpError(403, `${ws.name} requires signing in with SSO`, 'sso_required', {
+    workspace: ws.name,
+    options: providers.map((p) => ({ ...p, workspace: ws.name })),
+  });
 }
 
 export function requireWorkspace(req: FastifyRequest): WorkspaceCtx {

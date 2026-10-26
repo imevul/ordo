@@ -29,6 +29,8 @@ Admins can **suspend** a member — they keep their history but can't open the w
 - **Security** — who may invite; **domains** you've verified with a DNS TXT record
   (`_ordo-verify.example.com` → `ordo-verify=…`); and **join by domain**, which lets anyone with a _verified_ email at
   one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.
+- **Authentication** — single sign-on with your own identity provider (OpenID Connect), group → role mapping, and
+  **require SSO**. See [SSO](sso.md).
 - **Audit log** — security-relevant changes: invites, role changes, team changes, domains, and more.
 - **Danger zone** (owners) — **transfer ownership** to another member (you become an admin), or **delete** the
   workspace for good.
@@ -143,9 +145,12 @@ Open **Settings** (workspace menu, or `G` then `S`):
   set up) and see whether it's verified.
 - **Security** — change your password (this signs out your other sessions); turn on **two-factor authentication**
   with any authenticator app, and keep the ten recovery codes somewhere safe — each works once if you lose your
-  device; see and revoke your **sessions**.
+  device; **connected accounts** (SSO identities you've linked, and a button to connect your workspace's provider);
+  see and revoke your **sessions**.
 - **Notifications** — everything lands in your Inbox; choose which kinds are also emailed and how often (within a few
   minutes, hourly, daily, or never). Anything you read in the app first isn't emailed.
 - **API keys** — personal keys for scripts and integrations ([API docs](api.md)).
+
+If your workspace uses single sign-on, type your work email on the sign-in page and pick **Continue with …**.
 
 Forgot your password? Use **Forgot password?** on the sign-in page (needs email to be set up on the instance).

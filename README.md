@@ -27,6 +27,7 @@ Then open <http://localhost:3000>. The first person to sign up becomes the admin
 - **Command menu** (`⌘K` / `Ctrl K`) and **keyboard shortcuts** for nearly everything (`?` lists them).
 - **Realtime** — every change shows up for everyone instantly, over a WebSocket fed by Postgres `LISTEN/NOTIFY`.
 - **Workspaces, members, roles and invite links**; invite-only or open sign-up.
+- **Single sign-on** per workspace with any OpenID Connect provider, group → role mapping and "require SSO".
 - **REST API** with personal API keys.
 
 See [ROADMAP.md](ROADMAP.md) for what's next and how far along the Linear feature set we are.
@@ -87,6 +88,8 @@ chamfered corners instead of rounded ones ([docs/design.md](docs/design.md)).
 | [docs/keyboard-shortcuts.md](docs/keyboard-shortcuts.md) | Every shortcut                                     |
 | [docs/self-hosting.md](docs/self-hosting.md)             | Install, HTTPS, backups, upgrades, troubleshooting |
 | [docs/configuration.md](docs/configuration.md)           | Environment variables                              |
+| [docs/admin.md](docs/admin.md)                           | Instance administration and recovery               |
+| [docs/sso.md](docs/sso.md)                               | Single sign-on (OpenID Connect) per workspace      |
 | [docs/api.md](docs/api.md)                               | REST API and realtime events                       |
 | [docs/architecture.md](docs/architecture.md)             | How it's built, data model                         |
 | [docs/development.md](docs/development.md)               | Working on Ordo                                    |

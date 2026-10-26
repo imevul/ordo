@@ -1,4 +1,9 @@
-import { type JoinableWorkspace, SLUG_PATTERN, TEAM_KEY_PATTERN } from '@ordo/shared';
+import {
+  type JoinableWorkspace,
+  SLUG_PATTERN,
+  type SsoOption,
+  TEAM_KEY_PATTERN,
+} from '@ordo/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
@@ -6,6 +11,7 @@ import { ApiError, api } from '../api/client.ts';
 import { keys, useConfig, useMe } from '../api/queries.ts';
 import { OrdoMark } from '../components/icons.tsx';
 import { Spinner } from '../components/PageHeader.tsx';
+import { ssoStartUrl } from '../lib/sso.ts';
 
 function AuthLayout({
   kicker,
@@ -89,7 +95,8 @@ export function IndexRedirect() {
 }
 
 export function LoginPage() {
-  const { redirect } = useSearch({ from: '/login' });
+  const search = useSearch({ from: '/login' });
+  const { redirect } = search;
   const qc = useQueryClient();
   const navigate = useNavigate();
   const config = useConfig();
@@ -98,7 +105,9 @@ export function LoginPage() {
   // Set after a correct password when the account has two-factor authentication.
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [code, setCode] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  // An SSO callback that failed sends people back here with ?error=.
+  const [error, setError] = useState<string | null>(search.error ?? null);
+  const sso = useSsoOptions(email, search.workspace);
   const [busy, setBusy] = useState(false);
 
   const done = () => {
@@ -197,6 +206,26 @@ export function LoginPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+        {sso.length > 0 && (
+          <div className="mb-5">
+            {sso.map((o) => (
+              <a
+                key={o.providerId}
+                href={ssoStartUrl(o.providerId, {
+                  redirect: redirect?.startsWith('/') ? redirect : undefined,
+                })}
+                className="btn btn-primary mb-2 w-full"
+              >
+                Continue with {o.name}
+                {sso.length > 1 && <span className="text-[11px] opacity-70">· {o.workspace}</span>}
+                <span className="arrow">→</span>
+              </a>
+            ))}
+            <div className="mt-3 text-center font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
+              or use your password
+            </div>
+          </div>
+        )}
         <TextField
           label="Password"
           type="password"
@@ -205,7 +234,10 @@ export function LoginPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <button className="btn btn-primary mt-2 w-full" disabled={busy}>
+        <button
+          className={`btn mt-2 w-full ${sso.length ? 'btn-ghost' : 'btn-primary'}`}
+          disabled={busy}
+        >
           Sign in <span className="arrow">→</span>
         </button>
         <Link
@@ -217,6 +249,38 @@ export function LoginPage() {
       </form>
     </AuthLayout>
   );
+}
+
+/** SSO buttons for the typed email's domain (debounced), or for ?workspace=<slug>. */
+function useSsoOptions(email: string, workspace?: string): SsoOption[] {
+  const [domainEmail, setDomainEmail] = useState('');
+  useEffect(() => {
+    const t = setTimeout(
+      () => setDomainEmail(/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : ''),
+      300,
+    );
+    return () => clearTimeout(t);
+  }, [email]);
+  const domain = domainEmail.split('@')[1]?.toLowerCase() ?? '';
+  const byDomain = useQuery({
+    queryKey: ['sso-discover', domain],
+    queryFn: () =>
+      api.get<{ options: SsoOption[] }>(
+        `/auth/discover?email=${encodeURIComponent(`x@${domain}`)}`,
+      ),
+    enabled: !!domain,
+    staleTime: 60_000,
+  });
+  const byWorkspace = useQuery({
+    queryKey: ['sso-workspace', workspace],
+    queryFn: () =>
+      api.get<{ options: SsoOption[] }>(
+        `/auth/providers?workspace=${encodeURIComponent(workspace!)}`,
+      ),
+    enabled: !!workspace,
+  });
+  const all = [...(byWorkspace.data?.options ?? []), ...(byDomain.data?.options ?? [])];
+  return all.filter((o, i) => all.findIndex((x) => x.providerId === o.providerId) === i);
 }
 
 export function ForgotPasswordPage() {

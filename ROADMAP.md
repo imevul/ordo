@@ -61,7 +61,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ Postgres job queue with retries, ordering, schedules and leases
 - ✅ SMTP email: password reset, verification, email change, security notices, notification digests (invites: Phase 4)
 - ✅ File storage (local volume or S3-compatible) with signed URLs
-- ✅ Account area: picture, email change, password reset, sessions, TOTP 2FA with recovery codes, notification preferences (connected accounts: Phase 5)
+- ✅ Account area: picture, email change, password reset, sessions, TOTP 2FA with recovery codes, notification preferences, connected accounts
 
 ### Phase 4 — Organisation settings, invites, instance admin ✅
 
@@ -69,10 +69,11 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ Emailed and bulk invites into teams, resend, guest invites, verified-domain auto-join
 - ✅ Instance admin: users, workspaces, domains, settings (SMTP, sign-up, network), jobs, audit, health; recovery CLI
 
-### Phase 5 — Per-organisation OIDC SSO
+### Phase 5 — Per-organisation OIDC SSO ✅
 
-- ⬜ Providers per organisation, verified domains, email-first login, just-in-time accounts
-- ⬜ Require SSO with owner fallback, group → role mapping
+- ✅ Providers per organisation (encrypted secrets, test connection), verified domains, domain-aware login,
+  just-in-time accounts with an account-takeover guard, connected accounts
+- ✅ Require SSO with an audited owner fallback, SSO session length, API-key policy, group → role mapping
 
 ### Phase 6 — Events and integration framework
 

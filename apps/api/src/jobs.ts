@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { sessions } from './db/schema.ts';
 import { sendNotificationEmails } from './services/digest.ts';
 import type { Email } from './services/mail-templates.ts';
+import { purgeExpiredStates } from './services/sso.ts';
 import { purgeExpiredTokens } from './services/tokens.ts';
 
 /** Registers every background job and schedule. Add new job types here. */
@@ -18,6 +19,7 @@ export function registerJobs(app: FastifyInstance) {
 
   jobs.define('maintenance.cleanup', async () => {
     await purgeExpiredTokens(app.db);
+    await purgeExpiredStates(app);
     await app.db.delete(sessions).where(lt(sessions.expiresAt, new Date().toISOString()));
     // Dead jobs stay for a week so admins can see what failed.
     await app.db.execute(

@@ -444,6 +444,10 @@ describe('route inventory', () => {
     'POST /domains': 'workspace admins only',
     'POST /domains/:id/verify': 'workspace admins only',
     'DELETE /domains/:id': 'workspace admins only',
+    'GET /auth-providers': 'workspace admins only',
+    'POST /auth-providers': 'workspace admins only',
+    'PATCH /auth-providers/:id': 'workspace admins only',
+    'DELETE /auth-providers/:id': 'workspace admins only',
   };
 
   it('accounts for every workspace route', () => {

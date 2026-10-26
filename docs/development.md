@@ -14,6 +14,18 @@ make dev          # = pnpm install + make dev-db + pnpm dev
 - The API runs with `tsx watch` on **:3001**; it migrates the database on start.
 - Vite serves the web app on **:5173** and proxies `/api` and `/api/ws` to the API.
 
+`pnpm dev` sets `ORDO_PUBLIC_URL=http://localhost:5173`, so email links and SSO callbacks come back through Vite.
+To try SSO without a real provider, run the test IdP on a fixed port (it signs in whoever `CLAIMS` describes) and
+add `http://127.0.0.1:9400` with client `ordo-test` / `top-secret` under Settings → Authentication, after turning on
+private network targets in the admin area:
+
+```ts
+// sso-dev.mts — run with: pnpm --filter @ordo/api exec tsx sso-dev.mts
+import { startMockIdp } from './test/mock-idp.ts';
+const idp = await startMockIdp(9400);
+idp.next = { sub: 'grace-1', email: 'grace@ordo.test', email_verified: true, name: 'Grace Hopper' };
+```
+
 Open <http://localhost:5173>. Load demo data with `pnpm db:seed` and sign in as `demo@ordo.test` /
 `ordo-demo-password`.
 

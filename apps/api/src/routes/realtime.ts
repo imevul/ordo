@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { authorizeWorkspace } from '../lib/auth.ts';
+import { authInfo, authorizeWorkspace } from '../lib/auth.ts';
 
 /** GET /api/ws?workspace=<slug> — a WebSocket that streams RealtimeEvents for one workspace. */
 export async function realtimeRoutes(app: FastifyInstance) {
@@ -9,11 +9,13 @@ export async function realtimeRoutes(app: FastifyInstance) {
       socket.close(4401, 'unauthorized');
       return;
     }
+    const auth = authInfo(req);
     let ws: Awaited<ReturnType<typeof authorizeWorkspace>>;
     try {
-      ws = await authorizeWorkspace(app.db, req.user, workspace);
-    } catch {
-      socket.close(4404, 'workspace not found');
+      ws = await authorizeWorkspace(app.db, req.user, workspace, auth);
+    } catch (err) {
+      if ((err as { code?: string }).code === 'sso_required') socket.close(4403, 'sso required');
+      else socket.close(4404, 'workspace not found');
       return;
     }
     const user = req.user;
@@ -29,7 +31,7 @@ export async function realtimeRoutes(app: FastifyInstance) {
         clearTimeout(pending);
         pending = setTimeout(async () => {
           try {
-            client.access = (await authorizeWorkspace(app.db, user, { id: ws.id })).access;
+            client.access = (await authorizeWorkspace(app.db, user, { id: ws.id }, auth)).access;
           } catch {
             socket.close(4403, 'access revoked');
           }

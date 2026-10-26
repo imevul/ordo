@@ -627,3 +627,70 @@ export const workspaceDomains = pgTable(
     index('workspace_domains_domain_idx').on(t.domain),
   ],
 );
+
+/** An organisation's OpenID Connect identity provider (Authentik, Keycloak, Entra ID, Google…). */
+export const authProviders = pgTable(
+  'auth_providers',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    issuer: text('issuer').notNull(),
+    clientId: text('client_id').notNull(),
+    /** Encrypted (aad auth_providers:<id>:client_secret). */
+    clientSecret: text('client_secret').notNull(),
+    scopes: text('scopes').notNull().default('openid email profile'),
+    enabled: boolean('enabled').notNull().default(true),
+    /** Role for people who join through this provider. */
+    defaultRole: text('default_role').$type<'member' | 'guest'>().notNull().default('member'),
+    /** Claim holding group names (e.g. "groups"); with `groupRoles`, sets roles at every sign-in. */
+    groupClaim: text('group_claim'),
+    groupRoles: jsonb('group_roles')
+      .$type<Record<string, 'admin' | 'member' | 'guest'>>()
+      .notNull()
+      .default({}),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('auth_providers_workspace_idx').on(t.workspaceId)],
+);
+
+/** A user's account at an identity provider (provider + subject), linked to an Ordo user. */
+export const userIdentities = pgTable(
+  'user_identities',
+  {
+    id: pk(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    providerId: uuid('provider_id')
+      .notNull()
+      .references(() => authProviders.id, { onDelete: 'cascade' }),
+    subject: text('subject').notNull(),
+    email: text('email'),
+    lastLoginAt: ts('last_login_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('user_identities_subject_idx').on(t.providerId, t.subject),
+    index('user_identities_user_idx').on(t.userId),
+  ],
+);
+
+/** In-flight OIDC logins: binds the callback to the provider, PKCE verifier and nonce that started it. */
+export const authStates = pgTable('auth_states', {
+  /** The `state` parameter (random). */
+  id: text('id').primaryKey(),
+  providerId: uuid('provider_id')
+    .notNull()
+    .references(() => authProviders.id, { onDelete: 'cascade' }),
+  nonce: text('nonce').notNull(),
+  codeVerifier: text('code_verifier').notNull(),
+  /** login | link (attach to `userId`) | test (show claims to an admin). */
+  mode: text('mode').$type<'login' | 'link' | 'test'>().notNull().default('login'),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  redirect: text('redirect'),
+  expiresAt: ts('expires_at').notNull(),
+});
