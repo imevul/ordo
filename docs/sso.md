@@ -78,7 +78,8 @@ Under **Enforcement**:
   (`auth.sso_bypass`).
 - **SSO session length** — how long an SSO session lasts before people go back through the provider (8 hours to 30
   days). Unset, SSO sessions behave like any other (30 days, sliding).
-- **Allow API keys** — when SSO is required, personal API keys are refused unless this is on.
+- **Allow API keys** — when SSO is required, personal API keys are refused unless this is on. That includes AI
+  agents connected through the [MCP server](mcp.md).
 
 Removing someone in your provider doesn't remove them from Ordo; they can't sign in again once their SSO session ends.
 Suspend or remove them under **Settings → Members** to cut access straight away.

@@ -123,7 +123,9 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ⬜ SLAs, recurring issues, triage rules; customer requests and intake by email
 - ⬜ Project documents; notification snooze
 - ⬜ PWA and push; light theme; i18n
-- ⬜ GraphQL API, TypeScript SDK, CLI, MCP server; optional AI assistance
+- ✅ MCP server for AI agents (Streamable HTTP, per workspace, personal API keys; search, read, create, update and
+  comment on issues) and Settings → AI agents with setup snippets and an agent prompt
+- ⬜ GraphQL API, TypeScript SDK, CLI; optional AI assistance; OAuth sign-in for MCP (claude.ai connectors)
 - ⬜ Later: passkeys, SCIM, SAML, offline-first sync, desktop app, Helm chart and prebuilt images
 
 ## Known limitations

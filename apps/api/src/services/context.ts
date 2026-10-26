@@ -3,7 +3,7 @@ import type { DbOrTx } from '../db/client.ts';
 import type { Access } from './access.ts';
 
 /** What caused a change. Integrations use this to ignore their own echoes. */
-export type ActorSource = 'web' | 'api' | 'system' | 'import' | `integration:${string}`;
+export type ActorSource = 'web' | 'api' | 'mcp' | 'system' | 'import' | `integration:${string}`;
 
 /** Request metadata recorded in the audit log. */
 export interface RequestMeta {

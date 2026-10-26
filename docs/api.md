@@ -1,6 +1,7 @@
 # REST API
 
-Everything the web app does goes through this API, so anything you can click you can script.
+Everything the web app does goes through this API, so anything you can click you can script. AI agents can use the
+[MCP server](mcp.md) instead, which wraps the issue endpoints in tools.
 
 - Base URL: `https://ordo.example.com/api`
 - Bodies are JSON (`Content-Type: application/json`). Responses are JSON.
@@ -270,7 +271,8 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 | `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                       |
 | `ping`                                                           | Sent by the "test" button                                                       |
 
-`source` says where a change came from: `web`, `api` (an API key), `system`, `import` or `integration:<id>`.
+`source` says where a change came from: `web`, `api` (an API key), `mcp` (an agent through the [MCP server](mcp.md)),
+`system`, `import` or `integration:<id>`.
 
 **Headers:** `Ordo-Event` (the type), `Ordo-Delivery` (unique per attempt series; reuse it to deduplicate), and
 `Ordo-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 over `"<t>.<raw body>"` with the webhook's

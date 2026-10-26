@@ -14,6 +14,7 @@ import { ExportsCard, PlaceholdersCard } from './exports.tsx';
 import { ImportsSection } from './imports.tsx';
 import { GitAccountsCard, IntegrationsSection } from './integrations.tsx';
 import { LabelsSection } from './labels.tsx';
+import { McpSection } from './mcp.tsx';
 import { AuthenticationSection, ConnectedAccountsCard } from './sso.tsx';
 import { TeamSettings, TeamsSection } from './teams.tsx';
 import { WebhooksSection } from './webhooks.tsx';
@@ -30,6 +31,7 @@ const SECTIONS: { key: string; label: string; group: string; admin?: boolean }[]
   { key: 'connected', label: 'Connected accounts', group: 'Account' },
   { key: 'notifications', label: 'Notifications', group: 'Account' },
   { key: 'api', label: 'API keys', group: 'Account' },
+  { key: 'mcp', label: 'AI agents', group: 'Account' },
   { key: 'workspace', label: 'General', group: 'Workspace', admin: true },
   { key: 'members', label: 'Members', group: 'Workspace' },
   { key: 'teams', label: 'Teams', group: 'Workspace' },
@@ -117,6 +119,8 @@ export function SettingsPage() {
   const body =
     section === 'api' ? (
       <ApiKeysSection />
+    ) : section === 'mcp' ? (
+      <McpSection />
     ) : section === 'security' ? (
       <SecuritySection />
     ) : section === 'notifications' ? (
