@@ -92,10 +92,44 @@ export interface Team {
   private: boolean;
   /** Where linked pull requests move issues; missing events use `defaultGitAutomation`. */
   gitAutomation: GitAutomation;
+  cycleAutomation: CycleAutomation;
   memberIds: string[];
   members: { userId: string; role: TeamRole }[];
   states: WorkflowState[];
 }
+
+/** Cycles that run themselves: created ahead of time, with unfinished work carried over. */
+export interface CycleAutomation {
+  enabled: boolean;
+  /** Cycle length. */
+  weeks: number;
+  /** Weeks off between cycles. */
+  cooldownWeeks: number;
+  /** Weekday cycles start on, 0 = Sunday … 6 = Saturday. */
+  startDay: number;
+  /** How many cycles to keep planned after the current one. */
+  upcoming: number;
+  /** Move unfinished issues to the next cycle when one ends. */
+  rollOver: boolean;
+  /** Put issues into the active cycle when work on them starts. */
+  addStarted: boolean;
+}
+
+export const DEFAULT_CYCLE_AUTOMATION: CycleAutomation = {
+  enabled: false,
+  weeks: 2,
+  cooldownWeeks: 0,
+  startDay: 1,
+  upcoming: 2,
+  rollOver: true,
+  addStarted: false,
+};
+
+/** Stored settings are partial; this fills in the defaults. */
+export const cycleAutomationOf = (stored?: Partial<CycleAutomation> | null): CycleAutomation => ({
+  ...DEFAULT_CYCLE_AUTOMATION,
+  ...stored,
+});
 
 export interface Label {
   id: string;

@@ -207,6 +207,18 @@ export const updateTeamSchema = z.object({
   private: z.boolean().optional(),
   defaultStateId: id.nullish(),
   gitAutomation: z.partialRecord(z.enum(GIT_EVENTS), z.union([id, z.literal('none')])).optional(),
+  cycleAutomation: z
+    .object({
+      enabled: z.boolean(),
+      weeks: z.number().int().min(1).max(8),
+      cooldownWeeks: z.number().int().min(0).max(2),
+      startDay: z.number().int().min(0).max(6),
+      upcoming: z.number().int().min(1).max(6),
+      rollOver: z.boolean(),
+      addStarted: z.boolean(),
+    })
+    .partial()
+    .optional(),
 });
 
 export const createStateSchema = z.object({

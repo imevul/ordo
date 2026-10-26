@@ -1,4 +1,4 @@
-import { DEFAULT_WORKFLOW_STATES, SORT_GAP, type Team } from '@ordo/shared';
+import { cycleAutomationOf, DEFAULT_WORKFLOW_STATES, SORT_GAP, type Team } from '@ordo/shared';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { teamKeyAliases, teamMembers, teams, workflowStates } from '../db/schema.ts';
@@ -78,6 +78,7 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     defaultStateId: t.defaultStateId,
     private: t.private,
     gitAutomation: t.gitAutomation,
+    cycleAutomation: cycleAutomationOf(t.cycleAutomation),
     memberIds: members.filter((m) => m.teamId === t.id).map((m) => m.userId),
     members: members
       .filter((m) => m.teamId === t.id)
