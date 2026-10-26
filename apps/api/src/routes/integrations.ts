@@ -2,7 +2,7 @@ import { createIssueLinkSchema } from '@ordo/shared';
 import { and, desc, eq, ne } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { externalAccounts, integrations } from '../db/schema.ts';
+import { externalAccounts, integrations, users } from '../db/schema.ts';
 import { getProvider } from '../integrations/registry.ts';
 import type { IntegrationProvider, IntegrationRow } from '../integrations/types.ts';
 import { requireAccess, requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
@@ -176,6 +176,13 @@ export async function integrationRoutes(app: FastifyInstance) {
       await ctx.tx
         .delete(integrations)
         .where(and(eq(integrations.id, id), eq(integrations.workspaceId, ws.id)));
+      // The bot stays, so its past changes keep a name; disabled, it shows as removed.
+      if (row.botUserId) {
+        await ctx.tx
+          .update(users)
+          .set({ disabledAt: new Date().toISOString() })
+          .where(eq(users.id, row.botUserId));
+      }
       await auditCtx(ctx, {
         action: 'integration.deleted',
         targetType: 'integration',

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AVATAR_COLORS, type Integration, type IntegrationProviderInfo } from '@ordo/shared';
-import { and, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, or, sql } from 'drizzle-orm';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import { domainEvents, integrationApps, integrations, users } from '../db/schema.ts';
@@ -140,6 +140,7 @@ export async function createIntegration(
     .insert(users)
     .values({
       kind: 'bot',
+      botWorkspaceId: ctx.workspaceId,
       email: `bot-${id}@bots.ordo.invalid`,
       name: input.name || input.provider.name,
       username: `${input.provider.key}-bot-${short}`,
@@ -324,22 +325,20 @@ export async function runPoll(
   await track(app, found.row, () => found.provider.poll!(ictx));
 }
 
-/** Bot accounts of a workspace's integrations, so their names show next to what they did. */
+/**
+ * Bot accounts of a workspace, including those of removed integrations: they aren't members, but
+ * their names belong next to what they did. Removed ones are disabled and flagged as such.
+ */
 export async function workspaceBots(db: DbOrTx, workspaceId: string) {
-  return db
+  const rows = await db
     .select({
       id: users.id,
       name: users.name,
       username: users.username,
       avatarColor: users.avatarColor,
+      disabledAt: users.disabledAt,
     })
     .from(users)
-    .innerJoin(integrations, eq(integrations.botUserId, users.id))
-    .where(
-      and(
-        eq(integrations.workspaceId, workspaceId),
-        eq(users.kind, 'bot'),
-        isNull(users.disabledAt),
-      ),
-    );
+    .where(and(eq(users.botWorkspaceId, workspaceId), eq(users.kind, 'bot')));
+  return rows.map(({ disabledAt, ...b }) => ({ ...b, removed: !!disabledAt }));
 }

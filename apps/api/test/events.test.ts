@@ -309,7 +309,7 @@ describe('integration framework', () => {
     const [bot] = await app.db.select().from(users).where(eq(users.id, row!.botUserId!));
     expect(bot!.kind).toBe('bot');
     const fresh: Bootstrap = (await owner.get(`${ws}/bootstrap`)).data;
-    expect(fresh.bots.map((b) => b.id)).toEqual([bot!.id]);
+    expect(fresh.bots).toMatchObject([{ id: bot!.id, removed: false }]);
     expect(fresh.members.map((m) => m.id)).not.toContain(bot!.id);
   });
 
@@ -383,6 +383,21 @@ describe('integration framework', () => {
     await owner.patch(`${ws}/integrations/${integrationId}`, { enabled: false });
     expect((await hook({}, { 'x-fake-token': 'let-me-in' })).statusCode).toBe(404);
     await owner.patch(`${ws}/integrations/${integrationId}`, { enabled: true });
+  });
+
+  it('keeps the bot, marked as removed, after disconnecting', async () => {
+    const [row] = await app.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.id, integrationId));
+    expect((await owner.del(`${ws}/integrations/${integrationId}`)).statusCode).toBe(200);
+    const fresh: Bootstrap = (await owner.get(`${ws}/bootstrap`)).data;
+    expect(fresh.bots.find((b) => b.id === row!.botUserId)).toMatchObject({
+      name: 'Fake',
+      removed: true,
+    });
+    const [bot] = await app.db.select().from(users).where(eq(users.id, row!.botUserId!));
+    expect(bot!.disabledAt).not.toBeNull();
   });
 
   it('lets people attach and remove plain links', async () => {

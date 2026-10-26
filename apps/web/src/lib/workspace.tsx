@@ -1,16 +1,7 @@
-import type {
-  Bootstrap,
-  Cycle,
-  Label,
-  Me,
-  Member,
-  Project,
-  Team,
-  View,
-  WorkflowState,
-} from '@ordo/shared';
+import type { Bootstrap, Cycle, Label, Me, Project, Team, View, WorkflowState } from '@ordo/shared';
 import { accentVariables, isAdminRole } from '@ordo/shared';
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react';
+import type { Person } from '../components/ui/ActorName.tsx';
 
 export interface WorkspaceData extends Bootstrap {
   slug: string;
@@ -18,7 +9,8 @@ export interface WorkspaceData extends Bootstrap {
   teamById: Map<string, Team>;
   teamByKey: Map<string, Team>;
   stateById: Map<string, WorkflowState>;
-  memberById: Map<string, Member>;
+  /** Members and the workspace's bots (flagged), for showing who did what. */
+  memberById: Map<string, Person>;
   labelById: Map<string, Label>;
   projectById: Map<string, Project>;
   cycleById: Map<string, Cycle>;
@@ -61,7 +53,7 @@ export function WorkspaceProvider({
       // Bots aren't members (no pickers, no seats) but render as authors.
       memberById: byId([
         ...(data.bots ?? []).map(
-          (b): Member => ({ ...b, role: 'member', joinedAt: '', suspended: false }),
+          (b): Person => ({ ...b, role: 'member', joinedAt: '', suspended: false, bot: true }),
         ),
         ...data.members,
       ]),

@@ -9,6 +9,7 @@ import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 import { PriorityIcon, StatusIcon } from './icons.tsx';
 import { Markdown } from './Markdown.tsx';
 import { MarkdownEditor } from './MarkdownEditor.tsx';
+import { ActorName } from './ui/ActorName.tsx';
 import { Avatar } from './ui/Avatar.tsx';
 import { Popover } from './ui/Popover.tsx';
 
@@ -138,8 +139,7 @@ function HistoryItem({ entry, issue }: { entry: HistoryEntry; issue: IssueDetail
         <div key={i} className="flex items-start gap-2.5 py-1.5 pl-1 text-[12.5px] text-muted">
           <span className="mt-[3px] h-[7px] w-[7px] flex-none bg-border" aria-hidden />
           <span className="min-w-0">
-            <span className="text-text">{actor?.name ?? 'Someone'}</span>{' '}
-            <ChangeText c={c} actorId={entry.actorId} issue={issue} />
+            <ActorName person={actor} /> <ChangeText c={c} actorId={entry.actorId} issue={issue} />
             <span className="text-index" title={longDate(entry.createdAt)}>
               {' '}
               · {relativeTime(entry.createdAt)}
@@ -197,7 +197,7 @@ function CommentItem({
               size={18}
             />
           )}
-          <span className="font-medium">{author?.name ?? 'Former member'}</span>
+          <ActorName person={author} fallback="Former member" className="font-medium" />
           <span className="text-index" title={longDate(comment.createdAt)}>
             {relativeTime(comment.createdAt)}
             {comment.editedAt && ' · edited'}
