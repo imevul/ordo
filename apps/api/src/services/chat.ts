@@ -284,7 +284,14 @@ export async function createLinkCode(
   const bytes = new Uint8Array(10);
   crypto.getRandomValues(bytes);
   const code = [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join('');
-  await createToken(app.db, userId, 'chat_link', 15, { workspaceId, integrationId }, code);
+  await createToken(
+    app.db,
+    userId,
+    'chat_link',
+    15,
+    { workspaceId, integrationId },
+    { token: code, replaceSame: 'integrationId' },
+  );
   return `${code.slice(0, 5)}-${code.slice(5)}`;
 }
 
@@ -704,7 +711,11 @@ export async function runChatNotification(
       actor: sql<string | null>`(select name from users a where a.id = ${notifications.actorId})`,
     })
     .from(notifications)
-    .innerJoin(externalAccounts, eq(externalAccounts.id, p.accountId))
+    // The account may have been re-linked to someone else since the job was queued.
+    .innerJoin(
+      externalAccounts,
+      and(eq(externalAccounts.id, p.accountId), eq(externalAccounts.userId, notifications.userId)),
+    )
     .where(eq(notifications.id, p.notificationId));
   if (!row?.n.issueId || !row.account.integrationId || !row.account.verifiedAt) return;
   const found = await activeIntegration(app, row.account.integrationId);

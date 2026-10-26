@@ -1,14 +1,15 @@
-import { createHmac, generateKeyPairSync, sign } from 'node:crypto';
+import { createHmac, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import type { Bootstrap, ChatService, Integration, IssueDetail } from '@ordo/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { auditLog, integrations, leases } from '../src/db/schema.ts';
+import { auditLog, externalAccounts, integrations, leases } from '../src/db/schema.ts';
 import { discordProvider } from '../src/integrations/discord.ts';
 import { registerProvider, unregisterProvider } from '../src/integrations/registry.ts';
 import { telegramCommand } from '../src/integrations/telegram.ts';
 import type { IntegrationProvider } from '../src/integrations/types.ts';
 import { Leases } from '../src/lib/jobs/index.ts';
+import { createLinkCode } from '../src/services/chat.ts';
 import { Connectors, sleep } from '../src/services/connectors.ts';
 import { queueInbound } from '../src/services/integrations.ts';
 import { type Client, signup, testApp } from './helpers.ts';
@@ -246,6 +247,30 @@ describe('Slack', () => {
     await settle(3);
     expect(posts('UBOB').length).toBe(count);
     await bob.patch(`${ws}/me/chat-accounts/${account.id}`, { notify: true });
+  });
+
+  it('drops queued direct messages when the account has moved to someone else', async () => {
+    const issue = await newIssue('Queued for Bob');
+    await owner.patch(`${ws}/issues/${issue.id}`, { assigneeId: bobId });
+    // Re-linked to another Ordo user before the job ran.
+    const ownerId = (await owner.get('/api/auth/me')).data.id as string;
+    const moved = eq(externalAccounts.externalId, 'UBOB');
+    await app.db.update(externalAccounts).set({ userId: ownerId }).where(moved);
+    const count = posts('UBOB').length;
+    try {
+      await settle(3);
+      expect(posts('UBOB').length).toBe(count);
+    } finally {
+      await app.db.update(externalAccounts).set({ userId: bobId }).where(moved);
+    }
+  });
+
+  it('keeps link codes for other integrations when making a new one', async () => {
+    const code = await linkCode(slack.id);
+    await createLinkCode(app, bobId, boot.workspace.id, randomUUID());
+    await command('UBOB', `link ${code}`);
+    await settle();
+    expect(lastResponse()).toContain('Linked to Bob Member');
   });
 
   it('creates issues from /ordo new, as the linked person', async () => {
