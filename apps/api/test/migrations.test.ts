@@ -82,4 +82,34 @@ describe('migrations', { timeout: 60_000 }, () => {
       ['two', 'c@x.test'],
     ]);
   });
+
+  it('ties bots to their workspace, and marks bots without an integration as removed', async () => {
+    const url = await freshDatabase('ordo_test_migrations_bots');
+    const { db, sql } = createDb(url);
+    cleanup.push(() => sql.end());
+
+    const before = folderUpTo(entryIndex('0011_backfill_bot_workspace'));
+    cleanup.push(() => rmSync(before, { recursive: true, force: true }));
+    await migrate(db, { migrationsFolder: before });
+    const [ws] = await sql<
+      { id: string }[]
+    >`insert into workspaces (name, slug) values ('W', 'w') returning id`;
+    const [live, gone] = await sql<
+      { id: string }[]
+    >`insert into users (email, name, username, kind) values
+      ('live@bots.test', 'Live bot', 'live-bot', 'bot'), ('gone@bots.test', 'Gone bot', 'gone-bot', 'bot') returning id`;
+    await sql`insert into integrations (workspace_id, provider, name, bot_user_id, inbound_token)
+      values (${ws!.id}, 'github', 'GitHub', ${live!.id}, 'tok')`;
+    // The removed integration's bot only left a trace in the outbox.
+    await sql`insert into domain_events (workspace_id, type, actor_id, source, data)
+      values (${ws!.id}, 'issue.updated', ${gone!.id}, 'integration:x', '{}')`;
+
+    await migrate(db, { migrationsFolder: migrationsFolder() });
+    const bots = await sql<{ username: string; bot_workspace_id: string; removed: boolean }[]>`
+      select username, bot_workspace_id, disabled_at is not null as removed from users order by username`;
+    expect(bots).toEqual([
+      { username: 'gone-bot', bot_workspace_id: ws!.id, removed: true },
+      { username: 'live-bot', bot_workspace_id: ws!.id, removed: false },
+    ]);
+  });
 });

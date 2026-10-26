@@ -34,6 +34,7 @@ import { keys, useConfig, useInvites, useWsMutation } from '../../api/queries.ts
 import { TeamIcon } from '../../components/icons.tsx';
 import { Spinner } from '../../components/PageHeader.tsx';
 import { Picker } from '../../components/properties.tsx';
+import { ActorName } from '../../components/ui/ActorName.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime, shortDate } from '../../lib/format.ts';
@@ -931,8 +932,7 @@ export function AuditSection() {
               <span className="h-[18px] w-[18px] flex-none bg-border" />
             )}
             <span className="min-w-0 flex-1">
-              <span className="text-text">{actor?.name ?? 'Someone'}</span>{' '}
-              <span className="text-muted">{describeAudit(e)}</span>
+              <ActorName person={actor} /> <span className="text-muted">{describeAudit(e)}</span>
             </span>
             <span className="flex-none font-mono text-[11px] text-index" title={e.ip ?? undefined}>
               {relativeTime(e.createdAt)}

@@ -34,6 +34,7 @@ import {
   StatusProp,
   teamOptions,
 } from './properties.tsx';
+import { ActorName } from './ui/ActorName.tsx';
 import { Avatar } from './ui/Avatar.tsx';
 import { ConfirmModal } from './ui/Modal.tsx';
 import { Popover } from './ui/Popover.tsx';
@@ -554,7 +555,12 @@ export function IssueDetailView({
           <div className="mt-6 border-t border-border-soft pt-4 font-mono text-[11px] leading-6 text-index">
             <div>
               <span className="text-muted">&gt; created</span> {relativeTime(issue.createdAt)}
-              {creator && <> by {creator.name}</>}
+              {creator && (
+                <>
+                  {' '}
+                  by <ActorName person={creator} className="" />
+                </>
+              )}
             </div>
             <div title={longDate(issue.updatedAt)}>
               <span className="text-muted">&gt; updated</span> {relativeTime(issue.updatedAt)}

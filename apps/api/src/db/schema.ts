@@ -22,6 +22,7 @@ import type {
 } from '@ordo/shared';
 import { sql } from 'drizzle-orm';
 import {
+  type AnyPgColumn,
   bigint,
   bigserial,
   boolean,
@@ -73,6 +74,10 @@ export const users = pgTable('users', {
   totpSecret: text('totp_secret'),
   totpEnabledAt: ts('totp_enabled_at'),
   preferences: jsonb('preferences').$type<Partial<UserPreferences>>().notNull().default({}),
+  /** For bots: the workspace they act in. Outlives the integration so its history keeps a name. */
+  botWorkspaceId: uuid('bot_workspace_id').references((): AnyPgColumn => workspaces.id, {
+    onDelete: 'set null',
+  }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });

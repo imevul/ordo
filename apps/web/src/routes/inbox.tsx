@@ -7,6 +7,7 @@ import { keys, useIssue, useNotifications } from '../api/queries.ts';
 import { IssueDetailView } from '../components/IssueDetailView.tsx';
 import { StatusIcon } from '../components/icons.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
+import { ActorName } from '../components/ui/ActorName.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { relativeTime } from '../lib/format.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
@@ -145,7 +146,7 @@ export function InboxPage() {
                     {n.issue?.title ?? 'Deleted issue'}
                   </span>
                   <span className="block truncate text-[12.5px] text-index">
-                    {actor?.name ?? 'Someone'}{' '}
+                    <ActorName person={actor} className="" />{' '}
                     {describe(n, (id) => ws.stateById.get(id)?.name ?? 'a new status')}
                   </span>
                 </span>

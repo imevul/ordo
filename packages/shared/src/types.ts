@@ -42,6 +42,11 @@ export interface Workspace {
   createdAt: string;
 }
 
+/** An integration's account. `removed`: its integration was disconnected; only its history remains. */
+export interface Bot extends User {
+  removed: boolean;
+}
+
 export interface Member extends User {
   role: MemberRole;
   joinedAt: string;
@@ -268,7 +273,7 @@ export interface Bootstrap {
   role: MemberRole;
   members: Member[];
   /** Integration accounts: not members, but they appear as authors of what integrations do. */
-  bots: User[];
+  bots: Bot[];
   teams: Team[];
   labels: Label[];
   projects: Project[];

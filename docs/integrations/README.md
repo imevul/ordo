@@ -1,7 +1,8 @@
 # Integrations
 
 Admins connect integrations under **Settings → Integrations**. Each one runs as a bot account (shown as the author
-of what it does), keeps its tokens encrypted, and shows its status and last error there.
+of what it does), keeps its tokens encrypted, and shows its status and last error there. Disconnecting one removes the
+webhooks Ordo created; links on issues stay, and its past changes keep its name, tagged _removed_.
 
 | Integration                    | What it does                                                      |
 | ------------------------------ | ----------------------------------------------------------------- |
