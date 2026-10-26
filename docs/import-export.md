@@ -1,9 +1,8 @@
 # Importing data
 
 Workspace admins can bring issues in from other tools: **CSV files**, **Linear**, **GitHub Issues**,
-**Forgejo/Gitea**, **GitLab** and **Jira**, and [export](#exporting) a workspace as JSON or CSV. A settings page for
-all of it is on the [roadmap](../ROADMAP.md#phase-9--importers-and-export); until it lands, imports and exports run
-through the [API](api.md#imports).
+**Forgejo/Gitea**, **GitLab** and **Jira**, and [export](#exporting) a workspace as JSON or CSV. It all happens under
+**Settings → Import & export**, or through the [API](api.md#imports).
 
 ## How an import runs
 
@@ -28,8 +27,12 @@ it also keeps comments (with their authors, dates and threads), relations (block
 duplicate keeps the status it had), cycles and links. Each issue links back to where it came from. Imports are
 silent: nobody is notified and no webhooks fire.
 
-Running an import again (after a failure, a cancel, or to be sure) skips everything it already imported. Deleting
-an import only forgets it and its file; the imported issues stay.
+Running an import again (after a failure, a cancel, or to be sure) skips everything it already imported.
+**Forgetting** an import only deletes it and its file; the imported issues stay.
+
+**Undo** moves every issue an import created to the trash, where each can still be restored. Teams, labels,
+projects and placeholders it made stay (removing them would take them off the trashed issues too); delete them by
+hand if you don't need them. An undone import can't be run again: start a new one.
 
 ## Linear
 
@@ -141,7 +144,7 @@ A placeholder stands in for someone the source mentions who isn't a member. Thei
 created and were assigned, with an **imported** tag, but a placeholder can't sign in, isn't notified, can't be
 mentioned and can't be picked as an assignee. Later imports that mention the same person reuse their placeholder.
 
-When the person joins, an admin merges the placeholder into their account (`POST /placeholders/:id/merge`; the
+When the person joins, an admin merges the placeholder into their account under **People from imports** (the
 list suggests the member with the same email or name). Everything moves over: issues they created or were assigned,
 comments, history, subscriptions. Issues in teams the member can't see lose their assignee instead. The placeholder
 is then gone.
@@ -174,8 +177,8 @@ Files can be up to 25 MB and 50 000 rows.
 
 ## Exporting
 
-Admins can export a workspace (`POST /exports` with `{ "format": "json" }` or `"csv"`). A background job writes the
-file; the export's `url` is a download link once it's ready. Exports are kept for a week, one runs at a time, and
+Admins export a workspace under **Settings → Import & export**, as JSON or as CSV. A background job writes the
+file, and a download link appears when it's ready. Exports are kept for a week, one runs at a time, and
 each is recorded in the audit log.
 
 - **JSON** holds everything that belongs to the workspace as a whole: members (with emails), placeholders, teams

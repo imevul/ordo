@@ -6,6 +6,7 @@ import { sendNotificationEmails } from './services/digest.ts';
 import { dispatchEvents, pruneEvents } from './services/events.ts';
 import { purgeOldExports, runExport } from './services/exports.ts';
 import { runAnalyze, runImport } from './services/imports/engine.ts';
+import { runUndo } from './services/imports/undo.ts';
 import {
   runInbound,
   runIntegrationEvent,
@@ -49,6 +50,7 @@ export function registerJobs(app: FastifyInstance) {
 
   jobs.define<{ importId: string }>('import.analyze', (p, job) => runAnalyze(app, p, job));
   jobs.define<Parameters<typeof runImport>[1]>('import.run', (p, job) => runImport(app, p, job));
+  jobs.define<{ importId: string }>('import.undo', (p, job) => runUndo(app, p, job));
   jobs.define<{ exportId: string }>('export.run', (p, job) => runExport(app, p, job));
 
   jobs.define('maintenance.cleanup', async () => {

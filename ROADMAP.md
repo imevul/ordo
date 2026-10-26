@@ -97,12 +97,11 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ Works behind NAT: Slack Socket Mode, Discord gateway, Telegram long polling, Matrix sync, under leases
 - ⬜ Later: threaded comment sync, end-to-end encrypted Matrix rooms, one-click Slack install (OAuth)
 
-### Phase 9 — Importers and export
+### Phase 9 — Importers and export ✅
 
-- 🟡 Import framework: analysis, suggested mapping (teams, statuses, people, labels, projects), dry run, resumable
-  silent runs in background jobs, kept issue numbers, cancel; CSV importer with column detection (API only so far)
-- 🟡 Placeholder people for unmatched users, reused across imports, merged into members later (API; UI in the
-  settings page)
+- ✅ Import framework: analysis, suggested mapping (teams, statuses, people, labels, projects), dry run, resumable
+  silent runs in background jobs, kept issue numbers, cancel, undo; CSV importer with column detection
+- ✅ Placeholder people for unmatched users, reused across imports, merged into members later
 - ✅ Linear importer: teams, statuses, people, labels, projects, cycles, issues, sub-issues, comments, relations,
   attachments as links; waits out rate limits
 - ✅ GitHub Issues importer: repositories as teams, open/closed statuses, labels, milestones as projects,
@@ -112,7 +111,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ Forgejo/Gitea and GitLab importers: repositories or projects as teams, labels, milestones as projects,
   comments (GitLab notes), people by claimed usernames
 - ✅ Workspace export: JSON of the whole workspace, CSV of issues that imports back; kept a week, audited
-- ⬜ Settings → Import & export, undo an import
+- ✅ Settings → Import & export: imports with mapping, dry runs, progress and reports; merging placeholders;
+  exports
 
 ### Phase 10 — Product depth
 

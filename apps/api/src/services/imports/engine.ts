@@ -428,6 +428,9 @@ export async function startRun(
   row: ImportRow,
   opts: { dryRun: boolean; actorId: string; meta: RequestMeta | null },
 ) {
+  if (row.status === 'undone') {
+    throw badRequest('This import was undone; start a new one to import again');
+  }
   if (!row.summary || !row.mapping) throw badRequest('The import has not been analyzed yet');
   const errors = await mappingErrors(app.db, row, row.mapping);
   if (errors.length) throw badRequest(errors.join('; '));

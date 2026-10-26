@@ -19,6 +19,7 @@ import {
 } from '../services/imports/engine.ts';
 import { importSecretsAad } from '../services/imports/secrets.ts';
 import type { StartedImport } from '../services/imports/types.ts';
+import { startUndo } from '../services/imports/undo.ts';
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 /** Sources that start from an uploaded file. */
@@ -88,6 +89,16 @@ export async function importRoutes(app: FastifyInstance) {
       return show(ws.id, id);
     });
   }
+
+  // Moves what the import created to the trash, in a job.
+  app.post('/imports/:id/undo', async (req) => {
+    const ws = requireAdmin(req);
+    const { id } = req.params as { id: string };
+    const row = await load(ws.id, id);
+    idle(row);
+    await startUndo(app, row, { actorId: requireUser(req).id, meta: requestMeta(req) });
+    return show(ws.id, id);
+  });
 
   app.post('/imports/:id/cancel', async (req) => {
     const ws = requireAdmin(req);
