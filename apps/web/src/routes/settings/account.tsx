@@ -19,6 +19,7 @@ import { Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './index.tsx';
+import { ConnectedAccountsCard } from './sso.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
 
@@ -292,6 +293,7 @@ export function SecuritySection() {
     <>
       <PasswordCard account={account} />
       <TwoFactorCard account={account} />
+      <ConnectedAccountsCard />
       <SessionsCard />
     </>
   );

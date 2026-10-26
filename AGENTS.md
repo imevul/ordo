@@ -101,6 +101,8 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
 API tests in `apps/api/test/api.test.ts` drive the real app through `app.inject` with a cookie-carrying
 `Client` (`test/helpers.ts`). Add a test for every new endpoint or rule. Shared logic gets unit tests next to
 the source (`*.test.ts`). The web app has no unit tests yet; verify UI changes in a browser with `pnpm dev`.
+SSO tests run against an in-process OpenID provider (`test/mock-idp.ts`: discovery, PKCE-checking token endpoint,
+RS256 ID tokens); set `idp.next` to the claims of the next sign-in and `idp.tamper` to corrupt the next token.
 
 ## Gotchas
 

@@ -12,7 +12,7 @@ import { ZodError } from 'zod';
 import { createDb, type Db } from './db/client.ts';
 import type { Env } from './env.ts';
 import { registerJobs } from './jobs.ts';
-import { authorizeWorkspace, resolveUser } from './lib/auth.ts';
+import { authInfo, authorizeWorkspace, resolveUser } from './lib/auth.ts';
 import { HttpError, validationError } from './lib/errors.ts';
 import { JobQueue, Leases } from './lib/jobs/index.ts';
 import { Keyring } from './lib/secrets.ts';
@@ -21,6 +21,7 @@ import { Realtime } from './realtime.ts';
 import { accountRoutes } from './routes/account.ts';
 import { adminRoutes } from './routes/admin.ts';
 import { authRoutes } from './routes/auth.ts';
+import { authProviderRoutes } from './routes/authProviders.ts';
 import { cycleRoutes } from './routes/cycles.ts';
 import { fileRoutes } from './routes/files.ts';
 import { issueRoutes } from './routes/issues.ts';
@@ -31,6 +32,7 @@ import { notificationRoutes } from './routes/notifications.ts';
 import { projectRoutes } from './routes/projects.ts';
 import { realtimeRoutes } from './routes/realtime.ts';
 import { searchRoutes } from './routes/search.ts';
+import { ssoRoutes } from './routes/sso.ts';
 import { teamRoutes } from './routes/teams.ts';
 import { viewRoutes } from './routes/views.ts';
 import { workspaceRoutes } from './routes/workspaces.ts';
@@ -108,6 +110,7 @@ export async function buildApp(
   app.decorateRequest('user', null);
   app.decorateRequest('sessionId', null);
   app.decorateRequest('authMethod', null);
+  app.decorateRequest('sso', null);
   app.decorateRequest('workspace', null);
 
   await app.register(cookie);
@@ -138,6 +141,7 @@ export async function buildApp(
       req.user = auth.user;
       req.sessionId = auth.sessionId;
       req.authMethod = auth.method;
+      req.sso = auth.sso;
     }
   });
 
@@ -155,6 +159,7 @@ export async function buildApp(
   await app.register(accountRoutes, { prefix: '/api' });
   await app.register(fileRoutes, { prefix: '/api' });
   await app.register(joiningRoutes, { prefix: '/api' });
+  await app.register(ssoRoutes, { prefix: '/api' });
   await app.register(adminRoutes, { prefix: '/api/admin' });
   await app.register(realtimeRoutes, { prefix: '/api' });
 
@@ -164,10 +169,11 @@ export async function buildApp(
       w.addHook('preHandler', async (req) => {
         if (!req.user) throw new HttpError(401, 'Not signed in', 'unauthorized');
         const { ws } = req.params as { ws: string };
-        req.workspace = await authorizeWorkspace(db, req.user, ws);
+        req.workspace = await authorizeWorkspace(db, req.user, ws, authInfo(req));
       });
       await w.register(workspaceRoutes);
       await w.register(memberRoutes);
+      await w.register(authProviderRoutes);
       await w.register(teamRoutes);
       await w.register(cycleRoutes);
       await w.register(issueRoutes);

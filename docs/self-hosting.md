@@ -142,6 +142,7 @@ works the same way. Sticky sessions are not required.
 - Login, sign-up, password reset and 2FA steps are rate-limited per IP (20/min).
 - Users can turn on TOTP two-factor authentication (with single-use recovery codes); TOTP secrets are encrypted.
 - Session cookies are `HttpOnly`, `SameSite=Lax`, and `Secure` when `ORDO_PUBLIC_URL` is HTTPS.
+- Workspaces can use their own OpenID Connect provider and require it; see [SSO](sso.md).
 - The container runs as the unprivileged `node` user.
 
 ## Troubleshooting

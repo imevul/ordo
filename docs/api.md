@@ -22,7 +22,13 @@ export KEY=ordo_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 curl -H "Authorization: Bearer $KEY" $ORDO/auth/me
 ```
 
-The browser uses an `ordo_session` cookie instead (`POST /auth/login`).
+The browser uses an `ordo_session` cookie instead (`POST /auth/login`, or single sign-on). Workspaces that require
+SSO refuse API keys unless their admins allow them.
+
+Single sign-on is a browser flow: `GET /auth/discover?email=` and `GET /auth/providers?workspace=<slug>` return
+`{ options: [{ providerId, name, workspace }] }`; `GET /auth/oidc/:providerId/start?redirect=` sends the browser to
+the provider, which returns to `GET /auth/oidc/callback`. Signed in, `GET /me/identities` lists linked identities and
+`DELETE /me/identities/:id` unlinks one.
 
 ## Access
 
@@ -42,6 +48,7 @@ the same as something that doesn't exist; actions the caller can see but isn't a
 | 400    | `bad_request`  | Validation failed or the change isn't allowed (e.g. a sub-issue loop) |
 | 401    | `unauthorized` | Missing or invalid credentials                                        |
 | 403    | `forbidden`    | Authenticated, but your role doesn't allow it                         |
+| 403    | `sso_required` | The workspace requires SSO; `details.options` lists its providers     |
 | 404    | `not_found`    | Doesn't exist, or you're not a member of the workspace                |
 | 409    | `conflict`     | Unique constraint (email, workspace URL, team key, username)          |
 | 429    |                | Rate limited (auth endpoints)                                         |
@@ -82,24 +89,26 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 
 ### Workspace
 
-| Method        | Path                        |                                                                                                                                                                     |
-| ------------- | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET           | `/bootstrap`                | Workspace, your role, members, teams (with statuses), labels, projects, cycles, views, favorites, unread count                                                      |
-| PATCH         | `/`                         | _Admin._ `{ name?, slug?, defaultTeamId?, settings?: { invitePolicy?, domainAutoJoin?, autoJoinRole? } }`                                                           |
-| DELETE        | `/`                         | _Owner._ `{ confirmSlug }` — deletes the workspace                                                                                                                  |
-| POST / DELETE | `/logo`                     | _Admin._ Upload (multipart `file`) / remove the logo                                                                                                                |
-| POST          | `/transfer-ownership`       | _Owner._ `{ userId, stepDown? }`                                                                                                                                    |
-| PATCH         | `/members/:userId`          | _Admin._ `{ role: "owner" \| "admin" \| "member" \| "guest" }` — only owners grant or change ownership                                                              |
-| DELETE        | `/members/:userId`          | _Admin_, or yourself to leave                                                                                                                                       |
-| GET / POST    | `/invites`                  | List / create `{ emails?, role?, teamIds?, expiresInDays? }` — one invite per address (emailed), or one open link; admins, or members when the invite policy allows |
-| POST          | `/invites/:id/resend`       | Email it again (and extend it)                                                                                                                                      |
-| DELETE        | `/invites/:id`              | _Admin._ Revoke                                                                                                                                                     |
-| GET / POST    | `/domains`                  | _Admin._ List / add `{ domain }`                                                                                                                                    |
-| POST          | `/domains/:id/verify`       | _Admin._ Check the `_ordo-verify.<domain>` TXT record                                                                                                               |
-| DELETE        | `/domains/:id`              | _Admin._                                                                                                                                                            |
-| GET           | `/audit-log?before=&limit=` | _Admin._ Recent security-relevant actions in this workspace                                                                                                         |
-| POST          | `/favorites`                | `{ kind: "project" \| "view" \| "team" \| "issue" \| "cycle", targetId }`                                                                                           |
-| DELETE        | `/favorites/:id`            |                                                                                                                                                                     |
+| Method         | Path                        |                                                                                                                                                                       |
+| -------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET            | `/bootstrap`                | Workspace, your role, members, teams (with statuses), labels, projects, cycles, views, favorites, unread count                                                        |
+| PATCH          | `/`                         | _Admin._ `{ name?, slug?, defaultTeamId?, settings?: { invitePolicy?, domainAutoJoin?, autoJoinRole?, requireSso?, ssoSessionMaxAgeHours?, allowApiKeysUnderSso? } }` |
+| DELETE         | `/`                         | _Owner._ `{ confirmSlug }` — deletes the workspace                                                                                                                    |
+| POST / DELETE  | `/logo`                     | _Admin._ Upload (multipart `file`) / remove the logo                                                                                                                  |
+| POST           | `/transfer-ownership`       | _Owner._ `{ userId, stepDown? }`                                                                                                                                      |
+| PATCH          | `/members/:userId`          | _Admin._ `{ role: "owner" \| "admin" \| "member" \| "guest" }` — only owners grant or change ownership                                                                |
+| DELETE         | `/members/:userId`          | _Admin_, or yourself to leave                                                                                                                                         |
+| GET / POST     | `/invites`                  | List / create `{ emails?, role?, teamIds?, expiresInDays? }` — one invite per address (emailed), or one open link; admins, or members when the invite policy allows   |
+| POST           | `/invites/:id/resend`       | Email it again (and extend it)                                                                                                                                        |
+| DELETE         | `/invites/:id`              | _Admin._ Revoke                                                                                                                                                       |
+| GET / POST     | `/domains`                  | _Admin._ List / add `{ domain }`                                                                                                                                      |
+| POST           | `/domains/:id/verify`       | _Admin._ Check the `_ordo-verify.<domain>` TXT record                                                                                                                 |
+| DELETE         | `/domains/:id`              | _Admin._                                                                                                                                                              |
+| GET / POST     | `/auth-providers`           | _Admin._ List (with the `redirectUri` to register) / add `{ name, issuer, clientId, clientSecret, scopes?, enabled?, defaultRole?, groupClaim?, groupRoles? }`        |
+| PATCH / DELETE | `/auth-providers/:id`       | _Admin._ Update (an empty or missing `clientSecret` keeps the stored one) / delete. Secrets are never returned                                                        |
+| GET            | `/audit-log?before=&limit=` | _Admin._ Recent security-relevant actions in this workspace                                                                                                           |
+| POST           | `/favorites`                | `{ kind: "project" \| "view" \| "team" \| "issue" \| "cycle", targetId }`                                                                                             |
+| DELETE         | `/favorites/:id`            |                                                                                                                                                                       |
 
 ### Teams & workflow
 

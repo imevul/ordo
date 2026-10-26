@@ -50,6 +50,13 @@
       "when": 1793029161470,
       "tag": "0006_org_settings_domains",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793029747103,
+      "tag": "0007_sso",
+      "breakpoints": true
     }
   ]
 }

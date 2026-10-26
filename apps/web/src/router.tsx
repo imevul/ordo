@@ -62,8 +62,13 @@ const indexRoute = createRoute({
 const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/login',
-  validateSearch: (s: Record<string, unknown>): { redirect?: string } =>
-    typeof s.redirect === 'string' ? { redirect: s.redirect } : {},
+  validateSearch: (
+    s: Record<string, unknown>,
+  ): { redirect?: string; error?: string; workspace?: string } => ({
+    ...(typeof s.redirect === 'string' && { redirect: s.redirect }),
+    ...(typeof s.error === 'string' && { error: s.error }),
+    ...(typeof s.workspace === 'string' && { workspace: s.workspace }),
+  }),
   component: LoginPage,
 });
 const signupRoute = createRoute({

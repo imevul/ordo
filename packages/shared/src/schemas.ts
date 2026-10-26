@@ -110,6 +110,15 @@ export const updateWorkspaceSchema = z.object({
       invitePolicy: z.enum(['admins', 'members']).optional(),
       domainAutoJoin: z.boolean().optional(),
       autoJoinRole: z.enum(['member', 'guest']).optional(),
+      requireSso: z.boolean().optional(),
+      ssoSessionMaxAgeHours: z
+        .number()
+        .int()
+        .min(1)
+        .max(24 * 90)
+        .nullable()
+        .optional(),
+      allowApiKeysUnderSso: z.boolean().optional(),
     })
     .optional(),
 });
@@ -385,3 +394,35 @@ export const createFavoriteSchema = z.object({
   kind: z.enum(FAVORITE_KINDS),
   targetId: id,
 });
+
+const groupRolesSchema = z.record(z.string().min(1).max(200), z.enum(['admin', 'member', 'guest']));
+
+const authProviderFields = {
+  name: z.string().trim().min(1).max(80),
+  issuer: z.url().max(500),
+  clientId: z.string().trim().min(1).max(500),
+  scopes: z.string().trim().max(500),
+  enabled: z.boolean(),
+  defaultRole: z.enum(['member', 'guest']),
+  groupClaim: z.string().trim().max(100).nullable(),
+  groupRoles: groupRolesSchema,
+};
+
+export const createAuthProviderSchema = z.object({
+  ...authProviderFields,
+  clientSecret: z.string().min(1).max(2000),
+  scopes: authProviderFields.scopes.default('openid email profile'),
+  enabled: authProviderFields.enabled.default(true),
+  defaultRole: authProviderFields.defaultRole.default('member'),
+  groupClaim: authProviderFields.groupClaim.optional(),
+  groupRoles: authProviderFields.groupRoles.default({}),
+});
+
+// No defaults here: a PATCH must leave unmentioned fields alone.
+export const updateAuthProviderSchema = z
+  .object(authProviderFields)
+  .partial()
+  .extend({
+    /** Empty keeps the stored secret. */
+    clientSecret: z.string().max(2000).optional(),
+  });

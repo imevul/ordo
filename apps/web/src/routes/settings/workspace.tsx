@@ -714,6 +714,13 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
     'domain.added': `added domain ${String(d.domain)}`,
     'domain.verified': `verified ${String(d.domain)}`,
     'domain.removed': `removed domain ${String(d.domain)}`,
+    'sso.provider_created': `added sign-in provider ${String(d.name ?? '')}`,
+    'sso.provider_updated': 'changed a sign-in provider',
+    'sso.provider_deleted': `removed sign-in provider ${String(d.name ?? '')}`,
+    'auth.login':
+      d.method === 'sso' ? `signed in with ${String(d.provider ?? 'SSO')}` : 'signed in',
+    'auth.sso_bypass': 'signed in with a password (owner fallback)',
+    'auth.identity_linked': `linked ${String(d.provider ?? 'an identity')}`,
   };
   return map[e.action] ?? e.action;
 }

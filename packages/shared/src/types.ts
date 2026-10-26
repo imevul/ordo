@@ -379,12 +379,21 @@ export interface WorkspaceSettings {
   domainAutoJoin: boolean;
   /** Role given to people joining through a verified domain. */
   autoJoinRole: 'member' | 'guest';
+  /** Members must sign in through one of the workspace's SSO providers (owners can still use a password). */
+  requireSso: boolean;
+  /** Hours an SSO session lasts before signing in again; null = like any session (30 days, sliding). */
+  ssoSessionMaxAgeHours: number | null;
+  /** Whether personal API keys may be used while SSO is required. */
+  allowApiKeysUnderSso: boolean;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   invitePolicy: 'admins',
   domainAutoJoin: false,
   autoJoinRole: 'member',
+  requireSso: false,
+  ssoSessionMaxAgeHours: null,
+  allowApiKeysUnderSso: false,
 };
 
 export interface WorkspaceDomain {
@@ -402,4 +411,33 @@ export interface JoinableWorkspace {
   slug: string;
   logoUrl: string | null;
   memberCount: number;
+}
+
+export interface AuthProvider {
+  id: string;
+  name: string;
+  issuer: string;
+  clientId: string;
+  scopes: string;
+  enabled: boolean;
+  defaultRole: 'member' | 'guest';
+  groupClaim: string | null;
+  groupRoles: Record<string, 'admin' | 'member' | 'guest'>;
+  createdAt: string;
+}
+
+/** A sign-in option offered on the login page. */
+export interface SsoOption {
+  providerId: string;
+  name: string;
+  workspace: string;
+}
+
+export interface LinkedIdentity {
+  id: string;
+  provider: string;
+  workspace: string;
+  email: string | null;
+  lastLoginAt: string | null;
+  createdAt: string;
 }

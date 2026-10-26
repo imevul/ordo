@@ -1,9 +1,11 @@
+import type { SsoOption } from '@ordo/shared';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { ApiError } from '../api/client.ts';
 import { useBootstrap, useMe } from '../api/queries.ts';
 import { AppShell } from '../components/AppShell.tsx';
 import { EmptyState, Spinner } from '../components/PageHeader.tsx';
+import { ssoStartUrl } from '../lib/sso.ts';
 import { WorkspaceProvider } from '../lib/workspace.tsx';
 
 export function WorkspaceLayout() {
@@ -27,6 +29,9 @@ export function WorkspaceLayout() {
   }, [boot.data, slug]);
 
   if (!me.data) return <Spinner label="booting" />;
+  if (boot.error instanceof ApiError && boot.error.code === 'sso_required') {
+    return <SsoRequired error={boot.error} returnTo={returnTo} />;
+  }
   if (boot.error) {
     const notFound = boot.error instanceof ApiError && boot.error.status === 404;
     return (
@@ -48,6 +53,40 @@ export function WorkspaceLayout() {
     <WorkspaceProvider data={boot.data} me={me.data} slug={slug}>
       <AppShell />
     </WorkspaceProvider>
+  );
+}
+
+/** The workspace requires SSO and this session came from a password (or another provider). */
+function SsoRequired({ error, returnTo }: { error: ApiError; returnTo: string }) {
+  const details = error.details as { workspace?: string; options?: SsoOption[] } | undefined;
+  const options = details?.options ?? [];
+  return (
+    <div className="hud-ground flex h-full">
+      <EmptyState
+        title="sso required"
+        body={
+          options.length
+            ? `${details?.workspace ?? 'This workspace'} asks you to sign in through your organisation's identity provider.`
+            : error.message
+        }
+        action={
+          <div className="flex flex-col items-center gap-2">
+            {options.map((o) => (
+              <a
+                key={o.providerId}
+                href={ssoStartUrl(o.providerId, { redirect: returnTo })}
+                className="btn btn-primary"
+              >
+                Continue with {o.name} <span className="arrow">→</span>
+              </a>
+            ))}
+            <Link to="/" className="btn btn-ghost">
+              Back
+            </Link>
+          </div>
+        }
+      />
+    </div>
   );
 }
 
