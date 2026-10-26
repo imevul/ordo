@@ -215,19 +215,21 @@ curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
 
 ### Projects, cycles, labels, views
 
-| Method               | Path                    |                                                                                      |
-| -------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
-| GET / POST           | `/projects`             | `{ name, teamIds, description?, color?, status?, leadId?, startDate?, targetDate? }` |
-| GET / PATCH / DELETE | `/projects/:id`         | Deleting keeps the issues                                                            |
-| GET / POST           | `/projects/:id/updates` | `{ body, health: "on_track" \| "at_risk" \| "off_track" }`                           |
-| DELETE               | `/project-updates/:id`  |                                                                                      |
-| GET                  | `/cycles`               | All cycles with progress                                                             |
-| POST                 | `/teams/:id/cycles`     | `{ startsAt, endsAt, name?, description? }` — numbered per team                      |
-| PATCH / DELETE       | `/cycles/:id`           | Deleting unassigns its issues                                                        |
-| POST                 | `/labels`               | `{ name, color, teamId? }`                                                           |
-| PATCH / DELETE       | `/labels/:id`           |                                                                                      |
-| POST                 | `/views`                | `{ name, filters, display?, shared?, teamId? }`                                      |
-| PATCH / DELETE       | `/views/:id`            | Owner or admin                                                                       |
+| Method               | Path                    |                                                                                                                                       |
+| -------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| GET / POST           | `/projects`             | `{ name, teamIds, description?, color?, status?, leadId?, startDate?, targetDate? }`                                                  |
+| GET / PATCH / DELETE | `/projects/:id`         | Deleting keeps the issues                                                                                                             |
+| GET / POST           | `/projects/:id/updates` | `{ body, health: "on_track" \| "at_risk" \| "off_track" }`                                                                            |
+| DELETE               | `/project-updates/:id`  |                                                                                                                                       |
+| GET                  | `/cycles`               | All cycles with progress                                                                                                              |
+| POST                 | `/teams/:id/cycles`     | `{ startsAt, endsAt, name?, description? }` — numbered per team                                                                       |
+| PATCH / DELETE       | `/cycles/:id`           | Deleting unassigns its issues                                                                                                         |
+| POST                 | `/labels`               | `{ name, color, teamId? }`                                                                                                            |
+| PATCH / DELETE       | `/labels/:id`           |                                                                                                                                       |
+| GET / POST           | `/templates`            | Issue templates; create `{ name, teamId?, title?, description?, stateId?, priority?, assigneeId?, projectId?, estimate?, labelIds? }` |
+| PATCH / DELETE       | `/templates/:id`        | Same fields except `teamId` (`null` clears a default)                                                                                 |
+| POST                 | `/views`                | `{ name, filters, display?, shared?, teamId? }`                                                                                       |
+| PATCH / DELETE       | `/views/:id`            | Owner or admin                                                                                                                        |
 
 ### Notifications & search
 

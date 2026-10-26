@@ -17,6 +17,7 @@ import { LabelsSection } from './labels.tsx';
 import { McpSection } from './mcp.tsx';
 import { AuthenticationSection, ConnectedAccountsCard } from './sso.tsx';
 import { TeamSettings, TeamsSection } from './teams.tsx';
+import { TemplatesSection } from './templates.tsx';
 import { WebhooksSection } from './webhooks.tsx';
 import {
   AuditSection,
@@ -36,6 +37,7 @@ const SECTIONS: { key: string; label: string; group: string; admin?: boolean }[]
   { key: 'members', label: 'Members', group: 'Workspace' },
   { key: 'teams', label: 'Teams', group: 'Workspace' },
   { key: 'labels', label: 'Labels', group: 'Workspace' },
+  { key: 'templates', label: 'Templates', group: 'Workspace' },
   // Invitations, domains and joining: who gets in. (The key predates the name.)
   { key: 'org-security', label: 'Access', group: 'Workspace', admin: true },
   { key: 'authentication', label: 'Authentication', group: 'Workspace', admin: true },
@@ -157,6 +159,8 @@ export function SettingsPage() {
       <AuditSection />
     ) : section === 'labels' ? (
       <LabelsSection />
+    ) : section === 'templates' ? (
+      <TemplatesSection />
     ) : section === 'teams' ? (
       <TeamsSection />
     ) : (

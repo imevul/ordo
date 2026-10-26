@@ -23,8 +23,12 @@ export async function listLabels(db: DbOrTx, access: Access): Promise<Label[]> {
 }
 
 /** Labels are managed by everyone but guests; team labels only by people who can see the team. */
-export async function assertLabelTeam(ctx: Ctx, teamId: string | null | undefined) {
-  assertCan(ctx.access, 'labels.create', 'Guests cannot manage labels');
+export async function assertLabelTeam(
+  ctx: Ctx,
+  teamId: string | null | undefined,
+  guestMessage = 'Guests cannot manage labels',
+) {
+  assertCan(ctx.access, 'labels.create', guestMessage);
   if (!teamId) return;
   const [t] = await ctx.tx
     .select({ id: teams.id })

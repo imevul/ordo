@@ -9,6 +9,7 @@ export type EntityKind =
   | 'projectUpdate'
   | 'cycle'
   | 'label'
+  | 'template'
   | 'team'
   | 'state'
   | 'workspace'

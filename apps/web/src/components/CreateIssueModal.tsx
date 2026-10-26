@@ -1,6 +1,6 @@
-import type { CreateIssueInput, UpdateIssueInput } from '@ordo/shared';
+import type { CreateIssueInput, IssueTemplate, UpdateIssueInput } from '@ordo/shared';
 import { useNavigate } from '@tanstack/react-router';
-import { ChevronRight, X } from 'lucide-react';
+import { ChevronRight, FileText, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { useAttachmentUpload, useCreateIssue } from '../api/queries.ts';
@@ -95,6 +95,43 @@ export function CreateIssueModal() {
         : f,
     );
 
+  const templates = ws.templates.filter((t) => !t.teamId || ws.teamById.has(t.teamId));
+
+  /**
+   * Fills the form from a template: its team, the properties it sets, and its title and description
+   * where you haven't written your own (a description you started gets the template's below it).
+   */
+  const applyTemplate = (t: IssueTemplate) =>
+    setForm((f) => {
+      if (!f) return f;
+      const base =
+        t.teamId && t.teamId !== f.teamId
+          ? { ...initial({ teamId: t.teamId }), title: f.title, description: f.description }
+          : f;
+      const tTeam = ws.teamById.get(base.teamId)!;
+      const usable = t.labelIds.filter((id) => {
+        const label = ws.labelById.get(id);
+        return label && (!label.teamId || label.teamId === base.teamId);
+      });
+      return {
+        ...base,
+        title: base.title.trim() ? base.title : t.title,
+        description: !base.description.trim()
+          ? t.description
+          : t.description.trim()
+            ? `${base.description}\n\n${t.description}`
+            : base.description,
+        stateId:
+          t.stateId && tTeam.states.some((s) => s.id === t.stateId) ? t.stateId : base.stateId,
+        priority: t.priority ?? base.priority,
+        assigneeId:
+          t.assigneeId && ws.memberById.has(t.assigneeId) ? t.assigneeId : base.assigneeId,
+        labelIds: [...new Set([...base.labelIds, ...usable])],
+        projectId: t.projectId && ws.projectById.has(t.projectId) ? t.projectId : base.projectId,
+        estimate: t.estimate ?? base.estimate,
+      };
+    });
+
   const submit = () => {
     if (!form.title.trim()) return;
     const input: CreateIssueInput = {
@@ -158,6 +195,28 @@ export function CreateIssueModal() {
           <span className="kicker text-[11px] uppercase tracking-[0.14em]">
             {parent ? 'New sub-issue' : 'New issue'}
           </span>
+          {templates.length > 0 && (
+            <Picker
+              placeholder="Use template…"
+              options={templates.map((t) => ({
+                value: t.id,
+                label: t.name,
+                hint: t.teamId ? ws.teamById.get(t.teamId)?.key : undefined,
+                icon: <FileText size={14} className="text-index" />,
+              }))}
+              selected={[]}
+              onSelect={(id) => {
+                const t = templates.find((x) => x.id === id);
+                if (t) applyTemplate(t);
+              }}
+              trigger={
+                <button type="button" className="prop ml-2">
+                  <FileText size={13} />
+                  <span>Template</span>
+                </button>
+              }
+            />
+          )}
           <button
             type="button"
             className="ml-auto flex h-7 w-7 items-center justify-center text-index hover:text-text"

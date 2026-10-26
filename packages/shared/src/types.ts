@@ -104,6 +104,24 @@ export interface Label {
   color: string;
 }
 
+export interface IssueTemplate {
+  id: string;
+  /** Null for templates every team can use. */
+  teamId: string | null;
+  name: string;
+  title: string;
+  description: string;
+  /** Only on team templates. */
+  stateId: string | null;
+  priority: number | null;
+  assigneeId: string | null;
+  projectId: string | null;
+  estimate: number | null;
+  labelIds: string[];
+  createdById: string | null;
+  updatedAt: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -316,6 +334,7 @@ export interface Bootstrap {
   placeholders: User[];
   teams: Team[];
   labels: Label[];
+  templates: IssueTemplate[];
   projects: Project[];
   cycles: Cycle[];
   views: View[];

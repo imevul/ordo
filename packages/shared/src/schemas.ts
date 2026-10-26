@@ -231,6 +231,37 @@ export const createLabelSchema = z.object({
 
 export type CreateLabelInput = z.infer<typeof createLabelSchema>;
 
+const templateFields = {
+  name: z.string().trim().min(1).max(80),
+  // Not trimmed: "Bug: " is a prefix to type after.
+  title: z.string().max(500),
+  description: markdown,
+  stateId: id.nullable(),
+  priority: z.number().int().min(0).max(4).nullable(),
+  assigneeId: id.nullable(),
+  projectId: id.nullable(),
+  estimate: z.number().int().min(0).max(100).nullable(),
+  labelIds: z.array(id).max(50),
+};
+
+export const createTemplateSchema = z.object({
+  ...templateFields,
+  teamId: id.nullish(),
+  title: templateFields.title.default(''),
+  description: markdown.default(''),
+  stateId: id.nullish(),
+  priority: templateFields.priority.optional(),
+  assigneeId: id.nullish(),
+  projectId: id.nullish(),
+  estimate: templateFields.estimate.optional(),
+  labelIds: templateFields.labelIds.default([]),
+});
+export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
+
+/** The team can't change: a status or labels only make sense in the team they were picked for. */
+export const updateTemplateSchema = z.object(templateFields).partial();
+export type UpdateTemplateInput = z.infer<typeof updateTemplateSchema>;
+
 export const updateLabelSchema = createLabelSchema.partial();
 
 export const createIssueSchema = z.object({

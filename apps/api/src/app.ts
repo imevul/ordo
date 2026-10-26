@@ -43,6 +43,7 @@ import { realtimeRoutes } from './routes/realtime.ts';
 import { searchRoutes } from './routes/search.ts';
 import { ssoRoutes } from './routes/sso.ts';
 import { teamRoutes } from './routes/teams.ts';
+import { templateRoutes } from './routes/templates.ts';
 import { viewRoutes } from './routes/views.ts';
 import { webhookRoutes } from './routes/webhooks.ts';
 import { workspaceRoutes } from './routes/workspaces.ts';
@@ -199,6 +200,7 @@ export async function buildApp(
       await w.register(attachmentRoutes);
       await w.register(projectRoutes);
       await w.register(labelRoutes);
+      await w.register(templateRoutes);
       await w.register(viewRoutes);
       await w.register(notificationRoutes);
       await w.register(searchRoutes);
