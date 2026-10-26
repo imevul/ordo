@@ -116,7 +116,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 
 ### Phase 10 — Product depth
 
-- 🟡 Rich text editor and attachments; comment reactions; issue templates — attachments shipped
+- [~] 🟡 Rich text editor and attachments; comment reactions; issue templates — attachments and the rich text editor
+  shipped
 - ⬜ Full-text search; pagination for very large teams
 - ⬜ Cycle automation; auto-archive
 - ⬜ Project milestones; initiatives and roadmap timeline; insights and charts

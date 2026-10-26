@@ -63,6 +63,22 @@ These apply to the selected issues, or the focused one if nothing is selected, o
 | `Esc`       | Cancel editing                                  |
 | `@`         | Mention someone (↑/↓, `Enter` or `Tab` to pick) |
 
+In the rich text editor, Markdown typed at the start of a line or around a word formats as you go:
+
+| Type                               | Gets you                       |
+| ---------------------------------- | ------------------------------ |
+| `#`, `##`, `###` + space           | Heading                        |
+| `-` or `*` + space, `1.` + space   | Bulleted / numbered list       |
+| `[ ]` + space                      | Checklist                      |
+| `>` + space                        | Quote                          |
+| ` ``` `                            | Code block                     |
+| `---`                              | Divider                        |
+| `**bold**`, `*italic*`, `~~gone~~` | Bold, italic, strikethrough    |
+| `` `code` ``                       | Inline code                    |
+| `Mod B` / `Mod I` / `Mod E`        | Bold / italic / inline code    |
+| `Mod Shift S`                      | Strikethrough                  |
+| `Tab` / `Shift Tab` in a list      | Indent / outdent the list item |
+
 ## Inbox
 
 | Keys      | Action                       |
