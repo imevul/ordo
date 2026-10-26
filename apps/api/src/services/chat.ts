@@ -3,6 +3,7 @@ import {
   type ChatEventKind,
   type ChatService,
   chatChannelsSchema,
+  DEFAULT_ACCENT,
   type NotificationType,
   priorityLabel,
 } from '@ordo/shared';
@@ -94,6 +95,16 @@ interface IssueCard {
   priority: number;
   assignee: string | null;
   deleted: boolean;
+  /** The workspace's accent, for cards without a status colour. */
+  accent: string;
+}
+
+async function workspaceAccent(app: FastifyInstance, workspaceId: string) {
+  const [ws] = await app.db
+    .select({ settings: workspaces.settings })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId));
+  return ws?.settings.accentColor ?? DEFAULT_ACCENT;
 }
 
 export async function issueCards(app: FastifyInstance, ids: string[]) {
@@ -110,6 +121,7 @@ export async function issueCards(app: FastifyInstance, ids: string[]) {
       key: teams.key,
       teamPrivate: teams.private,
       slug: workspaces.slug,
+      settings: workspaces.settings,
       state: workflowStates.name,
       stateType: workflowStates.type,
       assignee: users.name,
@@ -138,6 +150,7 @@ export async function issueCards(app: FastifyInstance, ids: string[]) {
           priority: r.priority,
           assignee: r.assignee,
           deleted: !!r.deletedAt,
+          accent: r.settings.accentColor ?? DEFAULT_ACCENT,
         },
       ];
     }),
@@ -156,7 +169,7 @@ export const issueMessage = (c: IssueCard, headline: string, body?: string): Cha
   url: c.url,
   body: body || undefined,
   context: cardContext(c),
-  color: STATE_COLORS[c.stateType] ?? '#ff1493',
+  color: STATE_COLORS[c.stateType] ?? c.accent,
 });
 
 // ─── channel feeds ────────────────────────────────────────────────────────
@@ -210,7 +223,7 @@ async function feedMessage(app: FastifyInstance, event: IntegrationEvent) {
         title: data.project?.name ?? 'Project',
         url: `${app.env.publicUrl}/${event.workspace.slug}/project/${data.project?.id}`,
         body: excerpt(data.update?.body, 500) || undefined,
-        color: '#ff1493',
+        color: await workspaceAccent(app, event.workspace.id),
       } satisfies ChatMessage,
     };
   }
