@@ -489,7 +489,7 @@ export const importMappingSchema = z.object({
     ]),
   ),
   statuses: z.record(z.string(), z.record(z.string(), z.union([id, z.enum(STATE_TYPES)]))),
-  users: z.record(z.string(), id.nullable()),
+  users: z.record(z.string(), z.union([id, z.literal('placeholder')]).nullable()),
   labels: z.record(z.string(), z.union([id, z.enum(['create', 'skip'])])),
   projects: z.record(z.string(), z.union([id, z.enum(['create', 'skip'])])),
   keepNumbers: z.boolean(),
@@ -504,3 +504,5 @@ export const updateImportSchema = z.object({
   mapping: importMappingSchema.optional(),
   config: csvImportConfigSchema.optional(),
 });
+
+export const mergePlaceholderSchema = z.object({ userId: id });

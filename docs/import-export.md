@@ -13,8 +13,8 @@ GitHub Issues and Jira, workspace export, and a settings page for all of it are 
    - **Teams** go to an existing team (matched by key, then name), a new team, or nowhere.
    - **Statuses** go to a status of the target team (matched by name, then by kind: "In Review" is a started
      status, "Won't fix" a cancelled one), or to a kind of status for new teams.
-   - **People** are matched to members by email, then by name or username. Unmatched people leave their issues
-     unassigned.
+   - **People** are matched to members by email, then by name or username. Anyone else gets a
+     [placeholder](#placeholders), or you can leave their issues unassigned.
    - **Labels** and **projects** are matched by name; the rest are created.
    - **Keep numbers**: issues keep their source numbers (`ENG-42` stays `ENG-42`) in teams that are new or have no
      issues yet. Elsewhere they're numbered from the team's counter.
@@ -28,6 +28,17 @@ its source URL when the file has one. Imports are silent: nobody is notified and
 
 Running an import again (after a failure, a cancel, or to be sure) skips everything it already imported. Deleting
 an import only forgets it and its file; the imported issues stay.
+
+## Placeholders
+
+A placeholder stands in for someone the source mentions who isn't a member. Their name appears on the issues they
+created and were assigned, with an **imported** tag, but a placeholder can't sign in, isn't notified, can't be
+mentioned and can't be picked as an assignee. Later imports that mention the same person reuse their placeholder.
+
+When the person joins, an admin merges the placeholder into their account (`POST /placeholders/:id/merge`; the
+list suggests the member with the same email or name). Everything moves over: issues they created or were assigned,
+comments, history, subscriptions. Issues in teams the member can't see lose their assignee instead. The placeholder
+is then gone.
 
 ## CSV files
 

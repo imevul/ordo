@@ -48,6 +48,20 @@ export interface Bot extends User {
   removed: boolean;
 }
 
+/** A placeholder as admins see it, with what's attributed to it and who it probably is. */
+export interface PlaceholderSummary {
+  id: string;
+  name: string;
+  avatarColor: string;
+  /** The email the import's source had for them. */
+  importedEmail: string | null;
+  assigned: number;
+  created: number;
+  comments: number;
+  /** A member with the same email or name, if there is one. */
+  suggestedUserId: string | null;
+}
+
 export interface Member extends User {
   role: MemberRole;
   joinedAt: string;
@@ -275,6 +289,8 @@ export interface Bootstrap {
   members: Member[];
   /** Integration accounts: not members, but they appear as authors of what integrations do. */
   bots: Bot[];
+  /** People from imports who aren't members (yet): shown on what they did and were assigned. */
+  placeholders: User[];
   teams: Team[];
   labels: Label[];
   projects: Project[];

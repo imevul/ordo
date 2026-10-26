@@ -142,6 +142,7 @@ export const AUDIT_ACTIONS = [
   'import.completed',
   'import.failed',
   'import.canceled',
+  'placeholder.merged',
   'api_key.created',
   'api_key.revoked',
   'workspace.created',

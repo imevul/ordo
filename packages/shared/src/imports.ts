@@ -71,7 +71,10 @@ export interface ImportMapping {
   teams: Record<string, ImportTeamTarget>;
   /** Per source team: status name → a state id of the target team, or a state type. */
   statuses: Record<string, Record<string, string>>;
-  /** Source person → Ordo user, or null to leave issues unassigned (and created by the importer). */
+  /**
+   * Source person → a member or an existing placeholder, 'placeholder' for a new one, or null to
+   * leave their issues unassigned (and created by the importer).
+   */
   users: Record<string, string | null>;
   /** Source label → an existing label id, 'create' or 'skip'. */
   labels: Record<string, string>;
@@ -89,7 +92,14 @@ export interface ImportProblem {
 
 export interface ImportReport {
   dryRun: boolean;
-  created: { teams: number; labels: number; projects: number; issues: number; comments: number };
+  created: {
+    teams: number;
+    people: number;
+    labels: number;
+    projects: number;
+    issues: number;
+    comments: number;
+  };
   /** Items already imported by an earlier attempt of this import. */
   existing: number;
   skipped: ImportProblem[];

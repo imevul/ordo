@@ -115,7 +115,8 @@ describe('CSV import', () => {
     expect(m.teams.web).toEqual({ create: { name: 'Web', key: 'WEB' } });
     expect(m.statuses.web).toMatchObject({ Done: 'completed', Waiting: 'backlog' });
     expect(m.users[memberEmail.toLowerCase()]).toBe(memberId);
-    expect(m.users['ghost@example.com']).toBeNull();
+    // Nobody matches the ghost: a placeholder will stand in for them.
+    expect(m.users['ghost@example.com']).toBe('placeholder');
     expect(m.labels.docs).toBe('create');
     expect(m.keepNumbers).toBe(true);
   });
@@ -126,7 +127,7 @@ describe('CSV import', () => {
     expect(imp.status).toBe('ready');
     expect(imp.report).toMatchObject({
       dryRun: true,
-      created: { teams: 1, labels: 3, projects: 1, issues: 3 },
+      created: { teams: 1, people: 1, labels: 3, projects: 1, issues: 3 },
       skippedCount: 1,
     });
     expect(imp.report!.skipped[0]).toEqual({ item: 'WEB-3', message: 'It has no title' });
@@ -160,7 +161,10 @@ describe('CSV import', () => {
     expect(one.subIssues.map((s) => s.identifier)).toEqual(['WEB-2']);
 
     const two = await issue('WEB-2');
-    expect(two.assigneeId).toBeNull();
+    const ghost = ((await owner.get(`${ws}/bootstrap`)).data as Bootstrap).placeholders.find(
+      (p) => p.name === 'ghost@example.com',
+    );
+    expect(two.assigneeId).toBe(ghost!.id);
     // Unknown creators fall back to whoever ran the import.
     expect(two.creatorId).toBe(ownerId);
     expect(two.projectId).toBe(one.projectId);

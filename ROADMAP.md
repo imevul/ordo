@@ -101,7 +101,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 
 - 🟡 Import framework: analysis, suggested mapping (teams, statuses, people, labels, projects), dry run, resumable
   silent runs in background jobs, kept issue numbers, cancel; CSV importer with column detection (API only so far)
-- ⬜ Placeholder people for unmatched users, and merging them into members later
+- 🟡 Placeholder people for unmatched users, reused across imports, merged into members later (API; UI in the
+  settings page)
 - ⬜ Linear, GitHub Issues and Jira importers
 - ⬜ Workspace export (JSON, CSV)
 - ⬜ Settings → Import & export, undo an import

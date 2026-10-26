@@ -34,6 +34,7 @@ import { joiningRoutes } from './routes/joining.ts';
 import { labelRoutes } from './routes/labels.ts';
 import { memberRoutes } from './routes/members.ts';
 import { notificationRoutes } from './routes/notifications.ts';
+import { placeholderRoutes } from './routes/placeholders.ts';
 import { projectRoutes } from './routes/projects.ts';
 import { realtimeRoutes } from './routes/realtime.ts';
 import { searchRoutes } from './routes/search.ts';
@@ -199,6 +200,7 @@ export async function buildApp(
       await w.register(webhookRoutes);
       await w.register(integrationRoutes);
       await w.register(importRoutes);
+      await w.register(placeholderRoutes);
       await w.register(githubWorkspaceRoutes);
       await w.register(externalAccountRoutes);
     },

@@ -353,4 +353,15 @@ Admins only. How imports work, and the CSV columns Ordo reads, are in [Importing
 `status` goes `analyzing` → `ready` → (`dry_running` → `ready`) → `running` → `completed`, or `failed` / `canceled`.
 `mapping` is `{ teams, statuses, users, labels, projects, keepNumbers }`, keyed by the source's ids from `summary`:
 a team maps to `{ teamId }`, `{ create: { name, key } }` or `{ skip: true }`; a status to a status id or a status
-type; a person to a user id or `null`; a label or project to an id, `"create"` or `"skip"`.
+type; a person to a member's or placeholder's id, `"placeholder"` for a new placeholder, or `null`; a label or
+project to an id, `"create"` or `"skip"`.
+
+### Placeholders
+
+People imports brought along who aren't members ([details](import-export.md#placeholders)). Bootstrap lists them in
+`placeholders` so their names can be shown; they can't be assigned or mentioned.
+
+| Method | Path                      |                                                                                |
+| ------ | ------------------------- | ------------------------------------------------------------------------------ |
+| GET    | `/placeholders`           | _Admin._ With counts of what's attributed to each, and a `suggestedUserId`     |
+| POST   | `/placeholders/:id/merge` | _Admin._ `{ userId }` → `{ assigned, unassigned }`; the placeholder is deleted |

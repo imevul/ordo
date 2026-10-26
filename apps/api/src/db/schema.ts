@@ -80,10 +80,15 @@ export const users = pgTable('users', {
   totpSecret: text('totp_secret'),
   totpEnabledAt: ts('totp_enabled_at'),
   preferences: jsonb('preferences').$type<Partial<UserPreferences>>().notNull().default({}),
-  /** For bots: the workspace they act in. Outlives the integration so its history keeps a name. */
+  /**
+   * For bots: the workspace they act in (outlives the integration, so its history keeps a name).
+   * For placeholders: the workspace whose import made them.
+   */
   botWorkspaceId: uuid('bot_workspace_id').references((): AnyPgColumn => workspaces.id, {
     onDelete: 'set null',
   }),
+  /** For placeholders: the email the source had, for matching them to a member later. */
+  importedEmail: text('imported_email'),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
 });
@@ -969,7 +974,9 @@ export const importItems = pgTable(
     importId: uuid('import_id')
       .notNull()
       .references(() => imports.id, { onDelete: 'cascade' }),
-    kind: text('kind').$type<'team' | 'label' | 'project' | 'issue' | 'comment'>().notNull(),
+    kind: text('kind')
+      .$type<'team' | 'label' | 'project' | 'user' | 'issue' | 'comment'>()
+      .notNull(),
     externalId: text('external_id').notNull(),
     entityId: uuid('entity_id').notNull(),
     createdAt: createdAt(),
