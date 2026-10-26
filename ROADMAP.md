@@ -109,6 +109,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   comments, people by claimed usernames; GitHub Enterprise Server
 - ✅ Jira importer (Cloud and Data Center): projects, epics as projects, sub-tasks, types and components as
   labels, story points, links as relations, comments; wiki markup to Markdown
+- ✅ Forgejo/Gitea and GitLab importers: repositories or projects as teams, labels, milestones as projects,
+  comments (GitLab notes), people by claimed usernames
 - ⬜ Workspace export (JSON, CSV)
 - ⬜ Settings → Import & export, undo an import
 

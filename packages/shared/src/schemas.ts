@@ -526,6 +526,37 @@ export const createApiImportSchema = z.discriminatedUnion('source', [
     apiUrl: z.url().max(500).optional(),
   }),
   z.object({
+    source: z.literal('forgejo'),
+    /** The Forgejo or Gitea server, e.g. https://codeberg.org */
+    baseUrl: z.url().max(500),
+    token: z.string().trim().min(10).max(500),
+    repos: z
+      .array(
+        z
+          .string()
+          .trim()
+          .regex(/^[\w.-]+\/[\w.-]+$/, 'Repositories look like owner/name'),
+      )
+      .min(1)
+      .max(20),
+  }),
+  z.object({
+    source: z.literal('gitlab'),
+    /** gitlab.com, or a self-managed GitLab. */
+    baseUrl: z.url().max(500).default('https://gitlab.com'),
+    token: z.string().trim().min(10).max(500),
+    /** Project paths, with their groups: group/subgroup/project. */
+    projects: z
+      .array(
+        z
+          .string()
+          .trim()
+          .regex(/^[\w.-]+(\/[\w.-]+)+$/, 'Projects look like group/project'),
+      )
+      .min(1)
+      .max(20),
+  }),
+  z.object({
     source: z.literal('jira'),
     /** https://acme.atlassian.net, or a Jira Data Center's base URL. */
     siteUrl: z.url().max(500),
