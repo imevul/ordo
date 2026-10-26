@@ -63,7 +63,7 @@ export function SaveViewModal({
             type="checkbox"
             checked={shared}
             onChange={(e) => setShared(e.target.checked)}
-            className="accent-[#ff1493]"
+            className="accent-primary"
           />
           Share with the workspace
         </label>

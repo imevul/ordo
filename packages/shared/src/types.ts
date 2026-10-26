@@ -396,6 +396,8 @@ export interface WorkspaceSettings {
   allowApiKeysUnderSso: boolean;
   /** Format of "Copy git branch name": {username}, {identifier}, {title}. */
   gitBranchFormat: string;
+  /** The workspace's accent colour (#rrggbb); null is Hotline Pink. */
+  accentColor: string | null;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -406,6 +408,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   ssoSessionMaxAgeHours: null,
   allowApiKeysUnderSso: false,
   gitBranchFormat: DEFAULT_BRANCH_FORMAT,
+  accentColor: null,
 };
 
 export interface WorkspaceDomain {

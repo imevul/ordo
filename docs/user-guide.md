@@ -25,7 +25,8 @@ Admins can **suspend** a member — they keep their history but can't open the w
 
 ### Workspace settings
 
-- **General** — name, URL, logo, and a **default team** every new member (except guests) joins automatically.
+- **General** — name, URL, logo, an **accent colour** (Hotline Pink by default; pick a preset or any colour), and a
+  **default team** every new member (except guests) joins automatically.
 - **Access** — who may invite; **domains** you've verified with a DNS TXT record
   (`_ordo-verify.example.com` → `ordo-verify=…`); and **join by domain**, which lets anyone with a _verified_ email at
   one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.

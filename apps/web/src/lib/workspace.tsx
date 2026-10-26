@@ -9,8 +9,8 @@ import type {
   View,
   WorkflowState,
 } from '@ordo/shared';
-import { isAdminRole } from '@ordo/shared';
-import { createContext, type ReactNode, useContext, useMemo } from 'react';
+import { accentVariables, isAdminRole } from '@ordo/shared';
+import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react';
 
 export interface WorkspaceData extends Bootstrap {
   slug: string;
@@ -47,6 +47,7 @@ export function WorkspaceProvider({
   slug: string;
   children: ReactNode;
 }) {
+  useAccent(data.workspace.settings.accentColor);
   const value = useMemo<WorkspaceData>(() => {
     const states = data.teams.flatMap((t) => t.states);
     const mine = data.teams.filter((t) => t.memberIds.includes(me.id));
@@ -106,3 +107,18 @@ export function upcomingCycles(
 }
 
 export const cycleName = (c: Cycle) => c.name || `Cycle ${c.number}`;
+
+/**
+ * Puts the workspace's accent on the document while it's open; leaving restores Hotline Pink
+ * (sign-in pages don't know the workspace).
+ */
+export function useAccent(color: string | null | undefined) {
+  useEffect(() => {
+    const root = document.documentElement.style;
+    const vars = accentVariables(color);
+    for (const [name, value] of Object.entries(vars)) root.setProperty(name, value);
+    return () => {
+      for (const name of Object.keys(vars)) root.removeProperty(name);
+    };
+  }, [color]);
+}

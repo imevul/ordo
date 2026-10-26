@@ -373,7 +373,7 @@ function WebhookModal({
         <label className="mb-2 flex items-center gap-2 text-[13px]">
           <input
             type="checkbox"
-            className="accent-[#ff1493]"
+            className="accent-primary"
             checked={events.length === 0}
             onChange={() => setEvents(events.length ? [] : ['issue.created'])}
           />
@@ -386,7 +386,7 @@ function WebhookModal({
                 <label key={t} className="flex items-center gap-2 font-mono text-[11.5px]">
                   <input
                     type="checkbox"
-                    className="accent-[#ff1493]"
+                    className="accent-primary"
                     checked={events.includes(t)}
                     onChange={() => setEvents(toggle(events, t))}
                   />
@@ -400,7 +400,7 @@ function WebhookModal({
         <label className="mb-2 flex items-center gap-2 text-[13px]">
           <input
             type="checkbox"
-            className="accent-[#ff1493]"
+            className="accent-primary"
             checked={teamIds.length === 0}
             onChange={() => setTeamIds(teamIds.length ? [] : [ws.teams[0]!.id])}
           />
@@ -412,7 +412,7 @@ function WebhookModal({
               <label key={t.id} className="flex items-center gap-2 text-[13px]">
                 <input
                   type="checkbox"
-                  className="accent-[#ff1493]"
+                  className="accent-primary"
                   checked={teamIds.includes(t.id)}
                   onChange={() => setTeamIds(toggle(teamIds, t.id))}
                 />
@@ -424,7 +424,7 @@ function WebhookModal({
         <label className="mt-3 flex items-center gap-2 text-[13.5px]">
           <input
             type="checkbox"
-            className="accent-[#ff1493]"
+            className="accent-primary"
             checked={enabled}
             onChange={(e) => setEnabled(e.target.checked)}
           />

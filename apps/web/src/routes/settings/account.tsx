@@ -724,7 +724,7 @@ export function NotificationsSection() {
             {NOTIFICATION_LABELS[t]}
             <input
               type="checkbox"
-              className="accent-[#ff1493]"
+              className="accent-primary"
               checked={prefs.email[t]}
               onChange={(e) => save({ email: { [t]: e.target.checked } })}
             />

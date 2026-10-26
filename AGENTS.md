@@ -93,7 +93,8 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
   `components/ShortcutsHelp.tsx` and `docs/keyboard-shortcuts.md`.
 - **Design:** use the Hotline Pink tokens and classes in `app.css` (`panel`, `btn btn-primary|ghost|danger`,
   `prop`, `tag`, `chip`, `section-label`, `kicker`, `menu-item`, `nav-item`). No rounded corners. Pink is for
-  small, sharp accents; cyan only for focus rings and tiny highlights. See `docs/design.md`.
+  small, sharp accents; cyan only for focus rings and tiny highlights. Workspaces can change the accent, so never
+  hard-code its hex values — use the tokens (`bg-primary`, `text-on-primary`, `accent-primary`). See `docs/design.md`.
 - **Style:** Biome formatting (single quotes, semicolons, 100 cols). Comments explain _why_, sparingly.
 
 ## Testing

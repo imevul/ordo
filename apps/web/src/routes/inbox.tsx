@@ -151,7 +151,7 @@ export function InboxPage() {
                 </span>
                 {!n.readAt && (
                   <span
-                    className="mt-2 h-[7px] w-[7px] flex-none bg-primary shadow-[0_0_10px_#ff1493]"
+                    className="mt-2 h-[7px] w-[7px] flex-none bg-primary shadow-[0_0_10px_var(--color-primary)]"
                     title="Unread"
                   >
                     <span className="sr-only">Unread</span>

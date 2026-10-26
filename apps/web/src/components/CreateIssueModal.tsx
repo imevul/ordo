@@ -210,7 +210,7 @@ export function CreateIssueModal() {
               type="checkbox"
               checked={more}
               onChange={(e) => setMore(e.target.checked)}
-              className="accent-[#ff1493]"
+              className="accent-primary"
             />
             Create more
           </label>

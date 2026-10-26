@@ -14,6 +14,7 @@ import {
   USERNAME_PATTERN,
 } from './constants.ts';
 import { GIT_EVENTS } from './git.ts';
+import { HEX_COLOR } from './theme.ts';
 
 /** Request payload schemas, shared by the API (validation) and the web client (forms). */
 
@@ -122,6 +123,7 @@ export const updateWorkspaceSchema = z.object({
         .optional(),
       allowApiKeysUnderSso: z.boolean().optional(),
       gitBranchFormat: z.string().trim().min(1).max(100).optional(),
+      accentColor: z.string().regex(HEX_COLOR, 'Use a #rrggbb colour').nullable().optional(),
     })
     .optional(),
 });

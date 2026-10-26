@@ -177,7 +177,7 @@ function Column({
         )}
         {groupBy === 'priority' && <PriorityIcon priority={group.value as number} />}
         {groupBy === 'assignee' && group.value && (
-          <Avatar name={group.label} color={group.color ?? '#ff1493'} size={16} />
+          <Avatar name={group.label} color={group.color ?? 'var(--color-primary)'} size={16} />
         )}
         {groupBy !== 'state' && groupBy !== 'priority' && groupBy !== 'assignee' && group.color && (
           <span className="tag-dot" style={{ background: group.color }} />
