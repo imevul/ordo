@@ -2,14 +2,16 @@ import {
   addTeamMemberSchema,
   createStateSchema,
   createTeamSchema,
+  cycleAutomationOf,
   SORT_GAP,
   updateStateSchema,
   updateTeamMemberSchema,
   updateTeamSchema,
 } from '@ordo/shared';
-import { and, count, eq, max, ne } from 'drizzle-orm';
+import { and, count, eq, isNull, max, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
+  cycles,
   issues,
   teamKeyAliases,
   teamMembers,
@@ -126,10 +128,25 @@ export async function teamRoutes(app: FastifyInstance) {
             .where(eq(workflowStates.id, input.defaultStateId));
           if (state?.teamId !== teamId) throw badRequest('Default status must belong to the team');
         }
-        await ctx.tx
-          .update(teams)
-          .set(input as Partial<typeof teams.$inferInsert>)
-          .where(eq(teams.id, teamId));
+        const set = { ...input } as Partial<typeof teams.$inferInsert>;
+        if (input.cycleAutomation) {
+          const was = cycleAutomationOf(before.cycleAutomation);
+          set.cycleAutomation = { ...was, ...input.cycleAutomation };
+          // Turning automation on starts from now: cycles that already ended keep their issues.
+          if (input.cycleAutomation.enabled && !was.enabled) {
+            await ctx.tx
+              .update(cycles)
+              .set({ completedAt: new Date().toISOString() })
+              .where(
+                and(
+                  eq(cycles.teamId, teamId),
+                  sql`${cycles.endsAt} <= current_date`,
+                  isNull(cycles.completedAt),
+                ),
+              );
+          }
+        }
+        await ctx.tx.update(teams).set(set).where(eq(teams.id, teamId));
         emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
         await auditCtx(ctx, {
           action: 'team.updated',

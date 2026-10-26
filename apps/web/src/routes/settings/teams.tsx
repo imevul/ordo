@@ -1,4 +1,5 @@
 import {
+  type CycleAutomation,
   defaultGitAutomation,
   ESTIMATE_SCALE_NAMES,
   GIT_EVENT_LABELS,
@@ -394,6 +395,12 @@ export function TeamSettings({ team }: { team: Team }) {
           ))}
         </SettingsCard>
 
+        {team.cyclesEnabled && (
+          <CycleAutomationCard
+            team={team}
+            onSave={(cycleAutomation) => save.mutate({ cycleAutomation })}
+          />
+        )}
         <GitAutomationCard team={team} onSave={(gitAutomation) => save.mutate({ gitAutomation })} />
       </fieldset>
 
@@ -517,6 +524,112 @@ function TeamMembers({ team }: { team: Team }) {
       })}
       {team.members.length === 0 && (
         <p className="font-mono text-[12px] text-index">// nobody has joined yet</p>
+      )}
+    </SettingsCard>
+  );
+}
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** Cycles that plan themselves and carry unfinished work over. */
+function CycleAutomationCard({
+  team,
+  onSave,
+}: {
+  team: Team;
+  onSave: (automation: Partial<CycleAutomation>) => void;
+}) {
+  const auto = team.cycleAutomation;
+  const row = 'flex items-center justify-between border-b border-border-soft py-2.5 text-[13.5px]';
+  const numberSelect = (
+    key: 'weeks' | 'cooldownWeeks' | 'upcoming',
+    values: number[],
+    label: (n: number) => string,
+  ) => (
+    <select
+      className="input w-40"
+      value={auto[key]}
+      onChange={(e) => onSave({ [key]: Number(e.target.value) })}
+    >
+      {values.map((n) => (
+        <option key={n} value={n}>
+          {label(n)}
+        </option>
+      ))}
+    </select>
+  );
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
+  return (
+    <SettingsCard
+      title="Cycle automation"
+      description="Ordo creates cycles ahead of time and, when one ends, moves its unfinished issues to the next. Changes are made by the “Ordo” bot, without notifications."
+    >
+      <label className={row}>
+        Automate cycles
+        <input
+          type="checkbox"
+          className="accent-primary"
+          checked={auto.enabled}
+          onChange={(e) => onSave({ enabled: e.target.checked })}
+        />
+      </label>
+      {auto.enabled && (
+        <>
+          <label className={row}>
+            Cycle length
+            {numberSelect('weeks', [1, 2, 3, 4, 5, 6, 7, 8], (n) => plural(n, 'week'))}
+          </label>
+          <label className={row}>
+            Cooldown between cycles
+            {numberSelect('cooldownWeeks', [0, 1, 2], (n) => (n ? plural(n, 'week') : 'None'))}
+          </label>
+          <label className={row}>
+            Cycles start on
+            <select
+              className="input w-40"
+              value={auto.startDay}
+              onChange={(e) => onSave({ startDay: Number(e.target.value) })}
+            >
+              {WEEKDAYS.map((d, i) => (
+                <option key={d} value={i}>
+                  {d}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={row}>
+            Plan ahead
+            {numberSelect('upcoming', [1, 2, 3, 4, 5, 6], (n) => plural(n, 'cycle'))}
+          </label>
+          <label className={row}>
+            <span>
+              Roll over unfinished issues
+              <span className="block text-[12px] text-index">
+                When a cycle ends, open issues move to the next cycle.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="accent-primary"
+              checked={auto.rollOver}
+              onChange={(e) => onSave({ rollOver: e.target.checked })}
+            />
+          </label>
+          <label className={row}>
+            <span>
+              Add started issues to the active cycle
+              <span className="block text-[12px] text-index">
+                Issues that move to a started status join the current cycle, if they have none.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              className="accent-primary"
+              checked={auto.addStarted}
+              onChange={(e) => onSave({ addStarted: e.target.checked })}
+            />
+          </label>
+        </>
       )}
     </SettingsCard>
   );

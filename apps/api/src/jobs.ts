@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { sessions } from './db/schema.ts';
 import { sweepAttachments } from './services/attachments.ts';
 import { runChatNotification, runChatPost } from './services/chat.ts';
+import { automateCycles } from './services/cycle-automation.ts';
 import { sendNotificationEmails } from './services/digest.ts';
 import { dispatchEvents, pruneEvents } from './services/events.ts';
 import { purgeOldExports, runExport } from './services/exports.ts';
@@ -53,6 +54,10 @@ export function registerJobs(app: FastifyInstance) {
   jobs.define<Parameters<typeof runImport>[1]>('import.run', (p, job) => runImport(app, p, job));
   jobs.define<{ importId: string }>('import.undo', (p, job) => runUndo(app, p, job));
   jobs.define<{ exportId: string }>('export.run', (p, job) => runExport(app, p, job));
+
+  // Cycle dates are days, so hourly is plenty; a missed run catches up on the next.
+  jobs.define('cycles.automate', () => automateCycles(app));
+  jobs.every('cycles.automate', 3600);
 
   jobs.define('maintenance.cleanup', async () => {
     await pruneEvents(app);

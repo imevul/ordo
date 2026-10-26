@@ -141,6 +141,13 @@
       "when": 1793058094597,
       "tag": "0019_full_text_search",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793058840918,
+      "tag": "0020_cycle_automation",
+      "breakpoints": true
     }
   ]
 }

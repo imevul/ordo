@@ -172,6 +172,13 @@ Cycles are a team's time-boxed iterations (usually 1–2 weeks). Turn them on pe
 or `Shift C`. A cycle page shows scope, started, completed and remaining counts, with points when you use
 estimates.
 
+**Cycle automation** (team settings → _Cycle automation_) lets cycles run themselves. Pick a length (1–8 weeks), an
+optional cooldown, the weekday they start on and how many to plan ahead; Ordo then keeps that many cycles on the
+calendar. When a cycle ends, its unfinished issues move to the next one (_Roll over unfinished issues_), and with
+_Add started issues to the active cycle_, issues join the current cycle as soon as work on them starts. These changes
+are made by a bot called **Ordo**, without notifications, and show in each issue's history. Cycles that had already
+ended when you turned automation on keep their issues.
+
 ## Projects
 
 Projects collect issues toward a goal, possibly across teams. Each has a **status** (backlog, planned, in

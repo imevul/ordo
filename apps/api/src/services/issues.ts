@@ -50,6 +50,7 @@ import {
 } from './access.ts';
 import { claimAttachments, listAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
+import { cycleForStartedIssue } from './cycle-automation.ts';
 import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 import { isWorkspacePlaceholder } from './placeholders.ts';
@@ -536,6 +537,10 @@ export async function createIssue(
   if (input.cycleId) await assertCycle(ctx, team.id, input.cycleId);
   if (input.parentId) await assertParent(ctx, null, input.parentId);
   const labelIds = [...new Set(input.labelIds ?? [])];
+  const cycleId =
+    input.cycleId !== undefined || imported || state.type !== 'started'
+      ? (input.cycleId ?? null)
+      : await cycleForStartedIssue(ctx, team.id);
   await assertLabels(ctx, team.id, labelIds);
 
   // A kept number moves the counter past it, so later issues don't collide.
@@ -576,7 +581,7 @@ export async function createIssue(
       assigneeId: input.assigneeId ?? null,
       creatorId,
       projectId: input.projectId ?? null,
-      cycleId: input.cycleId ?? null,
+      cycleId,
       parentId: input.parentId ?? null,
       estimate: input.estimate ?? null,
       dueDate: input.dueDate ?? null,
@@ -684,6 +689,10 @@ export async function updateIssue(
     set.stateId = state.id;
     Object.assign(set, stateTimestamps(state.type, current));
     changes.push({ field: 'state', from: current.stateId, to: state.id });
+    // Cycle automation: work that starts joins the active cycle, unless it's in one already.
+    if (state.type === 'started' && cycleId === undefined && !current.cycleId) {
+      cycleId = (await cycleForStartedIssue(ctx, teamId)) ?? undefined;
+    }
   }
 
   if (patch.title !== undefined) change('title', 'title', patch.title);

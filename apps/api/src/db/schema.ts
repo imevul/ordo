@@ -1,5 +1,6 @@
 import type {
   AuditAction,
+  CycleAutomation,
   DomainEventType,
   EstimateScale,
   ExportFormat,
@@ -194,6 +195,11 @@ export const teams = pgTable(
     cyclesEnabled: boolean('cycles_enabled').notNull().default(true),
     defaultStateId: uuid('default_state_id'),
     gitAutomation: jsonb('git_automation').$type<GitAutomation>().notNull().default({}),
+    /** Partial; missing settings use DEFAULT_CYCLE_AUTOMATION. */
+    cycleAutomation: jsonb('cycle_automation')
+      .$type<Partial<CycleAutomation>>()
+      .notNull()
+      .default({}),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('teams_workspace_key_idx').on(t.workspaceId, t.key)],
@@ -355,6 +361,8 @@ export const cycles = pgTable(
     description: text('description'),
     startsAt: date('starts_at', { mode: 'string' }).notNull(),
     endsAt: date('ends_at', { mode: 'string' }).notNull(),
+    /** Set once cycle automation has handled the end of the cycle (rolled its open issues over). */
+    completedAt: ts('completed_at'),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('cycles_team_number_idx').on(t.teamId, t.number)],
