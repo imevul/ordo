@@ -1,0 +1,38 @@
+# Ordo — production stack. Configure via .env (see .env.example).
+name: ordo
+
+services:
+  app:
+    build: .
+    image: ordo:${ORDO_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-ordo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ordo}
+      ORDO_PUBLIC_URL: ${ORDO_PUBLIC_URL:-http://localhost:3000}
+      ORDO_SIGNUP_MODE: ${ORDO_SIGNUP_MODE:-invite}
+      ORDO_ALLOW_WORKSPACE_CREATION: ${ORDO_ALLOW_WORKSPACE_CREATION:-true}
+      ORDO_TRUST_PROXY: ${ORDO_TRUST_PROXY:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - "${ORDO_BIND:-0.0.0.0}:${ORDO_PORT:-3000}:3000"
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ordo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-ordo}
+    volumes:
+      - ordo-db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  ordo-db:
