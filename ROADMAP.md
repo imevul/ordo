@@ -99,8 +99,12 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 
 ### Phase 9 — Importers and export
 
-- ⬜ Jira, Linear, GitHub Issues, CSV importers with mapping and dry run
+- 🟡 Import framework: analysis, suggested mapping (teams, statuses, people, labels, projects), dry run, resumable
+  silent runs in background jobs, kept issue numbers, cancel; CSV importer with column detection (API only so far)
+- ⬜ Placeholder people for unmatched users, and merging them into members later
+- ⬜ Linear, GitHub Issues and Jira importers
 - ⬜ Workspace export (JSON, CSV)
+- ⬜ Settings → Import & export, undo an import
 
 ### Phase 10 — Product depth
 

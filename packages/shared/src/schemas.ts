@@ -15,6 +15,7 @@ import {
   USERNAME_PATTERN,
 } from './constants.ts';
 import { GIT_EVENTS } from './git.ts';
+import { CSV_FIELDS } from './imports.ts';
 import { HEX_COLOR } from './theme.ts';
 
 /** Request payload schemas, shared by the API (validation) and the web client (forms). */
@@ -227,6 +228,8 @@ export const createLabelSchema = z.object({
   teamId: id.nullish(),
 });
 
+export type CreateLabelInput = z.infer<typeof createLabelSchema>;
+
 export const updateLabelSchema = createLabelSchema.partial();
 
 export const createIssueSchema = z.object({
@@ -352,6 +355,8 @@ export const createProjectSchema = z.object({
   teamIds: z.array(id).min(1),
 });
 
+export type CreateProjectInput = z.infer<typeof createProjectSchema>;
+
 export const updateProjectSchema = createProjectSchema
   .partial()
   .extend({ sortOrder: z.number().optional() });
@@ -372,6 +377,7 @@ export const createCycleSchema = z
     message: 'End date must be after start date',
     path: ['endsAt'],
   });
+export type CreateCycleInput = z.infer<typeof createCycleSchema>;
 
 export const updateCycleSchema = z.object({
   name: z.string().trim().max(120).nullish(),
@@ -466,3 +472,35 @@ export const chatChannelSchema = z.object({
   defaultTeamId: z.uuid().nullish(),
 });
 export const chatChannelsSchema = z.array(chatChannelSchema).max(100);
+
+/** Where each source team, status, person, label and project goes (see `ImportMapping`). */
+export const importMappingSchema = z.object({
+  teams: z.record(
+    z.string(),
+    z.union([
+      z.object({ teamId: id }),
+      z.object({
+        create: z.object({
+          name,
+          key: z.string().regex(TEAM_KEY_PATTERN, 'Uppercase letters and digits, max 7, e.g. ENG'),
+        }),
+      }),
+      z.object({ skip: z.literal(true) }),
+    ]),
+  ),
+  statuses: z.record(z.string(), z.record(z.string(), z.union([id, z.enum(STATE_TYPES)]))),
+  users: z.record(z.string(), id.nullable()),
+  labels: z.record(z.string(), z.union([id, z.enum(['create', 'skip'])])),
+  projects: z.record(z.string(), z.union([id, z.enum(['create', 'skip'])])),
+  keepNumbers: z.boolean(),
+});
+
+/** CSV settings: which column feeds which field. */
+export const csvImportConfigSchema = z.object({
+  columns: z.partialRecord(z.enum(CSV_FIELDS), z.string().max(200).nullable()),
+});
+
+export const updateImportSchema = z.object({
+  mapping: importMappingSchema.optional(),
+  config: csvImportConfigSchema.optional(),
+});

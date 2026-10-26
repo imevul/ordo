@@ -5,6 +5,12 @@ import type {
   FavoriteKind,
   GitAutomation,
   HistoryChange,
+  ImportMapping,
+  ImportProgress,
+  ImportReport,
+  ImportSource,
+  ImportStatus,
+  ImportSummary,
   IssueDisplay,
   IssueFilter,
   IssueLinkKind,
@@ -920,4 +926,53 @@ export const externalAccounts = pgTable(
     uniqueIndex('external_accounts_idx').on(t.workspaceId, t.provider, t.host, t.externalId),
     index('external_accounts_user_idx').on(t.userId),
   ],
+);
+
+/**
+ * An import from another tracker or a file: analyzed, mapped, dry-run, then run by jobs in
+ * batches. `cursor` is where the run got to, so a retried or resumed job carries on from there.
+ */
+export const imports = pgTable(
+  'imports',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    source: text('source').$type<ImportSource>().notNull(),
+    name: text('name').notNull(),
+    status: text('status').$type<ImportStatus>().notNull().default('analyzing'),
+    /** Source settings, e.g. which CSV column feeds which field. */
+    config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
+    /** Encrypted JSON of credentials for API sources. */
+    secrets: text('secrets'),
+    fileId: uuid('file_id').references(() => files.id, { onDelete: 'set null' }),
+    summary: jsonb('summary').$type<ImportSummary>(),
+    mapping: jsonb('mapping').$type<ImportMapping>(),
+    report: jsonb('report').$type<ImportReport>(),
+    progress: jsonb('progress').$type<ImportProgress>(),
+    cursor: jsonb('cursor').$type<Record<string, unknown>>(),
+    error: text('error'),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+    startedAt: ts('started_at'),
+    completedAt: ts('completed_at'),
+  },
+  (t) => [index('imports_workspace_idx').on(t.workspaceId)],
+);
+
+/** What an import created, by source id: lets retries skip what's done and undo find it. */
+export const importItems = pgTable(
+  'import_items',
+  {
+    importId: uuid('import_id')
+      .notNull()
+      .references(() => imports.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'team' | 'label' | 'project' | 'issue' | 'comment'>().notNull(),
+    externalId: text('external_id').notNull(),
+    entityId: uuid('entity_id').notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [primaryKey({ columns: [t.importId, t.kind, t.externalId] })],
 );

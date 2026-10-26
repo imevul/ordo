@@ -1,34 +1,18 @@
 import { createProjectSchema, createProjectUpdateSchema, updateProjectSchema } from '@ordo/shared';
-import { and, desc, eq, inArray, min } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { projects, projectTeams, projectUpdates, teams, workspaceMembers } from '../db/schema.ts';
+import { projects, projectTeams, projectUpdates } from '../db/schema.ts';
 import { requireAccess } from '../lib/auth.ts';
-import { badRequest, forbidden, notFound, parse } from '../lib/errors.ts';
+import { forbidden, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
-import { assertCan, canReadTeam } from '../services/access.ts';
+import { assertCan } from '../services/access.ts';
 import { type Ctx, emit, record } from '../services/context.ts';
-import { listProjects } from '../services/projects.ts';
-
-async function assertTeams(ctx: Ctx, teamIds: string[]) {
-  const rows = await ctx.tx
-    .select({ id: teams.id })
-    .from(teams)
-    .where(and(eq(teams.workspaceId, ctx.workspaceId), inArray(teams.id, teamIds)));
-  if (rows.length !== new Set(teamIds).size || teamIds.some((t) => !canReadTeam(ctx.access, t))) {
-    throw badRequest('Unknown team');
-  }
-}
-
-async function assertLead(ctx: Ctx, leadId: string | null | undefined) {
-  if (!leadId) return;
-  const [m] = await ctx.tx
-    .select({ userId: workspaceMembers.userId })
-    .from(workspaceMembers)
-    .where(
-      and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, leadId)),
-    );
-  if (!m) throw badRequest('Lead is not a workspace member');
-}
+import {
+  assertProjectLead,
+  assertProjectTeams,
+  createProject,
+  listProjects,
+} from '../services/projects.ts';
 
 /** A project the caller can see and change: visible through one of its teams, and not a guest. */
 async function loadProject(ctx: Ctx, id: string) {
@@ -54,31 +38,7 @@ export async function projectRoutes(app: FastifyInstance) {
   app.post('/projects', async (req) => {
     assertCan(requireAccess(req), 'projects.create', 'Guests cannot create projects');
     const input = parse(createProjectSchema, req.body);
-    const id = await mutate(app, req, async (ctx) => {
-      await assertTeams(ctx, input.teamIds);
-      await assertLead(ctx, input.leadId);
-      const [{ first }] = (await ctx.tx
-        .select({ first: min(projects.sortOrder) })
-        .from(projects)
-        .where(eq(projects.workspaceId, ctx.workspaceId))) as [{ first: number | null }];
-      const { teamIds, ...rest } = input;
-      const [row] = await ctx.tx
-        .insert(projects)
-        .values({
-          ...rest,
-          workspaceId: ctx.workspaceId,
-          createdBy: ctx.userId,
-          sortOrder: (first ?? 0) - 1024,
-        })
-        .returning({ id: projects.id });
-      await ctx.tx
-        .insert(projectTeams)
-        .values(teamIds.map((teamId) => ({ projectId: row!.id, teamId })));
-      emit(ctx, { kind: 'project', action: 'created', id: row!.id });
-      const [project] = await listProjects(ctx.tx, ctx.access, row!.id);
-      record(ctx, 'project.created', project!, { teamIds: project!.teamIds });
-      return row!.id;
-    });
+    const id = await mutate(app, req, (ctx) => createProject(ctx, input));
     return (await listProjects(db, requireAccess(req), id))[0];
   });
 
@@ -87,10 +47,10 @@ export async function projectRoutes(app: FastifyInstance) {
     const input = parse(updateProjectSchema, req.body);
     await mutate(app, req, async (ctx) => {
       await loadProject(ctx, id);
-      await assertLead(ctx, input.leadId);
+      await assertProjectLead(ctx, input.leadId);
       const { teamIds, ...rest } = input;
       if (teamIds) {
-        await assertTeams(ctx, teamIds);
+        await assertProjectTeams(ctx, teamIds);
         await ctx.tx.delete(projectTeams).where(eq(projectTeams.projectId, id));
         await ctx.tx
           .insert(projectTeams)
