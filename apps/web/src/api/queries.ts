@@ -68,13 +68,38 @@ export const useBootstrap = (slug: string) =>
     staleTime: 30_000,
   });
 
-export const useIssues = (slug: string, filter: IssueFilter, enabled = true) =>
-  useQuery({
-    queryKey: keys.issues(slug, filter),
-    queryFn: () => api.post<Issue[]>(wsPath(slug, '/issues/query'), { filter }),
+const ISSUE_PAGE = 1000;
+
+/**
+ * Every issue matching `filter`, loaded a page at a time; what's loaded shows while the rest
+ * arrives, so big teams see their list right away. Screens sort and group on their side.
+ */
+export function useIssues(slug: string, filter: IssueFilter, enabled = true) {
+  const qc = useQueryClient();
+  const queryKey = keys.issues(slug, filter);
+  return useQuery({
+    queryKey,
+    queryFn: async ({ signal }) => {
+      const all: Issue[] = [];
+      let after: string | null = null;
+      for (;;) {
+        const page: Issue[] = await api.post<Issue[]>(wsPath(slug, '/issues/query'), {
+          filter,
+          after,
+          limit: ISSUE_PAGE,
+        });
+        all.push(...page);
+        if (page.length < ISSUE_PAGE) return all;
+        // A newer fetch (after a realtime change) took over; don't show this one's partial list.
+        if (signal.aborted) throw signal.reason;
+        qc.setQueryData(queryKey, [...all]);
+        after = page.at(-1)!.id;
+      }
+    },
     enabled,
     placeholderData: (prev) => prev,
   });
+}
 
 export const useIssue = (slug: string, id: string | undefined) =>
   useQuery({

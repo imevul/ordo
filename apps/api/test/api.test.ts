@@ -158,6 +158,23 @@ describe('issues', () => {
     expect(search[0]?.title).toBe('Write docs');
   });
 
+  it('pages through issues with a cursor', async () => {
+    const all = (await ada.post(`${ws}/issues/query`, { filter: {} })).data as Issue[];
+    expect(all.length).toBeGreaterThan(1);
+    const seen: string[] = [];
+    let after: string | null = null;
+    for (let guard = 0; guard < 50; guard++) {
+      const page = (await ada.post(`${ws}/issues/query`, { filter: {}, after, limit: 1 }))
+        .data as Issue[];
+      seen.push(...page.map((i) => i.id));
+      if (page.length < 1) break;
+      after = page[0]!.id;
+    }
+    expect(seen).toEqual(all.map((i) => i.id).sort());
+    const bad = await ada.post(`${ws}/issues/query`, { filter: {}, after: 'nope' });
+    expect(bad.statusCode).toBe(400);
+  });
+
   it('manages labels on issues', async () => {
     const label = (await ada.post(`${ws}/labels`, { name: 'Bug', color: '#ef4444' })).data;
     const res = await ada.patch(`${ws}/issues/${first.id}`, { addLabelIds: [label.id] });

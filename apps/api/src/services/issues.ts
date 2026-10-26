@@ -219,6 +219,24 @@ export async function queryIssues(
   return rows.map(toIssue);
 }
 
+/**
+ * One page of matching issues in id order, after the id `after` (null for the first page). Pages
+ * are how clients load views of any size; they sort and group on their side.
+ */
+export async function queryIssuePage(
+  db: DbOrTx,
+  access: Access,
+  filter: IssueFilter,
+  after: string | null,
+  limit: number,
+): Promise<Issue[]> {
+  const rows = await baseQuery(db)
+    .where(and(...filterConditions(access, filter), after ? gt(issues.id, after) : undefined))
+    .orderBy(asc(issues.id))
+    .limit(limit);
+  return rows.map(toIssue);
+}
+
 /** Every issue of a workspace, trashed ones too, a page at a time in id order (for exports). */
 export async function workspaceIssuePage(
   db: DbOrTx,

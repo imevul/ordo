@@ -130,7 +130,7 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 
 | Method         | Path                             |                                                                                              |
 | -------------- | -------------------------------- | -------------------------------------------------------------------------------------------- |
-| POST           | `/issues/query`                  | `{ filter, limit? }` → `Issue[]` (see below)                                                 |
+| POST           | `/issues/query`                  | `{ filter, limit?, after? }` → `Issue[]` (see below)                                         |
 | GET            | `/issues/:idOrIdentifier`        | Issue with parent, sub-issues, relations, subscribers, links, attachments                    |
 | POST           | `/issues`                        | Create (see example)                                                                         |
 | PATCH          | `/issues/:id`                    | Any of the create fields, plus `teamId` (move), `addLabelIds`, `removeLabelIds`, `sortOrder` |
@@ -192,26 +192,30 @@ from the bytes — are served inline; everything else downloads as `application/
 
 `POST /issues/query` takes an `IssueFilter`. All fields are optional and combine with AND; arrays are OR.
 
-| Field                    | Type                                                                     | Notes                                         |
-| ------------------------ | ------------------------------------------------------------------------ | --------------------------------------------- |
-| `teamId`                 | uuid                                                                     |                                               |
-| `stateIds`               | uuid[]                                                                   |                                               |
-| `stateTypes`             | (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`)[] |                                               |
-| `priorities`             | (0–4)[]                                                                  | 0 none, 1 urgent, 2 high, 3 medium, 4 low     |
-| `assigneeIds`            | (uuid \| `"me"` \| `"none"`)[]                                           |                                               |
-| `creatorIds`             | (uuid \| `"me"`)[]                                                       |                                               |
-| `labelIds`               | uuid[]                                                                   | has any of                                    |
-| `projectIds`, `cycleIds` | (uuid \| `"none"`)[]                                                     |                                               |
-| `parentId`               | uuid                                                                     | sub-issues of                                 |
-| `subscribedBy`           | `"me"`                                                                   |                                               |
-| `q`                      | string                                                                   | title/description substring, or an identifier |
-| `trashed`                | boolean                                                                  | only trashed issues                           |
+| Field                    | Type                                                                     | Notes                                            |
+| ------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------ |
+| `teamId`                 | uuid                                                                     |                                                  |
+| `stateIds`               | uuid[]                                                                   |                                                  |
+| `stateTypes`             | (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`)[] |                                                  |
+| `priorities`             | (0–4)[]                                                                  | 0 none, 1 urgent, 2 high, 3 medium, 4 low        |
+| `assigneeIds`            | (uuid \| `"me"` \| `"none"`)[]                                           |                                                  |
+| `creatorIds`             | (uuid \| `"me"`)[]                                                       |                                                  |
+| `labelIds`               | uuid[]                                                                   | has any of                                       |
+| `projectIds`, `cycleIds` | (uuid \| `"none"`)[]                                                     |                                                  |
+| `parentId`               | uuid                                                                     | sub-issues of                                    |
+| `subscribedBy`           | `"me"`                                                                   |                                                  |
+| `q`                      | string                                                                   | words (full text, as prefixes), or an identifier |
+| `trashed`                | boolean                                                                  | only trashed issues                              |
 
 ```bash
 curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
   -H 'Content-Type: application/json' \
   -d '{"filter":{"assigneeIds":["me"],"stateTypes":["unstarted","started"]}}'
 ```
+
+Without `after` you get up to `limit` issues (default 2 000, at most 5 000) in board order. To read everything, page
+with `after`: send `"after": null` for the first page, then the last issue's `id`; pages come in id order and a page
+shorter than `limit` is the last. The web app loads big views this way, 1 000 at a time.
 
 ### Projects, cycles, labels, views
 
