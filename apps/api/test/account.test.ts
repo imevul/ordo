@@ -1,0 +1,302 @@
+import { eq, sql } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
+import { Secret, TOTP } from 'otpauth';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { notifications, schedules, users } from '../src/db/schema.ts';
+import { Client, captureMail, linkIn, signup, testApp } from './helpers.ts';
+
+let app: FastifyInstance;
+let inbox: ReturnType<typeof captureMail>;
+const PASSWORD = 'correct horse battery';
+
+beforeAll(async () => {
+  app = await testApp({
+    settingsFromEnv: {
+      signupMode: 'open',
+      smtp: { url: 'smtp://mail.test:25', from: 'Ordo <ordo@test>' },
+    },
+  });
+  inbox = captureMail(app);
+});
+afterAll(() => app.close());
+
+// Jobs run in parallel, so find emails by recipient and subject rather than by order.
+const lastMailTo = (to: string, subject: RegExp = /./) =>
+  inbox.filter((m) => m.to === to && subject.test(m.subject)).at(-1);
+const tokenFrom = (to: string, subject?: RegExp) =>
+  linkIn(lastMailTo(to, subject)?.text ?? '')
+    .split('/')
+    .pop()!;
+/** Makes every schedule due (they run at most once per interval), then runs jobs twice: tick, then emails. */
+async function runSchedulesNow() {
+  await app.db.update(schedules).set({ nextRunAt: sql`now()` });
+  await app.jobs.drain();
+  await app.jobs.drain();
+}
+
+const codeFor = (secret: string) =>
+  new TOTP({
+    algorithm: 'SHA1',
+    digits: 6,
+    period: 30,
+    secret: Secret.fromBase32(secret),
+  }).generate();
+
+describe('email verification', () => {
+  it('sends a link on sign-up that verifies the address', async () => {
+    const { client, email } = await signup(app, 'Vera Verify');
+    await app.jobs.drain();
+    expect(lastMailTo(email, /verify/i)).toBeDefined();
+    expect((await client.get('/api/me/account')).data.emailVerified).toBe(false);
+    const token = tokenFrom(email, /verify/i);
+    expect((await client.post('/api/auth/verify-email', { token })).statusCode).toBe(200);
+    expect((await client.get('/api/me/account')).data.emailVerified).toBe(true);
+    // Links work once.
+    expect((await client.post('/api/auth/verify-email', { token })).statusCode).toBe(400);
+  });
+});
+
+describe('password reset', () => {
+  it('resets by email, signs out other sessions, and works once', async () => {
+    const { client: old, email } = await signup(app, 'Rex Reset');
+    expect((await new Client(app).post('/api/auth/forgot', { email })).statusCode).toBe(200);
+    // Unknown addresses get the same answer.
+    expect(
+      (await new Client(app).post('/api/auth/forgot', { email: 'nobody@example.com' })).statusCode,
+    ).toBe(200);
+    await app.jobs.drain();
+    const token = tokenFrom(email, /reset/i);
+
+    const fresh = new Client(app);
+    const reset = await fresh.post('/api/auth/reset', { token, password: 'a brand new password' });
+    expect(reset.data).toMatchObject({ ok: true, signedIn: true });
+    expect((await fresh.get('/api/auth/me')).statusCode).toBe(200);
+    expect((await old.get('/api/auth/me')).statusCode).toBe(401);
+    expect(
+      (await new Client(app).post('/api/auth/reset', { token, password: 'another password!' }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await new Client(app).post('/api/auth/login', { email, password: 'a brand new password' }))
+        .statusCode,
+    ).toBe(200);
+  });
+});
+
+describe('email change', () => {
+  it('confirms the new address before switching, and tells the old one', async () => {
+    const { client, email } = await signup(app, 'Eli Email');
+    const next = `eli-new-${Date.now()}@example.com`;
+    expect(
+      (await client.post('/api/me/email', { email: next, password: 'wrong' })).statusCode,
+    ).toBe(400);
+    expect((await client.post('/api/me/email', { email: next, password: PASSWORD })).data).toEqual({
+      pending: true,
+    });
+    await app.jobs.drain();
+    expect((await client.get('/api/me/account')).data.email).toBe(email);
+    expect(
+      (await client.post('/api/auth/confirm-email-change', { token: tokenFrom(next, /confirm/i) }))
+        .statusCode,
+    ).toBe(200);
+    await app.jobs.drain();
+    const account = (await client.get('/api/me/account')).data;
+    expect(account).toMatchObject({ email: next, emailVerified: true });
+    expect(lastMailTo(email, /changed/i)).toBeDefined();
+  });
+});
+
+describe('two-factor authentication', () => {
+  it('enrols, then requires a code (or a recovery code) to sign in', async () => {
+    const { client, email } = await signup(app, 'Tia Totp');
+    const setup = (await client.post('/api/me/2fa/setup', { password: PASSWORD })).data;
+    expect(setup.uri).toMatch(/^otpauth:\/\/totp\//);
+    expect((await client.post('/api/me/2fa/enable', { code: '000000' })).statusCode).toBe(400);
+    const enabled = await client.post('/api/me/2fa/enable', { code: codeFor(setup.secret) });
+    expect(enabled.data.recoveryCodes).toHaveLength(10);
+
+    const login = await new Client(app).post('/api/auth/login', { email, password: PASSWORD });
+    expect(login.data).toMatchObject({ mfaRequired: true });
+    expect(login.headers['set-cookie']).toBeUndefined();
+
+    const second = new Client(app);
+    expect(
+      (await second.post('/api/auth/mfa', { mfaToken: login.data.mfaToken, code: '123456' }))
+        .statusCode,
+    ).toBe(401);
+    // A wrong code doesn't burn the step.
+    expect(
+      (
+        await second.post('/api/auth/mfa', {
+          mfaToken: login.data.mfaToken,
+          code: codeFor(setup.secret),
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect((await second.get('/api/auth/me')).statusCode).toBe(200);
+
+    const recovery = enabled.data.recoveryCodes[0];
+    const login2 = await new Client(app).post('/api/auth/login', { email, password: PASSWORD });
+    expect(
+      (
+        await new Client(app).post('/api/auth/mfa', {
+          mfaToken: login2.data.mfaToken,
+          code: recovery,
+        })
+      ).statusCode,
+    ).toBe(200);
+    const login3 = await new Client(app).post('/api/auth/login', { email, password: PASSWORD });
+    expect(
+      (
+        await new Client(app).post('/api/auth/mfa', {
+          mfaToken: login3.data.mfaToken,
+          code: recovery,
+        })
+      ).statusCode,
+    ).toBe(401);
+
+    expect(
+      (
+        await client.post('/api/me/2fa/disable', {
+          password: PASSWORD,
+          code: codeFor(setup.secret),
+        })
+      ).statusCode,
+    ).toBe(200);
+    expect(
+      (await new Client(app).post('/api/auth/login', { email, password: PASSWORD })).data,
+    ).toEqual({ ok: true });
+  });
+
+  it('stores the secret encrypted', async () => {
+    const { client, email } = await signup(app, 'Enc Rypted');
+    const setup = (await client.post('/api/me/2fa/setup', { password: PASSWORD })).data;
+    const [row] = await app.db
+      .select({ s: users.totpSecret })
+      .from(users)
+      .where(eq(users.email, email));
+    expect(row!.s).toMatch(/^v1\./);
+    expect(row!.s).not.toContain(setup.secret);
+  });
+});
+
+describe('sessions', () => {
+  it('lists sessions and revokes them', async () => {
+    const { client, email } = await signup(app, 'Sam Sessions');
+    const other = new Client(app);
+    await other.post('/api/auth/login', { email, password: PASSWORD });
+    const list = (await client.get('/api/me/sessions')).data;
+    expect(list).toHaveLength(2);
+    expect(list.filter((s: { current: boolean }) => s.current)).toHaveLength(1);
+    const otherSession = list.find((s: { current: boolean }) => !s.current);
+    expect((await client.del(`/api/me/sessions/${otherSession.id}`)).statusCode).toBe(200);
+    expect((await other.get('/api/auth/me')).statusCode).toBe(401);
+    expect((await client.get('/api/auth/me')).statusCode).toBe(200);
+  });
+});
+
+describe('avatars', () => {
+  // 1×1 transparent PNG
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+    'base64',
+  );
+  const upload = (client: Client, body: Buffer, filename: string) => {
+    const boundary = '----ordo-test';
+    const payload = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: image/png\r\n\r\n`,
+      ),
+      body,
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
+    return app.inject({
+      method: 'POST',
+      url: '/api/me/avatar',
+      payload,
+      headers: {
+        cookie: client.cookie,
+        'content-type': `multipart/form-data; boundary=${boundary}`,
+      },
+    });
+  };
+
+  it('accepts images only and serves them through signed URLs', async () => {
+    const { client } = await signup(app, 'Ava Avatar');
+    expect((await upload(client, Buffer.from('<svg onload=alert(1)>'), 'x.svg')).statusCode).toBe(
+      400,
+    );
+    const res = await upload(client, png, 'me.png');
+    expect(res.statusCode).toBe(200);
+    const url = res.json().avatarUrl as string;
+    const file = await app.inject({ method: 'GET', url });
+    expect(file.statusCode).toBe(200);
+    expect(file.headers['content-type']).toBe('image/png');
+    expect(file.headers['content-security-policy']).toContain('sandbox');
+    expect(
+      (await app.inject({ method: 'GET', url: url.replace(/sig=.{4}/, 'sig=AAAA') })).statusCode,
+    ).toBe(404);
+    expect((await client.get('/api/auth/me')).data.avatarUrl).toMatch(/^\/api\/files\//);
+  });
+});
+
+describe('notification emails', () => {
+  it('batches unread notifications into one email, honouring preferences', async () => {
+    const owner = (await signup(app, 'Nora Notify')).client;
+    await owner.post('/api/workspaces', {
+      name: 'Mailers',
+      slug: 'mailers',
+      teamName: 'Mail',
+      teamKey: 'MAI',
+    });
+    const invite = (await owner.post('/api/w/mailers/invites', {})).data;
+    const { client: dev, email: devEmail } = await signup(app, 'Dev Digest', {
+      inviteToken: invite.token,
+    });
+    const devId = (await dev.get('/api/auth/me')).data.id;
+    const boot = (await owner.get('/api/w/mailers/bootstrap')).data;
+    await owner.post('/api/w/mailers/issues', {
+      teamId: boot.teams[0].id,
+      title: 'Fix the build',
+      assigneeId: devId,
+    });
+    await owner.post('/api/w/mailers/issues', {
+      teamId: boot.teams[0].id,
+      title: 'Ship it',
+      assigneeId: devId,
+    });
+    // Past the grace period.
+    await app.db
+      .update(notifications)
+      .set({ createdAt: sql`now() - interval '5 minutes'` })
+      .where(eq(notifications.userId, devId));
+    const before = inbox.length;
+    await runSchedulesNow();
+    const sent = inbox.slice(before).filter((m) => m.to === devEmail && !/verify/i.test(m.subject));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.subject).toBe('2 updates in Mailers');
+    expect(sent[0]!.text).toContain('Fix the build');
+
+    // Turning email off settles new notifications without sending.
+    await dev.patch('/api/me/preferences', { notifications: { emailDigest: 'off' } });
+    await owner.post('/api/w/mailers/issues', {
+      teamId: boot.teams[0].id,
+      title: 'Quiet one',
+      assigneeId: devId,
+    });
+    await app.db
+      .update(notifications)
+      .set({ createdAt: sql`now() - interval '5 minutes'` })
+      .where(eq(notifications.userId, devId));
+    const mark = inbox.length;
+    await runSchedulesNow();
+    expect(
+      inbox.slice(mark).filter((m) => m.to === devEmail && !/verify/i.test(m.subject)),
+    ).toHaveLength(0);
+    const pending = await app.db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, devId));
+    expect(pending.every((n) => n.emailedAt)).toBe(true);
+  });
+});

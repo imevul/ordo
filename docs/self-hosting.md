@@ -49,17 +49,26 @@ This runs `git pull --ff-only` (when a git remote is configured), rebuilds the i
 and recreates the containers. Database migrations run automatically when the app starts, inside a transaction;
 if one fails the app refuses to start and the previous data is untouched. **Take a backup before updating.**
 
+## Email
+
+Set `ORDO_SMTP_URL` and `ORDO_SMTP_FROM` in `.env` (see [configuration](configuration.md#email)) and `make up`.
+Any SMTP provider works (Postmark, SES, Mailgun, Fastmail, your own Postfix…). Without it, password resets and
+emailed invites aren't available — invite links can still be copied and shared by hand.
+
 ## Backups
 
-Back up two things: the database (below) and `ORDO_SECRET_KEY` from `.env`, which encrypts stored SSO and
-integration secrets. A database restored without its key loses those secrets (everything else still works).
+Back up three things: the database, uploaded files, and `ORDO_SECRET_KEY` from `.env` (it encrypts stored 2FA, SSO
+and integration secrets — a database restored without its key loses those secrets, everything else still works).
+`make backup` covers the first two: it writes `backups/ordo-<timestamp>.sql.gz` and, for local storage,
+`backups/ordo-<timestamp>.uploads.tar.gz`. With S3 storage, back up the bucket with your provider's tools.
 
 ```bash
 make backup                                   # → backups/ordo-20260131-120000.sql.gz
 make restore FILE=backups/ordo-20260131-120000.sql.gz
 ```
 
-Backups are plain `pg_dump` SQL files (with `DROP … IF EXISTS`), so a restore replaces the current data. Copy
+Backups are plain `pg_dump` SQL files (with `DROP … IF EXISTS`), so a restore replaces the current data; the
+matching uploads archive is restored too when it sits next to the SQL file. Copy
 the `backups/` directory off the machine. A simple cron entry:
 
 ```cron
@@ -128,7 +137,8 @@ works the same way. Sticky sessions are not required.
   `ORDO_ALLOW_PRIVATE_NETWORK_TARGETS` is on.
 - Keep `ORDO_SIGNUP_MODE=invite` on public instances.
 - Passwords are hashed with scrypt; session tokens and API keys are stored as SHA-256 hashes.
-- Login and sign-up are rate-limited per IP (20/min).
+- Login, sign-up, password reset and 2FA steps are rate-limited per IP (20/min).
+- Users can turn on TOTP two-factor authentication (with single-use recovery codes); TOTP secrets are encrypted.
 - Session cookies are `HttpOnly`, `SameSite=Lax`, and `Secure` when `ORDO_PUBLIC_URL` is HTTPS.
 - The container runs as the unprivileged `node` user.
 

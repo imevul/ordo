@@ -95,24 +95,79 @@ export function LoginPage() {
   const config = useConfig();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Set after a correct password when the account has two-factor authentication.
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const done = () => {
+    qc.removeQueries({ queryKey: keys.me });
+    if (redirect?.startsWith('/')) navigate({ to: redirect });
+    else navigate({ to: '/' });
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      await api.post('/auth/login', { email, password });
-      qc.removeQueries({ queryKey: keys.me });
-      if (redirect?.startsWith('/')) navigate({ to: redirect });
-      else navigate({ to: '/' });
+      if (mfaToken) {
+        await api.post('/auth/mfa', { mfaToken, code });
+        return done();
+      }
+      const res = await api.post<{ ok: boolean; mfaRequired?: boolean; mfaToken?: string }>(
+        '/auth/login',
+        {
+          email,
+          password,
+        },
+      );
+      if (res.mfaRequired && res.mfaToken) setMfaToken(res.mfaToken);
+      else done();
     } catch (err) {
       setError(message(err));
     } finally {
       setBusy(false);
     }
   };
+
+  if (mfaToken) {
+    return (
+      <AuthLayout kicker="two-factor" title="Enter your code.">
+        <form onSubmit={submit}>
+          <ErrorLine error={error} />
+          <p className="mb-5 text-[13px] text-muted">
+            Open your authenticator app and enter the 6-digit code for Ordo. Lost your device? Use
+            one of your recovery codes instead.
+          </p>
+          <TextField
+            label="Code"
+            autoComplete="one-time-code"
+            inputMode="text"
+            required
+            autoFocus
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+          />
+          <button className="btn btn-primary mt-2 w-full" disabled={busy}>
+            Verify <span className="arrow">→</span>
+          </button>
+          <button
+            type="button"
+            className="mt-4 w-full text-center font-mono text-[11px] tracking-[0.1em] text-index uppercase hover:text-text"
+            onClick={() => {
+              setMfaToken(null);
+              setCode('');
+              setError(null);
+            }}
+          >
+            ← back
+          </button>
+        </form>
+      </AuthLayout>
+    );
+  }
 
   return (
     <AuthLayout
@@ -153,7 +208,151 @@ export function LoginPage() {
         <button className="btn btn-primary mt-2 w-full" disabled={busy}>
           Sign in <span className="arrow">→</span>
         </button>
+        <Link
+          to="/forgot-password"
+          className="mt-4 block text-center font-mono text-[11px] tracking-[0.1em] text-index uppercase hover:text-text"
+        >
+          Forgot password?
+        </Link>
       </form>
+    </AuthLayout>
+  );
+}
+
+export function ForgotPasswordPage() {
+  const config = useConfig();
+  const [email, setEmail] = useState('');
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await api.post('/auth/forgot', { email });
+      setSent(true);
+    } catch (err) {
+      setError(message(err));
+    }
+  };
+  return (
+    <AuthLayout
+      kicker="password reset"
+      title="Forgot your password?"
+      footer={
+        <Link to="/login" search={{}} className="text-highlight hover:text-text">
+          Back to sign in
+        </Link>
+      }
+    >
+      {config.data && !config.data.emailEnabled ? (
+        <p className="text-[13.5px] text-muted">
+          Email isn't set up on this instance, so reset links can't be sent. Ask an administrator to
+          reset your password.
+        </p>
+      ) : sent ? (
+        <p className="text-[13.5px] text-muted">
+          If an account uses <span className="text-text">{email}</span>, a reset link is on its way.
+          It works for one hour.
+        </p>
+      ) : (
+        <form onSubmit={submit}>
+          <ErrorLine error={error} />
+          <TextField
+            label="Email"
+            type="email"
+            autoComplete="email"
+            required
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <button className="btn btn-primary mt-2 w-full">
+            Send reset link <span className="arrow">→</span>
+          </button>
+        </form>
+      )}
+    </AuthLayout>
+  );
+}
+
+export function ResetPasswordPage() {
+  const { token } = useParams({ from: '/reset-password/$token' });
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      const res = await api.post<{ signedIn: boolean }>('/auth/reset', { token, password });
+      qc.removeQueries({ queryKey: keys.me });
+      navigate({ to: res.signedIn ? '/' : '/login', search: {} as never });
+    } catch (err) {
+      setError(message(err));
+    }
+  };
+  return (
+    <AuthLayout kicker="password reset" title="Choose a new password.">
+      <form onSubmit={submit}>
+        <ErrorLine error={error} />
+        <TextField
+          label="New password"
+          type="password"
+          autoComplete="new-password"
+          minLength={8}
+          required
+          autoFocus
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+        />
+        <p className="-mt-2 mb-4 text-[12px] text-index">This signs you out everywhere else.</p>
+        <button className="btn btn-primary w-full">
+          Save password <span className="arrow">→</span>
+        </button>
+      </form>
+    </AuthLayout>
+  );
+}
+
+/** Landing page for links in verification emails (sign-up verification and email changes). */
+export function EmailLinkPage({ kind }: { kind: 'verify' | 'change' }) {
+  const { token } = useParams({ strict: false }) as { token: string };
+  const qc = useQueryClient();
+  const [state, setState] = useState<'working' | 'done' | 'failed'>('working');
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api
+      .post(kind === 'verify' ? '/auth/verify-email' : '/auth/confirm-email-change', { token })
+      .then(() => {
+        setState('done');
+        qc.removeQueries({ queryKey: keys.me });
+      })
+      .catch((err) => {
+        setState('failed');
+        setError(message(err));
+      });
+  }, [kind, token, qc]);
+  return (
+    <AuthLayout
+      kicker={kind === 'verify' ? 'verify email' : 'email change'}
+      title={
+        state === 'done' ? 'Confirmed.' : state === 'failed' ? "That didn't work." : 'Confirming…'
+      }
+      footer={
+        <Link to="/" className="text-highlight hover:text-text">
+          Continue to Ordo
+        </Link>
+      }
+    >
+      {state === 'done' && (
+        <p className="text-[13.5px] text-muted">
+          {kind === 'verify'
+            ? 'Your email address is verified.'
+            : 'Your account now uses the new address.'}
+        </p>
+      )}
+      <ErrorLine error={error} />
     </AuthLayout>
   );
 }

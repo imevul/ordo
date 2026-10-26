@@ -36,6 +36,7 @@ import { teamScope } from '../services/access.ts';
 import { audit, auditCtx } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { listCycles } from '../services/cycles.ts';
+import { signedFileUrl } from '../services/files.ts';
 import { listProjects } from '../services/projects.ts';
 import { toLabel, toView } from '../services/serialize.ts';
 import { listTeams } from '../services/teams.ts';
@@ -57,6 +58,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
             username: users.username,
             email: users.email,
             avatarColor: users.avatarColor,
+            avatarFileId: users.avatarFileId,
             role: workspaceMembers.role,
             joinedAt: workspaceMembers.joinedAt,
           })
@@ -119,9 +121,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
       workspace: workspace[0]!,
       role: ws.role,
       // Guests don't see other people's email addresses.
-      members: access.isGuest
-        ? members.map((m) => ({ ...m, email: m.id === user.id ? m.email : '' }))
-        : members,
+      members: members.map(({ avatarFileId, ...m }) => ({
+        ...m,
+        avatarUrl: signedFileUrl(app, avatarFileId),
+        // Guests don't see other people's email addresses.
+        email: access.isGuest && m.id !== user.id ? '' : m.email,
+      })),
       teams,
       labels: labelRows.map(toLabel),
       projects,

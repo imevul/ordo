@@ -18,6 +18,7 @@ export interface AuthUser {
   username: string;
   email: string;
   avatarColor: string;
+  avatarFileId: string | null;
   isInstanceAdmin: boolean;
 }
 
@@ -44,6 +45,7 @@ const userColumns = {
   username: users.username,
   email: users.email,
   avatarColor: users.avatarColor,
+  avatarFileId: users.avatarFileId,
   isInstanceAdmin: users.isInstanceAdmin,
 };
 

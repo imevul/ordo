@@ -19,6 +19,8 @@ export interface User {
   username: string;
   email: string;
   avatarColor: string;
+  /** Signed URL of the uploaded avatar, or null to show initials. */
+  avatarUrl: string | null;
 }
 
 export interface Me extends User {
@@ -264,6 +266,8 @@ export interface Bootstrap {
 export interface InstanceConfig {
   signupMode: 'open' | 'invite';
   hasUsers: boolean;
+  /** Whether SMTP is configured, i.e. password resets and email invites work. */
+  emailEnabled: boolean;
   allowWorkspaceCreation: boolean;
   version: string;
 }
@@ -291,12 +295,17 @@ export interface InstanceSettings {
   allowWorkspaceCreation: boolean;
   /** Let outbound requests (IdP discovery, webhooks, forge URLs) reach private/LAN addresses. */
   allowPrivateNetworkTargets: boolean;
+  /**
+   * Outgoing mail. `url` is smtp(s)://user:password@host:port; stored encrypted. Null disables email.
+   */
+  smtp: { url: string; from: string } | null;
 }
 
 export const INSTANCE_SETTING_DEFAULTS: InstanceSettings = {
   signupMode: 'invite',
   allowWorkspaceCreation: true,
   allowPrivateNetworkTargets: false,
+  smtp: null,
 };
 
 export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof InstanceSettings> {
@@ -304,4 +313,54 @@ export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof I
   value: InstanceSettings[K];
   /** Where the effective value comes from; `env` values are read-only in the UI. */
   source: 'env' | 'db' | 'default';
+}
+
+export type EmailDigest = 'off' | 'instant' | 'hourly' | 'daily';
+
+/** Per-user preferences. Missing keys fall back to DEFAULT_PREFERENCES. */
+export interface UserPreferences {
+  /** IANA zone, e.g. "Europe/Stockholm"; null follows the browser. */
+  timezone: string | null;
+  /** 0 = Sunday, 1 = Monday. */
+  weekStartsOn: 0 | 1;
+  notifications: {
+    /** How notification emails are batched; "off" sends none. */
+    emailDigest: EmailDigest;
+    /** Notification types that may be emailed. */
+    email: Record<NotificationType, boolean>;
+  };
+}
+
+export const DEFAULT_PREFERENCES: UserPreferences = {
+  timezone: null,
+  weekStartsOn: 1,
+  notifications: {
+    emailDigest: 'instant',
+    email: {
+      issue_assigned: true,
+      issue_unassigned: false,
+      issue_comment: true,
+      issue_mention: true,
+      issue_status_changed: false,
+      issue_priority_urgent: true,
+    },
+  },
+};
+
+export interface Account extends Me {
+  emailVerified: boolean;
+  hasPassword: boolean;
+  twoFactorEnabled: boolean;
+  avatarUrl: string | null;
+  preferences: UserPreferences;
+}
+
+export interface SessionInfo {
+  id: string;
+  current: boolean;
+  userAgent: string | null;
+  ip: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  sso: boolean;
 }

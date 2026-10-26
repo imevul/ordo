@@ -1,4 +1,4 @@
-# Development database only. The API and web client run on the host via `make dev`.
+# Development services: Postgres and a mail catcher. The API and web client run on the host via `make dev`.
 name: ordo-dev
 
 services:
@@ -17,6 +17,13 @@ services:
       interval: 2s
       timeout: 3s
       retries: 30
+
+  # Catches all mail sent in development: SMTP on :1025, inbox at http://localhost:8025
+  mail:
+    image: axllent/mailpit:v1.29
+    ports:
+      - "${ORDO_DEV_SMTP_PORT:-1025}:1025"
+      - "${ORDO_DEV_MAIL_UI_PORT:-8025}:8025"
 
 volumes:
   ordo-dev-db:

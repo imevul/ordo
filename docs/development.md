@@ -9,6 +9,8 @@ make dev          # = pnpm install + make dev-db + pnpm dev
 ```
 
 - Postgres runs in Docker on **localhost:5433** (`docker-compose.dev.yml`, user/password/db `ordo`).
+- **Mailpit** catches all email: SMTP on :1025, inbox at <http://localhost:8025>. `pnpm dev` points the API at it.
+- Uploads go to `apps/api/data/uploads`.
 - The API runs with `tsx watch` on **:3001**; it migrates the database on start.
 - Vite serves the web app on **:5173** and proxies `/api` and `/api/ws` to the API.
 

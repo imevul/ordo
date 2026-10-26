@@ -35,7 +35,7 @@ const memberOptions = (ws: WorkspaceData, withNone: boolean, noneLabel: string):
   {
     value: 'me',
     label: 'Me',
-    icon: <Avatar name={ws.me.name} color={ws.me.avatarColor} size={16} />,
+    icon: <Avatar name={ws.me.name} color={ws.me.avatarColor} src={ws.me.avatarUrl} size={16} />,
   },
   ...(withNone ? [{ value: 'none', label: noneLabel, icon: <EmptyAvatar size={16} /> }] : []),
   ...ws.members
@@ -43,7 +43,7 @@ const memberOptions = (ws: WorkspaceData, withNone: boolean, noneLabel: string):
     .map((m) => ({
       value: m.id,
       label: m.name,
-      icon: <Avatar name={m.name} color={m.avatarColor} size={16} />,
+      icon: <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={16} />,
     })),
 ];
 

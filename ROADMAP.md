@@ -56,12 +56,12 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ Access enforced on every read and write path, progress counts, search, notifications and realtime events
 - ✅ Role × endpoint test matrix and route inventory
 
-### Phase 3 — Jobs, email, storage, account area
+### Phase 3 — Jobs, email, storage, account area ✅
 
-- ⬜ Postgres job queue with retries, ordering, schedules and leases
-- ⬜ SMTP email: invites, password reset, verification, notification digests
-- ⬜ File storage (local volume or S3-compatible)
-- ⬜ Account area: avatar, email change, password reset, sessions, TOTP 2FA, notification preferences, connected accounts
+- ✅ Postgres job queue with retries, ordering, schedules and leases
+- ✅ SMTP email: password reset, verification, email change, security notices, notification digests (invites: Phase 4)
+- ✅ File storage (local volume or S3-compatible) with signed URLs
+- ✅ Account area: picture, email change, password reset, sessions, TOTP 2FA with recovery codes, notification preferences (connected accounts: Phase 5)
 
 ### Phase 4 — Organisation settings, invites, instance admin
 

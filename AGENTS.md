@@ -63,6 +63,12 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
 - **Outbound requests to URLs a user typed** must use `safeFetch` (`lib/safeFetch.ts`) with
   `allowPrivate: app.settings.get('allowPrivateNetworkTargets')`. Plain `fetch` is only for fixed, well-known hosts.
 - **Instance settings** come from `app.settings.get(key)` (env → DB → default), never from `app.env` directly.
+- **Background work** goes through the job queue: `enqueue(ctx.tx, name, payload)` inside the transaction, with the
+  handler registered in `src/jobs.ts` (`app.jobs.define` / `app.jobs.every`). Handlers must be idempotent (jobs
+  retry). Send email with `queueEmail(tx, to, template(...))`, never `app.mailer.send` from a request. Tests run jobs
+  with `await app.jobs.drain()` and capture mail with `captureMail(app)`.
+- **Uploads** go through `saveFile` (`services/files.ts`) and are exposed only via `signedFileUrl`. Never serve user
+  files from the web root or trust a client-supplied content type.
 - **Only enabled humans authenticate.** `users.kind` is `human | bot | placeholder`; `disabled_at` blocks sign-in and
   kills sessions. Authors and creators are nullable (deleted users).
 - **Issue changes go through `services/issues.ts`** (`createIssue`, `updateIssue`, `trashIssue`). They handle

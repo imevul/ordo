@@ -222,7 +222,14 @@ export function ProjectsPage() {
                     </span>
                     <HealthChip health={p.health} />
                     <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-muted">
-                      {lead && <Avatar name={lead.name} color={lead.avatarColor} size={16} />}
+                      {lead && (
+                        <Avatar
+                          name={lead.name}
+                          color={lead.avatarColor}
+                          src={lead.avatarUrl}
+                          size={16}
+                        />
+                      )}
                       <span className="truncate">{lead?.name.split(' ')[0] ?? '—'}</span>
                     </span>
                     <span className="font-mono text-[11.5px] text-muted">
@@ -367,7 +374,14 @@ function ProjectOverview({ project }: { project: Project }) {
             return (
               <div key={u.id} className="mt-4 border-b border-border-soft pb-4">
                 <div className="flex items-center gap-2 text-[12.5px]">
-                  {author && <Avatar name={author.name} color={author.avatarColor} size={18} />}
+                  {author && (
+                    <Avatar
+                      name={author.name}
+                      color={author.avatarColor}
+                      src={author.avatarUrl}
+                      size={18}
+                    />
+                  )}
                   <span className="font-medium">{author?.name ?? 'Former member'}</span>
                   <HealthChip health={u.health} />
                   <span className="ml-auto font-mono text-[11px] text-index">
@@ -410,7 +424,14 @@ function ProjectOverview({ project }: { project: Project }) {
                 onSelect={(v) => save.mutate({ leadId: v === 'none' ? null : v })}
                 trigger={
                   <button type="button" className="prop w-full justify-start">
-                    {lead ? <Avatar name={lead.name} color={lead.avatarColor} size={16} /> : null}
+                    {lead ? (
+                      <Avatar
+                        name={lead.name}
+                        color={lead.avatarColor}
+                        src={lead.avatarUrl}
+                        size={16}
+                      />
+                    ) : null}
                     {lead?.name ?? 'No lead'}
                   </button>
                 }

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 function bool(v: string | undefined, fallback: boolean) {
   if (v == null || v === '') return fallback;
@@ -42,7 +43,21 @@ export interface SettingsFromEnv {
   signupMode?: 'open' | 'invite';
   allowWorkspaceCreation?: boolean;
   allowPrivateNetworkTargets?: boolean;
+  smtp?: { url: string; from: string } | null;
 }
+
+export type StorageConfig =
+  | { driver: 'local'; dir: string }
+  | {
+      driver: 's3';
+      endpoint: string;
+      region: string;
+      bucket: string;
+      accessKeyId: string;
+      secretAccessKey: string;
+      /** Path-style URLs (endpoint/bucket/key) — what MinIO, Garage and most self-hosted S3 need. */
+      forcePathStyle: boolean;
+    };
 
 export interface Env {
   databaseUrl: string;
@@ -62,6 +77,8 @@ export interface Env {
   /** ORDO_SECRET_KEY_PREVIOUS; still accepted for decryption while rotating keys. */
   previousSecretKey: Buffer | null;
   settingsFromEnv: SettingsFromEnv;
+  /** Where uploads live. Configured by environment only: switching backends means moving files. */
+  storage: StorageConfig;
 }
 
 // Used only outside production when no key is configured, so dev and tests just work.
@@ -88,7 +105,28 @@ export function loadEnv(overrides: Partial<Env> = {}): Env {
       signupMode: signupMode === 'open' || signupMode === 'invite' ? signupMode : undefined,
       allowWorkspaceCreation: optionalBool(process.env.ORDO_ALLOW_WORKSPACE_CREATION),
       allowPrivateNetworkTargets: optionalBool(process.env.ORDO_ALLOW_PRIVATE_NETWORK_TARGETS),
+      smtp: process.env.ORDO_SMTP_URL
+        ? {
+            url: process.env.ORDO_SMTP_URL,
+            from: process.env.ORDO_SMTP_FROM || 'Ordo <ordo@localhost>',
+          }
+        : undefined,
     },
+    storage:
+      process.env.ORDO_STORAGE === 's3'
+        ? {
+            driver: 's3',
+            endpoint: (process.env.ORDO_S3_ENDPOINT ?? 'https://s3.amazonaws.com').replace(
+              /\/$/,
+              '',
+            ),
+            region: process.env.ORDO_S3_REGION ?? 'us-east-1',
+            bucket: process.env.ORDO_S3_BUCKET ?? 'ordo',
+            accessKeyId: process.env.ORDO_S3_ACCESS_KEY_ID ?? '',
+            secretAccessKey: process.env.ORDO_S3_SECRET_ACCESS_KEY ?? '',
+            forcePathStyle: bool(process.env.ORDO_S3_FORCE_PATH_STYLE, true),
+          }
+        : { driver: 'local', dir: resolve(process.env.ORDO_DATA_DIR ?? 'data', 'uploads') },
   };
   return { ...env, ...overrides };
 }

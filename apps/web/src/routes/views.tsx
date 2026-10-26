@@ -49,7 +49,14 @@ export function ViewsPage() {
                     <Lock size={11} /> private
                   </span>
                 )}
-                {owner && <Avatar name={owner.name} color={owner.avatarColor} size={16} />}
+                {owner && (
+                  <Avatar
+                    name={owner.name}
+                    color={owner.avatarColor}
+                    src={owner.avatarUrl}
+                    size={16}
+                  />
+                )}
                 <span className="hidden w-20 text-right font-mono text-[11px] text-index sm:block">
                   {relativeTime(v.updatedAt)}
                 </span>

@@ -25,12 +25,17 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
     ORDO_STATIC_DIR=/app/public \
-    ORDO_MIGRATIONS_DIR=/app/drizzle
+    ORDO_MIGRATIONS_DIR=/app/drizzle \
+    ORDO_DATA_DIR=/data
 
 COPY --from=build /src/apps/api/dist ./
 COPY --from=build /src/apps/api/drizzle ./drizzle
 COPY --from=build /src/apps/api/package.json ./package.json
 COPY --from=build /src/apps/web/dist ./public
+
+# Uploads (avatars, attachments) live here; mount a volume.
+RUN mkdir -p /data && chown node:node /data
+VOLUME /data
 
 USER node
 EXPOSE 3000

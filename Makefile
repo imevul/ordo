@@ -67,16 +67,21 @@ status: ps
 seed: ## Load the demo workspace (sign in as demo@ordo.test / ordo-demo-password)
 	$(COMPOSE) exec app node seed.mjs
 
-backup: ## Dump the database to backups/ordo-<timestamp>.sql.gz
+backup: ## Dump the database and uploads to backups/ordo-<timestamp>.*
 	@mkdir -p $(BACKUP_DIR)
-	@file=$(BACKUP_DIR)/ordo-$$(date +%Y%m%d-%H%M%S).sql.gz; \
-		$(COMPOSE) exec -T db sh -c 'pg_dump -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" --clean --if-exists' | gzip > $$file && \
-		echo "Backup written to $$file"
+	@stamp=$$(date +%Y%m%d-%H%M%S); \
+		$(COMPOSE) exec -T db sh -c 'pg_dump -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" --clean --if-exists' | gzip > $(BACKUP_DIR)/ordo-$$stamp.sql.gz && \
+		$(COMPOSE) exec -T app tar -C /data -czf - . > $(BACKUP_DIR)/ordo-$$stamp.uploads.tar.gz && \
+		echo "Backup written to $(BACKUP_DIR)/ordo-$$stamp.{sql,uploads.tar}.gz"
 
-restore: ## Restore a backup: make restore FILE=backups/ordo-….sql.gz
+restore: ## Restore a backup: make restore FILE=backups/ordo-….sql.gz (uploads too, if alongside)
 	@test -n "$(FILE)" || (echo "Usage: make restore FILE=backups/ordo-….sql.gz" && exit 1)
 	$(COMPOSE) stop app
 	gunzip -c $(FILE) | $(COMPOSE) exec -T db sh -c 'psql -q -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+	@uploads=$$(echo $(FILE) | sed 's/\.sql\.gz$$/.uploads.tar.gz/'); \
+		if [ -f "$$uploads" ]; then \
+			$(COMPOSE) run --rm -T --no-deps --entrypoint sh app -c 'rm -rf /data/* && tar -C /data -xzf -' < "$$uploads" && echo "Restored uploads from $$uploads"; \
+		fi
 	$(COMPOSE) start app
 
 psql: ## Open a psql shell in the database container

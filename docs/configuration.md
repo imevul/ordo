@@ -30,6 +30,34 @@ setting it pins the value and shows it as locked in the UI. Precedence: environm
 | `ORDO_ALLOW_WORKSPACE_CREATION`      | `true`   | Whether signed-in users who already belong to a workspace may create more. Users without a workspace can always create their first one.                                                                            |
 | `ORDO_ALLOW_PRIVATE_NETWORK_TARGETS` | `false`  | Let outbound requests Ordo makes on an admin's behalf (SSO discovery, webhooks, forge and chat integrations) reach loopback, private and link-local addresses. Turn on when your IdP or Forgejo lives on your LAN. |
 
+## Email
+
+Ordo sends password resets, email verification, invites, security notices and notification digests by email.
+Without SMTP everything else works; those features are simply unavailable (the UI says so).
+
+| Variable         | Default                 | Description                                                                                                                                                                                        |
+| ---------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ORDO_SMTP_URL`  | empty                   | `smtp://user:pass@host:587` (STARTTLS) or `smtps://user:pass@host:465`. URL-encode special characters in the password. Leave empty to configure SMTP in the admin area instead (stored encrypted). |
+| `ORDO_SMTP_FROM` | `Ordo <ordo@localhost>` | Sender, e.g. `Ordo <ordo@example.com>`.                                                                                                                                                            |
+
+## Uploads
+
+Profile pictures (and, later, attachments) are stored on local disk by default — the `ordo-data` Docker volume
+mounted at `/data`. Any S3-compatible object store works instead. Storage is configured by environment only:
+switching backends means moving the files yourself.
+
+| Variable                                              | Default                               | Description                                                                                                      |
+| ----------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `ORDO_STORAGE`                                        | `local`                               | `local` or `s3`.                                                                                                 |
+| `ORDO_DATA_DIR`                                       | `/data` in the image, `./data` in dev | Root for local uploads (`<dir>/uploads`).                                                                        |
+| `ORDO_S3_ENDPOINT`                                    | `https://s3.amazonaws.com`            | e.g. `http://minio:9000`, `https://<account>.r2.cloudflarestorage.com`.                                          |
+| `ORDO_S3_REGION`                                      | `us-east-1`                           | Region used for signing (`auto` for R2).                                                                         |
+| `ORDO_S3_BUCKET`                                      | `ordo`                                | Bucket name; it must exist.                                                                                      |
+| `ORDO_S3_ACCESS_KEY_ID` / `ORDO_S3_SECRET_ACCESS_KEY` | —                                     | Credentials with get/put/delete on the bucket.                                                                   |
+| `ORDO_S3_FORCE_PATH_STYLE`                            | `true`                                | Path-style URLs (`endpoint/bucket/key`); needed by MinIO and Garage. Set `false` for virtual-hosted AWS buckets. |
+
+Files are served through Ordo with short-lived signed URLs; the bucket never needs to be public.
+
 ## Key rotation
 
 1. Move the current value of `ORDO_SECRET_KEY` to `ORDO_SECRET_KEY_PREVIOUS`.

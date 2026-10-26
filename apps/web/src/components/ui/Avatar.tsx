@@ -1,7 +1,32 @@
 import { initials } from '../../lib/format.ts';
 
-export function Avatar({ name, color, size = 18 }: { name: string; color: string; size?: number }) {
+/** A chamfered square: the uploaded picture when there is one, otherwise initials on the user's colour. */
+export function Avatar({
+  name,
+  color,
+  src,
+  size = 18,
+}: {
+  name: string;
+  color: string;
+  src?: string | null;
+  size?: number;
+}) {
   const cut = Math.max(3, Math.round(size / 5));
+  const clipPath = `polygon(0 0, calc(100% - ${cut}px) 0, 100% ${cut}px, 100% 100%, ${cut}px 100%, 0 calc(100% - ${cut}px))`;
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        title={name}
+        width={size}
+        height={size}
+        className="flex-none object-cover"
+        style={{ width: size, height: size, clipPath, background: color }}
+      />
+    );
+  }
   return (
     <span
       title={name}
@@ -12,7 +37,7 @@ export function Avatar({ name, color, size = 18 }: { name: string; color: string
         fontSize: Math.max(8, Math.round(size * 0.42)),
         background: color,
         color: '#09090b',
-        clipPath: `polygon(0 0, calc(100% - ${cut}px) 0, 100% ${cut}px, 100% 100%, ${cut}px 100%, 0 calc(100% - ${cut}px))`,
+        clipPath,
       }}
     >
       {initials(name)}

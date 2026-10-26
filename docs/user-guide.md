@@ -122,5 +122,16 @@ command menu after two characters.
 
 ## Your account
 
-**Settings → Profile** for your name, `@username` and avatar color; **Password** signs out other sessions on
-change. **API keys** lets you create personal keys for scripts and integrations ([API docs](api.md)).
+Open **Settings** (workspace menu, or `G` then `S`):
+
+- **Profile** — name, `@username`, picture (cropped to a square in your browser) or initials colour, time zone and
+  first day of the week. Your email address: change it (the new address must be confirmed by a link when email is
+  set up) and see whether it's verified.
+- **Security** — change your password (this signs out your other sessions); turn on **two-factor authentication**
+  with any authenticator app, and keep the ten recovery codes somewhere safe — each works once if you lose your
+  device; see and revoke your **sessions**.
+- **Notifications** — everything lands in your Inbox; choose which kinds are also emailed and how often (within a few
+  minutes, hourly, daily, or never). Anything you read in the app first isn't emailed.
+- **API keys** — personal keys for scripts and integrations ([API docs](api.md)).
+
+Forgot your password? Use **Forgot password?** on the sign-in page (needs email to be set up on the instance).

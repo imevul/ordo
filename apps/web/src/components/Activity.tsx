@@ -189,7 +189,14 @@ function CommentItem({
     <div className="panel panel-sm my-2">
       <div className="p-3.5">
         <div className="flex items-center gap-2 text-[12.5px]">
-          {author && <Avatar name={author.name} color={author.avatarColor} size={18} />}
+          {author && (
+            <Avatar
+              name={author.name}
+              color={author.avatarColor}
+              src={author.avatarUrl}
+              size={18}
+            />
+          )}
           <span className="font-medium">{author?.name ?? 'Former member'}</span>
           <span className="text-index" title={longDate(comment.createdAt)}>
             {relativeTime(comment.createdAt)}
