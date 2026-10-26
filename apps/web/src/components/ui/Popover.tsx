@@ -42,10 +42,13 @@ export function Popover({
     setUncontrolled(v);
     onOpenChange?.(v);
   };
-  const { refs, floatingStyles, context } = useFloating({
+  const { refs, floatingStyles, context, isPositioned } = useFloating({
     open,
     onOpenChange: setOpen,
     placement,
+    // Position with top/left: the pop-in animation animates `transform`, which would
+    // otherwise override Floating UI's translate() and pin the panel at (0,0) mid-animation.
+    transform: false,
     whileElementsMounted: autoUpdate,
     middleware: [
       offset(6),
@@ -87,9 +90,17 @@ export function Popover({
           <FloatingFocusManager context={context} modal={false} initialFocus={-1}>
             <div
               ref={refs.setFloating}
-              style={{ ...floatingStyles, width, zIndex: 60 }}
+              // Invisible until Floating UI has measured it; otherwise it flashes at (0,0) for a frame.
+              // Opacity (not visibility) so autofocused inputs inside can still take focus.
+              style={{
+                ...floatingStyles,
+                width,
+                zIndex: 60,
+                opacity: isPositioned ? 1 : 0,
+                pointerEvents: isPositioned ? undefined : 'none',
+              }}
               {...getFloatingProps({ onClick: (e: React.MouseEvent) => e.stopPropagation() })}
-              className={`panel panel-sm panel-raised animate-pop flex flex-col overflow-hidden ${className}`}
+              className={`panel panel-sm panel-raised flex flex-col overflow-hidden ${isPositioned ? 'animate-pop' : ''} ${className}`}
             >
               {typeof children === 'function' ? children(() => setOpen(false)) : children}
             </div>
