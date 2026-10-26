@@ -1,15 +1,16 @@
 import { createIssueLinkSchema } from '@ordo/shared';
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { externalAccounts, integrations, users } from '../db/schema.ts';
 import { getProvider } from '../integrations/registry.ts';
 import type { IntegrationProvider, IntegrationRow } from '../integrations/types.ts';
 import { requireAccess, requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
-import { badRequest, conflict, isUniqueViolation, parse } from '../lib/errors.ts';
+import { badRequest, conflict, isUniqueViolation, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { canReadTeam } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
+import { chatServices, createLinkCode } from '../services/chat.ts';
 import {
   createIntegration,
   integrationContext,
@@ -257,7 +258,13 @@ export async function externalAccountRoutes(app: FastifyInstance) {
     const claimed = await db
       .select()
       .from(externalAccounts)
-      .where(and(eq(externalAccounts.workspaceId, ws.id), eq(externalAccounts.userId, user.id)));
+      .where(
+        and(
+          eq(externalAccounts.workspaceId, ws.id),
+          eq(externalAccounts.userId, user.id),
+          isNull(externalAccounts.integrationId),
+        ),
+      );
     return {
       services: [...hosts.values()],
       accounts: claimed.map((a) => ({
@@ -273,6 +280,9 @@ export async function externalAccountRoutes(app: FastifyInstance) {
     const ws = requireWorkspace(req);
     const user = requireUser(req);
     const input = parse(claimSchema, req.body);
+    // Chat accounts are proven with a link code, never claimed.
+    if (!getProvider(input.provider)?.accountHost)
+      throw badRequest(`${input.provider} usernames can't be claimed`);
     const login = input.username.toLowerCase();
     try {
       const [row] = await db
@@ -317,8 +327,70 @@ export async function externalAccountRoutes(app: FastifyInstance) {
           eq(externalAccounts.id, id),
           eq(externalAccounts.workspaceId, ws.id),
           eq(externalAccounts.userId, user.id),
+          isNull(externalAccounts.integrationId),
         ),
       );
     return { ok: true };
   });
+
+  // ─── chat accounts, proven with a link code ───────────────────────────
+
+  app.get('/me/chat-accounts', async (req) => ({
+    services: await chatServices(app, requireWorkspace(req).id, requireUser(req).id),
+  }));
+
+  app.post('/me/chat-accounts/:integrationId/code', async (req) => {
+    const ws = requireWorkspace(req);
+    const user = requireUser(req);
+    const { integrationId } = req.params as { integrationId: string };
+    const row = await loadIntegration(db, ws.id, integrationId);
+    const provider = getProvider(row.provider);
+    if (!provider?.chat || row.status === 'disabled') throw notFound('Integration');
+    return {
+      code: await createLinkCode(app, user.id, ws.id, row.id),
+      hint: provider.chat.linkHint(row),
+      expiresInMinutes: 15,
+    };
+  });
+
+  app.patch('/me/chat-accounts/:id', async (req) => {
+    const ws = requireWorkspace(req);
+    const user = requireUser(req);
+    const { id } = req.params as { id: string };
+    const { notify } = parse(z.object({ notify: z.boolean() }), req.body);
+    const [row] = await db
+      .update(externalAccounts)
+      .set({ data: sql`${externalAccounts.data} || ${JSON.stringify({ notify })}::jsonb` })
+      .where(and(...ownChatAccount(id, ws.id, user.id)))
+      .returning({ id: externalAccounts.id });
+    if (!row) throw notFound('Account');
+    return { ok: true };
+  });
+
+  app.delete('/me/chat-accounts/:id', async (req) => {
+    const ws = requireWorkspace(req);
+    const user = requireUser(req);
+    const { id } = req.params as { id: string };
+    return mutate(app, req, async (ctx) => {
+      const [row] = await ctx.tx
+        .delete(externalAccounts)
+        .where(and(...ownChatAccount(id, ws.id, user.id)))
+        .returning();
+      if (!row) throw notFound('Account');
+      await auditCtx(ctx, {
+        action: 'chat_account.unlinked',
+        targetType: 'integration',
+        targetId: row.integrationId ?? undefined,
+        data: { provider: row.provider, account: row.username ?? row.externalId },
+      });
+      return { ok: true };
+    });
+  });
 }
+
+const ownChatAccount = (id: string, workspaceId: string, userId: string) => [
+  eq(externalAccounts.id, id),
+  eq(externalAccounts.workspaceId, workspaceId),
+  eq(externalAccounts.userId, userId),
+  isNotNull(externalAccounts.integrationId),
+];

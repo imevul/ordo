@@ -546,7 +546,14 @@ export const authTokens = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     kind: text('kind')
-      .$type<'password_reset' | 'email_verify' | 'email_change' | 'mfa' | 'integration_setup'>()
+      .$type<
+        | 'password_reset'
+        | 'email_verify'
+        | 'email_change'
+        | 'mfa'
+        | 'integration_setup'
+        | 'chat_link'
+      >()
       .notNull(),
     tokenHash: text('token_hash').notNull().unique(),
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
@@ -897,6 +904,16 @@ export const externalAccounts = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * Chat accounts belong to one integration and are proven by a link code sent from them, so
+     * Ordo may message them privately. Forge usernames are claimed, never verified (null).
+     */
+    integrationId: uuid('integration_id').references(() => integrations.id, {
+      onDelete: 'cascade',
+    }),
+    verifiedAt: ts('verified_at'),
+    /** Chat: whether to send personal notifications, and the direct-message channel once known. */
+    data: jsonb('data').$type<{ notify?: boolean; dmChannel?: string }>().notNull().default({}),
     createdAt: createdAt(),
   },
   (t) => [

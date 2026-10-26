@@ -12,7 +12,7 @@ import type {
   IntegrationRow,
   Secrets,
 } from '../integrations/types.ts';
-import { randomToken } from '../lib/crypto.ts';
+import { randomToken, sha256 } from '../lib/crypto.ts';
 import { notFound } from '../lib/errors.ts';
 import { enqueue, type JobContext } from '../lib/jobs/index.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
@@ -85,7 +85,7 @@ export function toIntegration(app: FastifyInstance, row: IntegrationRow): Integr
     config: row.config,
     // App-based integrations share their app's webhook URL instead.
     inboundUrl:
-      provider?.handleInbound && !row.appId
+      provider?.handleInbound && !row.appId && !provider.wantsConnection?.(row)
         ? `${app.env.publicUrl}/api/hooks/${row.provider}/${row.inboundToken}`
         : null,
     createdAt: row.createdAt,
@@ -183,7 +183,7 @@ export async function loadIntegration(db: DbOrTx, workspaceId: string, id: strin
 }
 
 /** Runs a provider hook, keeping the integration's status and last error current. */
-async function track(app: FastifyInstance, row: IntegrationRow, fn: () => Promise<void>) {
+export async function track(app: FastifyInstance, row: IntegrationRow, fn: () => Promise<void>) {
   try {
     await fn();
     await app.db
@@ -206,7 +206,7 @@ async function track(app: FastifyInstance, row: IntegrationRow, fn: () => Promis
   }
 }
 
-async function activeIntegration(app: FastifyInstance, id: string) {
+export async function activeIntegration(app: FastifyInstance, id: string) {
   const [row] = await app.db.select().from(integrations).where(eq(integrations.id, id));
   if (!row || row.status === 'disabled') return null;
   const provider = getProvider(row.provider);
@@ -263,6 +263,22 @@ export async function runIntegrationEvent(
   const ictx = integrationContext(app, found.row, job.log);
   await track(app, found.row, () =>
     found.provider.onDomainEvent!(ictx, { ...payload!, teamIds: event.teamIds }),
+  );
+}
+
+/** Queues an inbound delivery (from a webhook or a long-lived connection), once per delivery id. */
+export async function queueInbound(
+  app: FastifyInstance,
+  provider: IntegrationProvider,
+  row: IntegrationRow,
+  req: InboundRequest,
+) {
+  const deliveryId = provider.deliveryId?.(req) ?? sha256(req.body);
+  await enqueue(
+    app.db,
+    'integration.inbound',
+    { integrationId: row.id, req },
+    { dedupeKey: `in:${row.id}:${deliveryId}`, orderingKey: `integration:${row.id}` },
   );
 }
 

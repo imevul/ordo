@@ -13,8 +13,9 @@ export async function createToken(
   kind: TokenKind,
   ttlMinutes: number,
   data: Record<string, unknown> = {},
+  /** A caller-made token, e.g. a short code people type; it must be unguessable within its TTL. */
+  token = randomToken(),
 ) {
-  const token = randomToken();
   // A new token of the same kind replaces older unused ones (e.g. a second reset request).
   await db
     .delete(authTokens)

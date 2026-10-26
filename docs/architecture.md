@@ -156,6 +156,28 @@ and removes on uninstall; `install` reconciles, so it reruns after settings chan
 `integrations.state`. The GitHub App lives in `integration_apps`: its private key signs a JWT for short-lived
 installation tokens, and its single webhook URL resolves to integrations by installation id.
 
+### Chat and long-lived connections
+
+`services/chat.ts` holds what Slack, Discord, Matrix and Telegram share; providers (`integrations/slack.ts`,
+`discord.ts`, `matrix.ts`, `telegram.ts`) translate payloads into a `ChatIncoming` and render a `ChatMessage`
+through their `chat` adapter (`post`, `direct`, `linkHint`).
+
+- **Feeds**: `chatFeed` (a provider's `onDomainEvent`) turns an event into one `chat.post` job per subscribed channel,
+  so a failing channel retries alone. Channels without teams only get public teams.
+- **Accounts**: a code from `createLinkCode` (an `auth_tokens` row of kind `chat_link`, stored hashed, 15 minutes)
+  sent from a chat account proves both sides; it becomes an `external_accounts` row with `integration_id` and
+  `verified_at`. Only verified accounts act as their user (`chatActor`, with that user's computed access) or get
+  direct messages: `notify()` queues a `chat.notify` job per linked account, which re-checks team access before
+  sending.
+- **Synchronous answers**: `ackInbound` lets a provider answer inside the webhook request (Slack's URL challenge,
+  Discord's ping and deferred response); the real answer follows from the job (Slack `response_url`, Discord's
+  interaction webhook).
+- **Connections** (`services/connectors.ts`): providers with `connect` (Slack Socket Mode, the Discord gateway,
+  Telegram long polling, Matrix `/sync`) run under the supervisor. Every 10 s each server takes or renews a lease
+  (`leases`, `connector:<integration id>`, 45 s) per wanted connection, starts what it holds, stops what it lost or
+  what changed (`updated_at`), and restarts failed ones with backoff. Connections hand deliveries to the same
+  `integration.inbound` queue as webhooks, with the same idempotency keys, so a takeover can't double-process.
+
 ## Background work
 
 `lib/jobs` is a job queue on Postgres itself (no Redis):

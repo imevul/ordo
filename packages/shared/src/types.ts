@@ -1,5 +1,6 @@
 import type {
   AuditAction,
+  ChatEventKind,
   DomainEventType,
   EstimateScale,
   FavoriteKind,
@@ -538,6 +539,38 @@ export interface IntegrationProviderInfo {
   name: string;
   description: string;
   category: 'forge' | 'chat' | 'other';
+}
+
+/** A chat channel that receives a feed of issue activity. */
+export interface ChatChannel {
+  /** The channel's id at the provider (Slack C…, Discord snowflake, Matrix !room:server, Telegram chat id). */
+  id: string;
+  /** Shown in Ordo only. */
+  name?: string;
+  /** Teams whose activity is posted; empty means every public team. */
+  teamIds: string[];
+  events: ChatEventKind[];
+  /** Team for issues created from this channel with `new`, unless the message names one. */
+  defaultTeamId?: string | null;
+}
+
+/** One person's verified account on a chat integration. */
+export interface ChatAccount {
+  id: string;
+  username: string | null;
+  /** Personal notifications as direct messages. */
+  notify: boolean;
+  createdAt: string;
+}
+
+/** A chat integration as people see it under Account → Connected accounts. */
+export interface ChatService {
+  integrationId: string;
+  provider: string;
+  name: string;
+  /** How to send the link code, e.g. "/ordo link CODE" or "a direct message to @ordo_bot". */
+  linkHint: string;
+  accounts: ChatAccount[];
 }
 
 export interface Integration {

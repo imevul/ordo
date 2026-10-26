@@ -1,6 +1,7 @@
 import { lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { sessions } from './db/schema.ts';
+import { runChatNotification, runChatPost } from './services/chat.ts';
 import { sendNotificationEmails } from './services/digest.ts';
 import { dispatchEvents, pruneEvents } from './services/events.ts';
 import {
@@ -37,6 +38,10 @@ export function registerJobs(app: FastifyInstance) {
     runInbound(app, p, job),
   );
   jobs.define<{ integrationId: string }>('integration.poll', (p, job) => runPoll(app, p, job));
+  jobs.define<Parameters<typeof runChatPost>[1]>('chat.post', (p, job) => runChatPost(app, p, job));
+  jobs.define<Parameters<typeof runChatNotification>[1]>('chat.notify', (p, job) =>
+    runChatNotification(app, p, job),
+  );
   jobs.define('integrations.poll', () => schedulePolls(app));
   jobs.every('integrations.poll', 60);
 

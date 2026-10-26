@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  CHAT_EVENT_KINDS,
   DOMAIN_EVENT_TYPES,
   ESTIMATE_SCALE_NAMES,
   FAVORITE_KINDS,
@@ -455,3 +456,13 @@ export const createIssueLinkSchema = z.object({
   url: z.url().max(2000),
   title: z.string().trim().max(300).optional(),
 });
+
+/** A chat channel's feed subscription, stored in a chat integration's `config.channels`. */
+export const chatChannelSchema = z.object({
+  id: z.string().trim().min(1, 'Every channel needs an id').max(200),
+  name: z.string().trim().max(100).optional(),
+  teamIds: z.array(z.uuid()).max(100).default([]),
+  events: z.array(z.enum(CHAT_EVENT_KINDS)).max(CHAT_EVENT_KINDS.length).default([]),
+  defaultTeamId: z.uuid().nullish(),
+});
+export const chatChannelsSchema = z.array(chatChannelSchema).max(100);

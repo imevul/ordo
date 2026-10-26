@@ -25,6 +25,59 @@ export interface IntegrationContext {
   saveState(patch: Record<string, unknown>): Promise<void>;
 }
 
+/**
+ * An answer a provider must give inside the webhook request itself (Slack's URL challenge,
+ * Discord's interaction ack). `process: false` answers without queueing the delivery.
+ */
+export interface InboundAck {
+  status?: number;
+  body?: unknown;
+  process?: boolean;
+}
+
+/** What a long-lived connection hands back: deliveries, processed like inbound webhooks. */
+export interface ConnectionIO {
+  deliver(req: InboundRequest): Promise<void>;
+  /** Call once connected: clears an earlier connection error. */
+  connected(): Promise<void>;
+  /** Aborted when the lease is lost, the integration changes or the server stops. */
+  signal: AbortSignal;
+}
+
+/** A message posted to chat, rendered by each provider in its own format. */
+export interface ChatMessage {
+  /** What happened, plain text: "Ada moved ENG-12 to Done". */
+  headline: string;
+  /** The thing it happened to, linked to `url`: "ENG-12 Fix the flux capacitor". */
+  title?: string;
+  url?: string;
+  /** An excerpt (a comment, a description), plain text. */
+  body?: string;
+  /** A footnote: "Todo · High · Bob". */
+  context?: string;
+  /** Accent for providers with coloured cards. */
+  color?: string;
+}
+
+/** A chat account as providers need it to message someone privately. */
+export interface ChatRecipient {
+  externalId: string;
+  dmChannel?: string;
+}
+
+/** What chat providers add: posting to channels and to people. */
+export interface ChatAdapter {
+  post(ictx: IntegrationContext, channel: string, message: ChatMessage): Promise<void>;
+  /** Messages one person; returns the direct-message channel to remember, when it opened one. */
+  direct(
+    ictx: IntegrationContext,
+    to: ChatRecipient,
+    message: ChatMessage,
+  ): Promise<string | undefined>;
+  /** How people send their link code, shown under Account → Connected accounts. */
+  linkHint(integration: IntegrationRow): string;
+}
+
 /** A domain event as integrations see it: the webhook payload plus the teams it belongs to. */
 export type IntegrationEvent = WebhookPayload & { teamIds: string[] };
 
@@ -57,6 +110,12 @@ export interface IntegrationProvider extends IntegrationProviderInfo {
   verify?(req: InboundRequest, integration: IntegrationRow, secrets: Secrets): boolean;
   /** Idempotency key for a delivery (e.g. `X-GitHub-Delivery`); defaults to a hash of the body. */
   deliveryId?(req: InboundRequest): string | null;
+  /** Answers the webhook request synchronously, before (or instead of) queueing it. */
+  ackInbound?(
+    req: InboundRequest,
+    integration: IntegrationRow,
+    secrets: Secrets,
+  ): InboundAck | null;
   /** Processes an inbound delivery, in a job. */
   handleInbound?(ictx: IntegrationContext, req: InboundRequest): Promise<void>;
 
@@ -68,6 +127,16 @@ export interface IntegrationProvider extends IntegrationProviderInfo {
    * they can claim them under Account → Connected accounts and get credit for their work.
    */
   accountHost?(integration: IntegrationRow): string;
+
+  /**
+   * A long-lived connection (a socket, a long poll) for services that can't reach this instance.
+   * Runs on one server at a time under a lease, restarted with backoff when it ends or throws.
+   */
+  connect?(ictx: IntegrationContext, io: ConnectionIO): Promise<void>;
+  /** Whether this integration, as configured, wants `connect` running. */
+  wantsConnection?(integration: IntegrationRow): boolean;
+
+  chat?: ChatAdapter;
 
   /** For services that can't reach this instance: fetch what changed. */
   poll?(ictx: IntegrationContext): Promise<void>;

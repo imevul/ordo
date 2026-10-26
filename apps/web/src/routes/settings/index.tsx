@@ -9,6 +9,7 @@ import {
   NotificationsSection,
   SecuritySection,
 } from './account.tsx';
+import { ChatAccountsCard } from './chat.tsx';
 import { GitAccountsCard, IntegrationsSection } from './integrations.tsx';
 import { LabelsSection } from './labels.tsx';
 import { AuthenticationSection, ConnectedAccountsCard } from './sso.tsx';
@@ -124,6 +125,7 @@ export function SettingsPage() {
       <>
         <ConnectedAccountsCard />
         <GitAccountsCard />
+        <ChatAccountsCard />
       </>
     ) : section === 'org-security' ? (
       <OrgSecuritySection />

@@ -85,6 +85,13 @@
       "when": 1793037858456,
       "tag": "0011_backfill_bot_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1793041853786,
+      "tag": "0012_chat",
+      "breakpoints": true
     }
   ]
 }

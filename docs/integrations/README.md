@@ -9,13 +9,18 @@ webhooks Ordo created; links on issues stay, and its past changes keep its name,
 | [GitHub](github.md)            | Links PRs, branches and commits; moves issues as PRs progress     |
 | [GitLab](gitlab.md)            | The same for merge requests, on GitLab.com or self-managed GitLab |
 | [Forgejo / Gitea](forgejo.md)  | The same for Forgejo, Gitea and Codeberg                          |
+| [Slack](slack.md)              | Channel feeds, notifications by DM, issues from messages, unfurls |
+| [Discord](discord.md)          | The same on Discord                                               |
+| [Matrix](matrix.md)            | The same on any Matrix homeserver                                 |
+| [Telegram](telegram.md)        | The same with a Telegram bot                                      |
 | [Webhooks](../api.md#webhooks) | Your own endpoints, for anything else                             |
 
-Chat (Slack, Discord, Matrix, Telegram) and importers (Jira, Linear, GitHub Issues, CSV) are on the
-[roadmap](../../ROADMAP.md).
+What the chat integrations share (feeds, linking accounts, commands) is in [chat](chat.md). Importers (Jira, Linear,
+GitHub Issues, CSV) are on the [roadmap](../../ROADMAP.md).
 
 ## Public or private instances
 
+Every integration works when Ordo can't be reached from outside; for chat, see [behind NAT](chat.md#behind-nat).
 Every forge integration works in two modes:
 
 - **Webhooks** — the forge tells Ordo about changes the moment they happen. The forge must be able to reach

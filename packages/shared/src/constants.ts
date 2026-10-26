@@ -136,6 +136,8 @@ export const AUDIT_ACTIONS = [
   'integration.created',
   'integration.updated',
   'integration.deleted',
+  'chat_account.linked',
+  'chat_account.unlinked',
   'api_key.created',
   'api_key.revoked',
   'workspace.created',
@@ -232,6 +234,16 @@ export const DOMAIN_EVENT_TYPES = [
   'cycle.deleted',
 ] as const;
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
+
+/** What a chat channel can subscribe to. `issue.status` includes `issue.completed`. */
+export const CHAT_EVENT_KINDS = [
+  'issue.created',
+  'issue.status',
+  'issue.completed',
+  'comment.created',
+  'project_update.created',
+] as const;
+export type ChatEventKind = (typeof CHAT_EVENT_KINDS)[number];
 
 export const ISSUE_LINK_KINDS = ['pull_request', 'branch', 'commit', 'message', 'link'] as const;
 export type IssueLinkKind = (typeof ISSUE_LINK_KINDS)[number];

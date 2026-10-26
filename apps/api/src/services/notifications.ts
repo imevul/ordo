@@ -2,6 +2,7 @@ import type { NotificationType } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import { issueSubscribers, issues, notifications } from '../db/schema.ts';
 import { usersWithTeamAccess } from './access.ts';
+import { queueChatNotifications } from './chat.ts';
 import { type Ctx, emit } from './context.ts';
 
 export async function subscribe(ctx: Ctx, issueId: string, userIds: (string | null | undefined)[]) {
@@ -59,6 +60,7 @@ export async function notify(
       })),
     )
     .returning({ id: notifications.id, userId: notifications.userId });
+  await queueChatNotifications(ctx.tx, ctx.workspaceId, rows);
   for (const r of rows)
     emit(ctx, {
       kind: 'notification',

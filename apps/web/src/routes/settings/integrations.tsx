@@ -1,6 +1,15 @@
 import type { Integration, IntegrationProviderInfo } from '@ordo/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AtSign, GitPullRequest, Pencil, Plug, Power, Trash2, X } from 'lucide-react';
+import {
+  AtSign,
+  GitPullRequest,
+  MessageSquare,
+  Pencil,
+  Plug,
+  Power,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
@@ -8,6 +17,7 @@ import { Spinner } from '../../components/PageHeader.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
+import { CHAT_FORMS, ChatForm } from './chat.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
@@ -103,6 +113,7 @@ export function IntegrationsSection() {
   if (!ws.isAdmin) return <p className="text-muted">Only admins can manage integrations.</p>;
   if (!data) return <Spinner />;
   const providerName = (k: string) => data.providers.find((p) => p.key === k)?.name ?? k;
+  const isChat = (k: string) => data.providers.find((p) => p.key === k)?.category === 'chat';
 
   return (
     <>
@@ -110,10 +121,17 @@ export function IntegrationsSection() {
         {data.integrations.map((i) => (
           <div key={i.id} className="border-b border-border-soft py-3">
             <div className="flex items-center gap-3">
-              <GitPullRequest
-                size={14}
-                className={`flex-none ${i.status === 'active' ? 'text-highlight' : 'text-index'}`}
-              />
+              {isChat(i.provider) ? (
+                <MessageSquare
+                  size={14}
+                  className={`flex-none ${i.status === 'active' ? 'text-highlight' : 'text-index'}`}
+                />
+              ) : (
+                <GitPullRequest
+                  size={14}
+                  className={`flex-none ${i.status === 'active' ? 'text-highlight' : 'text-index'}`}
+                />
+              )}
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13.5px]">
                   {i.name}
@@ -214,6 +232,15 @@ export function IntegrationsSection() {
   );
 }
 
+const CHAT_DELIVERY: Record<string, string> = {
+  events: 'Events API',
+  socket: 'Socket Mode',
+  interactions: 'interactions endpoint',
+  gateway: 'gateway',
+  webhook: 'webhook',
+  longpoll: 'long polling',
+};
+
 function describe(i: Integration) {
   const c = i.config as {
     mode?: string;
@@ -221,8 +248,16 @@ function describe(i: Integration) {
     projects?: string[];
     delivery?: string;
     baseUrl?: string;
+    channels?: unknown[];
   };
   if (c.mode === 'app') return 'GitHub App installation';
+  if (CHAT_FORMS[i.provider]) {
+    const n = c.channels?.length ?? 0;
+    const channels = `${n} channel${n === 1 ? '' : 's'}`;
+    return i.provider === 'matrix'
+      ? `${channels} · sync`
+      : `${channels} · ${CHAT_DELIVERY[c.delivery ?? ''] ?? ''}`;
+  }
   const list = c.repos ?? c.projects ?? [];
   const where =
     list.length > 2 ? `${list.slice(0, 2).join(', ')} +${list.length - 2}` : list.join(', ');
@@ -528,6 +563,8 @@ function ConnectModal({
         )}
         {isGithub && tab === 'app' ? (
           <GithubAppPanel onCancel={onClose} />
+        ) : CHAT_FORMS[provider.key] ? (
+          <ChatForm provider={provider} onDone={onDone} onCancel={onClose} />
         ) : TOKEN_FORMS[provider.key] ? (
           <TokenForm provider={provider} onDone={onDone} onCancel={onClose} />
         ) : (
@@ -556,11 +593,12 @@ function EditModal({
   }, [integration]);
   if (!integration) return null;
   const app = (integration.config as { mode?: string }).mode === 'app';
+  const chat = !!CHAT_FORMS[integration.provider];
   const info: IntegrationProviderInfo = {
     key: integration.provider,
     name: integration.name,
     description: '',
-    category: 'forge',
+    category: chat ? 'chat' : 'forge',
   };
   return (
     <Modal open onClose={onClose} width={560} label={`${integration.name} settings`} align="center">
@@ -574,7 +612,9 @@ function EditModal({
             <code className="block truncate font-mono text-[12px]">{integration.inboundUrl}</code>
           </div>
         )}
-        {app ? (
+        {chat ? (
+          <ChatForm provider={info} existing={integration} onDone={onDone} onCancel={onClose} />
+        ) : app ? (
           <form
             onSubmit={async (e) => {
               e.preventDefault();

@@ -3,10 +3,8 @@ import type { FastifyInstance } from 'fastify';
 import { integrations } from '../db/schema.ts';
 import { getProvider } from '../integrations/registry.ts';
 import type { InboundRequest } from '../integrations/types.ts';
-import { sha256 } from '../lib/crypto.ts';
 import { notFound, unauthorized } from '../lib/errors.ts';
-import { enqueue } from '../lib/jobs/index.ts';
-import { allSecrets } from '../services/integrations.ts';
+import { allSecrets, queueInbound } from '../services/integrations.ts';
 
 const BODY_LIMIT = 25 * 1024 * 1024;
 
@@ -44,8 +42,9 @@ export async function hookRoutes(app: FastifyInstance) {
           .select()
           .from(integrations)
           .where(and(eq(integrations.provider, key), eq(integrations.inboundToken, hookKey)));
-    // A switched-off integration looks like no integration at all.
-    const live = rows.filter((r) => r.status !== 'disabled');
+    // A switched-off integration looks like no integration at all, and one that holds its own
+    // connection (Socket Mode, a gateway, a long poll) takes nothing from outside.
+    const live = rows.filter((r) => r.status !== 'disabled' && !provider.wantsConnection?.(r));
     if (!live.length) throw notFound('Hook');
     const accepted: typeof live = [];
     for (const row of live) {
@@ -54,15 +53,12 @@ export async function hookRoutes(app: FastifyInstance) {
     }
     if (!accepted.length) throw unauthorized('Signature mismatch');
 
-    const deliveryId = provider.deliveryId?.(inbound) ?? sha256(inbound.body);
-    for (const row of accepted) {
-      await enqueue(
-        app.db,
-        'integration.inbound',
-        { integrationId: row.id, req: inbound },
-        { dedupeKey: `in:${row.id}:${deliveryId}`, orderingKey: `integration:${row.id}` },
-      );
+    // Some services want an answer within the request (a URL challenge, an interaction ack).
+    const ack = provider.ackInbound?.(inbound, accepted[0]!, await allSecrets(app, accepted[0]!));
+    if (ack?.process !== false) {
+      for (const row of accepted) await queueInbound(app, provider, row, inbound);
     }
+    if (ack) return reply.code(ack.status ?? 200).send(ack.body ?? '');
     return reply.code(202).send({ ok: true });
   });
 }
