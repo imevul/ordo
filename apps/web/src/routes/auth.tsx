@@ -13,7 +13,7 @@ import { ApiError, api } from '../api/client.ts';
 import { keys, useConfig, useMe } from '../api/queries.ts';
 import { OrdoMark } from '../components/icons.tsx';
 import { Spinner } from '../components/PageHeader.tsx';
-import { ssoStartUrl } from '../lib/sso.ts';
+import { forgetLastSso, lastSso, ssoStartUrl } from '../lib/sso.ts';
 
 function AuthLayout({
   kicker,
@@ -120,6 +120,7 @@ export function LoginPage() {
   // An SSO callback that failed sends people back here with ?error=.
   const [error, setError] = useState<string | null>(search.error ?? null);
   const [busy, setBusy] = useState(false);
+  const [remembered, setRemembered] = useState(lastSso);
   const after = redirect?.startsWith('/') ? redirect : undefined;
 
   const done = () => {
@@ -287,6 +288,38 @@ export function LoginPage() {
 
   return (
     <AuthLayout kicker="sign in" title="Welcome back." footer={footer}>
+      {remembered && (
+        <div className="mb-5">
+          <a
+            href={ssoStartUrl(remembered.providerId, { redirect: after })}
+            className="btn btn-primary w-full"
+          >
+            Continue with {remembered.name}
+            {remembered.workspace && (
+              <span className="text-[11px] opacity-70">· {remembered.workspace}</span>
+            )}
+            <span className="arrow">→</span>
+          </a>
+          <div className="mt-1.5 flex items-center justify-between font-mono text-[10.5px] tracking-[0.12em] text-index uppercase">
+            <span>last used on this device</span>
+            <button
+              type="button"
+              className="uppercase hover:text-text"
+              onClick={() => {
+                forgetLastSso();
+                setRemembered(null);
+              }}
+            >
+              forget
+            </button>
+          </div>
+          <div className="mt-5 flex items-center gap-3 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
+            <span className="h-px flex-1 bg-border-soft" />
+            or
+            <span className="h-px flex-1 bg-border-soft" />
+          </div>
+        </div>
+      )}
       <form onSubmit={continueWithEmail}>
         <ErrorLine error={error} />
         <TextField
@@ -298,7 +331,10 @@ export function LoginPage() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <button className="btn btn-primary mt-2 w-full" disabled={busy}>
+        <button
+          className={`btn mt-2 w-full ${remembered ? 'btn-ghost' : 'btn-primary'}`}
+          disabled={busy}
+        >
           Continue <span className="arrow">→</span>
         </button>
       </form>

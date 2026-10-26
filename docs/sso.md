@@ -45,6 +45,9 @@ of being matched automatically.
   the password is tucked behind "use a password instead" (owners still need it as their fallback).
 - **Sign in with SSO.** For addresses outside your verified domains (or anyone who prefers it), this asks for the
   workspace URL and shows its providers. Share `/login?workspace=<slug>` to skip that step.
+- After someone signs in with SSO, their browser remembers the provider (a cookie on that device only) and the
+  sign-in page offers it first as "last used on this device", with a link to forget it. This is how people whose
+  address isn't on a verified domain — and who linked their identity themselves — get a one-click sign-in.
 - Neither lookup reveals whether someone has an account: answers depend only on the domain or the workspace.
 - **First sign-in:** if the address is verified and its domain is verified for your workspace, Ordo creates the
   account (or matches the existing one with that address) and adds it to the workspace with the provider's default
