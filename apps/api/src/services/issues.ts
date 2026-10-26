@@ -352,7 +352,7 @@ async function teamOf(ctx: Ctx, teamId: string) {
   return team;
 }
 
-async function stateOf(ctx: Ctx, teamId: string, stateId: string) {
+export async function stateOf(ctx: Ctx, teamId: string, stateId: string) {
   const [state] = await ctx.tx
     .select()
     .from(workflowStates)
@@ -377,13 +377,13 @@ async function defaultState(ctx: Ctx, team: typeof teams.$inferSelect) {
 }
 
 /** Assignees must be able to see the issue's team; imports may also assign their placeholders. */
-async function assertAssignee(ctx: Ctx, teamId: string, userId: string, imported = false) {
+export async function assertAssignee(ctx: Ctx, teamId: string, userId: string, imported = false) {
   const [ok] = await usersWithTeamAccess(ctx.tx, ctx.workspaceId, teamId, [userId]);
   if (ok || (imported && (await isWorkspacePlaceholder(ctx.tx, ctx.workspaceId, userId)))) return;
   throw badRequest("Assignee isn't a member of this workspace, or can't access this team");
 }
 
-async function assertProject(ctx: Ctx, projectId: string) {
+export async function assertProject(ctx: Ctx, projectId: string) {
   const [p] = await ctx.tx
     .select({ id: projects.id })
     .from(projects)
@@ -399,7 +399,7 @@ async function assertCycle(ctx: Ctx, teamId: string, cycleId: string) {
   if (!c) throw badRequest('Cycle does not belong to this team');
 }
 
-async function assertLabels(ctx: Ctx, teamId: string, labelIds: string[]) {
+export async function assertLabels(ctx: Ctx, teamId: string | null, labelIds: string[]) {
   if (labelIds.length === 0) return;
   const rows = await ctx.tx
     .select({ id: labels.id, teamId: labels.teamId })

@@ -265,6 +265,34 @@ export const labels = pgTable(
   (t) => [index('labels_workspace_idx').on(t.workspaceId)],
 );
 
+/**
+ * Starting points for new issues: a name, a title and description, and default properties.
+ * Team templates may set a status; references to deleted things fall away.
+ */
+export const issueTemplates = pgTable(
+  'issue_templates',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    title: text('title').notNull().default(''),
+    description: text('description').notNull().default(''),
+    stateId: uuid('state_id').references(() => workflowStates.id, { onDelete: 'set null' }),
+    priority: integer('priority'),
+    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    estimate: integer('estimate'),
+    labelIds: uuid('label_ids').array().notNull().default(sql`'{}'`),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('issue_templates_workspace_idx').on(t.workspaceId)],
+);
+
 export const projects = pgTable(
   'projects',
   {

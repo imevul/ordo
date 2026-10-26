@@ -37,11 +37,12 @@ import { workspaceIssuePage } from './issues.ts';
 import { listProjects } from './projects.ts';
 import { toLabel, toView } from './serialize.ts';
 import { listTeams } from './teams.ts';
+import { listTemplates } from './templates.ts';
 import { workspaceSettings } from './workspaces.ts';
 
 /**
  * Workspace exports, written by a job and kept for a week. JSON holds what belongs to the
- * workspace as a whole: people, teams, labels, projects, cycles, shared views, and issues with
+ * workspace as a whole: people, teams, labels, issue templates, projects, cycles, shared views, and issues with
  * their comments and reactions, history, relations, links and attachment metadata. CSV is the issues, in the columns Ordo's CSV
  * import reads, so it round-trips. Personal things (private views, favourites, notifications) and
  * anything secret (integrations, webhooks, SSO) are left out.
@@ -251,6 +252,7 @@ async function jsonExport(
       .where(and(eq(users.kind, 'placeholder'), eq(users.botWorkspaceId, ws.id))),
     teams: await listTeams(db, access),
     labels: (await db.select().from(labels).where(eq(labels.workspaceId, ws.id))).map(toLabel),
+    templates: await listTemplates(db, access),
     projects: projectList,
     projectUpdates: projectList.length
       ? await db

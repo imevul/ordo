@@ -71,6 +71,12 @@ Create an issue with `C` (or the pen icon). Type a title, optionally a descripti
 properties with the chips below — or press `Mod Enter` straight away. Toggle **Create more** to keep the
 dialog open for the next one.
 
+**Templates** give new issues a head start. Pick one under **Template** at the top of the dialog: it switches to the
+template's team, sets the properties it defines (status, priority, assignee, labels, project, estimate), and fills
+in its title and description — keeping what you already typed, with the template's description added below yours.
+Manage templates under **Settings → Templates**; anyone but guests can. Templates for all teams appear everywhere,
+team templates only in that team (and only a team template can set a status).
+
 Properties: **status, priority** (urgent, high, medium, low, none), **assignee, labels, project, cycle,
 estimate, due date**, and a **parent** issue. Change any of them from the issue page's sidebar, from the icons
 in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L`, …).

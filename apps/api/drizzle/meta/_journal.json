@@ -127,6 +127,13 @@
       "when": 1793057173198,
       "tag": "0017_comment_reactions",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1793057667688,
+      "tag": "0018_issue_templates",
+      "breakpoints": true
     }
   ]
 }

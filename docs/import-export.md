@@ -181,9 +181,9 @@ Admins export a workspace under **Settings → Import & export**, as JSON or as 
 file, and a download link appears when it's ready. Exports are kept for a week, one runs at a time, and
 each is recorded in the audit log.
 
-- **JSON** holds everything that belongs to the workspace as a whole: members (with emails), placeholders, teams
-  with their statuses and members, labels, projects and their updates, cycles, shared views, and every issue
-  (private teams' and trashed ones too) with comments and their reactions, history, relations and links.
+- **JSON** holds everything that belongs to the workspace as a whole: members (with emails), placeholders, teams with
+  their statuses and members, labels, issue templates, projects and their updates, cycles, shared views, and every
+  issue (private teams' and trashed ones too) with comments and their reactions, history, relations and links.
 - **CSV** holds the issues that aren't in the trash, in the columns the CSV import reads: an export imports into
   another workspace or instance as it is, sub-issues and labels included.
 

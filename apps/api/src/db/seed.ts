@@ -13,6 +13,7 @@ import { systemAccess } from '../services/access.ts';
 import type { Ctx } from '../services/context.ts';
 import { createIssue, updateIssue } from '../services/issues.ts';
 import { createTeam } from '../services/teams.ts';
+import { createTemplate } from '../services/templates.ts';
 import { createDb } from './client.ts';
 import { runMigrations } from './migrate.ts';
 import {
@@ -283,6 +284,23 @@ async function main() {
     });
     await updateIssue(ctx(admin), parentIssue.id, {
       stateId: states.find((s) => s.teamId === eng && s.name === 'Todo')!.id,
+    });
+
+    await createTemplate(ctx(admin), {
+      name: 'Bug report',
+      title: 'Bug: ',
+      description:
+        '## What happened\n\n## Steps to reproduce\n\n1. \n\n## Expected\n\n## Environment\n\nBrowser, OS, version:',
+      priority: 2,
+      labelIds: [labelId('Bug')],
+    });
+    await createTemplate(ctx(admin), {
+      name: 'Feature request',
+      teamId: eng,
+      title: '',
+      description: '## Problem\n\n## Proposal\n\n## Out of scope',
+      stateId: states.find((s) => s.teamId === eng && s.type === 'backlog')?.id ?? null,
+      labelIds: [labelId('Feature')],
     });
   });
 

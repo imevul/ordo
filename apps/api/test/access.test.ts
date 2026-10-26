@@ -461,6 +461,10 @@ describe('route inventory', () => {
     'DELETE /issues/:id/purge': 'admin only; purgeIssue is team-scoped',
     'DELETE /issues/:id/subscription': 'resolveIssue, like POST',
     'PATCH /comments/:id': 'loadComment checks the issue team',
+    'GET /templates': 'listTemplates, same as bootstrap (templates.test.ts)',
+    'POST /templates': 'assertLabelTeam, like labels (templates.test.ts)',
+    'PATCH /templates/:id': 'loadTemplate checks the team (templates.test.ts)',
+    'DELETE /templates/:id': 'loadTemplate checks the team (templates.test.ts)',
     'PUT /comments/:id/reactions/:emoji': 'loadComment checks the issue team (reactions.test.ts)',
     'DELETE /comments/:id/reactions/:emoji':
       'loadComment checks the issue team (reactions.test.ts)',

@@ -31,6 +31,7 @@ import { workspacePlaceholders } from '../services/placeholders.ts';
 import { listProjects } from '../services/projects.ts';
 import { toView } from '../services/serialize.ts';
 import { listTeams } from '../services/teams.ts';
+import { listTemplates } from '../services/templates.ts';
 import { listMembers, memberRole, toWorkspace, workspaceSettings } from '../services/workspaces.ts';
 
 export async function workspaceRoutes(app: FastifyInstance) {
@@ -45,6 +46,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       members,
       teamList,
       labelRows,
+      templates,
       projects,
       cycles,
       viewRows,
@@ -57,6 +59,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       listMembers(db, access),
       listTeams(db, access),
       listLabels(db, access),
+      listTemplates(db, access),
       listProjects(db, access),
       listCycles(db, access),
       db
@@ -104,6 +107,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       placeholders,
       teams: teamList,
       labels: labelRows,
+      templates,
       projects,
       cycles,
       views: viewRows.map(toView),
