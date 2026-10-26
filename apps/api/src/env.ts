@@ -12,6 +12,11 @@ function optionalBool(v: string | undefined) {
   return v == null || v === '' ? undefined : bool(v, false);
 }
 
+function optionalInt(v: string | undefined) {
+  const n = v ? Number.parseInt(v, 10) : Number.NaN;
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
 /** package.json sits next to the bundle in the image, and one level up from src/. */
 function readVersion() {
   for (const rel of ['./package.json', '../package.json']) {
@@ -43,6 +48,7 @@ export interface SettingsFromEnv {
   signupMode?: 'open' | 'invite';
   allowWorkspaceCreation?: boolean;
   allowPrivateNetworkTargets?: boolean;
+  maxAttachmentMb?: number;
   smtp?: { url: string; from: string } | null;
 }
 
@@ -117,6 +123,7 @@ export function loadEnv(overrides: Partial<Env> = {}): Env {
             from: process.env.ORDO_SMTP_FROM || 'Ordo <ordo@localhost>',
           }
         : undefined,
+      maxAttachmentMb: optionalInt(process.env.ORDO_MAX_ATTACHMENT_MB),
     },
     storage:
       process.env.ORDO_STORAGE === 's3'

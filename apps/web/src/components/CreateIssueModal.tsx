@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { ChevronRight, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { useCreateIssue } from '../api/queries.ts';
+import { useAttachmentUpload, useCreateIssue } from '../api/queries.ts';
 import { modKey } from '../lib/hotkeys.ts';
 import { ui, useUi } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
@@ -29,6 +29,7 @@ type Form = IssueLike & { title: string; description: string; parentId: string |
 export function CreateIssueModal() {
   const defaults = useUi((s) => s.createIssue);
   const ws = useWorkspace();
+  const upload = useAttachmentUpload(ws.slug);
   const navigate = useNavigate();
   const create = useCreateIssue(ws.slug);
   const [more, setMore] = useState(false);
@@ -191,6 +192,7 @@ export function CreateIssueModal() {
             onSubmit={submit}
             placeholder="Add description…"
             minRows={4}
+            onUpload={upload}
             className="mt-1 -mx-3"
           />
         </div>

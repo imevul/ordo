@@ -22,6 +22,7 @@ const SCHEMAS: { [K in keyof InstanceSettings]: z.ZodType<InstanceSettings[K]> }
       from: z.string().min(3),
     })
     .nullable(),
+  maxAttachmentMb: z.number().int().min(1).max(1024),
 };
 
 export const SETTING_KEYS = Object.keys(SCHEMAS) as (keyof InstanceSettings)[];

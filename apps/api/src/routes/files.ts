@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { files } from '../db/schema.ts';
 import { notFound } from '../lib/errors.ts';
-import { isImageType, verifyFileSignature } from '../services/files.ts';
+import { sendStoredFile, verifyFileSignature } from '../services/files.ts';
 
 /**
  * GET /api/files/:id?exp=&sig= — serves an uploaded file. The signature (issued with the file's
@@ -15,22 +15,11 @@ export async function fileRoutes(app: FastifyInstance) {
     if (!sig || !verifyFileSignature(app, id, Number(exp), sig)) throw notFound('File');
     const [file] = await app.db.select().from(files).where(eq(files.id, id));
     if (!file) throw notFound('File');
-    const body = await app.storage.get(file.storageKey);
-    if (!body) throw notFound('File');
-    const image = isImageType(file.contentType);
-    reply
-      .header('content-type', image ? file.contentType : 'application/octet-stream')
-      .header('x-content-type-options', 'nosniff')
-      // Even if something unexpected is served, it can't run scripts on this origin.
-      .header('content-security-policy', "default-src 'none'; img-src 'self'; sandbox")
-      .header(
-        'content-disposition',
-        `${image ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
-      )
-      .header(
-        'cache-control',
-        `private, max-age=${Math.max(0, Number(exp) - Math.floor(Date.now() / 1000))}`,
-      );
-    return reply.send(body);
+    return sendStoredFile(
+      app,
+      reply,
+      file,
+      Math.max(0, Number(exp) - Math.floor(Date.now() / 1000)),
+    );
   });
 }

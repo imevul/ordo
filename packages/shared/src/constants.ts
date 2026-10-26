@@ -220,6 +220,12 @@ export const USERNAME_PATTERN = /^[a-z0-9._-]{2,32}$/;
 /** Matches identifiers like ENG-123. */
 export const ISSUE_IDENTIFIER_PATTERN = /^([A-Z][A-Z0-9]{0,6})-(\d+)$/;
 
+/** Attachment URLs are slug-free so renaming a workspace doesn't break them in Markdown. */
+export const attachmentUrl = (id: string) => `/api/attachments/${id}`;
+/** Finds attachment ids referenced in Markdown (relative or absolute URLs). */
+export const ATTACHMENT_URL_PATTERN =
+  /\/api\/attachments\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;
+
 /** Events in the outbox, delivered to webhooks and integrations. Names are part of the public API. */
 export const DOMAIN_EVENT_TYPES = [
   'issue.created',

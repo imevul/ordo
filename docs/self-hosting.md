@@ -99,7 +99,8 @@ server {
     server_name ordo.example.com;
     # ssl_certificate …; ssl_certificate_key …;
 
-    client_max_body_size 10m;
+    # Above the largest attachment (25 MB unless you change it).
+    client_max_body_size 30m;
 
     location / {
         proxy_pass http://127.0.0.1:3000;

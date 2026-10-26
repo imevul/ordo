@@ -3,7 +3,13 @@ import { estimateLabel, priorityLabel } from '@ordo/shared';
 import { MoreHorizontal, Reply } from 'lucide-react';
 import { type ReactNode, useMemo, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
-import { keys, useComments, useHistory, useWsMutation } from '../api/queries.ts';
+import {
+  keys,
+  useAttachmentUpload,
+  useComments,
+  useHistory,
+  useWsMutation,
+} from '../api/queries.ts';
 import { longDate, relativeTime, shortDate } from '../lib/format.ts';
 import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 import { PriorityIcon, StatusIcon } from './icons.tsx';
@@ -161,6 +167,7 @@ function CommentItem({
   issueId: string;
 }) {
   const ws = useWorkspace();
+  const upload = useAttachmentUpload(ws.slug, issueId);
   const author = comment.authorId ? ws.memberById.get(comment.authorId) : undefined;
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(comment.body);
@@ -263,6 +270,7 @@ function CommentItem({
               <MarkdownEditor
                 value={body}
                 onChange={setBody}
+                onUpload={upload}
                 autoFocus
                 onSubmit={() => {
                   save.mutate(body);
@@ -308,6 +316,7 @@ function CommentItem({
               <MarkdownEditor
                 value={reply}
                 onChange={setReply}
+                onUpload={upload}
                 autoFocus
                 minRows={2}
                 placeholder="Leave a reply…"
@@ -332,6 +341,7 @@ export function Activity({ issue }: { issue: IssueDetail }) {
   const { data: history = [] } = useHistory(ws.slug, issue.id);
   const { data: comments = [] } = useComments(ws.slug, issue.id);
   const [draft, setDraft] = useState('');
+  const upload = useAttachmentUpload(ws.slug, issue.id);
   const send = useWsMutation(
     ws.slug,
     (body: string) => api.post(wsPath(ws.slug, `/issues/${issue.id}/comments`), { body }),
@@ -377,6 +387,7 @@ export function Activity({ issue }: { issue: IssueDetail }) {
         <MarkdownEditor
           value={draft}
           onChange={setDraft}
+          onUpload={upload}
           onSubmit={submit}
           placeholder="Leave a comment…  (⌘/Ctrl+Enter to send)"
           minRows={3}

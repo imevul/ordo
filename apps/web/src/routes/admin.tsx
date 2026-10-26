@@ -589,6 +589,33 @@ function Settings() {
           />
         </label>
       </Card>
+
+      <Card title="Uploads">
+        <label className="flex items-center justify-between gap-4 py-3 text-[13.5px]">
+          <span>
+            Largest attachment
+            {lockedTag('maxAttachmentMb')}
+            <span className="block text-[12px] text-index">
+              Files people attach to issues and comments, in megabytes. Keep your reverse proxy's
+              body limit above this.
+            </span>
+          </span>
+          <input
+            key={entry('maxAttachmentMb').value as number}
+            className="input w-24 text-right font-mono"
+            type="number"
+            min={1}
+            max={1024}
+            disabled={locked('maxAttachmentMb')}
+            defaultValue={entry('maxAttachmentMb').value as number}
+            onBlur={(e) => {
+              const mb = Number(e.target.value);
+              if (Number.isInteger(mb) && mb >= 1 && mb !== entry('maxAttachmentMb').value)
+                save({ maxAttachmentMb: mb });
+            }}
+          />
+        </label>
+      </Card>
     </>
   );
 }

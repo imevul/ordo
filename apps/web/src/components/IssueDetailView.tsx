@@ -10,12 +10,18 @@ import { Bell, BellOff, Copy, Link2, MoreHorizontal, Plus, Trash2, X } from 'luc
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
-import { invalidateIssues, useUpdateIssue, useWsMutation } from '../api/queries.ts';
+import {
+  invalidateIssues,
+  useAttachmentUpload,
+  useUpdateIssue,
+  useWsMutation,
+} from '../api/queries.ts';
 import { longDate, relativeTime } from '../lib/format.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
 import { ui } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Activity } from './Activity.tsx';
+import { IssueAttachments } from './IssueAttachments.tsx';
 import { IssueLinks } from './IssueLinks.tsx';
 import { IssueSearchPicker } from './IssueSearchPicker.tsx';
 import { StatusIcon, TeamIcon } from './icons.tsx';
@@ -87,6 +93,8 @@ function Title({ issue, onSave }: { issue: IssueDetail; onSave: (title: string) 
 }
 
 function Description({ issue, onSave }: { issue: IssueDetail; onSave: (d: string) => void }) {
+  const ws = useWorkspace();
+  const upload = useAttachmentUpload(ws.slug, issue.id);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(issue.description);
   useEffect(() => {
@@ -107,6 +115,7 @@ function Description({ issue, onSave }: { issue: IssueDetail; onSave: (d: string
           autoFocus
           minRows={6}
           placeholder="Add a description…"
+          onUpload={upload}
         />
         <div className="mt-2 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>
@@ -451,6 +460,7 @@ export function IssueDetailView({
               })}
             </section>
 
+            <IssueAttachments issue={issue} onChange={done} />
             <IssueLinks issue={issue} onChange={done} />
 
             <Activity issue={issue} />

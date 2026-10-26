@@ -1,8 +1,8 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { eq } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply } from 'fastify';
 import { files } from '../db/schema.ts';
-import { badRequest } from '../lib/errors.ts';
+import { badRequest, notFound } from '../lib/errors.ts';
 import { storageKey } from '../lib/storage/index.ts';
 
 type FileKind = (typeof files.$inferSelect)['kind'];
@@ -64,6 +64,31 @@ export async function deleteFile(app: FastifyInstance, id: string) {
     await app.storage
       .delete(row.storageKey)
       .catch((err) => app.log.warn({ err }, 'deleting stored file failed'));
+}
+
+/**
+ * Sends a stored file. Only sniffed image types render inline; everything else downloads, and
+ * the CSP sandbox stops anything unexpected from running scripts on this origin.
+ */
+export async function sendStoredFile(
+  app: FastifyInstance,
+  reply: FastifyReply,
+  file: typeof files.$inferSelect,
+  maxAge: number,
+) {
+  const body = await app.storage.get(file.storageKey);
+  if (!body) throw notFound('File');
+  const image = isImageType(file.contentType);
+  return reply
+    .header('content-type', image ? file.contentType : 'application/octet-stream')
+    .header('x-content-type-options', 'nosniff')
+    .header('content-security-policy', "default-src 'none'; img-src 'self'; sandbox")
+    .header(
+      'content-disposition',
+      `${image ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(file.filename)}`,
+    )
+    .header('cache-control', `private, max-age=${maxAge}`)
+    .send(body);
 }
 
 const DAY = 86_400;

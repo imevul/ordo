@@ -1,4 +1,8 @@
+import type { Attachment } from '@ordo/shared';
+import { Paperclip } from 'lucide-react';
 import { type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
+import { attachmentMarkdown } from '../api/queries.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Markdown } from './Markdown.tsx';
 import { Avatar } from './ui/Avatar.tsx';
@@ -13,9 +17,14 @@ interface Props {
   minRows?: number;
   className?: string;
   bare?: boolean;
+  /** Enables pasting, dropping and picking files; see useAttachmentUpload. */
+  onUpload?: (file: File) => Promise<Attachment>;
 }
 
-/** Markdown textarea with live preview toggle, @mention completion and ⌘/Ctrl+Enter to submit. */
+/**
+ * Markdown textarea with live preview toggle, @mention completion, file uploads and ⌘/Ctrl+Enter
+ * to submit.
+ */
 export function MarkdownEditor({
   value,
   onChange,
@@ -26,8 +35,13 @@ export function MarkdownEditor({
   minRows = 3,
   className = '',
   bare,
+  onUpload,
 }: Props) {
   const ref = useRef<HTMLTextAreaElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+  // Uploads finish after later keystrokes, so they edit the latest text through the latest onChange.
+  const latest = useRef({ value, onChange });
+  latest.current = { value, onChange };
   const [preview, setPreview] = useState(false);
   const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
   const [active, setActive] = useState(0);
@@ -75,6 +89,33 @@ export function MarkdownEditor({
     });
   };
 
+  const setText = (next: string) => {
+    latest.current.value = next;
+    latest.current.onChange(next);
+  };
+
+  const uploadFiles = (list: File[]) => {
+    if (!onUpload || list.length === 0) return;
+    let caret = ref.current?.selectionStart ?? latest.current.value.length;
+    for (const file of list) {
+      const token = `[Uploading ${file.name.replace(/[[\]\\]/g, '')}…]()`;
+      const text = latest.current.value;
+      const insert = `${caret > 0 && text[caret - 1] !== '\n' ? '\n' : ''}${token}\n`;
+      setText(text.slice(0, caret) + insert + text.slice(caret));
+      caret += insert.length;
+      const replace = (from: string, to: string) => {
+        if (latest.current.value.includes(from)) setText(latest.current.value.replace(from, to));
+      };
+      onUpload(file).then(
+        (att) => replace(token, attachmentMarkdown(att)),
+        (err) => {
+          replace(`${token}\n`, '');
+          toast.error(err instanceof Error ? err.message : `Could not upload ${file.name}`);
+        },
+      );
+    }
+  };
+
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (mention && matches.length) {
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -107,6 +148,14 @@ export function MarkdownEditor({
   return (
     <div
       className={`relative ${bare ? '' : 'border border-border bg-bg focus-within:border-primary'} ${className}`}
+      onDragOver={(e) => {
+        if (onUpload && e.dataTransfer.types.includes('Files')) e.preventDefault();
+      }}
+      onDrop={(e) => {
+        if (!onUpload || e.dataTransfer.files.length === 0) return;
+        e.preventDefault();
+        uploadFiles([...e.dataTransfer.files]);
+      }}
     >
       {preview ? (
         <div className="min-h-[4.5rem] px-3 py-2.5">
@@ -127,6 +176,11 @@ export function MarkdownEditor({
             detectMention(e.target.value, e.target.selectionStart);
           }}
           onKeyDown={onKeyDown}
+          onPaste={(e) => {
+            if (!onUpload || e.clipboardData.files.length === 0) return;
+            e.preventDefault();
+            uploadFiles([...e.clipboardData.files]);
+          }}
           onBlur={() => setTimeout(() => setMention(null), 150)}
           className="block w-full resize-none overflow-hidden bg-transparent px-3 py-2.5 text-[14px] leading-relaxed outline-none placeholder:text-index"
         />
@@ -159,7 +213,32 @@ export function MarkdownEditor({
         >
           {preview ? '// write' : '// preview'}
         </button>
-        <span className="font-mono text-[10.5px] text-index">markdown · @mention</span>
+        <span className="flex items-center gap-2 font-mono text-[10.5px] text-index">
+          markdown · @mention
+          {onUpload && (
+            <>
+              <button
+                type="button"
+                className="flex h-5 w-5 items-center justify-center hover:text-muted"
+                onClick={() => fileInput.current?.click()}
+                aria-label="Attach files"
+                title="Attach files (or paste / drop them)"
+              >
+                <Paperclip size={12} />
+              </button>
+              <input
+                ref={fileInput}
+                type="file"
+                multiple
+                hidden
+                onChange={(e) => {
+                  uploadFiles([...(e.target.files ?? [])]);
+                  e.target.value = '';
+                }}
+              />
+            </>
+          )}
+        </span>
       </div>
     </div>
   );

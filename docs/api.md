@@ -131,7 +131,7 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 | Method         | Path                       |                                                                                              |
 | -------------- | -------------------------- | -------------------------------------------------------------------------------------------- |
 | POST           | `/issues/query`            | `{ filter, limit? }` → `Issue[]` (see below)                                                 |
-| GET            | `/issues/:idOrIdentifier`  | Issue with parent, sub-issues, relations, subscribers, links                                 |
+| GET            | `/issues/:idOrIdentifier`  | Issue with parent, sub-issues, relations, subscribers, links, attachments                    |
 | POST           | `/issues`                  | Create (see example)                                                                         |
 | PATCH          | `/issues/:id`              | Any of the create fields, plus `teamId` (move), `addLabelIds`, `removeLabelIds`, `sortOrder` |
 | POST           | `/issues/batch`            | `{ ids, patch }` — same patch on up to 250 issues                                            |
@@ -140,6 +140,8 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 | POST           | `/issues/:id/restore`      | Restore from trash                                                                           |
 | POST           | `/issues/:id/links`        | Attach a link `{ url, title? }`                                                              |
 | DELETE         | `/issue-links/:id`         | Remove a link (any kind)                                                                     |
+| POST           | `/attachments?issueId=`    | Upload one file (multipart field `file`) → `Attachment`; see below                           |
+| DELETE         | `/attachments/:id`         | Remove an attachment (uploader, team admin or admin)                                         |
 | DELETE         | `/issues/:id/purge`        | _Admin._ Permanently delete a trashed issue                                                  |
 | GET            | `/issues/:id/history`      | Change log                                                                                   |
 | POST / DELETE  | `/issues/:id/subscription` | Subscribe / unsubscribe yourself                                                             |
@@ -170,6 +172,20 @@ ME=$(curl -s -H "Authorization: Bearer $KEY" $ORDO/auth/me | jq -r .id)
 curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
   -H 'Content-Type: application/json' -d "{\"stateId\":\"…\",\"assigneeId\":\"$ME\"}"
 ```
+
+Attach a file. Without `issueId` the upload belongs to you until an issue description or comment you save
+references its URL (unclaimed uploads are deleted after a day):
+
+```bash
+curl -X POST "$ORDO/w/acme/attachments?issueId=ENG-42" -H "Authorization: Bearer $KEY" \
+  -F file=@screenshot.png
+# → { "id": "…", "url": "/api/attachments/…", "filename": "screenshot.png", "contentType": "image/png", … }
+```
+
+`GET /api/attachments/:id` serves the file to anyone who can read the issue (session or API key). The URL has no
+workspace in it, so Markdown that embeds it keeps working after a rename. Only PNG, JPEG, GIF and WebP — judged
+from the bytes — are served inline; everything else downloads as `application/octet-stream`. The size limit is the
+`maxAttachmentMb` instance setting (413 above it).
 
 #### Filters
 
