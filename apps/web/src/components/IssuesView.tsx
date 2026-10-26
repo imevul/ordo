@@ -310,7 +310,7 @@ export function IssuesView(props: Props) {
           />
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1">
           <IssueList
             groups={groups}
             flat={flat}

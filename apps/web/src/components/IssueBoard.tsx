@@ -20,7 +20,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { type GroupBy, type Issue, sortOrderBetween, type UpdateIssueInput } from '@ordo/shared';
 import { Link } from '@tanstack/react-router';
 import { GitBranch, Plus } from 'lucide-react';
-import { memo, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { dueState, shortDate } from '../lib/format.ts';
 import { type IssueGroup, isDone, patchForGroup } from '../lib/issues.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
@@ -203,6 +203,8 @@ function Column({
   );
 }
 
+const CARD_PAGE = 100;
+
 export function IssueBoard({
   groups,
   groupBy,
@@ -215,6 +217,19 @@ export function IssueBoard({
 }: Props) {
   const ws = useWorkspace();
   const [dragging, setDragging] = useState<Issue | null>(null);
+  // Big columns render a page of cards at a time.
+  const [shown, setShown] = useState<Record<string, number>>({});
+  const limit = (key: string) => shown[key] ?? CARD_PAGE;
+  // Keyboard focus can move past what's rendered; reveal it.
+  useEffect(() => {
+    if (!focusedId) return;
+    for (const g of groups) {
+      const index = g.issues.findIndex((i) => i.id === focusedId);
+      if (index >= (shown[g.key] ?? CARD_PAGE)) {
+        setShown((s) => ({ ...s, [g.key]: Math.ceil((index + 1) / CARD_PAGE) * CARD_PAGE }));
+      }
+    }
+  }, [focusedId, groups, shown]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -277,10 +292,10 @@ export function IssueBoard({
         {groups.map((g) => (
           <Column key={g.key} group={g} groupBy={groupBy} onCreate={() => onCreateInGroup(g)}>
             <SortableContext
-              items={g.issues.map((i) => i.id)}
+              items={g.issues.slice(0, limit(g.key)).map((i) => i.id)}
               strategy={verticalListSortingStrategy}
             >
-              {g.issues.map((issue) => (
+              {g.issues.slice(0, limit(g.key)).map((issue) => (
                 <SortableCard
                   key={issue.id}
                   issue={issue}
@@ -292,6 +307,15 @@ export function IssueBoard({
                 />
               ))}
             </SortableContext>
+            {g.issues.length > limit(g.key) && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm mx-auto mt-1"
+                onClick={() => setShown((s) => ({ ...s, [g.key]: limit(g.key) + CARD_PAGE }))}
+              >
+                Show more · {g.issues.length - limit(g.key)} left
+              </button>
+            )}
           </Column>
         ))}
       </div>

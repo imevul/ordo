@@ -11,6 +11,7 @@ import {
 } from '@ordo/shared';
 import { and, asc, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod';
 import { issueHistory, issueSubscribers } from '../db/schema.ts';
 import { requireAccess } from '../lib/auth.ts';
 import { parse } from '../lib/errors.ts';
@@ -30,6 +31,7 @@ import {
   getIssue,
   getIssueDetail,
   purgeIssue,
+  queryIssuePage,
   queryIssues,
   trashIssue,
   updateIssue,
@@ -43,9 +45,16 @@ export async function issueRoutes(app: FastifyInstance) {
   const resolveIssue = (req: FastifyRequest, id: string) => getIssue(db, requireAccess(req), id);
 
   app.post('/issues/query', async (req) => {
-    const body = (req.body ?? {}) as { filter?: unknown; limit?: number };
+    const body = (req.body ?? {}) as { filter?: unknown; limit?: number; after?: unknown };
     const filter = parse(issueFilterSchema, body.filter ?? {});
     const limit = Math.min(Math.max(Number(body.limit) || 2000, 1), 5000);
+    // With `after` (null for the first page), pages in id order; a short page is the last.
+    if ('after' in body) {
+      const { after } = parse(z.object({ after: z.uuid().nullable() }), {
+        after: body.after ?? null,
+      });
+      return queryIssuePage(db, requireAccess(req), filter, after, limit);
+    }
     return queryIssues(db, requireAccess(req), filter, limit);
   });
 

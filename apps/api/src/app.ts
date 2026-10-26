@@ -1,6 +1,8 @@
 import { resolveTxt } from 'node:dns/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import zlib from 'node:zlib';
+import compress from '@fastify/compress';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
@@ -130,6 +132,11 @@ export async function buildApp(
   app.decorateRequest('sso', null);
   app.decorateRequest('workspace', null);
 
+  // Issue lists of big teams are megabytes of JSON; no proxy in front is assumed to compress.
+  await app.register(compress, {
+    threshold: 2048,
+    brotliOptions: { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 4 } },
+  });
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   await app.register(websocket, { options: { maxPayload: 64 * 1024 } });
