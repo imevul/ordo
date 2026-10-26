@@ -43,6 +43,7 @@ import { createRelation } from '../relations.ts';
 import { createTeam } from '../teams.ts';
 import { csvSource } from './csv.ts';
 import { githubSource } from './github.ts';
+import { jiraSource } from './jira.ts';
 import { linearSource } from './linear.ts';
 import {
   ImportAbort,
@@ -69,6 +70,7 @@ const ADAPTERS: Record<string, ImportAdapter> = {
   csv: csvSource,
   linear: linearSource,
   github: githubSource,
+  jira: jiraSource,
 };
 export const importAdapter = (source: string) => ADAPTERS[source];
 

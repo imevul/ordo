@@ -525,5 +525,23 @@ export const createApiImportSchema = z.discriminatedUnion('source', [
     /** GitHub Enterprise Server's API, e.g. https://github.example.com/api/v3 */
     apiUrl: z.url().max(500).optional(),
   }),
+  z.object({
+    source: z.literal('jira'),
+    /** https://acme.atlassian.net, or a Jira Data Center's base URL. */
+    siteUrl: z.url().max(500),
+    /** Jira Cloud: the account's email, with an API token as `token`. Data Center: leave it out. */
+    email: z.email().max(320).optional(),
+    token: z.string().trim().min(10).max(500),
+    /** Project keys; every project the token can see when left out. */
+    projects: z
+      .array(
+        z
+          .string()
+          .trim()
+          .regex(/^[A-Z][A-Z0-9_]{0,19}$/, 'Project keys look like ENG'),
+      )
+      .max(50)
+      .optional(),
+  }),
 ]);
 export type CreateApiImportInput = z.infer<typeof createApiImportSchema>;
