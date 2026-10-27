@@ -1,4 +1,4 @@
-import type { AiSettings, InstanceSettingEntry } from '@ordo/shared';
+import type { AdminAuditEntry, AiSettings, InstanceSettingEntry } from '@ordo/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useParams } from '@tanstack/react-router';
 import { ArrowLeft, Ban, KeyRound, RotateCcw, Shield, Trash2, UserCheck } from 'lucide-react';
@@ -6,6 +6,7 @@ import { type FormEvent, type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
 import { api } from '../api/client.ts';
 import { useMe } from '../api/queries.ts';
+import { AuditLog, auditSelectClass } from '../components/AuditLog.tsx';
 import { OrdoMark } from '../components/icons.tsx';
 import { PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
 import { confirmDialog } from '../components/ui/Modal.tsx';
@@ -894,47 +895,59 @@ function Jobs() {
   );
 }
 
+/** The instance's audit log: sign-ins and instance changes, one workspace's, or everything. */
 function Audit() {
-  const [scope, setScope] = useState<'instance' | 'all'>('instance');
-  const { data = [] } = useQuery({
-    queryKey: ['admin', 'audit', scope],
-    queryFn: () =>
-      api.get<
-        {
-          id: string;
-          actorEmail: string | null;
-          action: string;
-          data: Record<string, unknown>;
-          ip: string | null;
-          createdAt: string;
-        }[]
-      >(`/admin/audit-log?scope=${scope}`),
+  const [where, setWhere] = useState<string>('instance');
+  const { data: workspaces = [] } = useQuery({
+    queryKey: ['admin', 'workspaces'],
+    queryFn: () => api.get<{ id: string; name: string }[]>('/admin/workspaces'),
   });
+  const params = where === 'instance' ? '' : where === 'all' ? 'scope=all' : `workspaceId=${where}`;
   return (
     <Card title={t('admin.sections.audit')}>
-      <div className="mb-3 flex flex-wrap gap-1">
-        {(['instance', 'all'] as const).map((s) => (
-          <button
-            type="button"
-            key={s}
-            onClick={() => setScope(s)}
-            className={`h-6 px-2.5 font-mono text-[11px] tracking-[0.1em] uppercase ${scope === s ? 'bg-raised text-primary' : 'text-index hover:text-text'}`}
-          >
-            {s === 'instance' ? t('admin.audit.instance') : t('admin.audit.all')}
-          </button>
-        ))}
-      </div>
-      {data.map((e) => (
-        <div
-          key={e.id}
-          className="flex items-start gap-3 border-b border-border-soft py-2 font-mono text-[12px]"
-        >
-          <span className="w-28 flex-none text-index">{relativeTime(e.createdAt)}</span>
-          <span className="w-56 flex-none truncate">{e.actorEmail ?? '—'}</span>
-          <span className="flex-1 text-primary">{e.action}</span>
-          <span className="flex-none text-index">{e.ip}</span>
-        </div>
-      ))}
+      <AuditLog<AdminAuditEntry>
+        path="/admin/audit-log"
+        queryKey={['admin', 'audit']}
+        actor={(e) =>
+          e.actorId
+            ? {
+                id: e.actorId,
+                name: e.actorName ?? e.actorEmail ?? t('shell.actor.someone'),
+                color: e.actorAvatarColor,
+                label: (
+                  <span className="text-text" title={e.actorEmail ?? undefined}>
+                    {e.actorName ?? e.actorEmail}
+                  </span>
+                ),
+              }
+            : null
+        }
+        target={(e) => e.targetName}
+        targetInLine={(e) => e.targetType !== 'workspace'}
+        nameOf={(id) => workspaces.find((w) => w.id === id)?.name}
+        context={(e) => (where === 'all' ? e.workspaceName : null)}
+        extra={{
+          params,
+          active: where !== 'instance',
+          clear: () => setWhere('instance'),
+          controls: (
+            <select
+              className={auditSelectClass}
+              aria-label={t('admin.audit.where')}
+              value={where}
+              onChange={(e) => setWhere(e.target.value)}
+            >
+              <option value="instance">{t('admin.audit.instance')}</option>
+              <option value="all">{t('admin.audit.all')}</option>
+              {workspaces.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
+            </select>
+          ),
+        }}
+      />
     </Card>
   );
 }

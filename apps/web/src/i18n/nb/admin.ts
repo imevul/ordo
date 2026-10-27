@@ -146,7 +146,8 @@ export default {
     empty: '// køen er tom',
   },
   audit: {
-    instance: 'innlogginger og instans',
-    all: 'alt',
+    where: 'Hvor',
+    instance: 'Innlogginger og instans',
+    all: 'Alt',
   },
 } satisfies Translation<Catalog['admin']>;

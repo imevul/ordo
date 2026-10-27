@@ -821,3 +821,9 @@ export const auditQuerySchema = z.object({
   beforeId: z.uuid().optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });
+
+/** The instance audit log: `scope` instance-level entries or everything, or one workspace's. */
+export const adminAuditQuerySchema = auditQuerySchema.extend({
+  scope: z.enum(['instance', 'all']).default('instance'),
+  workspaceId: z.uuid().optional(),
+});

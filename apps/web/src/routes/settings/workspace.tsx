@@ -33,7 +33,7 @@ import { TeamIcon } from '../../components/icons.tsx';
 import { Picker } from '../../components/properties.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
-import { type Catalog, type Params, t, tx } from '../../i18n/index.ts';
+import { t, tx } from '../../i18n/index.ts';
 import { roleLabel } from '../../i18n/labels.ts';
 import { relativeTime, shortDate } from '../../lib/format.ts';
 import { useTheme } from '../../lib/theme.ts';
@@ -967,94 +967,3 @@ function DomainsCard() {
 }
 
 // ─── Audit log ─────────────────────────────────────────────────────────
-
-/** Human wording for audit actions: what the actor did, shown after their name. */
-export function describeAudit(e: { action: string; data: Record<string, unknown> }) {
-  const d = e.data;
-  const str = (v: unknown) => String(v ?? '');
-  const role = (v: unknown) =>
-    v === 'owner' || v === 'admin' || v === 'member' || v === 'guest'
-      ? roleLabel(v).toLowerCase()
-      : String(v);
-  const a = (key: AuditKey, params?: Params) => t(`workspaceSettings.audit.actions.${key}`, params);
-  const named = (name: unknown, withName: AuditKey, without: AuditKey) =>
-    name ? a(withName, { name: String(name) }) : a(without);
-  switch (e.action) {
-    case 'workspace.created':
-      return a('workspaceCreated');
-    case 'workspace.updated':
-      return a('workspaceUpdated');
-    case 'workspace.deleted':
-      return a('workspaceDeleted');
-    case 'member.joined':
-      return a(d.via === 'domain' ? 'memberJoinedByDomain' : 'memberJoined');
-    case 'member.role_changed':
-      return a('memberRoleChanged', { role: role(d.role) });
-    case 'member.removed':
-      return a(d.self ? 'memberLeft' : 'memberRemoved');
-    case 'member.suspended':
-      return a('memberSuspended');
-    case 'member.unsuspended':
-      return a('memberUnsuspended');
-    case 'invite.created':
-      return d.email
-        ? a('inviteCreated', { email: String(d.email), role: role(d.role) })
-        : a('inviteCreatedLink', { role: role(d.role) });
-    case 'invite.revoked':
-      return a('inviteRevoked');
-    case 'invite.accepted':
-      return a('inviteAccepted');
-    case 'team.created':
-      return a('teamCreated', { name: str(d.name) });
-    case 'team.updated':
-      return a('teamUpdated');
-    case 'team.deleted':
-      return a('teamDeleted', { name: str(d.name) });
-    case 'team.member_added':
-      return a('teamMemberAdded');
-    case 'team.member_removed':
-      return a('teamMemberRemoved');
-    case 'team.member_role_changed':
-      return a('teamMemberRoleChanged');
-    case 'domain.added':
-      return a('domainAdded', { domain: String(d.domain) });
-    case 'domain.verified':
-      return a('domainVerified', { domain: String(d.domain) });
-    case 'domain.removed':
-      return a('domainRemoved', { domain: String(d.domain) });
-    case 'sso.provider_created':
-      return a('ssoProviderCreated', { name: str(d.name) });
-    case 'sso.provider_updated':
-      return a('ssoProviderUpdated');
-    case 'sso.provider_deleted':
-      return a('ssoProviderDeleted', { name: str(d.name) });
-    case 'auth.login':
-      return d.method === 'sso'
-        ? a('loginSso', { provider: String(d.provider ?? 'SSO') })
-        : a('login');
-    case 'auth.sso_bypass':
-      return a('ssoBypass');
-    case 'webhook.created':
-      return a('webhookCreated', { url: str(d.url) });
-    case 'webhook.updated':
-      return a('webhookUpdated');
-    case 'webhook.deleted':
-      return a('webhookDeleted', { url: str(d.url) });
-    case 'webhook.disabled':
-      return a('webhookDisabled', { url: str(d.url) });
-    case 'integration.created':
-      return named(d.name ?? d.provider, 'integrationCreated', 'integrationCreatedUnnamed');
-    case 'integration.updated':
-      return a('integrationUpdated');
-    case 'integration.deleted':
-      return named(d.name ?? d.provider, 'integrationDeleted', 'integrationDeletedUnnamed');
-    case 'auth.identity_linked':
-      return d.provider
-        ? a('identityLinked', { provider: String(d.provider) })
-        : a('identityLinkedUnnamed');
-    default:
-      return e.action;
-  }
-}
-
-type AuditKey = keyof Catalog['workspaceSettings']['audit']['actions'];

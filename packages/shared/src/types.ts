@@ -607,6 +607,16 @@ export interface AuditEntry {
   createdAt: string;
 }
 
+/** An audit entry in the instance admin's log, with the names a workspace view looks up itself. */
+export interface AdminAuditEntry extends AuditEntry {
+  actorName: string | null;
+  actorEmail: string | null;
+  actorAvatarColor: string | null;
+  workspaceName: string | null;
+  /** The person, team or workspace the action was on. */
+  targetName: string | null;
+}
+
 /** Instance-wide settings (admin area). Environment variables override stored values. */
 export interface InstanceSettings {
   signupMode: 'open' | 'invite';

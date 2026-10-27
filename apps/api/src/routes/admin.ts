@@ -1,4 +1,10 @@
-import { adminSettingsSchema, adminUpdateUserSchema, type InstanceSettings } from '@ordo/shared';
+import {
+  type AdminAuditEntry,
+  adminAuditQuerySchema,
+  adminSettingsSchema,
+  adminUpdateUserSchema,
+  type InstanceSettings,
+} from '@ordo/shared';
 import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
@@ -16,7 +22,7 @@ import { requireUser } from '../lib/auth.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
-import { audit } from '../services/audit.ts';
+import { audit, auditFilters } from '../services/audit.ts';
 import { passwordResetEmail } from '../services/mail-templates.ts';
 import { encryptSmtpUrl, queueEmail } from '../services/mailer.ts';
 import { createToken } from '../services/tokens.ts';
@@ -498,30 +504,43 @@ export async function adminRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.get('/audit-log', async (req) => {
-    const { before, scope } = req.query as { before?: string; scope?: 'instance' | 'all' };
+  app.get('/audit-log', async (req): Promise<AdminAuditEntry[]> => {
+    const q = parse(adminAuditQuerySchema, req.query);
     return db
       .select({
         id: auditLog.id,
         workspaceId: auditLog.workspaceId,
+        workspaceName: workspaces.name,
         actorId: auditLog.actorId,
+        actorName: users.name,
         actorEmail: users.email,
+        actorAvatarColor: users.avatarColor,
         action: auditLog.action,
         targetType: auditLog.targetType,
         targetId: auditLog.targetId,
+        targetName: sql<string | null>`case "audit_log"."target_type"
+          when 'user' then (select u.name from users u where u.id::text = "audit_log"."target_id")
+          when 'team' then (select t.name from teams t where t.id::text = "audit_log"."target_id")
+          when 'workspace' then (select w.name from workspaces w where w.id::text = "audit_log"."target_id")
+        end`,
         data: auditLog.data,
         ip: auditLog.ip,
         createdAt: auditLog.createdAt,
       })
       .from(auditLog)
       .leftJoin(users, eq(users.id, auditLog.actorId))
+      .leftJoin(workspaces, eq(workspaces.id, auditLog.workspaceId))
       .where(
         and(
-          scope === 'all' ? undefined : isNull(auditLog.workspaceId),
-          before ? sql`${auditLog.createdAt} < ${before}` : undefined,
+          q.workspaceId
+            ? eq(auditLog.workspaceId, q.workspaceId)
+            : q.scope === 'all'
+              ? undefined
+              : isNull(auditLog.workspaceId),
+          ...auditFilters(q, [users.name, users.email]),
         ),
       )
-      .orderBy(desc(auditLog.createdAt))
-      .limit(200);
+      .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+      .limit(q.limit);
   });
 }
