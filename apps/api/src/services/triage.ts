@@ -1,7 +1,7 @@
 import type { TriageActions, TriageConditions, TriageRule, TriageSource } from '@ordo/shared';
 import { asc, eq, inArray, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
-import { issueLabels, issues, triageRules } from '../db/schema.ts';
+import { integrations, issueLabels, issues, triageRules } from '../db/schema.ts';
 import { badRequest } from '../lib/errors.ts';
 import { systemAccess } from './access.ts';
 import { automationBot } from './automation.ts';
@@ -43,8 +43,16 @@ export async function assertTriageRule(
   }
 }
 
-const sourceOf = (source: ActorSource): TriageSource | 'system' | 'import' =>
-  source.startsWith('integration:') ? 'integration' : (source as TriageSource);
+/** Where an issue came from, as rules name it: email intake is its own source. */
+async function sourceOf(ctx: Ctx): Promise<TriageSource | 'system' | 'import'> {
+  const source: ActorSource = ctx.source;
+  if (!source.startsWith('integration:')) return source as TriageSource;
+  const [row] = await ctx.tx
+    .select({ provider: integrations.provider })
+    .from(integrations)
+    .where(eq(integrations.id, source.slice('integration:'.length)));
+  return row?.provider === 'email' ? 'email' : 'integration';
+}
 
 /**
  * Runs the team's enabled triage rules, in order, on an issue just created in triage. Every
@@ -61,7 +69,7 @@ export async function applyTriageRules(ctx: Ctx, issueId: string, teamId: string
       .from(issueLabels)
       .where(eq(issueLabels.issueId, issueId))
   ).map((l) => l.id);
-  const source = sourceOf(ctx.source);
+  const source = await sourceOf(ctx);
   const text = `${issue!.title}\n${issue!.description}`.toLowerCase();
 
   const patch: Parameters<typeof updateIssue>[2] = {};

@@ -227,8 +227,9 @@ project takes it out of its milestone. Group any issue view by milestone under _
 **Customers** (sidebar → _Customers_) are the organisations you build for. Each has email domains (so mail from
 `@acme.com` is filed under Acme), an owner and notes. A **customer request** ties a customer to an issue with what
 they asked for in their words and who asked: add one under _Customer requests_ on an issue (typing a new name creates
-the customer). A customer's page lists their requests and the issues behind them, and the customer list shows how
-many requests and still-open issues each has, so you can see who's waiting on what. Guests don't see customers.
+the customer), or let [email intake](integrations/email.md) add them as mail comes in. A customer's page lists their
+requests and the issues behind them, and the customer list shows how many requests and still-open issues each has, so
+you can see who's waiting on what. Guests don't see customers.
 
 ## Labels and estimates
 

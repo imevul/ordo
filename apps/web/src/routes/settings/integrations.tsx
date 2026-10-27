@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AtSign,
   GitPullRequest,
+  Mail,
   MessageSquare,
   Pencil,
   Plug,
@@ -18,6 +19,7 @@ import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { CHAT_FORMS, ChatForm } from './chat.tsx';
+import { EmailForm } from './email-intake.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
@@ -121,7 +123,12 @@ export function IntegrationsSection() {
         {data.integrations.map((i) => (
           <div key={i.id} className="border-b border-border-soft py-3">
             <div className="flex items-center gap-3">
-              {isChat(i.provider) ? (
+              {i.provider === 'email' ? (
+                <Mail
+                  size={14}
+                  className={`flex-none ${i.status === 'active' ? 'text-highlight' : 'text-index'}`}
+                />
+              ) : isChat(i.provider) ? (
                 <MessageSquare
                   size={14}
                   className={`flex-none ${i.status === 'active' ? 'text-highlight' : 'text-index'}`}
@@ -251,6 +258,10 @@ function describe(i: Integration) {
     channels?: unknown[];
   };
   if (c.mode === 'app') return 'GitHub App installation';
+  if (i.provider === 'email') {
+    const e = i.config as { address?: string; host?: string };
+    return `${e.address ?? 'email'} · ${c.delivery === 'imap' ? `IMAP ${e.host}` : 'webhook'}`;
+  }
   if (CHAT_FORMS[i.provider]) {
     const n = c.channels?.length ?? 0;
     const channels = `${n} channel${n === 1 ? '' : 's'}`;
@@ -563,6 +574,8 @@ function ConnectModal({
         )}
         {isGithub && tab === 'app' ? (
           <GithubAppPanel onCancel={onClose} />
+        ) : provider.key === 'email' ? (
+          <EmailForm provider={provider} onDone={onDone} onCancel={onClose} />
         ) : CHAT_FORMS[provider.key] ? (
           <ChatForm provider={provider} onDone={onDone} onCancel={onClose} />
         ) : TOKEN_FORMS[provider.key] ? (
@@ -612,7 +625,9 @@ function EditModal({
             <code className="block truncate font-mono text-[12px]">{integration.inboundUrl}</code>
           </div>
         )}
-        {chat ? (
+        {integration.provider === 'email' ? (
+          <EmailForm provider={info} existing={integration} onDone={onDone} onCancel={onClose} />
+        ) : chat ? (
           <ChatForm provider={info} existing={integration} onDone={onDone} onCancel={onClose} />
         ) : app ? (
           <form

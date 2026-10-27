@@ -13,6 +13,7 @@ webhooks Ordo created; links on issues stay, and its past changes keep its name,
 | [Discord](discord.md)          | The same on Discord                                               |
 | [Matrix](matrix.md)            | The same on any Matrix homeserver                                 |
 | [Telegram](telegram.md)        | The same with a Telegram bot                                      |
+| [Email](email.md)              | Mail to an address becomes triage issues, filed under customers   |
 | [Webhooks](../api.md#webhooks) | Your own endpoints, for anything else                             |
 
 What the chat integrations share (feeds, linking accounts, commands) is in [chat](chat.md). Importers (Jira, Linear,

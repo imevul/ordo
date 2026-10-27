@@ -1,4 +1,5 @@
 import { discordProvider } from './discord.ts';
+import { emailProvider } from './email.ts';
 import { forgejo } from './forgejo.ts';
 import { github } from './github.ts';
 import { gitlab } from './gitlab.ts';
@@ -17,6 +18,7 @@ export function registerBuiltinProviders() {
     discordProvider,
     matrixProvider,
     telegramProvider,
+    emailProvider,
   ])
     registerProvider(provider);
 }
