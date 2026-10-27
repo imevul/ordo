@@ -105,6 +105,14 @@ session it stops until someone signs in. A change the server refuses (4xx) is dr
 anything that needed it (a comment on an issue that couldn't be created), and listed under the sidebar's
 "unsaved" with its text, to copy or discard. Settings, admin and everything else stay online-only.
 
+Starting offline: the build writes `precache.json` (every file in `assets/`), and the service worker caches all of
+it when it installs, so any screen opens without a connection, and drops files of earlier builds when the next one
+activates. `useConfig` and `useMe` fall back to their last answers (the signed-in person is remembered only on
+devices that keep a copy, and forgotten at sign-out); React Query runs queries and mutations even when the browser
+says it's offline, so they reach those fallbacks and the outbox. A banner says when the server can't be reached;
+attachments, AI assistance and settings say they need a connection. The copy asks for persistent storage, and if
+the device runs out of space it carries on in memory for the rest of the tab, with a notice.
+
 ## Data model
 
 ```

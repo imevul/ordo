@@ -86,6 +86,22 @@ export function useSyncEngine(): Engine | null {
 
 const noSubscribe = () => () => {};
 
+const subscribeNetwork = (fn: () => void) => {
+  window.addEventListener('online', fn);
+  window.addEventListener('offline', fn);
+  return () => {
+    window.removeEventListener('online', fn);
+    window.removeEventListener('offline', fn);
+  };
+};
+
+/** Whether the server can be reached: the browser is online and (with a copy) the last request got through. */
+export function useOnline() {
+  const browser = useSyncExternalStore(subscribeNetwork, () => navigator.onLine);
+  const state = useSyncState();
+  return browser && (state ? state.online : true);
+}
+
 /** The engine's state, re-rendering on every change (null without a copy). */
 export function useSyncState(): SyncState | null {
   const sync = useSync();

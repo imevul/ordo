@@ -7,6 +7,7 @@ import { useAttachmentUpload, useWsMutation } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
 import { fileSize, relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
+import { useOnline } from '../sync/context.tsx';
 
 /** Files on an issue: attached here, or pasted into its description and comments. */
 export function IssueAttachments({
@@ -18,6 +19,7 @@ export function IssueAttachments({
 }) {
   const ws = useWorkspace();
   const upload = useAttachmentUpload(ws.slug, issue.id);
+  const online = useOnline();
   const input = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -69,6 +71,8 @@ export function IssueAttachments({
         <button
           type="button"
           className="btn btn-ghost btn-sm"
+          disabled={!online}
+          title={online ? undefined : t('shell.offline.needsConnection')}
           onClick={() => input.current?.click()}
         >
           <Plus size={12} /> {t('issue.attachments.attach')}

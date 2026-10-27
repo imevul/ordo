@@ -3,6 +3,7 @@ import {
   type Delta,
   dbName,
   Engine,
+  FallbackStore,
   IdbStore,
   MemoryStore,
   OfflineError,
@@ -13,7 +14,9 @@ import {
   type SyncStore,
   type Transport,
 } from '@ordo/sync';
+import { toast } from 'sonner';
 import { ApiError, api, wsPath } from '../api/client.ts';
+import { t } from '../i18n/index.ts';
 
 /**
  * One tab's sync for one workspace. Tabs share the copy in IndexedDB: the one holding the Web
@@ -101,7 +104,10 @@ function transport(slug: string): Transport {
 
 async function openStore(name: string): Promise<SyncStore> {
   try {
-    return await IdbStore.open(name);
+    const store = await IdbStore.open(name);
+    // Ask the browser not to evict the copy under storage pressure (Safari otherwise clears it).
+    void navigator.storage?.persist?.().catch(() => {});
+    return new FallbackStore(store, () => toast.warning(t('shell.offline.storageFull')));
   } catch {
     // Private windows and full disks: keep the copy in memory for this tab only.
     return new MemoryStore();

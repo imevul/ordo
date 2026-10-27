@@ -10,6 +10,7 @@ import { CommandPalette } from './CommandPalette.tsx';
 import { CreateIssueModal } from './CreateIssueModal.tsx';
 import { ShortcutsHelp } from './ShortcutsHelp.tsx';
 import { Sidebar } from './Sidebar.tsx';
+import { OfflineBanner } from './SyncStatus.tsx';
 
 export function AppShell() {
   const ws = useWorkspace();
@@ -62,6 +63,7 @@ export function AppShell() {
         >
           <Menu size={18} />
         </button>
+        <OfflineBanner />
         <Outlet />
       </main>
       <CreateIssueModal />
