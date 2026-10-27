@@ -106,6 +106,15 @@ export default {
       'Filer som legges ved saker og kommentarer, i megabyte. Hold grensen for forespørselsstørrelse i den omvendte proxyen din høyere enn dette.',
   },
   ai: {
+    workspacesTitle: 'KI i arbeidsområder',
+    workspaces: 'Admins i arbeidsområdene kan',
+    workspacesHelp:
+      'Hva admins i arbeidsområdene kan endre under Innstillinger → KI-hjelp. En modell et arbeidsområde har lagret, blir liggende mens den ikke er tillatt, og brukes igjen hvis den blir det.',
+    policy: {
+      own: 'Bruke en egen modell eller slå av KI',
+      instance: 'Bare slå av KI',
+      locked: 'Ikke endre noe: alle arbeidsområder bruker denne modellen',
+    },
     title: 'KI-hjelp',
     description:
       'Sammendrag av saker, utkast skrevet ut fra løse notater og forslag ved triage (prioritet, etiketter, duplikater). Når noen ber om det, sendes sakteksten de kan se til denne modellen; ingenting endres før de bruker et forslag. Admins for et arbeidsområde kan slå det av for sitt arbeidsområde eller bruke en egen modell i stedet.',

@@ -375,6 +375,8 @@ export async function adminRoutes(app: FastifyInstance) {
       await app.settings.set('allowPrivateNetworkTargets', input.allowPrivateNetworkTargets, me.id);
     if (input.maxAttachmentMb !== undefined)
       await app.settings.set('maxAttachmentMb', input.maxAttachmentMb, me.id);
+    if (input.workspaceAi !== undefined)
+      await app.settings.set('workspaceAi', input.workspaceAi, me.id);
     if (input.smtp !== undefined) {
       if (input.smtp === null) await app.settings.set('smtp', null, me.id);
       else {

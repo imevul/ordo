@@ -351,6 +351,77 @@ describe("a workspace's own model", () => {
   });
 });
 
+describe('what the instance lets workspaces change', () => {
+  it('can keep workspaces off their own models, or on the instance model entirely', async () => {
+    const claude: AiSettings = {
+      provider: 'anthropic',
+      model: 'claude-test',
+      baseUrl: mock.url,
+      apiKey: 'sk-ant-test-key',
+    };
+    const instanceOnly = await testApp({
+      settingsFromEnv: { ai: claude, workspaceAi: 'instance' },
+    });
+    const locked = await testApp({ settingsFromEnv: { ai: claude, workspaceAi: 'locked' } });
+    try {
+      // Chosen while the instance allowed it.
+      const free = as(claudeApp, owner);
+      await free.put(`${ws}/ai/provider`, {
+        provider: 'openai',
+        model: 'own-model',
+        baseUrl: `${mock.url}/v1`,
+        apiKey: null,
+      });
+      expect((await free.get(`${ws}/bootstrap`)).data.ai.model).toBe('own-model');
+
+      // `instance`: the own model stays stored but unused, and can't be set up or chosen.
+      const limited = as(instanceOnly, owner);
+      expect((await limited.get(`${ws}/bootstrap`)).data.ai).toMatchObject({
+        model: 'claude-test',
+        source: 'instance',
+      });
+      expect((await limited.get(`${ws}/ai/settings`)).data).toMatchObject({
+        policy: 'instance',
+        source: 'instance',
+        own: { model: 'own-model' },
+      });
+      const put = await limited.put(`${ws}/ai/provider`, {
+        provider: 'openai',
+        model: 'x',
+        baseUrl: `${mock.url}/v1`,
+        apiKey: null,
+      });
+      expect(put.data.messageKey).toBe('ai_own_not_allowed');
+      expect(
+        (await limited.patch(ws, { settings: { aiSource: 'workspace' } })).data.messageKey,
+      ).toBe('ai_own_not_allowed');
+      // Turning it off is still the workspace's call.
+      expect((await limited.patch(ws, { settings: { aiEnabled: false } })).statusCode).toBe(200);
+
+      // `locked`: on, with the instance's model, whatever the workspace chose.
+      const fixed = as(locked, owner);
+      expect((await fixed.get(`${ws}/bootstrap`)).data.ai).toMatchObject({
+        model: 'claude-test',
+        enabled: true,
+        source: 'instance',
+      });
+      expect((await fixed.patch(ws, { settings: { aiEnabled: false } })).data.messageKey).toBe(
+        'ai_locked',
+      );
+      answers.push('Locked summary.');
+      expect((await fixed.post(`${ws}/ai/issues/ENG-1/summary`)).data.summary).toBe(
+        'Locked summary.',
+      );
+      expect((await fixed.post(`${ws}/ai/provider/test`)).data.messageKey).toBe('ai_locked');
+    } finally {
+      const free = as(claudeApp, owner);
+      await free.del(`${ws}/ai/provider`);
+      await free.patch(ws, { settings: { aiEnabled: true } });
+      await Promise.all([instanceOnly.close(), locked.close()]);
+    }
+  });
+});
+
 describe('instance settings', () => {
   it('stores the key encrypted, shows it masked and tests the connection', async () => {
     // An app whose AI setting isn't pinned by the environment.

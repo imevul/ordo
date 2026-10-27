@@ -72,6 +72,8 @@ export default {
     export_not_ready: 'Exporten görs fortfarande',
     ai_not_set_up: 'AI-hjälp är inte konfigurerad på den här instansen',
     ai_not_set_up_workspace: 'Arbetsytans egen AI-modell är inte konfigurerad',
+    ai_own_not_allowed: 'Den här instansen låter inte arbetsytor använda en egen AI-modell',
+    ai_locked: 'Instansens AI-inställningar gäller för alla arbetsytor',
     ai_off_workspace: 'AI-hjälp är avstängd i den här arbetsytan',
     ai_off: 'AI-hjälp är avstängd',
     ai_empty: 'Modellen skickade ett tomt svar',

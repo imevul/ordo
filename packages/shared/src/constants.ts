@@ -382,6 +382,8 @@ export const API_MESSAGE_KEYS = [
   'export_not_ready',
   'ai_not_set_up',
   'ai_not_set_up_workspace',
+  'ai_own_not_allowed',
+  'ai_locked',
   'ai_off_workspace',
   'ai_off',
   'ai_empty',

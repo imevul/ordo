@@ -74,6 +74,8 @@ export default {
     export_not_ready: 'The export is still being made',
     ai_not_set_up: 'AI assistance is not set up on this instance',
     ai_not_set_up_workspace: "This workspace's own AI model isn't set up",
+    ai_own_not_allowed: "This instance doesn't let workspaces use their own AI model",
+    ai_locked: "This instance's AI settings apply to every workspace",
     ai_off_workspace: 'AI assistance is turned off in this workspace',
     ai_off: 'AI assistance is off',
     ai_empty: 'The model sent an empty answer',

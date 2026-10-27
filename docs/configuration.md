@@ -45,12 +45,13 @@ Without SMTP everything else works; those features are simply unavailable (the U
 
 Off unless set here or in _Admin → Settings_. See [AI assistance](ai.md) for what is sent to the model and when.
 
-| Variable           | Default | Description                                                                                                                                    |
-| ------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ORDO_AI_PROVIDER` | empty   | `anthropic` (the Claude API), `openai` (any OpenAI-compatible endpoint: Ollama, vLLM, LM Studio…) or `off`. Empty leaves it to the admin area. |
-| `ORDO_AI_MODEL`    | empty   | Model name, e.g. `claude-opus-5-5` or `llama3.3`. Required with a provider.                                                                    |
-| `ORDO_AI_BASE_URL` | empty   | For `openai`, the URL ending in `/v1` (required). For `anthropic`, only to go through a gateway.                                               |
-| `ORDO_AI_API_KEY`  | empty   | Required for `anthropic`; optional for `openai`.                                                                                               |
+| Variable            | Default | Description                                                                                                                                                           |
+| ------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ORDO_AI_PROVIDER`  | empty   | `anthropic` (the Claude API), `openai` (any OpenAI-compatible endpoint: Ollama, vLLM, LM Studio…) or `off`. Empty leaves it to the admin area.                        |
+| `ORDO_AI_MODEL`     | empty   | Model name, e.g. `claude-opus-5-5` or `llama3.3`. Required with a provider.                                                                                           |
+| `ORDO_AI_BASE_URL`  | empty   | For `openai`, the URL ending in `/v1` (required). For `anthropic`, only to go through a gateway.                                                                      |
+| `ORDO_AI_API_KEY`   | empty   | Required for `anthropic`; optional for `openai`.                                                                                                                      |
+| `ORDO_WORKSPACE_AI` | `own`   | What workspace admins may change: `own` (use their own model, or turn AI off), `instance` (only turn it off) or `locked` (every workspace uses the instance's model). |
 
 ## Uploads
 

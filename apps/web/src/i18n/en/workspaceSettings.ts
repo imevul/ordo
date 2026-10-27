@@ -63,10 +63,19 @@ export default {
     instanceNone: 'none set up on this instance',
     instanceMissing:
       "This instance has no model set up, so AI assistance isn't offered. Use your own, or ask an instance admin.",
+    instanceMissingAsk:
+      "This instance has no model set up, so AI assistance isn't offered. Ask an instance admin.",
     useOwn: 'Our own model',
     ownNone: 'set it up below',
     off: 'Off',
     offHint: 'No AI assistance in this workspace',
+    notAllowed: 'not allowed on this instance',
+    policyInstance:
+      'An instance admin lets workspaces turn AI assistance off, but not use their own model.',
+    policyLocked:
+      'An instance admin has set AI assistance for every workspace: it uses the instance’s model and can’t be turned off here.',
+    storedUnused:
+      'You saved your own model earlier. This instance doesn’t allow it now, so it isn’t used; it’s used again if an instance admin allows it.',
     ownTitle: 'Our own model',
     ownDescription:
       "Used instead of the instance's for everyone in this workspace. The key is stored encrypted and only admins see it, masked.",

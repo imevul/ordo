@@ -60,10 +60,19 @@ export default {
     instanceNone: 'ingen er satt opp på denne instansen',
     instanceMissing:
       'Instansen har ingen modell satt opp, så KI-hjelp tilbys ikke. Bruk en egen, eller spør en instansadmin.',
+    instanceMissingAsk:
+      'Instansen har ingen modell satt opp, så KI-hjelp tilbys ikke. Spør en instansadmin.',
     useOwn: 'Vår egen modell',
     ownNone: 'sett den opp nedenfor',
     off: 'Av',
     offHint: 'Ingen KI-hjelp i dette arbeidsområdet',
+    notAllowed: 'ikke tillatt på denne instansen',
+    policyInstance:
+      'En instansadmin lar arbeidsområder slå av KI-hjelpen, men ikke bruke en egen modell.',
+    policyLocked:
+      'En instansadmin har bestemt KI-hjelpen for alle arbeidsområder: den bruker instansens modell og kan ikke slås av her.',
+    storedUnused:
+      'Dere lagret en egen modell tidligere. Instansen tillater den ikke nå, så den brukes ikke; den brukes igjen hvis en instansadmin tillater det.',
     ownTitle: 'Vår egen modell',
     ownDescription:
       'Brukes i stedet for instansens for alle i arbeidsområdet. Nøkkelen lagres kryptert, og bare admins ser den, maskert.',

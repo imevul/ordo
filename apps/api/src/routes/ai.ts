@@ -11,7 +11,9 @@ import { requireAdmin, requireWorkspace } from '../lib/auth.ts';
 import { badRequest, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import {
+  assertAiChangeAllowed,
   draftIssue,
+  effectiveAiSettings,
   ownAiProvider,
   ownModel,
   summarizeIssue,
@@ -73,7 +75,7 @@ export async function aiRoutes(app: FastifyInstance) {
       .select({ settings: workspaces.settings })
       .from(workspaces)
       .where(eq(workspaces.id, ws.id));
-    const settings = { ...DEFAULT_WORKSPACE_SETTINGS, ...row?.settings };
+    const settings = effectiveAiSettings(app, { ...DEFAULT_WORKSPACE_SETTINGS, ...row?.settings });
     const instance = app.settings.get('ai');
     const own = await ownAiProvider(app, ws.id);
     return {
@@ -82,6 +84,7 @@ export async function aiRoutes(app: FastifyInstance) {
       instance: instance ? { provider: instance.provider, model: instance.model } : null,
       own: own ? { ...own, apiKey: own.apiKey ? maskKey(own.apiKey) : null } : null,
       allowPrivateNetwork: app.settings.get('allowPrivateNetworkTargets'),
+      policy: app.settings.get('workspaceAi'),
     };
   });
 
@@ -89,6 +92,7 @@ export async function aiRoutes(app: FastifyInstance) {
   app.put('/ai/provider', async (req) => {
     requireAdmin(req);
     if (!app.keyring.available) throw badRequest('Set ORDO_SECRET_KEY first');
+    assertAiChangeAllowed(app, { ownModel: true });
     const input = parse(workspaceAiProviderSchema, req.body);
     return mutate(app, req, async (ctx) => {
       const [current] = await ctx.tx
@@ -156,6 +160,7 @@ export async function aiRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async (req) => {
       const ws = requireAdmin(req);
+      assertAiChangeAllowed(app, { ownModel: true });
       const own = await ownAiProvider(app, ws.id);
       if (!own)
         throw badRequest("This workspace's own AI model isn't set up").as(

@@ -63,6 +63,9 @@ export function AiSection() {
       ? t('workspaceSettings.ai.claude', { model: m.model })
       : t('workspaceSettings.ai.local', { model: m.model });
 
+  // What the instance lets this workspace change.
+  const allowed = (c: Choice) =>
+    data.policy === 'own' || (data.policy === 'instance' && c !== 'workspace') || c === current;
   const options: { value: Choice; label: string; hint: string }[] = [
     {
       value: 'instance',
@@ -96,21 +99,36 @@ export function AiSection() {
               name="ai-source"
               className="mt-1 accent-primary"
               checked={choice === o.value}
+              disabled={!allowed(o.value)}
               onChange={() => choose(o.value)}
             />
-            <span>
+            <span className={allowed(o.value) ? undefined : 'text-index'}>
               {o.label}
-              <span className="block font-mono text-[11.5px] text-index">{o.hint}</span>
+              <span className="block font-mono text-[11.5px] text-index">
+                {allowed(o.value) ? o.hint : t('workspaceSettings.ai.notAllowed')}
+              </span>
             </span>
           </label>
         ))}
+        {data.policy !== 'own' && (
+          <p className="mt-2 text-[12.5px] text-muted">
+            {data.policy === 'locked'
+              ? t('workspaceSettings.ai.policyLocked')
+              : t('workspaceSettings.ai.policyInstance')}
+          </p>
+        )}
         {choice === 'instance' && !data.instance && (
           <p className="mt-2 text-[12.5px] text-warning">
-            {t('workspaceSettings.ai.instanceMissing')}
+            {data.policy === 'own'
+              ? t('workspaceSettings.ai.instanceMissing')
+              : t('workspaceSettings.ai.instanceMissingAsk')}
           </p>
         )}
       </SettingsCard>
-      {choice === 'workspace' && <OwnModelCard data={data} onSaved={refresh} />}
+      {choice === 'workspace' && data.policy === 'own' && (
+        <OwnModelCard data={data} onSaved={refresh} />
+      )}
+      {data.policy !== 'own' && data.own && <StoredModelNote onRemoved={refresh} />}
     </>
   );
 }
@@ -267,6 +285,30 @@ function OwnModelCard({ data, onSaved }: { data: WorkspaceAi; onSaved: () => voi
           )}
         </div>
       </form>
+    </SettingsCard>
+  );
+}
+
+/** A model the workspace saved while the instance allowed it: kept, unused, removable. */
+function StoredModelNote({ onRemoved }: { onRemoved: () => void }) {
+  const ws = useWorkspace();
+  return (
+    <SettingsCard title={t('workspaceSettings.ai.ownTitle')}>
+      <p className="mb-3 text-[12.5px] text-muted">{t('workspaceSettings.ai.storedUnused')}</p>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        onClick={async () => {
+          try {
+            await api.del(wsPath(ws.slug, '/ai/provider'));
+            onRemoved();
+          } catch (err) {
+            toast.error(errMsg(err));
+          }
+        }}
+      >
+        {t('workspaceSettings.ai.remove')}
+      </button>
     </SettingsCard>
   );
 }

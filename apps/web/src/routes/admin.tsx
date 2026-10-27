@@ -1,4 +1,10 @@
-import type { AdminAuditEntry, AiSettings, InstanceSettingEntry } from '@ordo/shared';
+import {
+  type AdminAuditEntry,
+  type AiSettings,
+  type InstanceSettingEntry,
+  WORKSPACE_AI_POLICIES,
+  type WorkspaceAiPolicy,
+} from '@ordo/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useParams } from '@tanstack/react-router';
 import { ArrowLeft, Ban, KeyRound, RotateCcw, Shield, Trash2, UserCheck } from 'lucide-react';
@@ -666,6 +672,27 @@ function Settings() {
         locked={locked('ai')}
         save={save}
       />
+      <Card title={t('admin.ai.workspacesTitle')}>
+        <label className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-1 text-[13.5px]">
+          <span className="min-w-0 flex-1">
+            {t('admin.ai.workspaces')}
+            {lockedTag('workspaceAi')}
+            <span className="block text-[12px] text-index">{t('admin.ai.workspacesHelp')}</span>
+          </span>
+          <select
+            className="input w-72 max-w-full"
+            disabled={locked('workspaceAi')}
+            value={entry('workspaceAi').value as WorkspaceAiPolicy}
+            onChange={(e) => save({ workspaceAi: e.target.value })}
+          >
+            {WORKSPACE_AI_POLICIES.map((p) => (
+              <option key={p} value={p}>
+                {t(`admin.ai.policy.${p}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </Card>
     </>
   );
 }

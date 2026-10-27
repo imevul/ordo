@@ -5,12 +5,13 @@ import {
   type AiTriage,
   DEFAULT_WORKSPACE_SETTINGS,
   type Priority,
+  type WorkspaceSettings,
 } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { workspaceAiProviders, workspaces } from '../../db/schema.ts';
-import { HttpError } from '../../lib/errors.ts';
+import { forbidden, HttpError } from '../../lib/errors.ts';
 import { assertTeamAccess } from '../access.ts';
 import { getIssue, similarIssues } from '../issues.ts';
 import { listLabels } from '../labels.ts';
@@ -57,6 +58,32 @@ export const ownModel = (app: FastifyInstance, own: AiSettings) =>
   aiModel(own, own.apiKey, { allowPrivate: app.settings.get('allowPrivateNetworkTargets') });
 
 /**
+ * A workspace's AI choice as the instance allows it: with `instance`, never its own model; with
+ * `locked`, always on and always the instance's. What the workspace chose stays stored.
+ */
+export function effectiveAiSettings(app: FastifyInstance, settings: WorkspaceSettings) {
+  const policy = app.settings.get('workspaceAi');
+  return {
+    aiEnabled: policy === 'locked' ? true : settings.aiEnabled,
+    aiSource: policy === 'own' ? settings.aiSource : ('instance' as const),
+  };
+}
+
+/** Refuses a workspace change the instance's AI policy doesn't allow. */
+export function assertAiChangeAllowed(
+  app: FastifyInstance,
+  change: { ownModel?: boolean; aiEnabled?: boolean; aiSource?: WorkspaceSettings['aiSource'] },
+) {
+  const policy = app.settings.get('workspaceAi');
+  if (policy === 'locked' && (change.ownModel || change.aiEnabled === false || change.aiSource))
+    throw forbidden("This instance's AI settings apply to every workspace").as('ai_locked');
+  if (policy !== 'own' && (change.ownModel || change.aiSource === 'workspace'))
+    throw forbidden("This instance doesn't let workspaces use their own AI model").as(
+      'ai_own_not_allowed',
+    );
+}
+
+/**
  * Which model a workspace uses: off; its own, when it chose that; otherwise the instance's.
  * `info` names it for the web app (null when there's none to use).
  */
@@ -65,7 +92,7 @@ export async function resolveWorkspaceAi(app: FastifyInstance, workspaceId: stri
     .select({ settings: workspaces.settings })
     .from(workspaces)
     .where(eq(workspaces.id, workspaceId));
-  const settings = { ...DEFAULT_WORKSPACE_SETTINGS, ...row?.settings };
+  const settings = effectiveAiSettings(app, { ...DEFAULT_WORKSPACE_SETTINGS, ...row?.settings });
   if (settings.aiSource === 'workspace') {
     const own = await ownAiProvider(app, workspaceId);
     return {
