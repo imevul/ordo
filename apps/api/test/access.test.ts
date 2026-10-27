@@ -578,6 +578,7 @@ describe('route inventory', () => {
     'POST /auth-providers': 'workspace admins only',
     'PATCH /auth-providers/:id': 'workspace admins only',
     'DELETE /auth-providers/:id': 'workspace admins only',
+    'POST /auth-providers/saml/metadata': 'workspace admins only',
     'GET /imports': 'workspace admins only (imports.test.ts)',
     'GET /imports/:id': 'workspace admins only',
     'POST /imports': 'workspace admins only (imports.test.ts)',

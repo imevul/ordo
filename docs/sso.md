@@ -1,7 +1,9 @@
-# Single sign-on (OpenID Connect)
+# Single sign-on (OpenID Connect and SAML)
 
 Each workspace can bring its own identity provider. Anything that speaks OpenID Connect works: Keycloak, Authentik,
-Authelia, Zitadel, Microsoft Entra ID, Google Workspace, Okta, Dex, GitLab, Forgejo/Gitea…
+Authelia, Zitadel, Microsoft Entra ID, Google Workspace, Okta, Dex, GitLab, Forgejo/Gitea… Providers that only speak
+SAML 2.0 (ADFS, older Okta and Entra apps, Shibboleth) work too: see [SAML 2.0](#saml-20). Prefer OpenID Connect
+when your provider offers both; it's simpler to set up.
 
 ## Before you start
 
@@ -37,6 +39,41 @@ Authelia, Zitadel, Microsoft Entra ID, Google Workspace, Okta, Dex, GitLab, Forg
 
 Entra ID doesn't send `email_verified`; people there link their identity once from their account settings instead
 of being matched automatically.
+
+## SAML 2.0
+
+1. **Settings → Authentication → Add provider → SAML 2.0.** The dialog shows three addresses for your identity
+   provider (they're fixed for this provider):
+   - **Entity ID** (also called audience or SP identifier): `https://<your Ordo>/api/auth/saml/<id>/metadata`
+   - **ACS URL** (reply URL, single sign-on URL): `https://<your Ordo>/api/auth/saml/<id>/acs`
+   - **Metadata URL**, the same as the entity ID, for providers that import service provider metadata.
+2. In your provider, create a SAML application with those, **signed assertions**, and a **persistent** NameID (or
+   the email address, if addresses never change in your directory). Send an `email` attribute, a display name, and
+   your groups if you map them to roles.
+3. Back in Ordo, paste the provider's **metadata URL or XML** and press **Read metadata**: it fills in the IdP entity
+   ID, the sign-in URL and the signing certificate. You can also type them in.
+4. Turn on **Trust this IdP's email addresses** if your provider controls the addresses at your verified domains.
+   SAML has no `email_verified`, so without this nobody is matched or created by email: everyone links their identity
+   once from **Settings → Connected accounts** instead.
+5. **Test** shows the attributes Ordo received, as with OpenID Connect.
+
+| Provider  | Where                                                                                           | NameID / attributes                                                                                                      |
+| --------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Entra ID  | Enterprise applications → New → Create your own → SAML; metadata: _App Federation Metadata Url_ | Defaults work (email claim, display name). Add a group claim if you map groups; Ordo reads its full URI as written.      |
+| Okta      | Applications → Create App Integration → SAML 2.0; metadata: _Sign On → Metadata URL_            | Name ID format _Persistent_ or _EmailAddress_; attribute statements `email`, `displayName`; a group statement `groups`.  |
+| Authentik | Providers → SAML Provider (ACS URL, audience = entity ID), then an application                  | NameID property mapping: _Authentik default SAML Mapping: UPN_ or _Email_; the default mappings send `email` and groups. |
+| Keycloak  | Clients → Create → SAML, client ID = entity ID; metadata: `<realm>/protocol/saml/descriptor`    | Name ID format _persistent_; turn on _Sign assertions_; add mappers for `email`, `displayName` and a group list.         |
+
+Group mappings work as below: name the **group attribute** (`groups`, or the full claim URI Entra ID uses).
+
+What Ordo checks, so you know what your provider must get right: the assertion is signed by one of the configured
+certificates; it answers the sign-in Ordo started (IdP-initiated sign-ins from an app tile are refused); its issuer,
+audience, destination and recipient match; and it is current, within two minutes of clock skew. While your provider
+rolls over its signing key, add the new certificate next to the old one (both are accepted), then remove the old one.
+Settings → Authentication warns a month before a certificate expires.
+
+Not supported yet: single logout, encrypted assertions, and signed AuthnRequests (Ordo's requests are unsigned, which
+providers accept by default).
 
 ## How people sign in
 
@@ -95,3 +132,10 @@ Suspend or remove them under **Settings → Members** to cut access straight awa
   `iss` your provider puts in tokens exactly (watch trailing slashes and `http` vs `https` behind proxies).
 - **"expired or came from another browser"** — the sign-in took longer than 10 minutes, or started on another
   address than `ORDO_PUBLIC_URL`.
+- **SAML: "audience mismatch", "Wrong Destination" or "Wrong or missing Recipient"** — the entity ID or ACS URL in your
+  provider doesn't match the ones Ordo shows; copy them again. Behind a proxy, check `ORDO_PUBLIC_URL`.
+- **SAML: "Invalid signature"** — the certificate in Ordo isn't the one your provider signs with (read the metadata
+  again), or your provider signs only the response and not the assertion; turn on assertion signing.
+- **SAML: "InResponseTo is missing"** — the sign-in started at the provider (an app tile or dashboard) instead of at
+  Ordo. Point the tile at `https://<your Ordo>/api/auth/sso/<id>/start` instead.
+- **SAML: "transient NameID"** — the provider sends a NameID that changes every time; switch it to persistent.

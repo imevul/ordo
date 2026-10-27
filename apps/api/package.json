@@ -23,8 +23,10 @@
     "@fastify/static": "10.1.7",
     "@fastify/websocket": "11.3.4",
     "@matrix-org/matrix-sdk-crypto-wasm": "18.9.0",
+    "@node-saml/node-saml": "5.1.0",
     "@ordo/shared": "workspace:*",
     "@simplewebauthn/server": "14.0.3",
+    "@xmldom/xmldom": "0.8.15",
     "drizzle-orm": "0.45.4",
     "fake-indexeddb": "6.2.5",
     "fastify": "5.12.7",
@@ -50,6 +52,7 @@
     "jose": "6.2.13",
     "pino-pretty": "13.2.0",
     "tsx": "4.23.15",
-    "vitest": "5.0.5"
+    "vitest": "5.0.5",
+    "xml-crypto": "6.4.0"
   }
 }

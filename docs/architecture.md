@@ -116,13 +116,20 @@ Notable choices:
   hashes. Logging in with 2FA returns a short-lived `mfa` token instead of a session; `POST /auth/mfa` completes it.
 - Email links (reset, verification, email change) are single-use tokens stored as hashes in `auth_tokens` with short
   expiries; a reset signs out every session.
-- SSO (`services/sso.ts`, `routes/sso.ts`): OpenID Connect via `openid-client` with PKCE (S256) and a nonce; the
-  state lives in `auth_states` (single use, 10 minutes) and in a short `HttpOnly` cookie, so a callback must come back
-  to the browser that started it; `response_mode=query` only. Discovery and token requests go through `safeFetch`.
-  Accounts are created or matched by email only for `email_verified` addresses at the workspace's verified domains;
-  otherwise identities are linked explicitly. Require-SSO is checked in `authorizeWorkspace` (HTTP and WebSocket):
-  the session's `auth_provider_id` must belong to the workspace; owners pass (password sign-ins are audited as
-  `auth.sso_bypass`); `sso_expires_at` caps SSO session length in `resolveUser`.
+- SSO (`services/sso.ts`, `routes/sso.ts`): the protocols prove who someone is, and the shared core (`resolveSsoUser`,
+  `finishSso`) decides which account that is. The state lives in `auth_states` (single use, 10 minutes) and in a short
+  `HttpOnly` cookie, so a sign-in must come back to the browser that started it.
+  - OpenID Connect (`services/oidc.ts`): `openid-client` with PKCE (S256) and a nonce; `response_mode=query` only.
+    Discovery and token requests go through `safeFetch`.
+  - SAML 2.0 (`services/saml.ts`): `@node-saml/node-saml`, SP-initiated only (the AuthnRequest's ID is kept on the
+    state, and the response must answer it). The response is a cross-site POST without our `SameSite=Lax` cookies,
+    so the ACS validates it, parks the claims on the state and 303-redirects to a GET that has the cookie and finishes.
+    Identity is read only from the verified assertion; Issuer, Destination and Recipient are checked on top of the
+    library's signature, time, audience and InResponseTo checks; any DOCTYPE is refused.
+    Accounts are created or matched by email only for trusted emails (OIDC `email_verified`, or SAML with the provider's
+    "trust emails" on) at the workspace's verified domains; otherwise identities are linked explicitly. Require-SSO is checked in `authorizeWorkspace` (HTTP and WebSocket):
+    the session's `auth_provider_id` must belong to the workspace; owners pass (password sign-ins are audited as
+    `auth.sso_bypass`); `sso_expires_at` caps SSO session length in `resolveUser`.
 - Sessions: 32 random bytes in an `HttpOnly`, `SameSite=Lax` cookie; stored as SHA-256; 30-day sliding expiry.
 - API keys: `ordo_` + 24 random bytes, stored as SHA-256, shown once.
 - CSRF: `SameSite=Lax` cookies plus JSON-only bodies.

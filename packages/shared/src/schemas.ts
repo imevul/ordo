@@ -643,33 +643,87 @@ const groupRolesSchema = z.record(z.string().min(1).max(200), z.enum(['admin', '
 
 const authProviderFields = {
   name: z.string().trim().min(1).max(80),
-  issuer: z.url().max(500),
-  clientId: z.string().trim().min(1).max(500),
-  scopes: z.string().trim().max(500),
   enabled: z.boolean(),
   defaultRole: z.enum(['member', 'guest']),
-  groupClaim: z.string().trim().max(100).nullable(),
+  groupClaim: z.string().trim().max(300).nullable(),
   groupRoles: groupRolesSchema,
 };
 
-export const createAuthProviderSchema = z.object({
-  ...authProviderFields,
-  clientSecret: z.string().min(1).max(2000),
-  scopes: authProviderFields.scopes.default('openid email profile'),
+const oidcFields = {
+  issuer: z.url().max(500),
+  clientId: z.string().trim().min(1).max(500),
+  scopes: z.string().trim().max(500),
+};
+
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullish()
+    .transform((v) => v || null);
+
+export const samlSettingsSchema = z.object({
+  idpEntityId: z.string().trim().min(1).max(500),
+  ssoUrl: z.url().max(2000),
+  certificates: z.array(z.string().trim().min(1).max(20_000)).min(1).max(5),
+  nameIdFormat: optionalText(200),
+  emailAttribute: optionalText(300),
+  nameAttribute: optionalText(300),
+  metadataUrl: z
+    .url()
+    .max(2000)
+    .nullish()
+    .or(z.literal(''))
+    .transform((v) => v || null),
+});
+
+const providerDefaults = {
   enabled: authProviderFields.enabled.default(true),
   defaultRole: authProviderFields.defaultRole.default('member'),
   groupClaim: authProviderFields.groupClaim.optional(),
   groupRoles: authProviderFields.groupRoles.default({}),
-});
+};
 
-// No defaults here: a PATCH must leave unmentioned fields alone.
+// Providers created before SAML existed had no protocol, and older clients still send none.
+export const createAuthProviderSchema = z.preprocess(
+  (v) => (v && typeof v === 'object' && !('protocol' in v) ? { ...v, protocol: 'oidc' } : v),
+  z.discriminatedUnion('protocol', [
+    z.object({
+      ...authProviderFields,
+      ...oidcFields,
+      ...providerDefaults,
+      protocol: z.literal('oidc'),
+      clientSecret: z.string().min(1).max(2000),
+      scopes: oidcFields.scopes.default('openid email profile'),
+    }),
+    z.object({
+      ...authProviderFields,
+      ...providerDefaults,
+      protocol: z.literal('saml'),
+      /** Chosen by the client, so the IdP can be told Ordo's addresses before saving. */
+      id: z.uuid().optional(),
+      saml: samlSettingsSchema,
+      trustEmail: z.boolean().default(false),
+    }),
+  ]),
+);
+
+// No defaults here: a PATCH must leave unmentioned fields alone. The protocol can't change.
 export const updateAuthProviderSchema = z
-  .object(authProviderFields)
+  .object({ ...authProviderFields, ...oidcFields })
   .partial()
   .extend({
     /** Empty keeps the stored secret. */
     clientSecret: z.string().max(2000).optional(),
+    saml: samlSettingsSchema.optional(),
+    trustEmail: z.boolean().optional(),
   });
+
+/** IdP metadata to read SAML settings from: pasted XML, or a URL to fetch it from. */
+export const samlMetadataSchema = z
+  .object({ xml: z.string().max(500_000).optional(), url: z.url().max(2000).optional() })
+  .refine((v) => !!v.xml !== !!v.url, { message: 'Give either the XML or a URL' });
 
 export const createWebhookSchema = z.object({
   url: z.url().max(2000),

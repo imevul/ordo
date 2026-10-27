@@ -29,7 +29,7 @@ Then open <http://localhost:3000>. The first person to sign up becomes the admin
 - **Workspaces, members, roles and invite links**; invite-only or open sign-up.
 - **GitHub, GitLab and Forgejo/Gitea**: PRs, branches and commits link to issues and move them along; works
   behind NAT by polling.
-- **Single sign-on** per workspace with any OpenID Connect provider, group → role mapping and "require SSO".
+- **Single sign-on** per workspace with any OpenID Connect or SAML 2.0 provider, group → role mapping and "require SSO".
 - **REST API** with personal API keys, and signed **webhooks** for issue, comment, project and cycle events.
 
 See [ROADMAP.md](ROADMAP.md) for what's next and how far along the Linear feature set we are.
@@ -91,7 +91,7 @@ focus rings, chamfered corners instead of rounded ones ([docs/design.md](docs/de
 | [docs/self-hosting.md](docs/self-hosting.md)             | Install, HTTPS, backups, upgrades, troubleshooting |
 | [docs/configuration.md](docs/configuration.md)           | Environment variables                              |
 | [docs/admin.md](docs/admin.md)                           | Instance administration and recovery               |
-| [docs/sso.md](docs/sso.md)                               | Single sign-on (OpenID Connect) per workspace      |
+| [docs/sso.md](docs/sso.md)                               | Single sign-on (OIDC and SAML) per workspace       |
 | [docs/integrations/](docs/integrations/README.md)        | GitHub, GitLab, Forgejo/Gitea                      |
 | [docs/api.md](docs/api.md)                               | REST API, webhooks and realtime events             |
 | [docs/graphql.md](docs/graphql.md)                       | GraphQL API                                        |

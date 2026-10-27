@@ -32,7 +32,7 @@ Admins can **suspend** a member — they keep their history but can't open the w
 - **Access** — who may invite; **domains** you've verified with a DNS TXT record
   (`_ordo-verify.example.com` → `ordo-verify=…`); and **join by domain**, which lets anyone with a _verified_ email at
   one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.
-- **Authentication** — single sign-on with your own identity provider (OpenID Connect), group → role mapping, and
+- **Authentication** — single sign-on with your own identity provider (OpenID Connect or SAML), group → role mapping, and
   **require SSO**. See [SSO](sso.md).
 - **Integrations** — connect GitHub, GitLab or Forgejo/Gitea, and Slack, Discord, Matrix or Telegram; see
   [integrations](integrations/README.md).

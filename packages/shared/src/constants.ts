@@ -386,6 +386,7 @@ export const API_MESSAGE_KEYS = [
   'ai_not_set_up_workspace',
   'ai_own_not_allowed',
   'passkey_failed',
+  'invalid_certificate',
   'reauth_needed',
   'ai_locked',
   'ai_off_workspace',
@@ -411,3 +412,10 @@ export const API_MESSAGE_KEYS = [
   'max_reactions',
 ] as const;
 export type ApiMessageKey = (typeof API_MESSAGE_KEYS)[number];
+
+/** What a SAML identity provider needs to know about Ordo, for one provider. */
+export const samlServiceProvider = (publicUrl: string, providerId: string) => {
+  const base = `${publicUrl.replace(/\/+$/, '')}/api/auth/saml/${providerId}`;
+  // The metadata's own address doubles as the entity ID, as most IdPs expect.
+  return { entityId: `${base}/metadata`, acsUrl: `${base}/acs`, metadataUrl: `${base}/metadata` };
+};

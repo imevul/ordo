@@ -308,9 +308,14 @@ export async function finishSso(
     reply
       .header('content-type', 'text/html; charset=utf-8')
       .header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'");
+    // SAML's subject is the NameID, and its emails are only as trusted as the admin says.
+    const needs =
+      provider.protocol === 'saml'
+        ? '<b>sub</b> (a persistent NameID), an <b>email</b>'
+        : '<b>sub</b>, a verified <b>email</b>';
     return reply.send(`<!doctype html><body style="background:#09090b;color:#fff4fa;font:14px ui-monospace,monospace;padding:32px">
       <p style="color:#ff1493">// ${esc(provider.name)} works</p>
-      <p style="color:#b8aab2">These are the claims Ordo received. Ordo needs <b>sub</b>, a verified <b>email</b>${provider.groupClaim ? ` and <b>${esc(provider.groupClaim)}</b>` : ''}.</p>
+      <p style="color:#b8aab2">These are the claims Ordo received. Ordo needs ${needs}${provider.groupClaim ? ` and <b>${esc(provider.groupClaim)}</b>` : ''}.</p>
       <pre style="background:#121214;border:1px solid #49313e;padding:16px;white-space:pre-wrap">${esc(JSON.stringify(claims, null, 2))}</pre>
       <p><a style="color:#ff5cb8" href="${esc(state.redirect ?? '/')}">Back to Ordo</a></p></body>`);
   }

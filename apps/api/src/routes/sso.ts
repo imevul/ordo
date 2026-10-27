@@ -13,6 +13,15 @@ import { badRequest, HttpError, notFound } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from '../services/audit.ts';
 import { beginLogin, CALLBACK_PATH, completeLogin } from '../services/oidc.ts';
+import {
+  beginSamlLogin,
+  completeSamlLogin,
+  receiveSamlResponse,
+  SAML_COOKIE,
+  SAML_COOKIE_PATH,
+  SamlError,
+  serviceProviderMetadata,
+} from '../services/saml.ts';
 import { finishSso, LAST_SSO_COOKIE, loginError } from '../services/sso.ts';
 
 const STATE_COOKIE = 'ordo_oidc';
@@ -99,12 +108,17 @@ export async function ssoRoutes(app: FastifyInstance) {
         if (!ws.access.isAdmin) throw notFound('Sign-in method');
       }
     }
+    const saml = provider.protocol === 'saml';
     let url: string;
     let state: string;
     try {
-      ({ url, state } = await beginLogin(app, provider, { mode, userId: req.user?.id, redirect }));
+      ({ url, state } = await (saml ? beginSamlLogin : beginLogin)(app, provider, {
+        mode,
+        userId: req.user?.id,
+        redirect,
+      }));
     } catch (err) {
-      req.log.warn({ err, provider: provider.id }, 'OIDC discovery failed');
+      req.log.warn({ err, provider: provider.id }, 'Starting single sign-on failed');
       if (mode === 'login')
         return loginError(
           reply,
@@ -114,8 +128,8 @@ export async function ssoRoutes(app: FastifyInstance) {
         `Couldn't reach the provider: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    reply.setCookie(STATE_COOKIE, state, {
-      path: '/api/auth/oidc',
+    reply.setCookie(saml ? SAML_COOKIE : STATE_COOKIE, state, {
+      path: saml ? SAML_COOKIE_PATH : '/api/auth/oidc',
       httpOnly: true,
       sameSite: 'lax',
       secure: app.env.secureCookies,
@@ -151,6 +165,56 @@ export async function ssoRoutes(app: FastifyInstance) {
       ...result,
       emailTrusted: result.claims.email_verified === true,
     });
+  });
+
+  // ─── SAML ──────────────────────────────────────────────────────────────
+
+  /** What the identity provider needs to know about Ordo: entity ID, ACS URL. Public on purpose. */
+  app.get('/auth/saml/:providerId/metadata', async (req, reply) => {
+    const { providerId } = req.params as { providerId: string };
+    const [provider] = /^[0-9a-f-]{36}$/.test(providerId)
+      ? await db.select().from(authProviders).where(eq(authProviders.id, providerId))
+      : [];
+    if (provider?.protocol !== 'saml' || !provider.saml) throw notFound('Sign-in method');
+    return reply
+      .header('content-type', 'application/samlmetadata+xml; charset=utf-8')
+      .send(serviceProviderMetadata(app, provider));
+  });
+
+  // The IdP posts the response as a form, from its own site: the one cross-site POST Ordo takes
+  // (app.ts lets it through). It signs nobody in by itself; see services/saml.ts.
+  await app.register(async (acs) => {
+    acs.addContentTypeParser(
+      'application/x-www-form-urlencoded',
+      { parseAs: 'string', bodyLimit: 1024 * 1024 },
+      (_req, body, done) => done(null, Object.fromEntries(new URLSearchParams(body as string))),
+    );
+    acs.post('/auth/saml/:providerId/acs', async (req, reply) => {
+      const { providerId } = req.params as { providerId: string };
+      let state: string;
+      try {
+        state = await receiveSamlResponse(app, providerId, (req.body ?? {}) as object);
+      } catch (err) {
+        req.log.warn({ err, provider: providerId }, 'SAML response refused');
+        if (err instanceof SamlError) return loginError(reply, `Sign-in failed (${err.message})`);
+        throw err;
+      }
+      // 303: the browser follows with a GET, which carries the SameSite=Lax state cookie.
+      return reply.redirect(`/api/auth/saml/complete?state=${encodeURIComponent(state)}`, 303);
+    });
+  });
+
+  app.get('/auth/saml/complete', async (req, reply) => {
+    const { state } = req.query as { state?: string };
+    reply.clearCookie(SAML_COOKIE, { path: SAML_COOKIE_PATH });
+    let result: Awaited<ReturnType<typeof completeSamlLogin>>;
+    try {
+      result = await completeSamlLogin(app, state, req.cookies[SAML_COOKIE]);
+    } catch (err) {
+      if (err instanceof HttpError) return loginError(reply, err.message);
+      throw err;
+    }
+    return finishSso(app, req, reply, { ...result, emailTrusted: result.provider.trustEmail });
   });
 
   // ─── connected identities ─────────────────────────────────────────────
