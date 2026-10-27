@@ -77,6 +77,7 @@ export default {
     passkey_failed: 'Lösennyckeln kunde inte verifieras',
     invalid_certificate: 'Det är inte ett X.509-certifikat',
     team_managed: 'Teamets medlemmar kommer från kataloggruppen ”{group}”. Ändra dem där.',
+    resync: 'Enhetens kopia av arbetsytan är inaktuell. Läser in den igen.',
     reauth_needed: 'Logga in igen för att ändra dina lösennycklar',
     ai_off_workspace: 'AI-hjälp är avstängd i den här arbetsytan',
     ai_off: 'AI-hjälp är avstängd',

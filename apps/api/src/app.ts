@@ -53,6 +53,7 @@ import { scimAdminRoutes, scimRoutes } from './routes/scim.ts';
 import { searchRoutes } from './routes/search.ts';
 import { slackCallbackRoutes, slackWorkspaceRoutes } from './routes/slack.ts';
 import { ssoRoutes } from './routes/sso.ts';
+import { syncRoutes } from './routes/sync.ts';
 import { teamRoutes } from './routes/teams.ts';
 import { templateRoutes } from './routes/templates.ts';
 import { viewRoutes } from './routes/views.ts';
@@ -227,6 +228,7 @@ export async function buildApp(
       await w.register(memberRoutes);
       await w.register(authProviderRoutes);
       await w.register(scimAdminRoutes);
+      await w.register(syncRoutes);
       await w.register(teamRoutes);
       await w.register(cycleRoutes);
       await w.register(issueRoutes);

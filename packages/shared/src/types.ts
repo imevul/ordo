@@ -564,6 +564,40 @@ export interface Bootstrap {
   } | null;
 }
 
+/** Where a sync client starts: the workspace as of change `seq` in `epoch`. */
+export interface SyncSnapshot {
+  seq: number;
+  epoch: number;
+  bootstrap: Bootstrap;
+}
+
+/** A page of the issues a sync client keeps (not trashed or archived), in id order. */
+export interface SyncIssuePage {
+  issues: Issue[];
+  /** Pass as `after` for the next page; null when this was the last. */
+  next: string | null;
+}
+
+/**
+ * What changed after `since`, as the reader may see it now. Issues and comments come as their
+ * current state, or as deletions when they're gone or out of sight; anything else just says that
+ * the bootstrap data (teams, members, labels…) should be loaded again.
+ */
+export interface SyncChanges {
+  /** Read up to here; pass it as `since` next time. */
+  seq: number;
+  epoch: number;
+  /** More changes are waiting: ask again straight away. */
+  more: boolean;
+  issues: Issue[];
+  deletedIssueIds: string[];
+  comments: Comment[];
+  deletedCommentIds: string[];
+  bootstrapChanged: boolean;
+  /** Other kinds that changed (notifications, views…), for caches outside the bootstrap. */
+  kinds: string[];
+}
+
 /** AI: a short summary of an issue and its discussion, in Markdown. */
 export interface AiSummary {
   summary: string;

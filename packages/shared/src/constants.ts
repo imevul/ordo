@@ -392,6 +392,7 @@ export const API_MESSAGE_KEYS = [
   'passkey_failed',
   'invalid_certificate',
   'team_managed',
+  'resync',
   'reauth_needed',
   'ai_locked',
   'ai_off_workspace',

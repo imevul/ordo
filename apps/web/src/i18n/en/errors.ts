@@ -79,6 +79,7 @@ export default {
     passkey_failed: "That passkey couldn't be verified",
     invalid_certificate: "That isn't an X.509 certificate",
     team_managed: 'This team’s members come from the directory group “{group}”. Change them there.',
+    resync: 'This device’s copy of the workspace is out of date. Loading it again.',
     reauth_needed: 'Sign in again to change your passkeys',
     ai_off_workspace: 'AI assistance is turned off in this workspace',
     ai_off: 'AI assistance is off',

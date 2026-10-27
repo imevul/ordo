@@ -243,6 +243,64 @@ describe('bootstrap', () => {
   });
 });
 
+describe('sync', () => {
+  type Who = keyof typeof c;
+  const snapshot = async (who: Who) => (await c[who].get(`${ws}/sync/snapshot`)).data;
+  const issuePage = async (who: Who) =>
+    ((await c[who].post(`${ws}/sync/issues`, {})).data.issues as Issue[]).map((i) => i.id);
+  const changes = async (who: Who, since: number, epoch: number) => {
+    const res = await c[who].get(`${ws}/sync/changes?since=${since}&epoch=${epoch}`);
+    expect(res.statusCode, res.body).toBe(200);
+    return res.data;
+  };
+
+  it('loads only what each person may see', async () => {
+    for (const who of [...ALLOWED, ...DENIED]) {
+      const snap = await snapshot(who);
+      const teams = snap.bootstrap.teams.map((t: { key: string }) => t.key);
+      expect(teams.includes('PRV'), who).toBe(ALLOWED.includes(who as never));
+      expect((await issuePage(who)).includes(ids.priv!), who).toBe(ALLOWED.includes(who as never));
+    }
+    expect((await c.outsider.get(`${ws}/sync/snapshot`)).statusCode).toBe(404);
+  });
+
+  it('follows changes without showing private ones', async () => {
+    const start = Object.fromEntries(
+      await Promise.all([...ALLOWED, ...DENIED].map(async (w) => [w, await snapshot(w)])),
+    );
+    await c.owner.patch(`${ws}/issues/${ids.priv}`, { description: 'Launch codes inside' });
+    const comment = (await c.owner.post(`${ws}/issues/${ids.priv}/comments`, { body: 'psst' })).data
+      .id;
+    for (const who of [...ALLOWED, ...DENIED]) {
+      const got = await changes(who, start[who].seq, start[who].epoch);
+      const sees = ALLOWED.includes(who as never);
+      expect(got.issues.map((i: Issue) => i.id).includes(ids.priv!), who).toBe(sees);
+      expect(got.comments.map((x: { id: string }) => x.id).includes(comment), who).toBe(sees);
+      expect(JSON.stringify(got).includes('Launch codes'), who).toBe(sees);
+      expect(got.deletedIssueIds, who).toEqual([]);
+    }
+  });
+
+  it('turns an issue moved into a private team into a deletion for those outside it', async () => {
+    const moved = (await c.owner.post(`${ws}/issues`, { teamId: ids.pub, title: 'Going dark' }))
+      .data.id;
+    const start = await snapshot('member');
+    await c.owner.patch(`${ws}/issues/${moved}`, { teamId: ids.prv });
+    const got = await changes('member', start.seq, start.epoch);
+    expect(got.deletedIssueIds).toEqual([moved]);
+    expect(got.issues).toEqual([]);
+    const insider = await changes('insider', start.seq, start.epoch);
+    expect(insider.issues.map((i: Issue) => i.id)).toEqual([moved]);
+  });
+
+  it('asks clients from another epoch to start over', async () => {
+    const { seq, epoch } = await snapshot('member');
+    const res = await c.member.get(`${ws}/sync/changes?since=${seq}&epoch=${epoch + 1}`);
+    expect(res.statusCode).toBe(410);
+    expect(res.data.messageKey).toBe('resync');
+  });
+});
+
 describe('notifications', () => {
   it("never reach people who can't see the issue", async () => {
     const members = ((await c.owner.get(`${ws}/bootstrap`)).data as Bootstrap).members;
@@ -364,6 +422,32 @@ describe('realtime', () => {
     remove();
     expect(received.map((e) => e.id)).toEqual([ids.pubIssue]);
   });
+
+  it('tells those who saw an issue only where it was that it left', async () => {
+    const received: RealtimeEvent[] = [];
+    const access = await computeAccess(app.db, ids.member!, boot.workspace.id, 'member');
+    const remove = app.realtime.add({
+      userId: ids.member!,
+      workspaceId: boot.workspace.id,
+      access,
+      send: (d) => received.push(JSON.parse(d)),
+    });
+    app.realtime.publish([
+      {
+        kind: 'issue',
+        action: 'updated',
+        workspaceId: boot.workspace.id,
+        id: ids.pubIssue!,
+        teamId: ids.prv,
+        prevTeamId: ids.pub,
+      },
+    ]);
+    remove();
+    expect(received).toEqual([
+      expect.objectContaining({ id: ids.pubIssue, action: 'deleted', teamId: ids.pub }),
+    ]);
+    expect(received[0]!.prevTeamId).toBeUndefined();
+  });
 });
 
 describe('MCP tools', () => {
@@ -439,6 +523,9 @@ describe('route inventory', () => {
     'GET /issues/:id/comments',
     'POST /issues/:id/comments',
     'GET /bootstrap',
+    'GET /sync/snapshot',
+    'POST /sync/issues',
+    'GET /sync/changes',
     'GET /search',
     'GET /notifications',
     'POST /teams',
