@@ -13,6 +13,7 @@ import type {
   ImportSource,
   ImportStatus,
   ImportSummary,
+  InitiativeStatus,
   IssueDisplay,
   IssueFilter,
   IssueLinkKind,
@@ -300,6 +301,28 @@ export const issueTemplates = pgTable(
   (t) => [index('issue_templates_workspace_idx').on(t.workspaceId)],
 );
 
+/** Workspace-level goals; each project belongs to at most one. */
+export const initiatives = pgTable(
+  'initiatives',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    status: text('status').$type<InitiativeStatus>().notNull().default('planned'),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    targetDate: date('target_date', { mode: 'string' }),
+    color: text('color').notNull().default('#ff1493'),
+    sortOrder: doublePrecision('sort_order').notNull().default(0),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('initiatives_workspace_idx').on(t.workspaceId)],
+);
+
 export const projects = pgTable(
   'projects',
   {
@@ -314,6 +337,7 @@ export const projects = pgTable(
     leadId: uuid('lead_id').references(() => users.id, { onDelete: 'set null' }),
     startDate: date('start_date', { mode: 'string' }),
     targetDate: date('target_date', { mode: 'string' }),
+    initiativeId: uuid('initiative_id').references(() => initiatives.id, { onDelete: 'set null' }),
     sortOrder: doublePrecision('sort_order').notNull().default(0),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: createdAt(),

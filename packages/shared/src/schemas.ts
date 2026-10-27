@@ -4,6 +4,7 @@ import {
   DOMAIN_EVENT_TYPES,
   ESTIMATE_SCALE_NAMES,
   FAVORITE_KINDS,
+  INITIATIVE_STATUSES,
   MEMBER_ROLES,
   NOTIFICATION_TYPES,
   PROJECT_HEALTH,
@@ -415,7 +416,21 @@ export const createProjectSchema = z.object({
   startDate: isoDate.nullish(),
   targetDate: isoDate.nullish(),
   teamIds: z.array(id).min(1),
+  initiativeId: id.nullish(),
 });
+
+export const createInitiativeSchema = z.object({
+  name: name,
+  description: markdown.nullish(),
+  status: z.enum(INITIATIVE_STATUSES).optional(),
+  ownerId: id.nullish(),
+  targetDate: isoDate.nullish(),
+  color: color.optional(),
+});
+export type CreateInitiativeInput = z.infer<typeof createInitiativeSchema>;
+export const updateInitiativeSchema = createInitiativeSchema
+  .partial()
+  .extend({ sortOrder: z.number().optional() });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 

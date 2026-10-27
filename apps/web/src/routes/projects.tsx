@@ -572,6 +572,21 @@ function ProjectOverview({ project }: { project: Project }) {
               onChange={(e) => save.mutate({ targetDate: e.target.value || null })}
             />
           </label>
+          <label className="block text-index">
+            Initiative
+            <select
+              className="input mt-1 h-8"
+              value={project.initiativeId ?? ''}
+              onChange={(e) => save.mutate({ initiativeId: e.target.value || null })}
+            >
+              <option value="">None</option>
+              {ws.initiatives.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="text-index">
             Teams
             <div className="mt-1 flex flex-wrap gap-1.5">

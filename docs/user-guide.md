@@ -190,6 +190,11 @@ progress, paused, completed, canceled), a **lead**, **start** and **target dates
 Post **project updates** with a health (on track, at risk, off track) to keep everyone informed; the latest
 health shows in the project list. Progress is computed from the project's issues.
 
+**Initiatives** (sidebar → _Initiatives_) are bigger goals that group projects across teams and quarters, each
+with a status (planned, active, completed), an owner, a target date and progress summed over its projects. Add
+projects from the initiative's page, or pick the _Initiative_ on a project; a project belongs to one initiative at
+a time. Guests only see initiatives that contain one of their projects.
+
 **Milestones** break a project into stages, each with an optional target date and its own progress. Add them under
 _Milestones_ on the project page, then put issues in one with the issue's _Milestone_ property (it appears once
 the issue's project has milestones). Choosing a milestone also sets the project, and moving an issue to another

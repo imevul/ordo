@@ -43,6 +43,7 @@ export const toProject = (
   progress: progress ?? emptyProgress(),
   health: health ?? null,
   milestones,
+  initiativeId: p.initiativeId,
 });
 
 export const toMilestone = (

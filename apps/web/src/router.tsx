@@ -21,6 +21,7 @@ import {
 } from './routes/auth.tsx';
 import { CycleDetailPage, CyclesPage } from './routes/cycles.tsx';
 import { InboxPage } from './routes/inbox.tsx';
+import { InitiativePage, InitiativesPage } from './routes/initiatives.tsx';
 import {
   IssuePage,
   MyIssuesPage,
@@ -172,6 +173,16 @@ const projectRoute = createRoute({
     s.tab === 'issues' ? { tab: 'issues' } : {},
   component: ProjectDetailPage,
 });
+const initiativesRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/initiatives',
+  component: InitiativesPage,
+});
+const initiativeRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/initiative/$initiativeId',
+  component: InitiativePage,
+});
 const viewsRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/views',
@@ -229,6 +240,8 @@ const routeTree = rootRoute.addChildren([
     cycleRoute,
     projectsRoute,
     projectRoute,
+    initiativesRoute,
+    initiativeRoute,
     viewsRoute,
     viewRoute,
     issueRoute,

@@ -226,6 +226,8 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 | GET / POST           | `/projects`                | `{ name, teamIds, description?, color?, status?, leadId?, startDate?, targetDate? }`                                                  |
 | GET / PATCH / DELETE | `/projects/:id`            | Deleting keeps the issues                                                                                                             |
 | GET / POST           | `/projects/:id/updates`    | `{ body, health: "on_track" \| "at_risk" \| "off_track" }`                                                                            |
+| GET / POST           | `/initiatives`             | `{ name, description?, status?: "planned" \| "active" \| "completed", ownerId?, targetDate?, color? }`                                |
+| PATCH / DELETE       | `/initiatives/:id`         | Same fields, plus `sortOrder`; deleting keeps its projects. Projects join one with `initiativeId`                                     |
 | POST                 | `/projects/:id/milestones` | `{ name, description?, targetDate? }` → the project, with `milestones` (each with `progress`)                                         |
 | PATCH / DELETE       | `/milestones/:id`          | `{ name?, description?, targetDate?, sortOrder? }` → the project; deleting keeps its issues in the project                            |
 | DELETE               | `/project-updates/:id`     |                                                                                                                                       |
@@ -296,6 +298,7 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 | `reaction.created` `reaction.deleted`                            | `{ reaction: { commentId, issueId, userId, emoji } }`                           |
 | `relation.created` `relation.deleted`                            | `{ id, type, issueId, relatedIssueId }`                                         |
 | `project.created` `project.updated` `project.deleted`            | The project (`{ id, name }` when deleted)                                       |
+| `initiative.created` `initiative.updated` `initiative.deleted`   | The initiative (`{ id, name }` when deleted)                                    |
 | `project_update.created`                                         | `{ update, project }`                                                           |
 | `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                       |
 | `ping`                                                           | Sent by the "test" button                                                       |

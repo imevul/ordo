@@ -162,6 +162,13 @@
       "when": 1793059460602,
       "tag": "0022_project_milestones",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793059873012,
+      "tag": "0023_initiatives",
+      "breakpoints": true
     }
   ]
 }
