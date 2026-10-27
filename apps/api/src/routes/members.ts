@@ -3,13 +3,13 @@ import {
   addDomainSchema,
   createInviteSchema,
   type Invite,
-  MEMBER_ROLE_LABELS,
   updateMemberSchema,
   type WorkspaceDomain,
 } from '@ordo/shared';
 import { and, asc, eq, gt, isNotNull, isNull, ne } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { invites, workspaceDomains, workspaceMembers, workspaces } from '../db/schema.ts';
+import { localeForEmail } from '../i18n/index.ts';
 import { requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { randomToken } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
@@ -36,7 +36,7 @@ export async function memberRoutes(app: FastifyInstance) {
       if (!current) throw notFound('Member');
       const touchesOwner = input.role === 'owner' || current === 'owner';
       if (touchesOwner && !ws.access.isOwner)
-        throw forbidden('Only owners can grant or change ownership');
+        throw forbidden('Only owners can grant or change ownership').as('owners_grant');
       if (userId === ctx.userId && input.suspended) throw badRequest("You can't suspend yourself");
       if (current === 'owner' && ((input.role && input.role !== 'owner') || input.suspended)) {
         await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
@@ -74,13 +74,14 @@ export async function memberRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     const ws = requireWorkspace(req);
     const { userId } = req.params as { userId: string };
-    if (userId !== user.id && !ws.access.isAdmin) throw forbidden('Only admins can remove members');
+    if (userId !== user.id && !ws.access.isAdmin)
+      throw forbidden('Only admins can remove members').as('admins_remove_members');
     return mutate(app, req, async (ctx) => {
       const current = await memberRole(ctx.tx, ctx.workspaceId, userId);
       if (!current) throw notFound('Member');
       if (current === 'owner') {
         if (userId !== user.id && !ws.access.isOwner)
-          throw forbidden('Only owners can remove an owner');
+          throw forbidden('Only owners can remove an owner').as('owners_remove_owner');
         await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
       }
       await ctx.tx
@@ -122,9 +123,10 @@ export async function memberRoutes(app: FastifyInstance) {
     if (ws.access.isAdmin) return ws;
     const [row] = await db.select().from(workspaces).where(eq(workspaces.id, ws.id));
     if (ws.access.isGuest || workspaceSettings(row!).invitePolicy !== 'members') {
-      throw forbidden('Only workspace admins can invite people');
+      throw forbidden('Only workspace admins can invite people').as('admins_invite');
     }
-    if (role === 'admin') throw forbidden('Only admins can invite admins');
+    if (role === 'admin')
+      throw forbidden('Only admins can invite admins').as('admins_invite_admins');
     return ws;
   }
 
@@ -169,7 +171,7 @@ export async function memberRoutes(app: FastifyInstance) {
     return mutate(app, req, async (ctx) => {
       for (const teamId of input.teamIds) {
         if (!ctx.access.teamIds.includes(teamId) && !ctx.access.isAdmin)
-          throw badRequest('Unknown team');
+          throw badRequest('Unknown team').as('unknown_team');
       }
       const expiresAt = new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString();
       const now = new Date().toISOString();
@@ -193,10 +195,10 @@ export async function memberRoutes(app: FastifyInstance) {
           await queueEmail(
             ctx.tx,
             row.email,
-            inviteEmail({
+            inviteEmail(await localeForEmail(ctx.tx, row.email, inviter.id), {
               inviter: inviter.name,
               workspace: ws.name,
-              role: MEMBER_ROLE_LABELS[row.role].toLowerCase(),
+              role: row.role,
               url: toInvite(row).url,
             }),
           );
@@ -233,10 +235,10 @@ export async function memberRoutes(app: FastifyInstance) {
       await queueEmail(
         ctx.tx,
         row.email,
-        inviteEmail({
+        inviteEmail(await localeForEmail(ctx.tx, row.email, inviter.id), {
           inviter: inviter.name,
           workspace: ws.name,
-          role: MEMBER_ROLE_LABELS[row.role].toLowerCase(),
+          role: row.role,
           url: toInvite(row).url,
         }),
       );
@@ -290,7 +292,7 @@ export async function memberRoutes(app: FastifyInstance) {
         .values({ workspaceId: ws.id, domain, verificationToken: randomBytes(16).toString('hex') })
         .onConflictDoNothing()
         .returning();
-      if (!row) throw conflict('That domain is already added');
+      if (!row) throw conflict('That domain is already added').as('domain_added');
       await auditCtx(ctx, {
         action: 'domain.added',
         targetType: 'domain',
@@ -331,7 +333,10 @@ export async function memberRoutes(app: FastifyInstance) {
             ne(workspaceDomains.id, row.id),
           ),
         );
-      if (taken) throw conflict('Another workspace has already verified this domain');
+      if (taken)
+        throw conflict('Another workspace has already verified this domain').as(
+          'domain_verified_elsewhere',
+        );
       const [updated] = await ctx.tx
         .update(workspaceDomains)
         .set({ verifiedAt: new Date().toISOString(), verifiedBy: 'dns' })

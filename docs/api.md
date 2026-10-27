@@ -53,6 +53,11 @@ the same as something that doesn't exist; actions the caller can see but isn't a
 | 403    | `sso_required` | The workspace requires SSO; `details.options` lists its providers     |
 | 404    | `not_found`    | Doesn't exist, or you're not a member of the workspace                |
 | 409    | `conflict`     | Unique constraint (email, workspace URL, team key, username)          |
+
+`message` is always English. Common errors also carry a `messageKey` (one of `API_MESSAGE_KEYS` in
+`@ordo/shared`, e.g. `wrong_credentials`, `not_found`, `admins_only`) and, when the sentence has values in it,
+`params`; the web app uses them to show the error in the reader's language. Match on `error` in your code, not on
+`message`.
 | 429    |                | Rate limited (auth endpoints)                                         |
 
 ## Instance & account

@@ -6,6 +6,7 @@ import common from './common.ts';
 import customers from './customers.ts';
 import cycles from './cycles.ts';
 import enums from './enums.ts';
+import errors from './errors.ts';
 import imports from './imports.ts';
 import inbox from './inbox.ts';
 import initiatives from './initiatives.ts';
@@ -54,4 +55,5 @@ export default {
   cycles,
   inbox,
   insights,
+  errors,
 } satisfies Translation;

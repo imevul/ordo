@@ -3,6 +3,7 @@ import {
   changePasswordSchema,
   createApiKeySchema,
   createWorkspaceSchema,
+  DEFAULT_LOCALE,
   forgotPasswordSchema,
   type InstanceConfig,
   loginSchema,
@@ -26,6 +27,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '../db/schema.ts';
+import { localeOf } from '../i18n/index.ts';
 import { API_KEY_PREFIX, clearSessionCookie, createSession, requireUser } from '../lib/auth.ts';
 import { hashPassword, randomToken, sha256, verifyPassword } from '../lib/crypto.ts';
 import {
@@ -95,7 +97,7 @@ async function acceptInvite(
   email: string,
 ) {
   if (invite.email && invite.email.toLowerCase() !== email.toLowerCase()) {
-    throw forbidden('This invite was sent to a different email address');
+    throw forbidden('This invite was sent to a different email address').as('invite_other_email');
   }
   await joinWorkspace(tx, invite.workspaceId, userId, invite.role, invite.teamIds);
   // Email-bound invites are single use; open invite links stay valid until they expire.
@@ -141,14 +143,14 @@ export async function authRoutes(app: FastifyInstance) {
       const [{ n }] = (await tx.select({ n: count() }).from(users)) as [{ n: number }];
       const invite = input.inviteToken ? await findInvite(tx, input.inviteToken) : null;
       if (input.inviteToken && !invite)
-        throw badRequest('This invite link is invalid or has expired');
+        throw badRequest('This invite link is invalid or has expired').as('invite_invalid');
       if (n > 0 && settings.get('signupMode') === 'invite' && !invite)
-        throw forbidden('Sign-ups on this instance require an invite');
+        throw forbidden('Sign-ups on this instance require an invite').as('invite_required');
       const [existing] = await tx
         .select({ id: users.id })
         .from(users)
         .where(eq(users.email, email));
-      if (existing) throw conflict('An account with this email already exists');
+      if (existing) throw conflict('An account with this email already exists').as('email_taken');
       const [user] = await tx
         .insert(users)
         .values({
@@ -156,6 +158,7 @@ export async function authRoutes(app: FastifyInstance) {
           name: input.name,
           username: await uniqueUsername(tx, email),
           passwordHash: await hashPassword(input.password),
+          preferences: input.locale ? { locale: input.locale } : {},
           avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
           // The first account on an instance administers it.
           isInstanceAdmin: n === 0,
@@ -172,7 +175,11 @@ export async function authRoutes(app: FastifyInstance) {
         await queueEmail(
           tx,
           email,
-          verifyEmailEmail(input.name, `${env.publicUrl}/verify-email/${token}`),
+          verifyEmailEmail(
+            input.locale ?? DEFAULT_LOCALE,
+            input.name,
+            `${env.publicUrl}/verify-email/${token}`,
+          ),
         );
       }
       return { userId: user!.id, workspaceSlug };
@@ -194,10 +201,12 @@ export async function authRoutes(app: FastifyInstance) {
         { action: 'auth.login_failed', actorId: user?.id ?? null, data: { email } },
         requestMeta(req),
       );
-      throw unauthorized('Wrong email or password');
+      throw unauthorized('Wrong email or password').as('wrong_credentials');
     }
     if (user.disabledAt)
-      throw forbidden('This account has been disabled. Contact your administrator.');
+      throw forbidden('This account has been disabled. Contact your administrator.').as(
+        'account_disabled',
+      );
     if (user.totpEnabledAt) {
       // Password was right; the session is created only after the second factor.
       const mfaToken = await createToken(db, user.id, 'mfa', 10);
@@ -217,7 +226,8 @@ export async function authRoutes(app: FastifyInstance) {
     const userId = await db.transaction(async (tx) => {
       const token = await consumeToken(tx, 'mfa', input.mfaToken);
       const [user] = await tx.select().from(users).where(eq(users.id, token.userId));
-      if (!user || user.disabledAt || !user.totpEnabledAt) throw unauthorized('Sign in again');
+      if (!user || user.disabledAt || !user.totpEnabledAt)
+        throw unauthorized('Sign in again').as('sign_in_again');
       if (!(await verifySecondFactor(tx, app.keyring, user, input.code))) return null;
       await audit(
         tx,
@@ -242,7 +252,7 @@ export async function authRoutes(app: FastifyInstance) {
           .update(authTokens)
           .set({ usedAt: null })
           .where(eq(authTokens.tokenHash, sha256(input.mfaToken)));
-      throw unauthorized('That code is not valid');
+      throw unauthorized('That code is not valid').as('invalid_code');
     }
     await createSession(app, reply, userId, req);
     return { ok: true };
@@ -263,7 +273,11 @@ export async function authRoutes(app: FastifyInstance) {
         await queueEmail(
           tx,
           user.email,
-          passwordResetEmail(user.name, `${env.publicUrl}/reset-password/${token}`),
+          passwordResetEmail(
+            localeOf(user.preferences),
+            user.name,
+            `${env.publicUrl}/reset-password/${token}`,
+          ),
         );
       });
     }
@@ -316,7 +330,7 @@ export async function authRoutes(app: FastifyInstance) {
       await db.transaction(async (tx) => {
         const row = await consumeToken(tx, 'email_change', token);
         const [user] = await tx.select().from(users).where(eq(users.id, row.userId));
-        if (!user) throw badRequest('This link is invalid or has expired');
+        if (!user) throw badRequest('This link is invalid or has expired').as('link_invalid');
         const next = String(row.data.email);
         await tx
           .update(users)
@@ -335,14 +349,15 @@ export async function authRoutes(app: FastifyInstance) {
         await queueEmail(
           tx,
           user.email,
-          securityEmail({
-            title: 'Your Ordo email address changed',
-            body: `Your account now uses ${next}.`,
+          securityEmail(localeOf(user.preferences), {
+            notice: 'emailChanged',
+            params: { email: next },
           }),
         );
       });
     } catch (err) {
-      if (isUniqueViolation(err)) throw conflict('Another account already uses that email');
+      if (isUniqueViolation(err))
+        throw conflict('Another account already uses that email').as('email_taken');
       throw err;
     }
     return { ok: true };
@@ -392,7 +407,7 @@ export async function authRoutes(app: FastifyInstance) {
         .set({ ...input, updatedAt: new Date().toISOString() })
         .where(eq(users.id, user.id));
     } catch (err) {
-      if (isUniqueViolation(err)) throw conflict('That username is taken');
+      if (isUniqueViolation(err)) throw conflict('That username is taken').as('username_taken');
       throw err;
     }
     const memberships = await db
@@ -418,9 +433,12 @@ export async function authRoutes(app: FastifyInstance) {
       .select({ hash: users.passwordHash })
       .from(users)
       .where(eq(users.id, user.id));
-    if (!row?.hash) throw badRequest('This account signs in through SSO and has no password');
+    if (!row?.hash)
+      throw badRequest('This account signs in through SSO and has no password').as(
+        'sso_no_password',
+      );
     if (!(await verifyPassword(input.currentPassword, row.hash)))
-      throw badRequest('Current password is wrong');
+      throw badRequest('Current password is wrong').as('current_password_wrong');
     const passwordHash = await hashPassword(input.newPassword);
     await db.transaction(async (tx) => {
       await tx.update(users).set({ passwordHash }).where(eq(users.id, user.id));
@@ -536,7 +554,9 @@ export async function authRoutes(app: FastifyInstance) {
       .from(workspaceMembers)
       .where(eq(workspaceMembers.userId, user.id))) as [{ n: number }];
     if (!settings.get('allowWorkspaceCreation') && n > 0)
-      throw forbidden('Creating workspaces is disabled on this instance');
+      throw forbidden('Creating workspaces is disabled on this instance').as(
+        'workspace_creation_off',
+      );
     try {
       const slug = await db.transaction(async (tx) => {
         const [ws] = await tx
@@ -571,7 +591,8 @@ export async function authRoutes(app: FastifyInstance) {
       });
       return { slug };
     } catch (err) {
-      if (isUniqueViolation(err)) throw conflict('That workspace URL is taken');
+      if (isUniqueViolation(err))
+        throw conflict('That workspace URL is taken').as('workspace_url_taken');
       throw err;
     }
   });

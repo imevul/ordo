@@ -1,6 +1,7 @@
 export * from './constants.ts';
 export * from './events.ts';
 export * from './git.ts';
+export * from './i18n.ts';
 export * from './imports.ts';
 export * from './mcp.ts';
 export * from './schemas.ts';

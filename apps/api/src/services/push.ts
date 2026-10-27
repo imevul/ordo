@@ -1,3 +1,4 @@
+import type { UserPreferences } from '@ordo/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
@@ -8,8 +9,10 @@ import {
   pushSubscriptions,
   teams,
   users,
+  workflowStates,
   workspaces,
 } from '../db/schema.ts';
+import { localeOf } from '../i18n/index.ts';
 import { enqueue } from '../lib/jobs/index.ts';
 import { safeFetch } from '../lib/safeFetch.ts';
 import {
@@ -18,7 +21,7 @@ import {
   type VapidKeys,
   vapidAuthorization,
 } from '../lib/webpush.ts';
-import { DESCRIBE } from './digest.ts';
+import { describeNotification } from './digest.ts';
 
 let cached: VapidKeys | null = null;
 
@@ -72,19 +75,26 @@ export async function runPush(
       title: issues.title,
       teamKey: teams.key,
       actor: users.name,
+      state: workflowStates.name,
+      preferences: sql<Partial<UserPreferences> | null>`(select preferences from users r where r.id = ${notifications.userId})`,
     })
     .from(notifications)
     .innerJoin(workspaces, eq(workspaces.id, notifications.workspaceId))
     .leftJoin(issues, eq(issues.id, notifications.issueId))
     .leftJoin(teams, eq(teams.id, issues.teamId))
     .leftJoin(users, eq(users.id, notifications.actorId))
+    .leftJoin(workflowStates, eq(workflowStates.id, issues.stateId))
     .where(eq(notifications.id, notificationId));
   if (!row || row.n.readAt) return;
   const identifier = row.teamKey ? `${row.teamKey}-${row.number}` : null;
   const payload = Buffer.from(
     JSON.stringify({
       title: identifier ? `${identifier} ${row.title}` : 'Ordo',
-      body: `${row.actor ?? 'Someone'} ${DESCRIBE[row.n.type]}`,
+      body: describeNotification(localeOf(row.preferences), {
+        type: row.n.type,
+        actor: row.actor,
+        state: row.state,
+      }),
       url: identifier ? `/${row.slug}/issue/${identifier}` : `/${row.slug}/inbox`,
       tag: row.n.issueId ?? row.n.id,
     }),

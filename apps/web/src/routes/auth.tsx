@@ -14,7 +14,7 @@ import { ApiError, api } from '../api/client.ts';
 import { keys, useConfig, useMe } from '../api/queries.ts';
 import { OrdoMark } from '../components/icons.tsx';
 import { Spinner } from '../components/PageHeader.tsx';
-import { t, tx } from '../i18n/index.ts';
+import { getLocale, t, tx } from '../i18n/index.ts';
 import { forgetLastSso, lastSso, ssoStartUrl } from '../lib/sso.ts';
 
 function AuthLayout({
@@ -621,6 +621,7 @@ export function SignupPage() {
       const res = await api.post<{ workspaceSlug: string | null }>('/auth/signup', {
         ...form,
         inviteToken: invite,
+        locale: getLocale(),
       });
       qc.removeQueries({ queryKey: keys.me });
       qc.removeQueries({ queryKey: keys.config });

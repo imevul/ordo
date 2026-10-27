@@ -36,6 +36,8 @@ export const signupSchema = z.object({
   email: z.email().max(254),
   password: passwordSchema,
   inviteToken: z.string().max(200).optional(),
+  /** The language the sign-up page was shown in; it becomes the account's language. */
+  locale: z.enum(LOCALES).optional(),
 });
 
 export const loginSchema = z.object({

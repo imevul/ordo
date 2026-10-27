@@ -196,7 +196,7 @@ export async function mergePlaceholder(ctx: Ctx, placeholderId: string, userId: 
         eq(users.kind, 'human'),
       ),
     );
-  if (!member) throw badRequest('Pick a member of this workspace');
+  if (!member) throw badRequest('Pick a member of this workspace').as('pick_member');
 
   // A people-level rewrite, not an issue change: no history entries, nobody notified.
   const assigned = await ctx.tx

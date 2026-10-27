@@ -1,12 +1,14 @@
 import {
   DEFAULT_PREFERENCES,
   type EmailDigest,
+  type Locale,
   type NotificationType,
   type UserPreferences,
 } from '@ordo/shared';
 import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { issues, notifications, teams, users, workflowStates, workspaces } from '../db/schema.ts';
+import { localeOf, serverT } from '../i18n/index.ts';
 import { type DigestItem, digestEmail } from './mail-templates.ts';
 import { queueEmail } from './mailer.ts';
 
@@ -34,16 +36,17 @@ const WAIT_MS: Record<EmailDigest, number> = {
   daily: 86_400_000,
 };
 
-export const DESCRIBE: Record<NotificationType, string> = {
-  issue_assigned: 'assigned you',
-  issue_unassigned: 'unassigned you',
-  issue_comment: 'commented',
-  issue_mention: 'mentioned you',
-  issue_status_changed: 'changed the status',
-  issue_priority_urgent: 'marked it urgent',
-  comment_reaction: 'reacted to your comment',
-  issue_sla_breached: 'missed its SLA',
-};
+/** One notification as a line in its recipient's language: "Ada assigned you". */
+export function describeNotification(
+  locale: Locale,
+  n: { type: NotificationType; actor: string | null; state?: string | null },
+) {
+  const t = serverT(locale);
+  return t(`notification.${n.type}`, {
+    actor: n.actor ?? t('notification.someone'),
+    state: n.state ?? '',
+  });
+}
 
 /**
  * Emails pending notifications. Each user's unread, un-emailed notifications are batched per
@@ -124,17 +127,20 @@ export async function sendNotificationEmails(app: FastifyInstance) {
     if (now - oldest < WAIT_MS[digest]) continue;
 
     const ws = workspaceById.get(first.workspaceId);
+    const locale = localeOf(first.preferences);
     const lines: DigestItem[] = wanted.flatMap((n) => {
       const issue = n.issueId ? issueById.get(n.issueId) : undefined;
       if (!issue || !ws) return [];
       const identifier = `${issue.key}-${issue.number}`;
-      const verb =
-        n.type === 'issue_status_changed' ? `moved it to ${issue.state}` : DESCRIBE[n.type];
       return [
         {
           identifier,
           title: issue.title,
-          line: `${n.actorName ?? 'Someone'} ${verb}`,
+          line: describeNotification(locale, {
+            type: n.type,
+            actor: n.actorName,
+            state: issue.state,
+          }),
           url: `${app.env.publicUrl}/${ws.slug}/issue/${identifier}`,
         },
       ];
@@ -144,7 +150,7 @@ export async function sendNotificationEmails(app: FastifyInstance) {
       await queueEmail(
         app.db,
         first.email,
-        digestEmail({
+        digestEmail(locale, {
           workspace: ws.name,
           items: lines,
           settingsUrl: `${app.env.publicUrl}/${ws.slug}/settings/notifications`,

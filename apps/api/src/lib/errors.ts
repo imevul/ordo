@@ -1,6 +1,10 @@
+import type { ApiMessageKey } from '@ordo/shared';
 import type { ZodError, ZodType, z } from 'zod';
 
 export class HttpError extends Error {
+  messageKey?: ApiMessageKey;
+  params?: Record<string, string | number>;
+
   constructor(
     public statusCode: number,
     message: string,
@@ -9,15 +13,27 @@ export class HttpError extends Error {
   ) {
     super(message);
   }
+
+  /** Marks a message the web app translates (`API_MESSAGE_KEYS`); `params` fill its placeholders. */
+  as(key: ApiMessageKey, params?: Record<string, string | number>) {
+    this.messageKey = key;
+    this.params = params;
+    return this;
+  }
 }
 
 export const badRequest = (message: string, details?: unknown) =>
   new HttpError(400, message, 'bad_request', details);
-export const unauthorized = (message = 'Not signed in') =>
-  new HttpError(401, message, 'unauthorized');
-export const forbidden = (message = 'You do not have access to this') =>
-  new HttpError(403, message, 'forbidden');
-export const notFound = (what = 'Resource') => new HttpError(404, `${what} not found`, 'not_found');
+export const unauthorized = (message?: string) => {
+  const err = new HttpError(401, message ?? 'Not signed in', 'unauthorized');
+  return message ? err : err.as('not_signed_in');
+};
+export const forbidden = (message?: string) => {
+  const err = new HttpError(403, message ?? 'You do not have access to this', 'forbidden');
+  return message ? err : err.as('no_access');
+};
+export const notFound = (what = 'Resource') =>
+  new HttpError(404, `${what} not found`, 'not_found').as('not_found');
 export const conflict = (message: string) => new HttpError(409, message, 'conflict');
 
 export function parse<S extends ZodType>(schema: S, data: unknown): z.infer<S> {

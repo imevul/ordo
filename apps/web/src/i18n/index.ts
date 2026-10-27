@@ -1,4 +1,15 @@
-import { DEFAULT_LOCALE, LOCALES, type Locale } from '@ordo/shared';
+import {
+  DEFAULT_LOCALE,
+  fillMessage,
+  INTL_TAG,
+  LOCALES,
+  type Locale,
+  lookupMessage,
+  type MessageParams,
+  type MessagePaths,
+  pluralForm,
+  type Translation as SharedTranslation,
+} from '@ordo/shared';
 import { createElement, Fragment, type ReactNode } from 'react';
 import { readPref, writePref } from '../lib/store.ts';
 import en from './en/index.ts';
@@ -13,42 +24,27 @@ import en from './en/index.ts';
  * needs to subscribe, and nothing rendered in the old language is left behind.
  */
 
-export type Plural = {
-  zero?: string;
-  one?: string;
-  two?: string;
-  few?: string;
-  many?: string;
-  other: string;
-};
-type Leaf = string | Plural;
-type Tree = { [key: string]: Leaf | Tree };
+export type { Plural } from '@ordo/shared';
 
 export type Catalog = typeof en;
 
 /** A translation: the same shape as English, any part of it may be missing. */
-export type Translation<T = Catalog> = {
-  [K in keyof T]?: T[K] extends string ? string : T[K] extends Plural ? Plural : Translation<T[K]>;
-};
+export type Translation<T = Catalog> = SharedTranslation<T>;
 
-type Paths<T, P extends string = ''> = {
-  [K in keyof T & string]: T[K] extends Leaf ? `${P}${K}` : Paths<T[K], `${P}${K}.`>;
-}[keyof T & string];
-
-export type MessageKey = Paths<Catalog>;
-export type Params = Record<string, string | number>;
+export type MessageKey = MessagePaths<Catalog>;
+export type Params = MessageParams;
 
 const LOADERS: Record<Exclude<Locale, 'en'>, () => Promise<{ default: Translation }>> = {
   sv: () => import('./sv/index.ts'),
   nb: () => import('./nb/index.ts'),
 };
 
-/** BCP 47 tags for Intl: en follows US month-first dates, which Ordo has always shown. */
-export const INTL_TAG: Record<Locale, string> = { en: 'en-US', sv: 'sv-SE', nb: 'nb-NO' };
+export { INTL_TAG };
 
 let locale: Locale = DEFAULT_LOCALE;
 let catalog: Translation | null = null;
 let plurals = new Intl.PluralRules(INTL_TAG[locale]);
+let numbers = new Intl.NumberFormat(INTL_TAG[locale]);
 
 export const isLocale = (v: unknown): v is Locale => LOCALES.includes(v as Locale);
 
@@ -61,6 +57,7 @@ export async function setLocale(next: Locale) {
   locale = next;
   catalog = loaded;
   plurals = new Intl.PluralRules(INTL_TAG[next]);
+  numbers = new Intl.NumberFormat(INTL_TAG[next]);
   if (typeof document !== 'undefined') document.documentElement.lang = next;
 }
 
@@ -80,36 +77,15 @@ export const storedLocale = (): Locale => {
   return isLocale(v) ? v : DEFAULT_LOCALE;
 };
 
-function lookup(tree: Tree | Translation | null, key: string): Leaf | undefined {
-  let node: unknown = tree;
-  for (const part of key.split('.')) {
-    if (node == null || typeof node !== 'object') return undefined;
-    node = (node as Record<string, unknown>)[part];
-  }
-  return typeof node === 'string' || (node && typeof node === 'object' && 'other' in node)
-    ? (node as Leaf)
-    : undefined;
-}
-
 function pick(key: string, count: unknown): string {
-  const msg = (catalog && lookup(catalog, key)) ?? lookup(en as Tree, key);
-  if (msg === undefined) return key;
-  if (typeof msg === 'string') return msg;
-  const n = typeof count === 'number' ? count : Number(count ?? 0);
-  return msg[plurals.select(n) as keyof Plural] ?? msg.other;
+  const msg = lookupMessage(catalog, key) ?? lookupMessage(en, key);
+  return msg === undefined ? key : pluralForm(msg, count, plurals);
 }
 
 /** The message for `key` in the current language, with `{name}` placeholders filled in. */
 export function t(key: MessageKey, params?: Params): string {
-  const msg = pick(key, params?.count);
-  if (!params) return msg;
-  return msg.replace(/\{(\w+)\}/g, (m, name: string) =>
-    name in params ? formatParam(params[name]!) : m,
-  );
+  return fillMessage(pick(key, params?.count), params, numbers);
 }
-
-const formatParam = (v: string | number) =>
-  typeof v === 'number' ? new Intl.NumberFormat(INTL_TAG[locale]).format(v) : v;
 
 /**
  * t() for messages with markup: `{name}` placeholders may be React nodes, and `<tag>…</tag>`
@@ -128,7 +104,11 @@ export function tx(
       if (!m) return part;
       const v = params[m[1]!];
       if (v === undefined || typeof v === 'function') return part;
-      return createElement(Fragment, { key: `p${i}` }, typeof v === 'number' ? formatParam(v) : v);
+      return createElement(
+        Fragment,
+        { key: `p${i}` },
+        typeof v === 'number' ? numbers.format(v) : v,
+      );
     });
   const out: ReactNode[] = [];
   const re = /<(\w+)>([\s\S]*?)<\/\1>/g;

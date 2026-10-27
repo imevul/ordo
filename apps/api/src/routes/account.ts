@@ -11,6 +11,7 @@ import {
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { recoveryCodes, sessions, users, workspaceMembers, workspaces } from '../db/schema.ts';
+import { localeOf } from '../i18n/index.ts';
 import { requireUser } from '../lib/auth.ts';
 import { verifyPassword } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
@@ -47,7 +48,7 @@ export async function accountRoutes(app: FastifyInstance) {
   const confirmPassword = async (user: typeof users.$inferSelect, password: string | undefined) => {
     if (!user.passwordHash) return;
     if (!password || !(await verifyPassword(password, user.passwordHash))) {
-      throw badRequest('Current password is wrong');
+      throw badRequest('Current password is wrong').as('current_password_wrong');
     }
   };
 
@@ -110,7 +111,7 @@ export async function accountRoutes(app: FastifyInstance) {
     uploads.post('/me/avatar', async (req) => {
       const user = await loadUser(req);
       const file = await req.file();
-      if (!file) throw badRequest('No file uploaded');
+      if (!file) throw badRequest('No file uploaded').as('no_file');
       const body = await file.toBuffer();
       const saved = await saveFile(app, {
         workspaceId: null,
@@ -168,16 +169,22 @@ export async function accountRoutes(app: FastifyInstance) {
     const input = parse(changeEmailSchema, req.body);
     await confirmPassword(user, input.password);
     const email = input.email.toLowerCase();
-    if (email === user.email) throw badRequest('That is already your email address');
+    if (email === user.email)
+      throw badRequest('That is already your email address').as('same_email');
     const [taken] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
-    if (taken) throw conflict('Another account already uses that email');
+    if (taken) throw conflict('Another account already uses that email').as('email_taken');
     if (app.mailer.enabled) {
       await db.transaction(async (tx) => {
         const token = await createToken(tx, user.id, 'email_change', 48 * 60, { email });
         await queueEmail(
           tx,
           email,
-          verifyEmailEmail(user.name, `${env.publicUrl}/confirm-email/${token}`, true),
+          verifyEmailEmail(
+            localeOf(user.preferences),
+            user.name,
+            `${env.publicUrl}/confirm-email/${token}`,
+            true,
+          ),
         );
       });
       return { pending: true };
@@ -206,7 +213,11 @@ export async function accountRoutes(app: FastifyInstance) {
       await queueEmail(
         tx,
         user.email,
-        verifyEmailEmail(user.name, `${env.publicUrl}/verify-email/${token}`),
+        verifyEmailEmail(
+          localeOf(user.preferences),
+          user.name,
+          `${env.publicUrl}/verify-email/${token}`,
+        ),
       );
     });
     return { ok: true };
@@ -263,7 +274,8 @@ export async function accountRoutes(app: FastifyInstance) {
 
   app.post('/me/2fa/setup', async (req) => {
     const user = await loadUser(req);
-    if (user.totpEnabledAt) throw badRequest('Two-factor authentication is already on');
+    if (user.totpEnabledAt)
+      throw badRequest('Two-factor authentication is already on').as('two_factor_already_on');
     const { password } = parse(passwordConfirmSchema, req.body);
     await confirmPassword(user, password);
     return beginTotp(db, app.keyring, user);
@@ -272,9 +284,12 @@ export async function accountRoutes(app: FastifyInstance) {
   app.post('/me/2fa/enable', async (req) => {
     const user = await loadUser(req);
     const { code } = parse(totpCodeSchema, req.body);
-    if (user.totpEnabledAt) throw badRequest('Two-factor authentication is already on');
+    if (user.totpEnabledAt)
+      throw badRequest('Two-factor authentication is already on').as('two_factor_already_on');
     if (!verifyTotp(app.keyring, user, code))
-      throw badRequest('That code is not valid. Check the time on your device.');
+      throw badRequest('That code is not valid. Check the time on your device.').as(
+        'invalid_code_time',
+      );
     const recoveryCodes = await db.transaction(async (tx) => {
       await tx
         .update(users)
@@ -284,10 +299,7 @@ export async function accountRoutes(app: FastifyInstance) {
       await queueEmail(
         tx,
         user.email,
-        securityEmail({
-          title: 'Two-factor authentication is on',
-          body: 'Signing in to Ordo now also needs a code from your authenticator app.',
-        }),
+        securityEmail(localeOf(user.preferences), { notice: 'twoFactorOn' }),
       );
       return regenerateRecoveryCodes(tx, user.id);
     });
@@ -300,7 +312,7 @@ export async function accountRoutes(app: FastifyInstance) {
     if (!user.totpEnabledAt) return { ok: true };
     await confirmPassword(user, input.password);
     if (!(await verifySecondFactor(db, app.keyring, user, input.code)))
-      throw badRequest('That code is not valid');
+      throw badRequest('That code is not valid').as('invalid_code');
     await db.transaction(async (tx) => {
       await tx
         .update(users)
@@ -311,10 +323,7 @@ export async function accountRoutes(app: FastifyInstance) {
       await queueEmail(
         tx,
         user.email,
-        securityEmail({
-          title: 'Two-factor authentication is off',
-          body: 'Signing in to Ordo now only needs your password.',
-        }),
+        securityEmail(localeOf(user.preferences), { notice: 'twoFactorOff' }),
       );
     });
     return { ok: true };
@@ -324,7 +333,7 @@ export async function accountRoutes(app: FastifyInstance) {
     const user = await loadUser(req);
     const { code } = parse(totpCodeSchema, req.body);
     if (!user.totpEnabledAt || !verifyTotp(app.keyring, user, code))
-      throw badRequest('That code is not valid');
+      throw badRequest('That code is not valid').as('invalid_code');
     return { recoveryCodes: await regenerateRecoveryCodes(db, user.id) };
   });
 }

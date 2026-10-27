@@ -152,9 +152,13 @@ export async function buildApp(
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof ZodError) err = validationError(err);
     if (err instanceof HttpError) {
-      return reply
-        .status(err.statusCode)
-        .send({ error: err.code, message: err.message, details: err.details });
+      return reply.status(err.statusCode).send({
+        error: err.code,
+        message: err.message,
+        details: err.details,
+        messageKey: err.messageKey,
+        params: err.params,
+      });
     }
     const status = (err as { statusCode?: number }).statusCode ?? 500;
     if (status >= 500) req.log.error({ err }, 'request failed');
@@ -208,7 +212,8 @@ export async function buildApp(
   await app.register(
     async (w) => {
       w.addHook('preHandler', async (req) => {
-        if (!req.user) throw new HttpError(401, 'Not signed in', 'unauthorized');
+        if (!req.user)
+          throw new HttpError(401, 'Not signed in', 'unauthorized').as('not_signed_in');
         const { ws } = req.params as { ws: string };
         req.workspace = await authorizeWorkspace(db, req.user, ws, authInfo(req));
         if (req.oauth && req.oauth.workspaceId !== req.workspace.id)

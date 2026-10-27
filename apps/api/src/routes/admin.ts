@@ -11,6 +11,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '../db/schema.ts';
+import { localeOf } from '../i18n/index.ts';
 import { requireUser } from '../lib/auth.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
@@ -43,7 +44,8 @@ export async function adminRoutes(app: FastifyInstance) {
 
   app.addHook('preHandler', async (req) => {
     const user = requireUser(req);
-    if (!user.isInstanceAdmin) throw forbidden('Only instance administrators can do this');
+    if (!user.isInstanceAdmin)
+      throw forbidden('Only instance administrators can do this').as('instance_admins_only');
   });
 
   app.get('/overview', async () => {
@@ -170,7 +172,12 @@ export async function adminRoutes(app: FastifyInstance) {
     const url = await db.transaction(async (tx) => {
       const token = await createToken(tx, user.id, 'password_reset', 24 * 60);
       const link = `${app.env.publicUrl}/reset-password/${token}`;
-      if (app.mailer.enabled) await queueEmail(tx, user.email, passwordResetEmail(user.name, link));
+      if (app.mailer.enabled)
+        await queueEmail(
+          tx,
+          user.email,
+          passwordResetEmail(localeOf(user.preferences), user.name, link),
+        );
       await audit(
         tx,
         {
@@ -247,7 +254,8 @@ export async function adminRoutes(app: FastifyInstance) {
     const { confirmSlug } = (req.body ?? {}) as { confirmSlug?: string };
     const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, id));
     if (!ws) throw notFound('Workspace');
-    if (confirmSlug !== ws.slug) throw badRequest('Type the workspace URL to confirm');
+    if (confirmSlug !== ws.slug)
+      throw badRequest('Type the workspace URL to confirm').as('type_url_to_confirm');
     await db.transaction(async (tx) => {
       await audit(
         tx,
@@ -300,7 +308,10 @@ export async function adminRoutes(app: FastifyInstance) {
           ne(workspaceDomains.id, id),
         ),
       );
-    if (taken) throw conflict('Another workspace has already verified this domain');
+    if (taken)
+      throw conflict('Another workspace has already verified this domain').as(
+        'domain_verified_elsewhere',
+      );
     await db.transaction(async (tx) => {
       await tx
         .update(workspaceDomains)
@@ -441,7 +452,7 @@ export async function adminRoutes(app: FastifyInstance) {
     { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
     async () => {
       const model = instanceModel(app);
-      if (!model) throw badRequest('AI assistance is off');
+      if (!model) throw badRequest('AI assistance is off').as('ai_off');
       const started = Date.now();
       const reply = await model.complete({
         system: 'You check that a connection works.',

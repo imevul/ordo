@@ -1,3 +1,4 @@
+import { catalogueProblems, missingMessages } from '@ordo/shared';
 import { afterEach, describe, expect, it } from 'vitest';
 import en from './en/index.ts';
 import { type Catalog, setLocale, t, tx } from './index.ts';
@@ -5,20 +6,6 @@ import nb from './nb/index.ts';
 import sv from './sv/index.ts';
 
 afterEach(() => setLocale('en'));
-
-/** Every message path in a catalogue, plural forms counted as one message. */
-function paths(tree: object, prefix = ''): string[] {
-  return Object.entries(tree).flatMap(([k, v]) =>
-    typeof v === 'string' || 'other' in v ? [`${prefix}${k}`] : paths(v, `${prefix}${k}.`),
-  );
-}
-
-const placeholders = (msg: unknown) =>
-  [...JSON.stringify(msg).matchAll(/\{(\w+)\}|<(\w+)>/g)].map((m) => m[0]).sort();
-
-function leaf(tree: object, path: string): unknown {
-  return path.split('.').reduce<unknown>((n, k) => (n as Record<string, unknown>)?.[k], tree);
-}
 
 describe('t', () => {
   it('fills placeholders and picks plural forms', async () => {
@@ -43,16 +30,11 @@ describe('t', () => {
 });
 
 describe('catalogues', () => {
-  const english = paths(en);
-
   it.each([
     ['sv', sv],
     ['nb', nb],
   ] as const)('%s only has messages English has, with the same placeholders', (_, cat) => {
-    for (const path of paths(cat)) {
-      expect(english, path).toContain(path);
-      expect(placeholders(leaf(cat, path)), path).toEqual(placeholders(leaf(en, path)));
-    }
+    expect(catalogueProblems(en, cat)).toEqual([]);
   });
 
   it('reports what is not translated yet', () => {
@@ -61,8 +43,7 @@ describe('catalogues', () => {
       ['sv', sv],
       ['nb', nb],
     ] as const) {
-      const have = new Set(paths(cat));
-      const missing = english.filter((p) => !have.has(p));
+      const missing = missingMessages(en, cat);
       if (missing.length) console.info(`${name}: ${missing.length} messages fall back to English`);
     }
   });

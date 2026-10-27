@@ -40,7 +40,8 @@ export async function importRoutes(app: FastifyInstance) {
   const show = async (workspaceId: string, id: string) =>
     (await listImports(db, workspaceId, id))[0]!;
   const idle = (row: typeof imports.$inferSelect) => {
-    if (isBusy(row)) throw conflict('The import is working; wait for it or cancel it');
+    if (isBusy(row))
+      throw conflict('The import is working; wait for it or cancel it').as('import_busy');
   };
 
   app.get('/imports', async (req) => listImports(db, requireAdmin(req).id));
@@ -182,12 +183,13 @@ export async function importRoutes(app: FastifyInstance) {
       const ws = requireAdmin(req);
       const user = requireUser(req);
       const file = await req.file();
-      if (!file) throw badRequest('No file uploaded');
+      if (!file) throw badRequest('No file uploaded').as('no_file');
       const field = file.fields.source as { value?: unknown } | undefined;
       const source = String(field?.value ?? 'csv') as ImportSource;
       if (!FILE_SOURCES.includes(source)) throw badRequest(`Unknown file source ${source}`);
       const body = await file.toBuffer();
-      if (file.file.truncated) throw badRequest('The file is larger than 25 MB');
+      if (file.file.truncated)
+        throw badRequest('The file is larger than 25 MB').as('file_too_large');
       const saved = await saveFile(app, {
         workspaceId: ws.id,
         ownerId: user.id,

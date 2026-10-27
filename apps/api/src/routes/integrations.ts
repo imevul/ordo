@@ -307,11 +307,22 @@ export async function externalAccountRoutes(app: FastifyInstance) {
           setWhere: eq(externalAccounts.userId, user.id),
         })
         .returning();
-      if (!row) throw conflict(`${input.username} is already claimed by someone else here`);
+      if (!row)
+        throw conflict(`${input.username} is already claimed by someone else here`).as(
+          'username_claimed',
+          {
+            username: input.username,
+          },
+        );
       return { id: row.id, provider: row.provider, host: row.host, username: row.username };
     } catch (err) {
       if (isUniqueViolation(err))
-        throw conflict(`${input.username} is already claimed by someone else here`);
+        throw conflict(`${input.username} is already claimed by someone else here`).as(
+          'username_claimed',
+          {
+            username: input.username,
+          },
+        );
       throw err;
     }
   });

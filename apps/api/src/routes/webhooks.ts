@@ -29,7 +29,8 @@ export async function webhookRoutes(app: FastifyInstance) {
   };
 
   const checkUrl = (url: string) => {
-    if (!/^https?:\/\//i.test(url)) throw badRequest('Webhook URLs must be http or https');
+    if (!/^https?:\/\//i.test(url))
+      throw badRequest('Webhook URLs must be http or https').as('webhook_url');
   };
 
   app.get('/webhooks', async (req) => {
@@ -184,7 +185,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     const { id, deliveryId } = req.params as { id: string; deliveryId: string };
     return mutate(app, req, async (ctx) => {
       const hook = await load(ctx, id);
-      if (!hook.enabled) throw badRequest('Turn the webhook on first');
+      if (!hook.enabled) throw badRequest('Turn the webhook on first').as('webhook_off');
       const [row] = await ctx.tx
         .select()
         .from(webhookDeliveries)
@@ -199,7 +200,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     return mutate(app, req, async (ctx) => {
       const hook = await load(ctx, id);
-      if (!hook.enabled) throw badRequest('Turn the webhook on first');
+      if (!hook.enabled) throw badRequest('Turn the webhook on first').as('webhook_off');
       const [ws] = await ctx.tx
         .select({ id: workspaces.id, slug: workspaces.slug, name: workspaces.name })
         .from(workspaces)

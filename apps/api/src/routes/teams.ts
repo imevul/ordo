@@ -62,7 +62,8 @@ async function loadState(ctx: Ctx, stateId: string) {
 }
 
 const keyTaken = (err: unknown) => {
-  if (isUniqueViolation(err)) return conflict('Another team already uses that key');
+  if (isUniqueViolation(err))
+    return conflict('Another team already uses that key').as('team_key_taken');
   return err;
 };
 
@@ -228,7 +229,7 @@ export async function teamRoutes(app: FastifyInstance) {
         .select({ n: count() })
         .from(teams)
         .where(eq(teams.workspaceId, ctx.workspaceId))) as [{ n: number }];
-      if (n <= 1) throw badRequest('A workspace needs at least one team');
+      if (n <= 1) throw badRequest('A workspace needs at least one team').as('needs_team');
       // Issues reference workflow states without cascading, so remove them explicitly first.
       await ctx.tx.delete(issues).where(eq(issues.teamId, team.id));
       await ctx.tx.delete(teams).where(eq(teams.id, team.id));
@@ -256,7 +257,7 @@ export async function teamRoutes(app: FastifyInstance) {
       const selfJoin =
         userId === ctx.userId && input.role === 'member' && !team.private && !ctx.access.isGuest;
       if (!selfJoin && !canAdminTeam(ctx.access, teamId)) {
-        throw forbidden('Only team admins can add people to this team');
+        throw forbidden('Only team admins can add people to this team').as('team_admins_add');
       }
       const [member] = await ctx.tx
         .select({ userId: workspaceMembers.userId })
@@ -267,7 +268,8 @@ export async function teamRoutes(app: FastifyInstance) {
             eq(workspaceMembers.userId, userId),
           ),
         );
-      if (!member) throw badRequest('That person is not a member of this workspace');
+      if (!member)
+        throw badRequest('That person is not a member of this workspace').as('not_member');
       await ctx.tx
         .insert(teamMembers)
         .values({ teamId, userId, role: input.role })
@@ -385,7 +387,7 @@ export async function teamRoutes(app: FastifyInstance) {
         siblings.find((s) => s.type === state.type) ??
         siblings.find((s) => s.id === team.defaultStateId) ??
         siblings[0];
-      if (!target) throw badRequest('Cannot delete the only status');
+      if (!target) throw badRequest('Cannot delete the only status').as('only_status');
       await ctx.tx.update(issues).set({ stateId: target.id }).where(eq(issues.stateId, state.id));
       if (team.defaultStateId === state.id)
         await ctx.tx.update(teams).set({ defaultStateId: target.id }).where(eq(teams.id, team.id));

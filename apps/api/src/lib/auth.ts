@@ -333,7 +333,10 @@ async function assertSso(
   if (ws.role === 'owner') return;
   if (auth.method === 'api_key') {
     if (ws.settings?.allowApiKeysUnderSso) return;
-    throw new HttpError(403, `${ws.name} doesn't allow API keys`, 'sso_required');
+    throw new HttpError(403, `${ws.name} doesn't allow API keys`, 'sso_required').as(
+      'api_keys_not_allowed',
+      { workspace: ws.name },
+    );
   }
   const providers = await db
     .select({ providerId: authProviders.id, name: authProviders.name })
@@ -343,7 +346,7 @@ async function assertSso(
   throw new HttpError(403, `${ws.name} requires signing in with SSO`, 'sso_required', {
     workspace: ws.name,
     options: providers.map((p) => ({ ...p, workspace: ws.name })),
-  });
+  }).as('sso_required', { workspace: ws.name });
 }
 
 export function requireWorkspace(req: FastifyRequest): WorkspaceCtx {
@@ -356,12 +359,12 @@ export const requireAccess = (req: FastifyRequest): Access => requireWorkspace(r
 /** Owners and admins. */
 export function requireAdmin(req: FastifyRequest): WorkspaceCtx {
   const ws = requireWorkspace(req);
-  if (!ws.access.isAdmin) throw forbidden('Only workspace admins can do this');
+  if (!ws.access.isAdmin) throw forbidden('Only workspace admins can do this').as('admins_only');
   return ws;
 }
 
 export function requireOwner(req: FastifyRequest): WorkspaceCtx {
   const ws = requireWorkspace(req);
-  if (!ws.access.isOwner) throw forbidden('Only workspace owners can do this');
+  if (!ws.access.isOwner) throw forbidden('Only workspace owners can do this').as('owners_only');
   return ws;
 }

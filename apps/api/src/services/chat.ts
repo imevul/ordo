@@ -4,8 +4,7 @@ import {
   type ChatService,
   chatChannelsSchema,
   DEFAULT_ACCENT,
-  type NotificationType,
-  priorityLabel,
+  type UserPreferences,
 } from '@ordo/shared';
 import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -23,6 +22,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '../db/schema.ts';
+import { localeOf, type ServerT, serverT } from '../i18n/index.ts';
 import { getProvider } from '../integrations/registry.ts';
 import type {
   ChatMessage,
@@ -157,18 +157,30 @@ export async function issueCards(app: FastifyInstance, ids: string[]) {
   );
 }
 
-const cardContext = (c: IssueCard) =>
-  [c.state, c.priority ? priorityLabel(c.priority) : null, c.assignee ?? 'Unassigned']
+// Channel posts have no single reader, so they're in English; direct messages use the reader's language.
+const cardContext = (c: IssueCard, t: ServerT) =>
+  [
+    c.state,
+    c.priority >= 1 && c.priority <= 4
+      ? t(`chat.priority.${String(c.priority) as '1' | '2' | '3' | '4'}`)
+      : null,
+    c.assignee ?? t('chat.unassigned'),
+  ]
     .filter(Boolean)
     .join(' · ');
 
 /** An issue as a chat message: the headline says what happened to it. */
-export const issueMessage = (c: IssueCard, headline: string, body?: string): ChatMessage => ({
+export const issueMessage = (
+  c: IssueCard,
+  headline: string,
+  body?: string,
+  t: ServerT = serverT('en'),
+): ChatMessage => ({
   headline,
   title: `${c.identifier} ${c.title}`,
   url: c.url,
   body: body || undefined,
-  context: cardContext(c),
+  context: cardContext(c, t),
   color: STATE_COLORS[c.stateType] ?? c.accent,
 });
 
@@ -667,17 +679,6 @@ export async function unfurl(
 
 // ─── personal notifications ───────────────────────────────────────────────
 
-const NOTIFICATION_HEADLINES: Record<NotificationType, (id: string, state: string) => string> = {
-  issue_assigned: (id) => `assigned you ${id}`,
-  issue_unassigned: (id) => `unassigned you from ${id}`,
-  issue_comment: (id) => `commented on ${id}`,
-  issue_mention: (id) => `mentioned you on ${id}`,
-  issue_status_changed: (id, state) => `moved ${id} to ${state}`,
-  issue_priority_urgent: (id) => `marked ${id} urgent`,
-  comment_reaction: (id) => `reacted to your comment on ${id}`,
-  issue_sla_breached: (id) => `${id} missed its SLA`,
-};
-
 /** Called with fresh notifications (in their transaction): a direct message per linked account. */
 export async function queueChatNotifications(
   tx: DbOrTx,
@@ -724,6 +725,7 @@ export async function runChatNotification(
       n: notifications,
       account: externalAccounts,
       actor: sql<string | null>`(select name from users a where a.id = ${notifications.actorId})`,
+      preferences: sql<Partial<UserPreferences> | null>`(select preferences from users r where r.id = ${notifications.userId})`,
     })
     .from(notifications)
     // The account may have been re-linked to someone else since the job was queued.
@@ -748,8 +750,13 @@ export async function runChatNotification(
       .where(eq(comments.id, row.n.commentId));
     body = excerpt(c?.body);
   }
-  const verb = NOTIFICATION_HEADLINES[row.n.type](card.identifier, card.state);
-  const message = issueMessage(card, `${row.actor ?? 'Someone'} ${verb}`, body);
+  const t = serverT(localeOf(row.preferences));
+  const headline = t(`chat.${row.n.type}`, {
+    actor: row.actor ?? t('notification.someone'),
+    issue: card.identifier,
+    state: card.state,
+  });
+  const message = issueMessage(card, headline, body, t);
   const ictx = integrationContext(app, found.row, job.log);
   await track(app, found.row, async () => {
     const dm = await found.provider.chat!.direct(

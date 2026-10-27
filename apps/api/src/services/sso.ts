@@ -148,16 +148,18 @@ export async function completeLogin(
 ) {
   const state = callbackUrl.searchParams.get('state');
   if (!state || state !== cookieState)
-    throw badRequest('This sign-in attempt expired or came from another browser. Try again.');
+    throw badRequest('This sign-in attempt expired or came from another browser. Try again.').as(
+      'sign_in_expired_browser',
+    );
   const [row] = await app.db.delete(authStates).where(eq(authStates.id, state)).returning();
   if (!row || new Date(row.expiresAt).getTime() < Date.now())
-    throw badRequest('This sign-in attempt expired. Try again.');
+    throw badRequest('This sign-in attempt expired. Try again.').as('sign_in_expired');
   const [provider] = await app.db
     .select()
     .from(authProviders)
     .where(eq(authProviders.id, row.providerId));
   if (!provider || (!provider.enabled && row.mode !== 'test'))
-    throw badRequest('This sign-in method is no longer available');
+    throw badRequest('This sign-in method is no longer available').as('sign_in_method_gone');
   const config = await providerConfig(app, provider);
   const tokens = await oidc.authorizationCodeGrant(config, callbackUrl, {
     pkceCodeVerifier: row.codeVerifier,

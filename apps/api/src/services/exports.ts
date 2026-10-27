@@ -103,7 +103,8 @@ export async function startExport(
           eq(workspaceExports.status, 'running'),
         ),
       );
-    if (running) throw conflict('An export is already being made; wait for it to finish');
+    if (running)
+      throw conflict('An export is already being made; wait for it to finish').as('export_busy');
     const [row] = await tx
       .insert(workspaceExports)
       .values({ workspaceId: opts.workspaceId, format: opts.format, createdById: opts.userId })

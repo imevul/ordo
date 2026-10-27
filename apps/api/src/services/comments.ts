@@ -181,7 +181,8 @@ async function loadComment(ctx: Ctx, id: string) {
 
 export async function updateComment(ctx: Ctx, id: string, body: string) {
   const { comment, teamId } = await loadComment(ctx, id);
-  if (comment.authorId !== ctx.userId) throw forbidden('You can only edit your own comments');
+  if (comment.authorId !== ctx.userId)
+    throw forbidden('You can only edit your own comments').as('own_comments_edit');
   const now = new Date().toISOString();
   const [row] = await ctx.tx
     .update(comments)
@@ -202,7 +203,10 @@ export async function addReaction(ctx: Ctx, commentId: string, emoji: string) {
     .from(commentReactions)
     .where(eq(commentReactions.commentId, commentId));
   if (kinds.length >= MAX_REACTION_KINDS && !kinds.some((k) => k.emoji === emoji)) {
-    throw badRequest(`A comment can have at most ${MAX_REACTION_KINDS} different reactions`);
+    throw badRequest(`A comment can have at most ${MAX_REACTION_KINDS} different reactions`).as(
+      'max_reactions',
+      { max: MAX_REACTION_KINDS },
+    );
   }
   const [row] = await ctx.tx
     .insert(commentReactions)
@@ -283,7 +287,7 @@ export async function removeReaction(ctx: Ctx, commentId: string, emoji: string)
 export async function deleteComment(ctx: Ctx, id: string) {
   const { comment, teamId } = await loadComment(ctx, id);
   if (comment.authorId !== ctx.userId && !ctx.access.isAdmin) {
-    throw forbidden('You can only delete your own comments');
+    throw forbidden('You can only delete your own comments').as('own_comments_delete');
   }
   await ctx.tx.delete(comments).where(or(eq(comments.id, id), eq(comments.parentId, id)));
   emit(ctx, { kind: 'comment', action: 'deleted', id, issueId: comment.issueId, teamId });

@@ -18,7 +18,7 @@ export async function createRelation(
 ) {
   const issue = await getIssue(ctx.tx, ctx.access, issueIdOrIdentifier);
   const other = await getIssue(ctx.tx, ctx.access, input.relatedIssueId);
-  if (issue.id === other.id) throw badRequest('An issue cannot relate to itself');
+  if (issue.id === other.id) throw badRequest('An issue cannot relate to itself').as('relate_self');
   const [from, to] = input.type === 'blocked_by' ? [other, issue] : [issue, other];
   const type =
     input.type === 'blocked_by'
