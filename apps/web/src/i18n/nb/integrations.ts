@@ -177,7 +177,10 @@ export default {
       publicKeyHint: 'Ligger under General Information; den bekrefter forespørsler fra Discord.',
     },
     matrix: {
-      docs: 'Registrer en konto for boten på hjemmeserveren din, og lim inn tilgangstokenet. Ordo synkroniserer fra hjemmeserveren, så ingenting trenger å nå Ordo. Krypterte rom støttes ikke.',
+      docs: 'Registrer en konto for boten på hjemmeserveren din og lim inn tilgangstokenet fra en ny innlogging. Ordo synkroniserer fra hjemmeserveren, så ingenting trenger å nå Ordo.',
+      encryption: 'Ende-til-ende-kryptering',
+      encryptionHint:
+        'Lar boten lese og skrive i krypterte rom. Krever et token fra en egen innlogging, ikke fra Element eller en annen klient som allerede har satt opp kryptering.',
       channelHint: 'Rom-ID-er ser ut som !abc123:example.org (Room settings → Advanced).',
       homeserverUrl: 'Hjemmeserverens URL',
     },

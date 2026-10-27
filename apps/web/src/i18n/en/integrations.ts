@@ -181,7 +181,10 @@ export default {
       publicKeyHint: 'From General information; it verifies requests from Discord.',
     },
     matrix: {
-      docs: 'Register an account for the bot on your homeserver and paste its access token. Ordo syncs from your homeserver, so nothing has to reach Ordo. Encrypted rooms are not supported.',
+      docs: 'Register an account for the bot on your homeserver and paste the access token of a fresh login. Ordo syncs from your homeserver, so nothing has to reach Ordo.',
+      encryption: 'End-to-end encryption',
+      encryptionHint:
+        'Lets the bot read and write in encrypted rooms. Needs a token from its own login, not one from Element or another client that already set up encryption.',
       channelHint: 'Room ids look like !abc123:example.org (room settings → Advanced).',
       homeserverUrl: 'Homeserver URL',
     },

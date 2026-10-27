@@ -232,6 +232,13 @@
       "when": 1793124406234,
       "tag": "0032_chat_threads",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1793124952298,
+      "tag": "0033_matrix_crypto",
+      "breakpoints": true
     }
   ]
 }
