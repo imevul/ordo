@@ -136,6 +136,14 @@ export default {
     continueWith: 'Continue with {name}',
     pageNotFound: 'Nothing lives at this address.',
   },
+  offline: {
+    storageFull:
+      'This device is out of storage: its offline copy now lasts only until this tab closes.',
+    withCopy: 'Offline — showing this device’s copy. Changes are sent when you’re back.',
+    withoutCopy: 'Offline — changes can’t be saved until you’re back.',
+    needsConnection: 'Needs a connection',
+    settings: 'You’re offline: settings can’t be saved until you’re back.',
+  },
   sync: {
     waiting: { one: '{count} waiting', other: '{count} waiting' },
     unsaved: { one: '{count} unsaved', other: '{count} unsaved' },

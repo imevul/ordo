@@ -7,6 +7,7 @@ import { useWsMutation } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
 import { priorityLabel } from '../i18n/labels.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
+import { useOnline } from '../sync/context.tsx';
 import { PriorityIcon } from './icons.tsx';
 import { Markdown } from './Markdown.tsx';
 
@@ -15,7 +16,9 @@ export type AiPanelKind = 'summary' | 'triage';
 /** Whether AI assistance is available here: set up on the instance and on in this workspace. */
 export function useAiEnabled() {
   const ws = useWorkspace();
-  return !!ws.ai?.enabled;
+  // It asks a model through the server, so not while that can't be reached.
+  const online = useOnline();
+  return !!ws.ai?.enabled && online;
 }
 
 /** Who answers, for the small print under every AI result. */

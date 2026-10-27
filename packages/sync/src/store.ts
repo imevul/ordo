@@ -48,7 +48,9 @@ export class MemoryStore implements SyncStore {
   private issues = new Map<string, Issue>();
   private comments = new Map<string, Comment>();
   private ops: PendingOp[] = [];
-  private nextKey = 1;
+
+  /** `firstKey`: where queue keys start (after those of a store this one takes over from). */
+  constructor(private nextKey = 1) {}
 
   async read() {
     return { meta: this.meta, bootstrap: this.bootstrap, issues: [...this.issues.values()] };

@@ -137,6 +137,14 @@ export default {
     continueWith: 'Fortsätt med {name}',
     pageNotFound: 'Det finns inget på den här adressen.',
   },
+  offline: {
+    storageFull:
+      'Enheten har slut på lagringsutrymme: offlinekopian finns nu bara kvar tills fliken stängs.',
+    withCopy: 'Offline – visar enhetens kopia. Ändringar skickas när du är tillbaka.',
+    withoutCopy: 'Offline – ändringar kan inte sparas förrän du är tillbaka.',
+    needsConnection: 'Kräver anslutning',
+    settings: 'Du är offline: inställningar kan inte sparas förrän du är tillbaka.',
+  },
   sync: {
     waiting: { one: '{count} väntar', other: '{count} väntar' },
     unsaved: { one: '{count} osparad', other: '{count} osparade' },

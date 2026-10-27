@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { t } from '../i18n/index.ts';
 import { useLocalIssues, useSync, useSyncEngine, useSyncState } from '../sync/context.tsx';
+import { keepsCopy } from '../sync/device.ts';
 import { ApiError, api, upload, wsPath } from './client.ts';
 
 export const keys = {
@@ -49,17 +50,67 @@ export const keys = {
   search: (slug: string, q: string) => ['ws', slug, 'search', q] as const,
 };
 
-export const useConfig = () =>
-  useQuery({ queryKey: keys.config, queryFn: () => api.get<InstanceConfig>('/config') });
+/** The server can't be reached (a proxy answering for a stopped API counts). */
+export const unreachable = (err: unknown) =>
+  err instanceof ApiError && (err.status === 0 || err.status >= 502);
 
+const remembered = <T>(key: string): T | null => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+};
+const remember = (key: string, value: unknown) => {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
+  } catch {}
+};
+
+export const ME_KEY = 'ordo:me';
+const CONFIG_KEY = 'ordo:config';
+
+/** The instance's config; offline, the last one seen, so the app can start without a server. */
+export const useConfig = () =>
+  useQuery({
+    queryKey: keys.config,
+    queryFn: async () => {
+      try {
+        const config = await api.get<InstanceConfig>('/config');
+        remember(CONFIG_KEY, config);
+        return config;
+      } catch (err) {
+        const saved = unreachable(err) ? remembered<InstanceConfig>(CONFIG_KEY) : null;
+        if (saved) return saved;
+        throw err;
+      }
+    },
+  });
+
+/**
+ * Who's signed in (null: nobody). Devices that keep an offline copy remember it, so the app
+ * starts offline too; signing out forgets it.
+ */
 export const useMe = () =>
   useQuery({
     queryKey: keys.me,
     queryFn: async () => {
       try {
-        return await api.get<Me>('/auth/me');
+        const me = await api.get<Me>('/auth/me');
+        remember(
+          ME_KEY,
+          keepsCopy(remembered<InstanceConfig>(CONFIG_KEY)?.offlineSync) ? me : null,
+        );
+        return me;
       } catch (err) {
-        if (err instanceof ApiError && err.status === 401) return null;
+        if (err instanceof ApiError && err.status === 401) {
+          remember(ME_KEY, null);
+          return null;
+        }
+        const saved = unreachable(err) ? remembered<Me>(ME_KEY) : null;
+        if (saved) return saved;
         throw err;
       }
     },

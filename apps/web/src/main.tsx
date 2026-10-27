@@ -13,7 +13,12 @@ const queryClient = new QueryClient({
       staleTime: 10_000,
       refetchOnWindowFocus: true,
       retry: (count, err) => !(err instanceof ApiError && err.status < 500) && count < 2,
+      // Try even when the browser says it's offline: some queries answer from what this device
+      // kept (the signed-in person, the config, the workspace's copy).
+      networkMode: 'offlineFirst',
     },
+    // Changes through the local copy queue themselves; the rest fail with a message.
+    mutations: { networkMode: 'always' },
   },
 });
 

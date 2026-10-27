@@ -1,11 +1,30 @@
 import type { PendingOp } from '@ordo/sync';
-import { Copy, Trash2, TriangleAlert } from 'lucide-react';
+import { Copy, Trash2, TriangleAlert, WifiOff } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { t } from '../i18n/index.ts';
 import { relativeTime } from '../lib/format.ts';
-import { useSyncEngine, useSyncState } from '../sync/context.tsx';
+import { useOnline, useSyncEngine, useSyncState } from '../sync/context.tsx';
 import { Modal } from './ui/Modal.tsx';
+
+/** Across the top while the server can't be reached: what still works, and what waits. */
+export function OfflineBanner() {
+  const online = useOnline();
+  const state = useSyncState();
+  if (online) return null;
+  return (
+    <div
+      role="status"
+      className="flex flex-none items-center gap-2 border-b border-border-soft bg-raised px-4 py-1.5 font-mono text-[11.5px] text-muted"
+    >
+      <WifiOff size={12} className="text-warning" />
+      {state?.ready ? t('shell.offline.withCopy') : t('shell.offline.withoutCopy')}
+      {!!state?.waiting && (
+        <span className="text-text">· {t('shell.sync.waiting', { count: state.waiting })}</span>
+      )}
+    </div>
+  );
+}
 
 /**
  * The local copy's outbox in the sidebar's status line: how many changes wait to be sent, and

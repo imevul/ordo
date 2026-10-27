@@ -1,16 +1,50 @@
-// Ordo's service worker: makes the app installable, keeps its shell and built assets for a flaky
-// connection, and shows push notifications. The API is never cached.
+// Ordo's service worker: makes the app installable, keeps its shell and built assets so it starts
+// without a connection, and shows push notifications. The API is never cached (the workspace's
+// offline copy lives in IndexedDB; see packages/sync).
 
-const CACHE = 'ordo-shell-v1';
+const CACHE = 'ordo-shell-v2';
 
-self.addEventListener('install', () => self.skipWaiting());
+/** Every built file, from the build's precache.json (absent in development). */
+async function precacheList() {
+  try {
+    const res = await fetch('/precache.json', { cache: 'no-store' });
+    return res.ok ? (await res.json()).files : null;
+  } catch {
+    return null;
+  }
+}
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    (async () => {
+      const files = await precacheList();
+      if (files) {
+        const cache = await caches.open(CACHE);
+        // The page and every chunk, so any screen opens offline; one failure isn't fatal.
+        await Promise.all(['/', ...files].map((f) => cache.add(f).catch(() => {})));
+      }
+      await self.skipWaiting();
+    })(),
+  );
+});
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-      .then(() => self.clients.claim()),
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+      // Files of earlier builds go; their names change with every build.
+      const files = await precacheList();
+      if (files) {
+        const keep = new Set(files);
+        const cache = await caches.open(CACHE);
+        for (const request of await cache.keys()) {
+          const path = new URL(request.url).pathname;
+          if (path.startsWith('/assets/') && !keep.has(path)) await cache.delete(request);
+        }
+      }
+      await self.clients.claim();
+    })(),
   );
 });
 

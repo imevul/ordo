@@ -137,6 +137,14 @@ export default {
     continueWith: 'Fortsett med {name}',
     pageNotFound: 'Det finnes ingenting på denne adressen.',
   },
+  offline: {
+    storageFull:
+      'Enheten er tom for lagringsplass: den frakoblede kopien varer nå bare til fanen lukkes.',
+    withCopy: 'Frakoblet – viser enhetens kopi. Endringer sendes når du er tilbake.',
+    withoutCopy: 'Frakoblet – endringer kan ikke lagres før du er tilbake.',
+    needsConnection: 'Krever tilkobling',
+    settings: 'Du er frakoblet: innstillinger kan ikke lagres før du er tilbake.',
+  },
   sync: {
     waiting: { one: '{count} venter', other: '{count} venter' },
     unsaved: { one: '{count} ulagret', other: '{count} ulagrede' },

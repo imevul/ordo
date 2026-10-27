@@ -4,6 +4,7 @@ import { TeamIcon } from '../../components/icons.tsx';
 import { PageHeader, Sep } from '../../components/PageHeader.tsx';
 import { type Catalog, t } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
+import { useOnline } from '../../sync/context.tsx';
 import {
   AccountSection,
   ApiKeysSection,
@@ -130,6 +131,7 @@ function SettingsShell({
 }
 
 export function SettingsPage() {
+  const online = useOnline();
   const ws = useWorkspace();
   const { section } = useParams({ from: '/$slug/settings/$section' });
   const meta = SECTIONS.find((s) => s.key === section) ?? SECTIONS[0]!;
@@ -191,6 +193,11 @@ export function SettingsPage() {
     );
   return (
     <SettingsShell active={meta.key} title={meta.label}>
+      {!online && (
+        <p className="mb-6 border border-border-soft px-3 py-2 text-[13px] text-muted">
+          {t('shell.offline.settings')}
+        </p>
+      )}
       {body}
     </SettingsShell>
   );
