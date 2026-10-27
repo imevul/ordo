@@ -47,14 +47,49 @@ export default {
     formatLabel: 'Format för grennamn',
   },
   ai: {
-    title: 'AI-assistans',
+    title: 'AI-hjälp',
     claude:
-      'Sammanfattningar, ärendeutkast och förslag vid triage från Claude ({model}). När någon frågar skickas den ärendetext hen kan se till Anthropics API. Ordo sparar varken frågan eller svaret.',
+      'Sammanfattningar, ärendeutkast och förslag vid triage från Claude ({model}). När någon ber om det skickas ärendetexten de kan se till Anthropics API. Ordo sparar varken frågan eller svaret.',
     local:
-      'Sammanfattningar, ärendeutkast och förslag vid triage från {model}, en modell som din instans kör eller når själv. När någon frågar skickas den ärendetext hen kan se dit.',
-    notSetUp:
-      'En instansadmin kan konfigurera en modell (Claude API eller en lokal OpenAI-kompatibel modell som Ollama) för sammanfattningar, ärendeutkast och förslag vid triage.',
-    toggle: 'Erbjud AI-assistans i den här arbetsytan',
+      'Sammanfattningar, ärendeutkast och förslag vid triage från {model}, en modell på en egen adress. När någon ber om det skickas ärendetexten de kan se dit.',
+    intro:
+      'Sammanfattningar, ärendeutkast och förslag vid triage. Använd modellen som instansen erbjuder, en egen, eller stäng av.',
+    adminsOnly: 'Bara admins kan ändra AI-hjälpen.',
+    which: 'Vilken modell som svarar',
+    useInstance: 'Instansens modell',
+    instanceNone: 'ingen är konfigurerad på den här instansen',
+    instanceMissing:
+      'Instansen har ingen modell konfigurerad, så AI-hjälp erbjuds inte. Använd en egen eller fråga en instansadmin.',
+    useOwn: 'Vår egen modell',
+    ownNone: 'konfigurera den nedan',
+    off: 'Av',
+    offHint: 'Ingen AI-hjälp i den här arbetsytan',
+    ownTitle: 'Vår egen modell',
+    ownDescription:
+      'Används i stället för instansens för alla i arbetsytan. Nyckeln sparas krypterad och bara admins ser den, maskerad.',
+    provider: 'Leverantör',
+    anthropic: 'Claude API (Anthropic)',
+    openai: 'OpenAI-kompatibel (Ollama, vLLM, LM Studio…)',
+    anthropicNote:
+      'Ärendetext lämnar servern för Anthropics API, enligt villkoren för ditt API-konto.',
+    model: 'Modell',
+    baseUrl: 'Bas-URL',
+    baseUrlHint: 'URL:en som slutar på /v1.',
+    baseUrlPublicOnly:
+      'URL:en som slutar på /v1. Adresser på ett privat nätverk (en modell i ert LAN) fungerar bara om en instansadmin tillåter privata nätverksmål.',
+    apiKey: 'API-nyckel',
+    apiKeyCurrent: 'Sparad: {key}. Lämna tomt för att behålla den.',
+    apiKeyOptional: 'Valfri för lokala servrar.',
+    apiKeyConsole: 'Från Claude Console. Sparas krypterad.',
+    saveAndUse: 'Spara och använd den',
+    saved: 'AI-modellen sparad',
+    test: 'Testa',
+    testing: 'Testar…',
+    answered: 'Svarade på {seconds} s: {reply}',
+    remove: 'Ta bort vår modell',
+    removeTitle: 'Ta bort er egen modell?',
+    removeBody:
+      'Arbetsytan går tillbaka till instansens modell, om den har någon. Nyckeln raderas.',
   },
   danger: {
     title: 'Farozon',
@@ -245,6 +280,7 @@ export default {
       apiKeyRevoked: 'återkallade en API-nyckel',
       oauthAuthorized: 'anslöt en app',
       oauthRevoked: 'kopplade bort en app',
+      aiUpdated: 'ändrade inställningarna för AI-hjälp',
       workspaceExported: 'exporterade arbetsytan',
       accountUpdated: 'ändrade ett konto',
       accountDeleted: 'raderade ett konto',

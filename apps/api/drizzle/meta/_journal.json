@@ -239,6 +239,13 @@
       "when": 1793124952298,
       "tag": "0033_matrix_crypto",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1793127591885,
+      "tag": "0034_workspace_ai",
+      "breakpoints": true
     }
   ]
 }

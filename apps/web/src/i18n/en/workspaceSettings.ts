@@ -54,10 +54,45 @@ export default {
     claude:
       "Summaries, issue drafts and triage suggestions by Claude ({model}). When someone asks, the issue text they can see is sent to Anthropic's API. Ordo stores neither the request nor the answer.",
     local:
-      'Summaries, issue drafts and triage suggestions by {model}, a model your instance runs or reaches itself. When someone asks, the issue text they can see is sent to it.',
-    notSetUp:
-      'An instance admin can set up a model (the Claude API or a local OpenAI-compatible one such as Ollama) for summaries, issue drafts and triage suggestions.',
-    toggle: 'Offer AI assistance in this workspace',
+      'Summaries, issue drafts and triage suggestions by {model}, a model reached at its own address. When someone asks, the issue text they can see is sent to it.',
+    intro:
+      'Summaries, issue drafts and triage suggestions. Use the model your instance provides, bring your own, or turn it off.',
+    adminsOnly: 'Only admins can change AI assistance.',
+    which: 'Which model answers',
+    useInstance: "The instance's model",
+    instanceNone: 'none set up on this instance',
+    instanceMissing:
+      "This instance has no model set up, so AI assistance isn't offered. Use your own, or ask an instance admin.",
+    useOwn: 'Our own model',
+    ownNone: 'set it up below',
+    off: 'Off',
+    offHint: 'No AI assistance in this workspace',
+    ownTitle: 'Our own model',
+    ownDescription:
+      "Used instead of the instance's for everyone in this workspace. The key is stored encrypted and only admins see it, masked.",
+    provider: 'Provider',
+    anthropic: 'Claude API (Anthropic)',
+    openai: 'OpenAI-compatible (Ollama, vLLM, LM Studio…)',
+    anthropicNote:
+      "Issue text leaves this server for Anthropic's API, under your API account's terms.",
+    model: 'Model',
+    baseUrl: 'Base URL',
+    baseUrlHint: 'The URL ending in /v1.',
+    baseUrlPublicOnly:
+      'The URL ending in /v1. Addresses on a private network (a model on your LAN) only work if an instance admin allows private network targets.',
+    apiKey: 'API key',
+    apiKeyCurrent: 'Saved: {key}. Leave empty to keep it.',
+    apiKeyOptional: 'Optional for local servers.',
+    apiKeyConsole: 'From the Claude Console. Stored encrypted.',
+    saveAndUse: 'Save and use it',
+    saved: 'AI model saved',
+    test: 'Test',
+    testing: 'Testing…',
+    answered: 'Answered in {seconds} s: {reply}',
+    remove: 'Remove our model',
+    removeTitle: 'Remove your own model?',
+    removeBody:
+      "The workspace goes back to the instance's model, if it has one. The key is deleted.",
   },
   danger: {
     title: 'Danger zone',
@@ -249,6 +284,7 @@ export default {
       apiKeyRevoked: 'revoked an API key',
       oauthAuthorized: 'connected an app',
       oauthRevoked: 'disconnected an app',
+      aiUpdated: 'changed AI assistance settings',
       workspaceExported: 'exported the workspace',
       accountUpdated: 'changed an account',
       accountDeleted: 'deleted an account',

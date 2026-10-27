@@ -519,6 +519,8 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
       return a('oauthAuthorized');
     case 'oauth.revoked':
       return a('oauthRevoked');
+    case 'workspace.ai_updated':
+      return a('aiUpdated');
     case 'workspace.exported':
       return a('workspaceExported');
     case 'admin.user_updated':

@@ -62,11 +62,21 @@ the host, so for Ollama running on the host use `http://host.docker.internal:114
 more than loopback (`OLLAMA_HOST=0.0.0.0`). To run Ollama as a Compose service instead, add it to
 `docker-compose.override.yml` and use `http://ollama:11434/v1`.
 
-## Turning it off for a workspace
+## Per workspace: the instance's model, your own, or off
 
-Workspace admins: _Settings → General → AI assistance_. The card says which model the instance uses and where
-issue text would go; unticking _Offer AI assistance in this workspace_ removes the AI buttons and refuses AI
-requests for everyone in the workspace. It's on by default once an instance admin has set up a model.
+Workspace admins choose under _Settings → AI assistance_:
+
+- **The instance's model** (the default): whatever an instance admin set up, if anything.
+- **Our own model**: a Claude API key or an OpenAI-compatible endpoint just for this workspace, used instead of the
+  instance's for everyone in it, even when the instance has one. The key is stored encrypted, only admins see it
+  (masked), and _Test_ sends a one-line prompt. _Remove our model_ deletes it and goes back to the instance's.
+- **Off**: no AI buttons, and AI requests are refused for everyone in the workspace.
+
+So a request uses: nothing if the workspace turned it off; else the workspace's own model if it chose that; else
+the instance's. A workspace's own model is held to the instance's network rules, unlike the instance's: an
+OpenAI-compatible URL on a private network (a model on your LAN) only works when an instance admin allows
+_private network targets_, and a Claude model from a workspace always talks to `api.anthropic.com` (no custom base
+URL). Changes are recorded in the audit log, never the key.
 
 ## API
 
@@ -79,6 +89,11 @@ minute per person, and answer `403 ai_unavailable` when AI is off for the instan
 | `/api/w/<slug>/ai/issues/<id>/summary` | none               | `{ summary }` (Markdown)                                                          |
 | `/api/w/<slug>/ai/issues/<id>/triage`  | none               | `{ priority, labelIds, duplicates: [{ id, identifier, title, reason }], reason }` |
 | `/api/w/<slug>/ai/draft`               | `{ teamId, text }` | `{ title, description, priority, labelIds }`                                      |
+
+Workspace admins manage the workspace's choice with `GET /api/w/<slug>/ai/settings`, `PUT /api/w/<slug>/ai/provider`
+(`{ provider, model, baseUrl, apiKey }`; `apiKey: ""` keeps the stored one; also switches the workspace to it),
+`DELETE /api/w/<slug>/ai/provider` and `POST /api/w/<slug>/ai/provider/test`. On and off, and which model, are
+`settings.aiEnabled` and `settings.aiSource` (`instance` or `workspace`) in `PATCH /api/w/<slug>/`.
 
 `<id>` is an issue id or identifier. `priority` in a triage answer is `null` when there's no change to suggest;
 `labelIds` holds only labels the issue doesn't have yet.

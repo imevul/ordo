@@ -26,9 +26,9 @@ Admins can **suspend** a member — they keep their history but can't open the w
 ### Workspace settings
 
 - **General** — name, URL, logo, an **accent colour** (Hotline Pink by default; pick a preset or any colour; the
-  light theme uses a deeper shade of it so text stays readable), a
-  **default team** every new member (except guests) joins automatically, and whether to offer
-  [AI assistance](ai.md) when the instance has a model set up.
+  light theme uses a deeper shade of it so text stays readable), and a **default team** every new member (except guests) joins automatically.
+- **AI assistance** — use the instance's model, the workspace's own (a Claude API key or a local OpenAI-compatible
+  model, used instead of the instance's), or turn it off. See [AI assistance](ai.md).
 - **Access** — who may invite; **domains** you've verified with a DNS TXT record
   (`_ordo-verify.example.com` → `ordo-verify=…`); and **join by domain**, which lets anyone with a _verified_ email at
   one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.

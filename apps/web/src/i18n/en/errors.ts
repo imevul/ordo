@@ -73,6 +73,7 @@ export default {
     export_busy: 'An export is already being made; wait for it to finish',
     export_not_ready: 'The export is still being made',
     ai_not_set_up: 'AI assistance is not set up on this instance',
+    ai_not_set_up_workspace: "This workspace's own AI model isn't set up",
     ai_off_workspace: 'AI assistance is turned off in this workspace',
     ai_off: 'AI assistance is off',
     ai_empty: 'The model sent an empty answer',

@@ -99,7 +99,12 @@ describe('availability', () => {
     const res = await off.post(`${ws}/ai/issues/ENG-1/summary`);
     expect(res.statusCode).toBe(403);
     expect(res.data.error).toBe('ai_unavailable');
-    expect(boot.ai).toEqual({ provider: 'anthropic', model: 'claude-test', enabled: true });
+    expect(boot.ai).toEqual({
+      provider: 'anthropic',
+      model: 'claude-test',
+      enabled: true,
+      source: 'instance',
+    });
   });
 
   it('can be turned off per workspace by its admins', async () => {
@@ -249,6 +254,100 @@ describe('with an OpenAI-compatible endpoint', () => {
     const failed = await local.post(`${ws}/ai/issues/ENG-1/summary`);
     expect(failed.statusCode).toBe(502);
     expect(failed.data.message).toContain('model not loaded');
+  });
+});
+
+describe("a workspace's own model", () => {
+  it('is used instead of the instance one, keeps its key to itself and can be removed', async () => {
+    // No instance model, but private addresses (the mock) are allowed.
+    const app = await testApp({ settingsFromEnv: { ai: null, allowPrivateNetworkTargets: true } });
+    try {
+      const admin = as(app, owner);
+      const before = (await admin.get(`${ws}/ai/settings`)).data;
+      expect(before).toMatchObject({
+        enabled: true,
+        source: 'instance',
+        instance: null,
+        own: null,
+      });
+      expect((await as(app, member).get(`${ws}/ai/settings`)).statusCode).toBe(403);
+
+      expect(
+        (
+          await admin.put(`${ws}/ai/provider`, {
+            provider: 'anthropic',
+            model: 'c',
+            baseUrl: null,
+            apiKey: null,
+          })
+        ).statusCode,
+      ).toBe(400);
+      const key = 'sk-own-local-1234567890';
+      const saved = await admin.put(`${ws}/ai/provider`, {
+        provider: 'openai',
+        model: 'own-model',
+        baseUrl: `${mock.url}/v1/`,
+        apiKey: key,
+      });
+      expect(saved.statusCode, saved.body).toBe(200);
+      const after = (await admin.get(`${ws}/ai/settings`)).data;
+      expect(after).toMatchObject({
+        source: 'workspace',
+        own: { provider: 'openai', model: 'own-model', baseUrl: `${mock.url}/v1` },
+      });
+      expect(after.own.apiKey).not.toContain('1234567890');
+      expect((await admin.get(`${ws}/bootstrap`)).data.ai).toEqual({
+        provider: 'openai',
+        model: 'own-model',
+        enabled: true,
+        source: 'workspace',
+      });
+
+      mock.on('POST', '/v1/chat/completions', {
+        choices: [{ finish_reason: 'stop', message: { content: 'From our own model.' } }],
+      });
+      const summary = await admin.post(`${ws}/ai/issues/ENG-1/summary`);
+      expect(summary.data.summary).toBe('From our own model.');
+      const call = mock.calls('POST', '/v1/chat/completions').at(-1)!;
+      expect(call.headers.authorization).toBe(`Bearer ${key}`);
+      expect((call.body as { model: string }).model).toBe('own-model');
+      expect((await admin.post(`${ws}/ai/provider/test`)).data.reply).toBe('From our own model.');
+
+      // Even with the instance's own model set up, the workspace's wins.
+      const claude = as(claudeApp, owner);
+      expect((await claude.get(`${ws}/bootstrap`)).data.ai.model).toBe('own-model');
+      // And where the instance keeps outbound requests off the private network, so does it.
+      const off = as(offApp, owner);
+      const blocked = await off.post(`${ws}/ai/issues/ENG-1/summary`);
+      expect(blocked.statusCode).toBe(502);
+
+      // A Claude model from a workspace always goes to Anthropic.
+      await admin.put(`${ws}/ai/provider`, {
+        provider: 'anthropic',
+        model: 'claude-own',
+        baseUrl: 'http://169.254.169.254',
+        apiKey: 'sk-ant-own-key-123456',
+      });
+      expect((await admin.get(`${ws}/ai/settings`)).data.own.baseUrl).toBeNull();
+
+      // The audit log says the key changed, never what it is.
+      const log = JSON.stringify((await admin.get(`${ws}/audit-log?category=workspace`)).data);
+      expect(log).toContain('workspace.ai_updated');
+      expect(log).not.toContain('1234567890');
+
+      // Removing it goes back to the instance's (none here).
+      expect((await admin.del(`${ws}/ai/provider`)).statusCode).toBe(200);
+      expect((await admin.get(`${ws}/bootstrap`)).data.ai).toBeNull();
+      const none = await admin.post(`${ws}/ai/issues/ENG-1/summary`);
+      expect(none.data.messageKey).toBe('ai_not_set_up');
+      await admin.patch(ws, { settings: { aiSource: 'workspace' } });
+      const unset = await admin.post(`${ws}/ai/issues/ENG-1/summary`);
+      expect(unset.data.messageKey).toBe('ai_not_set_up_workspace');
+      await admin.patch(ws, { settings: { aiSource: 'instance' } });
+      expect((await claude.get(`${ws}/bootstrap`)).data.ai.model).toBe('claude-test');
+    } finally {
+      await app.close();
+    }
   });
 });
 

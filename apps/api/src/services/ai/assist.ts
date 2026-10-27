@@ -9,7 +9,7 @@ import {
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { workspaces } from '../../db/schema.ts';
+import { workspaceAiProviders, workspaces } from '../../db/schema.ts';
 import { HttpError } from '../../lib/errors.ts';
 import { assertTeamAccess } from '../access.ts';
 import { getIssue, similarIssues } from '../issues.ts';
@@ -33,21 +33,73 @@ export function instanceModel(app: FastifyInstance, settings?: AiSettings | null
   return ai ? aiModel(ai, decryptAiKey(app, ai.apiKey)) : null;
 }
 
-/** The model for a request in this workspace, or a 403 saying why there is none. */
-export async function workspaceModel(app: FastifyInstance, workspaceId: string): Promise<AiModel> {
-  const model = instanceModel(app);
-  if (!model)
-    throw new HttpError(403, 'AI assistance is not set up on this instance', 'ai_unavailable').as(
-      'ai_not_set_up',
-    );
+export const workspaceAiKeyAad = (workspaceId: string) =>
+  `workspace_ai_providers:${workspaceId}:apiKey`;
+
+/** A workspace's own model settings (key decrypted), if it has any. */
+export async function ownAiProvider(app: FastifyInstance, workspaceId: string) {
+  const [row] = await app.db
+    .select()
+    .from(workspaceAiProviders)
+    .where(eq(workspaceAiProviders.workspaceId, workspaceId));
+  if (!row) return null;
+  return {
+    provider: row.provider,
+    model: row.model,
+    // The Claude API can't be pointed elsewhere from a workspace: its client isn't SSRF-guarded.
+    baseUrl: row.provider === 'openai' ? row.baseUrl : null,
+    apiKey: row.apiKey ? app.keyring.decrypt(row.apiKey, workspaceAiKeyAad(workspaceId)) : null,
+  } satisfies AiSettings;
+}
+
+/** A workspace's own model, with outbound requests held to the instance's network rules. */
+export const ownModel = (app: FastifyInstance, own: AiSettings) =>
+  aiModel(own, own.apiKey, { allowPrivate: app.settings.get('allowPrivateNetworkTargets') });
+
+/**
+ * Which model a workspace uses: off; its own, when it chose that; otherwise the instance's.
+ * `info` names it for the web app (null when there's none to use).
+ */
+export async function resolveWorkspaceAi(app: FastifyInstance, workspaceId: string) {
   const [row] = await app.db
     .select({ settings: workspaces.settings })
     .from(workspaces)
     .where(eq(workspaces.id, workspaceId));
-  if (!(row?.settings?.aiEnabled ?? DEFAULT_WORKSPACE_SETTINGS.aiEnabled))
+  const settings = { ...DEFAULT_WORKSPACE_SETTINGS, ...row?.settings };
+  if (settings.aiSource === 'workspace') {
+    const own = await ownAiProvider(app, workspaceId);
+    return {
+      enabled: settings.aiEnabled,
+      source: settings.aiSource,
+      settings: own,
+      model: () => (own ? ownModel(app, own) : null),
+    };
+  }
+  const instance = app.settings.get('ai');
+  return {
+    enabled: settings.aiEnabled,
+    source: settings.aiSource,
+    settings: instance,
+    model: () => instanceModel(app, instance),
+  };
+}
+
+/** The model for a request in this workspace, or a 403 saying why there is none. */
+export async function workspaceModel(app: FastifyInstance, workspaceId: string): Promise<AiModel> {
+  const ai = await resolveWorkspaceAi(app, workspaceId);
+  if (!ai.enabled)
     throw new HttpError(403, 'AI assistance is turned off in this workspace', 'ai_unavailable').as(
       'ai_off_workspace',
     );
+  const model = ai.model();
+  if (!model)
+    throw ai.source === 'workspace'
+      ? new HttpError(403, "This workspace's own AI model isn't set up", 'ai_unavailable').as(
+          'ai_not_set_up_workspace',
+        )
+      : new HttpError(403, 'AI assistance is not set up on this instance', 'ai_unavailable').as(
+          'ai_not_set_up',
+        );
   return model;
 }
 

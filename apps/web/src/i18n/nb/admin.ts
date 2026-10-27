@@ -108,7 +108,7 @@ export default {
   ai: {
     title: 'KI-hjelp',
     description:
-      'Sammendrag av saker, utkast skrevet ut fra løse notater og forslag ved triage (prioritet, etiketter, duplikater). Når noen ber om det, sendes sakteksten de kan se til denne modellen; ingenting endres før de bruker et forslag. Admins for et arbeidsområde kan slå det av for sitt arbeidsområde.',
+      'Sammendrag av saker, utkast skrevet ut fra løse notater og forslag ved triage (prioritet, etiketter, duplikater). Når noen ber om det, sendes sakteksten de kan se til denne modellen; ingenting endres før de bruker et forslag. Admins for et arbeidsområde kan slå det av for sitt arbeidsområde eller bruke en egen modell i stedet.',
     fromEnv: 'Satt via ORDO_AI_PROVIDER: {value}',
     off: 'av',
     provider: 'Leverandør',

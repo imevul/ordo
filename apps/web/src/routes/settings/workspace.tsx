@@ -173,8 +173,6 @@ export function WorkspaceSection() {
 
       <BranchFormatCard />
 
-      <AiCard />
-
       {ws.isOwner && <DangerZone />}
     </>
   );
@@ -352,43 +350,6 @@ function BranchFormatCard() {
 }
 
 /** Whether people here may use the instance's model, and where their issue text would go. */
-function AiCard() {
-  const ws = useWorkspace();
-  const qc = useQueryClient();
-  return (
-    <SettingsCard
-      title={t('workspaceSettings.ai.title')}
-      description={
-        ws.ai
-          ? ws.ai.provider === 'anthropic'
-            ? t('workspaceSettings.ai.claude', { model: ws.ai.model })
-            : t('workspaceSettings.ai.local', { model: ws.ai.model })
-          : t('workspaceSettings.ai.notSetUp')
-      }
-    >
-      {ws.ai && (
-        <label className="flex items-center justify-between gap-3 py-2.5 text-[13.5px]">
-          {t('workspaceSettings.ai.toggle')}
-          <input
-            type="checkbox"
-            className="accent-primary"
-            checked={ws.workspace.settings.aiEnabled}
-            onChange={async (e) => {
-              try {
-                await api.patch(wsPath(ws.slug, '/'), {
-                  settings: { aiEnabled: e.target.checked },
-                });
-                qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
-              } catch (err) {
-                toast.error(errMsg(err));
-              }
-            }}
-          />
-        </label>
-      )}
-    </SettingsCard>
-  );
-}
 
 function DangerZone() {
   const ws = useWorkspace();

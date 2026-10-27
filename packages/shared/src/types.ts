@@ -553,8 +553,13 @@ export interface Bootstrap {
   views: View[];
   favorites: Favorite[];
   unreadCount: number;
-  /** The instance's model, or null when AI assistance isn't set up; `enabled` is this workspace's switch. */
-  ai: { provider: AiSettings['provider']; model: string; enabled: boolean } | null;
+  /** The model this workspace uses (its own or the instance's), or null when there is none; `enabled` is the workspace's switch. */
+  ai: {
+    provider: AiSettings['provider'];
+    model: string;
+    enabled: boolean;
+    source: WorkspaceSettings['aiSource'];
+  } | null;
 }
 
 /** AI: a short summary of an issue and its discussion, in Markdown. */
@@ -631,6 +636,18 @@ export interface InstanceSettings {
   maxAttachmentMb: number;
   /** Optional AI assistance; null (the default) turns it off everywhere. */
   ai: AiSettings | null;
+}
+
+/** Settings → AI assistance: the workspace's choice, and what each choice would use. */
+export interface WorkspaceAi {
+  enabled: boolean;
+  source: WorkspaceSettings['aiSource'];
+  /** The instance's model, if an instance admin set one up. */
+  instance: { provider: AiSettings['provider']; model: string } | null;
+  /** The workspace's own model; the key only ever masked. */
+  own: (Omit<AiSettings, 'apiKey'> & { apiKey: string | null }) | null;
+  /** Whether an OpenAI-compatible URL may point into the private network (an instance setting). */
+  allowPrivateNetwork: boolean;
 }
 
 /** The model behind AI assistance. Issue content the asking person can see is sent to it. */
@@ -733,8 +750,10 @@ export interface WorkspaceSettings {
   gitBranchFormat: string;
   /** The workspace's accent colour (#rrggbb); null is Hotline Pink. */
   accentColor: string | null;
-  /** AI assistance, when the instance has a model set up. Admins can turn it off. */
+  /** AI assistance on or off for this workspace. */
   aiEnabled: boolean;
+  /** Whose model: the instance's (if it has one) or the workspace's own (Settings → AI assistance). */
+  aiSource: 'instance' | 'workspace';
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -747,6 +766,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   gitBranchFormat: DEFAULT_BRANCH_FORMAT,
   accentColor: null,
   aiEnabled: true,
+  aiSource: 'instance',
 };
 
 export interface WorkspaceDomain {

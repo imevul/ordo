@@ -33,6 +33,7 @@ export default {
     templates: 'Maler',
     access: 'Tilgang',
     authentication: 'Autentisering',
+    aiAssistance: 'KI-hjelp',
     integrations: 'Integrasjoner',
     webhooks: 'Webhooks',
     importExport: 'Import og eksport',

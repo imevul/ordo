@@ -108,7 +108,7 @@ export default {
   ai: {
     title: 'AI-hjälp',
     description:
-      'Sammanfattningar av ärenden, utkast skrivna utifrån lösa anteckningar och förslag vid triage (prioritet, etiketter, dubbletter). När någon ber om det skickas den ärendetext personen kan se till den här modellen; inget ändras förrän personen tillämpar ett förslag. Admins för en arbetsyta kan stänga av det för sin arbetsyta.',
+      'Sammanfattningar av ärenden, utkast skrivna utifrån lösa anteckningar och förslag vid triage (prioritet, etiketter, dubbletter). När någon ber om det skickas den ärendetext personen kan se till den här modellen; inget ändras förrän personen tillämpar ett förslag. Admins för en arbetsyta kan stänga av det för sin arbetsyta eller använda en egen modell i stället.',
     fromEnv: 'Satt via ORDO_AI_PROVIDER: {value}',
     off: 'av',
     provider: 'Leverantör',

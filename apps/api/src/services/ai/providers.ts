@@ -22,14 +22,23 @@ export const aiError = (message: string) => new HttpError(502, message, 'ai_fail
 
 const DEFAULT_MAX_TOKENS = 8000;
 
-export function aiModel(settings: AiSettings, apiKey: string | null): AiModel {
+/**
+ * `allowPrivate`: whether an OpenAI-compatible URL may be on the private network. Yes for the
+ * instance's model (an instance admin set it; a model on the LAN is the point); for a workspace's
+ * own model it follows the instance's private-network setting, like webhooks.
+ */
+export function aiModel(
+  settings: AiSettings,
+  apiKey: string | null,
+  opts: { allowPrivate?: boolean } = {},
+): AiModel {
   return settings.provider === 'anthropic'
     ? claude(settings, apiKey)
-    : openAiCompatible(settings, apiKey);
+    : openAiCompatible(settings, apiKey, opts.allowPrivate ?? true);
 }
 
 function claude(settings: AiSettings, apiKey: string | null): AiModel {
-  if (!apiKey) throw aiError('The Claude API needs an API key; an instance admin can add one');
+  if (!apiKey) throw aiError('The Claude API needs an API key; an admin can add one');
   const client = new Anthropic({
     apiKey,
     // Explicit, so ANTHROPIC_BASE_URL in the server's environment can't redirect it.
@@ -68,7 +77,11 @@ interface ChatCompletion {
   error?: { message?: string } | string;
 }
 
-function openAiCompatible(settings: AiSettings, apiKey: string | null): AiModel {
+function openAiCompatible(
+  settings: AiSettings,
+  apiKey: string | null,
+  allowPrivate: boolean,
+): AiModel {
   if (!settings.baseUrl) throw aiError('The OpenAI-compatible endpoint needs a base URL');
   const url = `${settings.baseUrl.replace(/\/$/, '')}/chat/completions`;
   const host = new URL(url).host;
@@ -97,9 +110,7 @@ function openAiCompatible(settings: AiSettings, apiKey: string | null): AiModel 
                 },
               }),
           }),
-          // Only an instance admin (or the operator's env) sets this URL, and a model on the LAN
-          // or the same host is the point of this provider, so private addresses are allowed.
-          allowPrivate: true,
+          allowPrivate,
           // Local models on modest hardware are slow.
           timeoutMs: 180_000,
         }).catch((err: unknown) => {
