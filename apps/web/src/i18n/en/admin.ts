@@ -107,7 +107,7 @@ export default {
   ai: {
     title: 'AI assistance',
     description:
-      'Issue summaries, drafts written from rough notes, and triage suggestions (priority, labels, duplicates). When someone asks, the issue text they can see is sent to this model; nothing is changed until they apply a suggestion. Workspace admins can turn it off for their workspace.',
+      'Issue summaries, drafts written from rough notes, and triage suggestions (priority, labels, duplicates). When someone asks, the issue text they can see is sent to this model; nothing is changed until they apply a suggestion. Workspace admins can turn it off for their workspace, or use their own model instead.',
     fromEnv: 'Set by ORDO_AI_PROVIDER: {value}',
     // Shown after "Set by ORDO_AI_PROVIDER:" when no provider is set.
     off: 'off',

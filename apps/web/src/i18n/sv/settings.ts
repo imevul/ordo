@@ -33,6 +33,7 @@ export default {
     templates: 'Mallar',
     access: 'Åtkomst',
     authentication: 'Autentisering',
+    aiAssistance: 'AI-hjälp',
     integrations: 'Integrationer',
     webhooks: 'Webhooks',
     importExport: 'Import och export',

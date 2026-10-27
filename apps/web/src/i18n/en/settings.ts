@@ -35,6 +35,7 @@ export default {
     /** Invitations, domains and joining: who gets in. */
     access: 'Access',
     authentication: 'Authentication',
+    aiAssistance: 'AI assistance',
     integrations: 'Integrations',
     webhooks: 'Webhooks',
     importExport: 'Import & export',

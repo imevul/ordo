@@ -71,6 +71,7 @@ export default {
     export_busy: 'En eksport lages allerede; vent til den er ferdig',
     export_not_ready: 'Eksporten lages fortsatt',
     ai_not_set_up: 'KI-hjelp er ikke satt opp på denne instansen',
+    ai_not_set_up_workspace: 'Arbeidsområdets egen KI-modell er ikke satt opp',
     ai_off_workspace: 'KI-hjelp er slått av i dette arbeidsområdet',
     ai_off: 'KI-hjelp er slått av',
     ai_empty: 'Modellen sendte et tomt svar',

@@ -47,14 +47,49 @@ export default {
     formatLabel: 'Format for grennavn',
   },
   ai: {
-    title: 'KI-assistanse',
+    title: 'KI-hjelp',
     claude:
-      'Sammendrag, sakutkast og forslag ved triage fra Claude ({model}). Når noen spør, sendes saksteksten de kan se, til Anthropics API. Ordo lagrer verken forespørselen eller svaret.',
+      'Sammendrag, utkast til saker og forslag ved triage fra Claude ({model}). Når noen ber om det, sendes saksteksten de kan se til Anthropics API. Ordo lagrer verken forespørselen eller svaret.',
     local:
-      'Sammendrag, sakutkast og forslag ved triage fra {model}, en modell instansen din kjører eller når selv. Når noen spør, sendes saksteksten de kan se, dit.',
-    notSetUp:
-      'En instansadmin kan sette opp en modell (Claude API eller en lokal OpenAI-kompatibel modell som Ollama) for sammendrag, sakutkast og forslag ved triage.',
-    toggle: 'Tilby KI-assistanse i dette arbeidsområdet',
+      'Sammendrag, utkast til saker og forslag ved triage fra {model}, en modell på en egen adresse. Når noen ber om det, sendes saksteksten de kan se dit.',
+    intro:
+      'Sammendrag, utkast til saker og forslag ved triage. Bruk modellen instansen tilbyr, en egen, eller slå det av.',
+    adminsOnly: 'Bare admins kan endre KI-hjelpen.',
+    which: 'Hvilken modell som svarer',
+    useInstance: 'Instansens modell',
+    instanceNone: 'ingen er satt opp på denne instansen',
+    instanceMissing:
+      'Instansen har ingen modell satt opp, så KI-hjelp tilbys ikke. Bruk en egen, eller spør en instansadmin.',
+    useOwn: 'Vår egen modell',
+    ownNone: 'sett den opp nedenfor',
+    off: 'Av',
+    offHint: 'Ingen KI-hjelp i dette arbeidsområdet',
+    ownTitle: 'Vår egen modell',
+    ownDescription:
+      'Brukes i stedet for instansens for alle i arbeidsområdet. Nøkkelen lagres kryptert, og bare admins ser den, maskert.',
+    provider: 'Leverandør',
+    anthropic: 'Claude API (Anthropic)',
+    openai: 'OpenAI-kompatibel (Ollama, vLLM, LM Studio…)',
+    anthropicNote:
+      'Saksteksten forlater serveren for Anthropics API, etter vilkårene for API-kontoen din.',
+    model: 'Modell',
+    baseUrl: 'Basis-URL',
+    baseUrlHint: 'URL-en som slutter på /v1.',
+    baseUrlPublicOnly:
+      'URL-en som slutter på /v1. Adresser på et privat nettverk (en modell på LAN-et deres) virker bare hvis en instansadmin tillater private nettverksmål.',
+    apiKey: 'API-nøkkel',
+    apiKeyCurrent: 'Lagret: {key}. La feltet stå tomt for å beholde den.',
+    apiKeyOptional: 'Valgfri for lokale servere.',
+    apiKeyConsole: 'Fra Claude Console. Lagres kryptert.',
+    saveAndUse: 'Lagre og bruk den',
+    saved: 'KI-modellen er lagret',
+    test: 'Test',
+    testing: 'Tester…',
+    answered: 'Svarte på {seconds} s: {reply}',
+    remove: 'Fjern vår modell',
+    removeTitle: 'Fjerne deres egen modell?',
+    removeBody:
+      'Arbeidsområdet går tilbake til instansens modell, hvis den har en. Nøkkelen slettes.',
   },
   danger: {
     title: 'Faresone',
@@ -245,6 +280,7 @@ export default {
       apiKeyRevoked: 'tilbakekalte en API-nøkkel',
       oauthAuthorized: 'koblet til en app',
       oauthRevoked: 'koblet fra en app',
+      aiUpdated: 'endret innstillingene for KI-hjelp',
       workspaceExported: 'eksporterte arbeidsområdet',
       accountUpdated: 'endret en konto',
       accountDeleted: 'slettet en konto',

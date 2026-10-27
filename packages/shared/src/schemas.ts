@@ -135,6 +135,7 @@ export const updateWorkspaceSchema = z.object({
       gitBranchFormat: z.string().trim().min(1).max(100).optional(),
       accentColor: z.string().regex(HEX_COLOR, 'Use a #rrggbb colour').nullable().optional(),
       aiEnabled: z.boolean().optional(),
+      aiSource: z.enum(['instance', 'workspace']).optional(),
     })
     .optional(),
 });
@@ -826,4 +827,16 @@ export const auditQuerySchema = z.object({
 export const adminAuditQuerySchema = auditQuerySchema.extend({
   scope: z.enum(['instance', 'all']).default('instance'),
   workspaceId: z.uuid().optional(),
+});
+
+/** A workspace's own AI model. `apiKey: ''` keeps the stored key, `null` removes it. */
+export const workspaceAiProviderSchema = z.object({
+  provider: z.enum(['anthropic', 'openai']),
+  model: z.string().trim().min(1).max(200),
+  /** OpenAI-compatible only: the URL ending in /v1. */
+  baseUrl: z
+    .url({ protocol: /^https?$/ })
+    .max(500)
+    .nullable(),
+  apiKey: z.string().trim().max(500).nullable(),
 });

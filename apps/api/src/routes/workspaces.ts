@@ -22,6 +22,7 @@ import {
 import { requireAdmin, requireOwner, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { badRequest, conflict, isUniqueViolation, notFound, parse } from '../lib/errors.ts';
 import { mutate, requestMeta } from '../lib/mutate.ts';
+import { resolveWorkspaceAi } from '../services/ai/assist.ts';
 import { audit, auditCtx, auditFilters } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { listCustomers } from '../services/customers.ts';
@@ -45,7 +46,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     const ws = requireWorkspace(req);
     const access = ws.access;
-    const aiSettings = app.settings.get('ai');
+    const ai = await resolveWorkspaceAi(app, ws.id);
     const [
       workspace,
       members,
@@ -124,11 +125,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
         .filter((f) => visibleTarget(f.kind, f.targetId))
         .map((f) => ({ id: f.id, kind: f.kind, targetId: f.targetId, sortOrder: f.sortOrder })),
       unreadCount: unread[0]?.n ?? 0,
-      ai: aiSettings
+      ai: ai.settings
         ? {
-            provider: aiSettings.provider,
-            model: aiSettings.model,
-            enabled: workspaceSettings(workspace[0]!).aiEnabled,
+            provider: ai.settings.provider,
+            model: ai.settings.model,
+            enabled: ai.enabled,
+            source: ai.source,
           }
         : null,
     };

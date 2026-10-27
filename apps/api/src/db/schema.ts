@@ -1299,6 +1299,24 @@ export const matrixCryptoStores = pgTable('matrix_crypto_stores', {
   updatedAt: updatedAt(),
 });
 
+/**
+ * A workspace's own AI model, used instead of the instance's when the workspace chooses it
+ * (`settings.aiSource = 'workspace'`). Kept apart from `workspaces.settings`, which every member
+ * receives, because of the key.
+ */
+export const workspaceAiProviders = pgTable('workspace_ai_providers', {
+  workspaceId: uuid('workspace_id')
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  provider: text('provider').$type<'anthropic' | 'openai'>().notNull(),
+  model: text('model').notNull(),
+  /** OpenAI-compatible endpoints only; the Claude API is always api.anthropic.com here. */
+  baseUrl: text('base_url'),
+  /** Encrypted with the instance key. */
+  apiKey: text('api_key'),
+  updatedAt: updatedAt(),
+});
+
 /** An account at an outside service (GitHub login, Slack user…) mapped to an Ordo user. */
 export const externalAccounts = pgTable(
   'external_accounts',
