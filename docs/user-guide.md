@@ -212,6 +212,21 @@ Labels are workspace-wide or limited to one team (**Settings → Labels**, or cr
 picker). Teams choose an estimate scale: linear (1–5), Fibonacci (1–13), exponential (1–16), t-shirt (XS–XL) or
 none.
 
+## Insights
+
+**Insights** (in the header of any issue screen) opens a panel of charts over the issues that screen shows, with
+its filters applied:
+
+- **Created vs completed** per week over the last 12 weeks — on a cycle, a **burn-up** of scope and completed work
+  across the cycle's days instead (open by default there).
+- A **breakdown** by status, assignee, priority, label, project, team or cycle.
+- **Cycle time** (started → done) and **lead time** (created → done) for issues completed in the last 90 days, as
+  median and 75th percentile.
+
+Switch between counting issues and summing estimates when the issues have estimates. Hover a chart for exact values.
+Project pages show **progress over time** — scope and completed issues day by day since the project started. Charts
+use the issues as they are now: an issue added to a cycle late counts from the day it was created.
+
 ## Search and the command menu
 
 `/` opens search: words in titles, descriptions and comments (matched as you type, best matches first, any

@@ -27,6 +27,8 @@
   --color-success: #22c55e;
   --color-warning: #f59e0b;
   --color-error: #ef4444;
+  /* Second chart series, beside the accent (checked for color-blind separation from pink). */
+  --color-chart-2: #4f8ff7;
 
   --font-sans: "Space Grotesk Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", monospace;
