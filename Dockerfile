@@ -10,12 +10,14 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
+COPY packages/sdk/package.json packages/sdk/
+COPY packages/cli/package.json packages/cli/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
 
 COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY apps ./apps
-RUN pnpm --filter @ordo/web build && pnpm --filter @ordo/api build
+RUN pnpm build
 
 # ─── runtime ───────────────────────────────────────────────────────────
 # The API is bundled into one file, so the runtime image needs no node_modules.
@@ -32,6 +34,8 @@ COPY --from=build /src/apps/api/dist ./
 COPY --from=build /src/apps/api/drizzle ./drizzle
 COPY --from=build /src/apps/api/package.json ./package.json
 COPY --from=build /src/apps/web/dist ./public
+# The ordo CLI, one file, downloadable from the instance at /cli/ordo.mjs.
+COPY --from=build /src/packages/cli/dist/ordo.mjs ./public/cli/ordo.mjs
 
 # Uploads (avatars, attachments) live here; mount a volume.
 RUN mkdir -p /data && chown node:node /data

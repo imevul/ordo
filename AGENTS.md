@@ -21,6 +21,8 @@ apps/web/          React SPA
   src/lib/         workspace context, hotkeys, UI store, issue grouping
   src/styles/      app.css — Hotline Pink tokens + component classes
 packages/shared/   Zod schemas, API types, constants — imported by both apps as TS source
+packages/sdk/      @ordo/sdk: typed REST client + name resolution (Names) — used by the CLI
+packages/cli/      the `ordo` command; bundled to one file, served by instances at /cli/ordo.mjs
 docs/              user, operator and developer docs
 ```
 
@@ -34,7 +36,8 @@ pnpm test                   # Vitest; API tests recreate an `ordo_test` database
 pnpm lint / pnpm format     # Biome
 pnpm db:generate            # after editing apps/api/src/db/schema.ts → new file in apps/api/drizzle/
 pnpm db:seed                # demo workspace "demo", login demo@ordo.test / ordo-demo-password
-pnpm build                  # web → apps/web/dist, API → apps/api/dist/server.mjs (+ seed.mjs)
+pnpm build                  # web → apps/web/dist, CLI → packages/cli/dist/ordo.mjs, API → apps/api/dist/server.mjs
+pnpm ordo <command>         # the CLI from source (see docs/cli.md)
 make check-bundle           # boots the built API with no node_modules (CI runs this too)
 ```
 

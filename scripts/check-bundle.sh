@@ -29,6 +29,7 @@ db "create database $check_db"
 cp apps/api/dist/*.mjs apps/api/package.json "$dir/"
 cp -r apps/api/drizzle "$dir/drizzle"
 cp -r apps/web/dist "$dir/public"
+mkdir -p "$dir/public/cli" && cp packages/cli/dist/ordo.mjs "$dir/public/cli/"
 
 port=$((20000 + RANDOM % 20000))
 (
@@ -43,7 +44,11 @@ pid=$!
 
 for _ in $(seq 1 50); do
   if curl -fsS "http://127.0.0.1:$port/api/health" >/dev/null 2>&1; then
-    curl -fsS -o /dev/null "http://127.0.0.1:$port/" && echo "Bundle OK: API and web served without node_modules."
+    curl -fsS -o /dev/null "http://127.0.0.1:$port/"
+    # The CLI is served as a file and has to run on its own too.
+    curl -fsS -o "$dir/ordo.mjs" "http://127.0.0.1:$port/cli/ordo.mjs"
+    (cd "$dir" && node ordo.mjs --version >/dev/null)
+    echo "Bundle OK: API, web and CLI served without node_modules."
     exit 0
   fi
   sleep 0.2

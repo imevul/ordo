@@ -1,0 +1,698 @@
+import { readFile } from 'node:fs/promises';
+import { type ParseArgsOptionsConfig, parseArgs } from 'node:util';
+import { NameError, Names, Ordo, OrdoError, parsePriority, type WorkspaceClient } from '@ordo/sdk';
+import {
+  type Bootstrap,
+  branchName,
+  type Issue,
+  type IssueFilter,
+  type Me,
+  PRIORITIES,
+  prioritySortKey,
+  STATE_TYPES,
+  type StateType,
+  type Team,
+  type UpdateIssueInput,
+} from '@ordo/shared';
+import {
+  type Config,
+  configPath,
+  effectiveConfig,
+  readConfig,
+  removeConfig,
+  writeConfig,
+} from './config.ts';
+import { relative, type Style, style, table } from './output.ts';
+
+/** Everything the CLI touches outside itself, so tests can run it in-process. */
+export interface Io {
+  env: Record<string, string | undefined>;
+  stdout: (text: string) => void;
+  stderr: (text: string) => void;
+  readStdin: () => Promise<string>;
+  /** Asks for one line; `hidden` for secrets. */
+  prompt: (question: string, opts?: { hidden?: boolean }) => Promise<string>;
+  openUrl: (url: string) => void;
+  color: boolean;
+  width: number;
+  fetch?: typeof fetch;
+}
+
+/** A mistake in how the command was called; prints the usage hint. */
+class UsageError extends Error {}
+
+const VERSION = '0.1.0';
+
+const HELP = `ordo — Ordo from the terminal
+
+Usage: ordo <command> [options]
+
+Setup
+  login [url]              Save Ordo's address and a personal API key
+  logout                   Forget them
+  whoami                   Who the key belongs to
+  workspaces               Your workspaces (* marks the default)
+  use <workspace>          Make a workspace the default
+
+Issues
+  issues                   Open issues (same as: issue list)
+  issue list               --team --status --assignee --mine --label --project --cycle
+                           --priority -q <words> --all --limit <n>
+  issue view <id>          The issue in full; --comments, --web to open it in the browser
+  issue create [title]     --team --title -d <text> | --description-file <path|->
+                           --status --priority --assignee --label --project --cycle
+                           --parent --estimate --due <YYYY-MM-DD>
+  issue edit <id>          The same fields, plus --add-label --remove-label --unassign
+  issue comment <id> [text]  Text, --body-file <path>, or - to read stdin
+  issue start <id>         Assign to you, move to the first started status, print the branch name
+  issue close <id>         Move to the first completed status (--canceled to cancel)
+  issue branch <id>        The git branch name for the issue
+  teams                    Teams with their keys and statuses
+  search <words>           Issues and projects
+
+Anything else
+  api <method> <path>      Call the REST API (path relative to /api); --data <json|@file|->
+
+Every command takes -w/--workspace <slug>, --json and -h/--help.
+ORDO_URL, ORDO_TOKEN and ORDO_WORKSPACE override the saved login.
+Docs: docs/cli.md in the Ordo repository.`;
+
+const common = {
+  workspace: { type: 'string', short: 'w' },
+  json: { type: 'boolean' },
+  help: { type: 'boolean', short: 'h' },
+} as const;
+
+const OPEN_TYPES: StateType[] = ['triage', 'backlog', 'unstarted', 'started'];
+
+/** Runs one command line; resolves to the exit code. */
+export async function run(argv: string[], io: Io): Promise<number> {
+  const s = style(io.color);
+  try {
+    await dispatch(argv, io, s);
+    return 0;
+  } catch (err) {
+    if (err instanceof UsageError) {
+      io.stderr(`${s.error('error:')} ${err.message}\nRun "ordo --help" for usage.\n`);
+      return 2;
+    }
+    if (err instanceof OrdoError) {
+      const hint =
+        err.status === 401
+          ? ' (run "ordo login", or check ORDO_TOKEN)'
+          : err.code === 'sso_required'
+            ? ' (this workspace requires SSO and does not allow API keys)'
+            : '';
+      io.stderr(`${s.error('error:')} ${err.message}${hint}\n`);
+      return 1;
+    }
+    if (err instanceof NameError) {
+      io.stderr(`${s.error('error:')} ${err.message}\n`);
+      return 1;
+    }
+    const e = err as Error & { cause?: { code?: string } };
+    const message =
+      e.message === 'fetch failed'
+        ? `can't reach Ordo (${e.cause?.code ?? 'network error'})`
+        : e.message;
+    io.stderr(`${s.error('error:')} ${message}\n`);
+    return 1;
+  }
+}
+
+async function dispatch(argv: string[], io: Io, s: Style) {
+  const [command, ...rest] = argv;
+  if (!command || command === '-h' || command === '--help' || command === 'help') {
+    io.stdout(`${HELP}\n`);
+    return;
+  }
+  if (command === '-v' || command === '--version' || command === 'version') {
+    io.stdout(`ordo ${VERSION}\n`);
+    return;
+  }
+  const path = configPath(io.env);
+  const file = await readConfig(path);
+  const ctx = new Context(io, s, path, file);
+  switch (command) {
+    case 'login':
+      return login(ctx, rest);
+    case 'logout':
+      await removeConfig(path);
+      io.stdout('Signed out: the saved address and key are gone.\n');
+      return;
+    case 'whoami':
+      return whoami(ctx, rest);
+    case 'workspaces':
+      return workspaces(ctx, rest);
+    case 'use':
+      return use(ctx, rest);
+    case 'teams':
+      return teams(ctx, rest);
+    case 'issues':
+      return issueList(ctx, rest);
+    case 'issue': {
+      const [sub, ...args] = rest;
+      switch (sub) {
+        case 'list':
+        case 'ls':
+          return issueList(ctx, args);
+        case 'view':
+        case 'show':
+          return issueView(ctx, args);
+        case 'create':
+        case 'new':
+          return issueCreate(ctx, args);
+        case 'edit':
+        case 'update':
+          return issueEdit(ctx, args);
+        case 'comment':
+          return issueComment(ctx, args);
+        case 'start':
+          return issueMove(ctx, args, 'start');
+        case 'close':
+          return issueMove(ctx, args, 'close');
+        case 'branch':
+          return issueBranch(ctx, args);
+        default:
+          throw new UsageError(sub ? `unknown issue command "${sub}"` : 'which issue command?');
+      }
+    }
+    case 'search':
+      return search(ctx, rest);
+    case 'api':
+      return api(ctx, rest);
+    default:
+      throw new UsageError(`unknown command "${command}"`);
+  }
+}
+
+/** The signed-in client and the workspace a command works in, loaded on demand. */
+class Context {
+  readonly config: Config;
+  #ordo: Ordo | null = null;
+  #me: Promise<Me> | null = null;
+  #boot: Promise<Bootstrap> | null = null;
+
+  constructor(
+    readonly io: Io,
+    readonly s: Style,
+    readonly path: string,
+    readonly file: Config,
+  ) {
+    this.config = effectiveConfig(file, io.env);
+  }
+
+  get ordo() {
+    if (!this.#ordo) {
+      const { url, token } = this.config;
+      if (!url || !token) throw new Error('not signed in; run "ordo login" first');
+      this.#ordo = new Ordo({ url, token, fetch: this.io.fetch });
+    }
+    return this.#ordo;
+  }
+
+  me() {
+    this.#me ??= this.ordo.me();
+    return this.#me;
+  }
+
+  async workspace(flag: string | undefined): Promise<WorkspaceClient> {
+    let slug = flag ?? this.config.workspace;
+    if (!slug) {
+      const { workspaces } = await this.me();
+      if (workspaces.length !== 1)
+        throw new UsageError(
+          'which workspace? Pass -w <slug>, or pick a default with "ordo use <slug>"',
+        );
+      slug = workspaces[0]!.slug;
+    }
+    return this.ordo.workspace(slug);
+  }
+
+  async names(ws: WorkspaceClient) {
+    this.#boot ??= ws.bootstrap();
+    const [boot, me] = await Promise.all([this.#boot, this.me()]);
+    return new Names(boot, me.id);
+  }
+
+  issueUrl(ws: WorkspaceClient, identifier: string) {
+    return `${this.ordo.url}/${ws.slug}/issue/${identifier}`;
+  }
+
+  json(value: unknown) {
+    this.io.stdout(`${JSON.stringify(value, null, 2)}\n`);
+  }
+}
+
+function parse<const O extends ParseArgsOptionsConfig>(args: string[], options: O) {
+  const config = {
+    args,
+    options: { ...common, ...options },
+    allowPositionals: true as const,
+    strict: true as const,
+  };
+  try {
+    return parseArgs(config);
+  } catch (err) {
+    throw new UsageError((err as Error).message);
+  }
+}
+
+/** Text from a flag, a file, or stdin (`-`). */
+async function textFrom(ctx: Context, value: string | undefined, file: string | undefined) {
+  if (file === '-' || value === '-') return ctx.io.readStdin();
+  if (file) return readFile(file, 'utf8');
+  return value;
+}
+
+// ─── Setup ───────────────────────────────────────────────────────────
+
+async function login(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, { token: { type: 'string' } });
+  const { io, s } = ctx;
+  let url = positionals[0] ?? io.env.ORDO_URL ?? ctx.file.url;
+  url ??= (await io.prompt('Ordo address (e.g. https://ordo.example.com): ')).trim();
+  if (!url) throw new UsageError('give the address Ordo runs at');
+  if (!/^https?:\/\//.test(url)) url = `https://${url}`;
+  url = url.replace(/\/+$/, '');
+  let token = (values.token as string | undefined) ?? io.env.ORDO_TOKEN;
+  if (!token) {
+    io.stderr(`Create a personal API key in Ordo under Settings → API keys (${url}).\n`);
+    token = (await io.prompt('API key: ', { hidden: true })).trim();
+  }
+  if (!token) throw new UsageError('an API key is needed');
+  const me = await new Ordo({ url, token, fetch: io.fetch }).me();
+  const keep = me.workspaces.some((w) => w.slug === ctx.file.workspace);
+  const workspace = keep ? ctx.file.workspace : me.workspaces[0]?.slug;
+  await writeConfig(ctx.path, { url, token, workspace });
+  io.stdout(
+    `Signed in to ${url} as ${s.bold(me.name)} (@${me.username}).${workspace ? ` Workspace: ${workspace}.` : ''}\n`,
+  );
+  if (me.workspaces.length > 1)
+    io.stdout(`You're in ${me.workspaces.length} workspaces; switch with "ordo use <slug>".\n`);
+}
+
+async function whoami(ctx: Context, args: string[]) {
+  const { values } = parse(args, {});
+  const me = await ctx.me();
+  if (values.json) return ctx.json(me);
+  ctx.io.stdout(`${ctx.s.bold(me.name)} (@${me.username}) <${me.email}> on ${ctx.ordo.url}\n`);
+}
+
+async function workspaces(ctx: Context, args: string[]) {
+  const { values } = parse(args, {});
+  const { workspaces: list } = await ctx.me();
+  if (values.json) return ctx.json(list);
+  ctx.io.stdout(
+    `${table(
+      list.map((w) => [w.slug === ctx.config.workspace ? '*' : ' ', w.slug, w.role, w.name]),
+      ctx.io.width,
+    )}\n`,
+  );
+}
+
+async function use(ctx: Context, args: string[]) {
+  const { positionals } = parse(args, {});
+  const slug = positionals[0];
+  if (!slug) throw new UsageError('which workspace? "ordo use <slug>"');
+  const { workspaces: list } = await ctx.me();
+  if (!list.some((w) => w.slug === slug))
+    throw new NameError(
+      `You're not in a workspace "${slug}". Yours: ${list.map((w) => w.slug).join(', ')}`,
+    );
+  await writeConfig(ctx.path, { ...ctx.file, workspace: slug });
+  ctx.io.stdout(`Using ${slug}.\n`);
+}
+
+async function teams(ctx: Context, args: string[]) {
+  const { values } = parse(args, {});
+  const names = await ctx.names(await ctx.workspace(values.workspace));
+  const list = names.boot.teams;
+  if (values.json) return ctx.json(list);
+  ctx.io.stdout(
+    `${table(
+      list.map((t) => [
+        ctx.s.bold(t.key),
+        t.name,
+        [...t.states]
+          .sort((a, b) => a.position - b.position)
+          .map((st) => st.name)
+          .join(' → '),
+      ]),
+      ctx.io.width,
+    )}\n`,
+  );
+}
+
+// ─── Issues ──────────────────────────────────────────────────────────
+
+const PRIORITY_SHORT: Record<number, string> = {
+  0: '—',
+  1: 'Urgent',
+  2: 'High',
+  3: 'Medium',
+  4: 'Low',
+};
+
+function issueRows(ctx: Context, names: Names, issues: Issue[]) {
+  const states = new Map(names.boot.teams.flatMap((t) => t.states.map((st) => [st.id, st])));
+  const people = new Map(names.boot.members.map((m) => [m.id, m]));
+  return issues.map((i) => [
+    ctx.s.accent(i.identifier),
+    states.get(i.stateId)?.name ?? '?',
+    PRIORITY_SHORT[i.priority] ?? '—',
+    i.assigneeId ? `@${people.get(i.assigneeId)?.username ?? '?'}` : '—',
+    i.title,
+  ]);
+}
+
+async function issueList(ctx: Context, args: string[]) {
+  const { values } = parse(args, {
+    team: { type: 'string', short: 't' },
+    status: { type: 'string', short: 's', multiple: true },
+    assignee: { type: 'string', short: 'a', multiple: true },
+    mine: { type: 'boolean' },
+    label: { type: 'string', short: 'l', multiple: true },
+    project: { type: 'string', short: 'p' },
+    cycle: { type: 'string' },
+    priority: { type: 'string', multiple: true },
+    query: { type: 'string', short: 'q' },
+    all: { type: 'boolean' },
+    limit: { type: 'string', short: 'n' },
+  });
+  const ws = await ctx.workspace(values.workspace);
+  const names = await ctx.names(ws);
+  const team = values.team ? names.team(values.team) : null;
+  const teamsInScope = team ? [team] : names.boot.teams;
+  const filter: IssueFilter = {};
+  if (team) filter.teamId = team.id;
+  if (values.status?.length) {
+    const types = values.status.filter((v) => (STATE_TYPES as readonly string[]).includes(v));
+    const named = values.status.filter((v) => !types.includes(v));
+    if (types.length) filter.stateTypes = types as StateType[];
+    if (named.length) {
+      const ids = teamsInScope.flatMap((t) =>
+        t.states.filter((st) => named.some((n) => n.toLowerCase() === st.name.toLowerCase())),
+      );
+      if (!ids.length) throw new NameError(`No status named ${named.join(' or ')}`);
+      filter.stateIds = ids.map((st) => st.id);
+    }
+  } else if (!values.all) filter.stateTypes = OPEN_TYPES;
+  const assignees = [...(values.assignee ?? []), ...(values.mine ? ['me'] : [])];
+  if (assignees.length)
+    filter.assigneeIds = assignees.map((a) => (a === 'none' ? 'none' : names.member(a).id));
+  if (values.label?.length) {
+    filter.labelIds = values.label.flatMap((l) => {
+      const ids = names.boot.labels.filter((x) => x.name.toLowerCase() === l.toLowerCase());
+      if (!ids.length) names.label(l, team);
+      return ids.map((x) => x.id);
+    });
+  }
+  if (values.project)
+    filter.projectIds = [values.project === 'none' ? 'none' : names.project(values.project).id];
+  if (values.cycle)
+    filter.cycleIds =
+      values.cycle === 'none'
+        ? ['none']
+        : teamsInScope.flatMap((t) => {
+            try {
+              return [names.cycle(t, values.cycle!).id];
+            } catch (err) {
+              if (team) throw err;
+              return [];
+            }
+          });
+  if (values.cycle && !filter.cycleIds?.length) throw new NameError(`No ${values.cycle} cycle`);
+  if (values.priority?.length) filter.priorities = values.priority.map(parsePriority);
+  if (values.query) filter.q = values.query;
+
+  const limit = values.limit ? Number(values.limit) : 50;
+  if (!Number.isInteger(limit) || limit < 1)
+    throw new UsageError('--limit takes a positive number');
+  // Most urgent first, then most recently changed; the server's order is the board's.
+  const issues = (await ws.issues.list(filter, { limit: 5000 }))
+    .sort(
+      (a, b) =>
+        prioritySortKey(a.priority) - prioritySortKey(b.priority) ||
+        b.updatedAt.localeCompare(a.updatedAt),
+    )
+    .slice(0, limit);
+  if (values.json) return ctx.json(issues);
+  if (!issues.length) {
+    ctx.io.stdout('No issues.\n');
+    return;
+  }
+  ctx.io.stdout(`${table(issueRows(ctx, names, issues), ctx.io.width)}\n`);
+}
+
+async function issueView(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, {
+    comments: { type: 'boolean', short: 'c' },
+    web: { type: 'boolean' },
+  });
+  const id = positionals[0];
+  if (!id) throw new UsageError('which issue? "ordo issue view ENG-42"');
+  const ws = await ctx.workspace(values.workspace);
+  if (values.web) {
+    const issue = await ws.issues.get(id);
+    ctx.io.openUrl(ctx.issueUrl(ws, issue.identifier));
+    return;
+  }
+  const [issue, names] = await Promise.all([ws.issues.get(id), ctx.names(ws)]);
+  const comments = values.comments ? await ws.issues.comments(issue.id) : [];
+  if (values.json) return ctx.json(values.comments ? { ...issue, comments } : issue);
+  const { s } = ctx;
+  const team = names.boot.teams.find((t) => t.id === issue.teamId);
+  const state = team?.states.find((st) => st.id === issue.stateId);
+  const people = new Map(names.boot.members.map((m) => [m.id, m]));
+  const who = (id: string | null) => (id ? `@${people.get(id)?.username ?? 'someone'}` : '—');
+  const labels = issue.labelIds
+    .map((l) => names.boot.labels.find((x) => x.id === l)?.name)
+    .filter(Boolean);
+  const project = names.boot.projects.find((p) => p.id === issue.projectId);
+  const cycle = names.boot.cycles.find((c) => c.id === issue.cycleId);
+  const facts = [
+    ['Status', state?.name ?? '?'],
+    ['Priority', PRIORITIES.find((p) => p.value === issue.priority)?.label ?? '—'],
+    ['Assignee', who(issue.assigneeId)],
+    ['Labels', labels.join(', ')],
+    ['Project', project?.name],
+    ['Cycle', cycle ? (cycle.name ?? `Cycle ${cycle.number}`) : undefined],
+    ['Estimate', issue.estimate?.toString()],
+    ['Due', issue.dueDate],
+    ['Parent', issue.parent ? `${issue.parent.identifier} ${issue.parent.title}` : undefined],
+    ['Created', `${relative(issue.createdAt)} by ${who(issue.creatorId)}`],
+    ['Updated', relative(issue.updatedAt)],
+  ].filter((f): f is [string, string] => !!f[1]);
+  const out = [
+    `${s.accent(issue.identifier)} ${s.bold(issue.title)}`,
+    s.dim(ctx.issueUrl(ws, issue.identifier)),
+    '',
+    table(
+      facts.map(([k, v]) => [s.dim(k), v]),
+      ctx.io.width,
+    ),
+  ];
+  if (issue.description.trim()) out.push('', issue.description.trim());
+  if (issue.subIssues.length) {
+    out.push('', s.bold(`Sub-issues (${issue.subIssues.length})`));
+    out.push(table(issueRows(ctx, names, issue.subIssues), ctx.io.width));
+  }
+  if (values.comments) {
+    out.push('', s.bold(`Comments (${comments.length})`));
+    for (const c of comments)
+      out.push('', `${s.bold(who(c.authorId))} ${s.dim(relative(c.createdAt))}`, c.body.trim());
+  }
+  ctx.io.stdout(`${out.join('\n')}\n`);
+}
+
+const issueFields = {
+  title: { type: 'string' },
+  description: { type: 'string', short: 'd' },
+  'description-file': { type: 'string' },
+  status: { type: 'string', short: 's' },
+  priority: { type: 'string' },
+  assignee: { type: 'string', short: 'a' },
+  project: { type: 'string', short: 'p' },
+  cycle: { type: 'string' },
+  parent: { type: 'string' },
+  estimate: { type: 'string' },
+  due: { type: 'string' },
+} as const;
+
+type FieldValues = { [K in keyof typeof issueFields]?: string };
+
+/** The fields shared by create and edit, from names to ids. `none` clears where that makes sense. */
+async function fieldsToInput(
+  ctx: Context,
+  ws: WorkspaceClient,
+  names: Names,
+  team: Team,
+  v: FieldValues,
+) {
+  const input: UpdateIssueInput = {};
+  if (v.title !== undefined) input.title = v.title;
+  const description = await textFrom(ctx, v.description, v['description-file']);
+  if (description !== undefined) input.description = description;
+  if (v.status) input.stateId = names.state(team, v.status).id;
+  if (v.priority) input.priority = parsePriority(v.priority);
+  if (v.assignee) input.assigneeId = v.assignee === 'none' ? null : names.member(v.assignee).id;
+  if (v.project) input.projectId = v.project === 'none' ? null : names.project(v.project).id;
+  if (v.cycle) input.cycleId = v.cycle === 'none' ? null : names.cycle(team, v.cycle).id;
+  if (v.parent) input.parentId = v.parent === 'none' ? null : (await ws.issues.get(v.parent)).id;
+  if (v.estimate) {
+    const n = Number(v.estimate);
+    if (v.estimate !== 'none' && !Number.isFinite(n))
+      throw new UsageError('--estimate takes a number');
+    input.estimate = v.estimate === 'none' ? null : n;
+  }
+  if (v.due) {
+    if (v.due !== 'none' && !/^\d{4}-\d{2}-\d{2}$/.test(v.due))
+      throw new UsageError('--due takes a date as YYYY-MM-DD');
+    input.dueDate = v.due === 'none' ? null : v.due;
+  }
+  return input;
+}
+
+async function issueCreate(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, {
+    ...issueFields,
+    team: { type: 'string', short: 't' },
+    label: { type: 'string', short: 'l', multiple: true },
+  });
+  const ws = await ctx.workspace(values.workspace);
+  const names = await ctx.names(ws);
+  const title = values.title ?? positionals.join(' ');
+  if (!title.trim())
+    throw new UsageError('give the issue a title: ordo issue create "Title" --team ENG');
+  const { teams: all, workspace } = names.boot;
+  const team = values.team
+    ? names.team(values.team)
+    : (all.find((t) => t.id === workspace.defaultTeamId) ?? (all.length === 1 ? all[0] : null));
+  if (!team) throw new UsageError(`which team? --team ${all.map((t) => t.key).join('|')}`);
+  const fields = await fieldsToInput(ctx, ws, names, team, { ...values, title });
+  const issue = await ws.issues.create({
+    ...fields,
+    title,
+    teamId: team.id,
+    labelIds: (values.label ?? []).map((l) => names.label(l, team).id),
+  } as Parameters<typeof ws.issues.create>[0]);
+  if (values.json) return ctx.json(issue);
+  ctx.io.stdout(
+    `Created ${ctx.s.accent(issue.identifier)} ${ctx.issueUrl(ws, issue.identifier)}\n`,
+  );
+}
+
+async function issueEdit(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, {
+    ...issueFields,
+    'add-label': { type: 'string', multiple: true },
+    'remove-label': { type: 'string', multiple: true },
+    unassign: { type: 'boolean' },
+  });
+  const id = positionals[0];
+  if (!id) throw new UsageError('which issue? "ordo issue edit ENG-42 --status Done"');
+  const ws = await ctx.workspace(values.workspace);
+  const [issue, names] = await Promise.all([ws.issues.get(id), ctx.names(ws)]);
+  const team = names.team(issue.teamId);
+  const patch = await fieldsToInput(ctx, ws, names, team, values);
+  if (values.unassign) patch.assigneeId = null;
+  if (values['add-label']?.length)
+    patch.addLabelIds = values['add-label'].map((l) => names.label(l, team).id);
+  if (values['remove-label']?.length)
+    patch.removeLabelIds = values['remove-label'].map((l) => names.label(l, team).id);
+  if (!Object.keys(patch).length) throw new UsageError('nothing to change; see "ordo --help"');
+  const updated = await ws.issues.update(issue.id, patch);
+  if (values.json) return ctx.json(updated);
+  ctx.io.stdout(`Updated ${ctx.s.accent(issue.identifier)}\n`);
+}
+
+async function issueComment(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, { 'body-file': { type: 'string', short: 'F' } });
+  const [id, ...words] = positionals;
+  if (!id) throw new UsageError('which issue? "ordo issue comment ENG-42 \\"text\\""');
+  const body = await textFrom(ctx, words.length ? words.join(' ') : undefined, values['body-file']);
+  if (!body?.trim()) throw new UsageError('the comment is empty');
+  const ws = await ctx.workspace(values.workspace);
+  const comment = await ws.issues.comment(id, { body });
+  if (values.json) return ctx.json(comment);
+  ctx.io.stdout(`Commented on ${ctx.s.accent(id.toUpperCase())}\n`);
+}
+
+/** `start`: assign to me and move to the first started status. `close`: the first completed one. */
+async function issueMove(ctx: Context, args: string[], how: 'start' | 'close') {
+  const { values, positionals } = parse(args, { canceled: { type: 'boolean' } });
+  const id = positionals[0];
+  if (!id) throw new UsageError(`which issue? "ordo issue ${how} ENG-42"`);
+  const ws = await ctx.workspace(values.workspace);
+  const [issue, names, me] = await Promise.all([ws.issues.get(id), ctx.names(ws), ctx.me()]);
+  const team = names.team(issue.teamId);
+  const type: StateType = how === 'start' ? 'started' : values.canceled ? 'canceled' : 'completed';
+  const state = names.state(team, type);
+  const patch: UpdateIssueInput = { stateId: state.id };
+  if (how === 'start' && !issue.assigneeId) patch.assigneeId = me.id;
+  const updated = await ws.issues.update(issue.id, patch);
+  if (values.json) return ctx.json(updated);
+  ctx.io.stdout(`${ctx.s.accent(issue.identifier)} → ${state.name}\n`);
+  if (how === 'start')
+    ctx.io.stdout(
+      `Branch: ${branchName(names.boot.workspace.settings.gitBranchFormat, { identifier: issue.identifier, title: issue.title, username: me.username })}\n`,
+    );
+}
+
+async function issueBranch(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, {});
+  const id = positionals[0];
+  if (!id) throw new UsageError('which issue? "ordo issue branch ENG-42"');
+  const ws = await ctx.workspace(values.workspace);
+  const [issue, names, me] = await Promise.all([ws.issues.get(id), ctx.names(ws), ctx.me()]);
+  const name = branchName(names.boot.workspace.settings.gitBranchFormat, {
+    identifier: issue.identifier,
+    title: issue.title,
+    username: me.username,
+  });
+  if (values.json) return ctx.json({ branch: name });
+  ctx.io.stdout(`${name}\n`);
+}
+
+async function search(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, {});
+  const q = positionals.join(' ').trim();
+  if (!q) throw new UsageError('search for what? "ordo search login button"');
+  const ws = await ctx.workspace(values.workspace);
+  const [results, names] = await Promise.all([ws.search(q), ctx.names(ws)]);
+  if (values.json) return ctx.json(results);
+  if (!results.issues.length && !results.projects.length) {
+    ctx.io.stdout('Nothing found.\n');
+    return;
+  }
+  if (results.issues.length)
+    ctx.io.stdout(`${table(issueRows(ctx, names, results.issues), ctx.io.width)}\n`);
+  if (results.projects.length)
+    ctx.io.stdout(
+      `${results.issues.length ? '\n' : ''}${ctx.s.bold('Projects')}\n${results.projects.map((p) => `  ${p.name}`).join('\n')}\n`,
+    );
+}
+
+// ─── Raw API ─────────────────────────────────────────────────────────
+
+async function api(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, { data: { type: 'string', short: 'd' } });
+  const [method, path] = positionals;
+  if (!method || !path)
+    throw new UsageError('"ordo api GET /auth/me", or "ordo api POST <path> --data <json>"');
+  let body: unknown;
+  const raw = values.data?.startsWith('@')
+    ? await readFile(values.data.slice(1), 'utf8')
+    : await textFrom(ctx, values.data, undefined);
+  if (raw !== undefined) {
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      throw new UsageError('--data must be JSON');
+    }
+  }
+  const p = path.startsWith('/') ? path : `/${path}`;
+  const result = await ctx.ordo.request(method.toUpperCase(), p.replace(/^\/api(?=\/)/, ''), body);
+  ctx.json(result);
+}

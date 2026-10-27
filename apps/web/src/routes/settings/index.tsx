@@ -6,6 +6,7 @@ import { useWorkspace } from '../../lib/workspace.tsx';
 import {
   AccountSection,
   ApiKeysSection,
+  CliCard,
   NotificationsSection,
   PushCard,
   SecuritySection,
@@ -121,7 +122,10 @@ export function SettingsPage() {
   const meta = SECTIONS.find((s) => s.key === section) ?? SECTIONS[0]!;
   const body =
     section === 'api' ? (
-      <ApiKeysSection />
+      <>
+        <ApiKeysSection />
+        <CliCard />
+      </>
     ) : section === 'mcp' ? (
       <McpSection />
     ) : section === 'security' ? (

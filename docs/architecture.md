@@ -20,6 +20,8 @@ everything and also carries realtime events between API instances.
 | `packages/shared` | Domain constants (state types, priorities, estimate scales), Zod request schemas, response types, realtime event type, sort helpers. Consumed as TypeScript source.        |
 | `apps/api`        | Fastify server. `app.ts` wires plugins and routes; `routes/` are thin HTTP handlers; `services/` hold domain logic; `db/` has the schema, migrations runner and demo seed. |
 | `apps/web`        | React SPA. `router.tsx` (TanStack Router, code-based), `api/` (fetch + React Query + socket), `components/`, `routes/` (pages), `lib/` (context, hotkeys, store).          |
+| `packages/sdk`    | `@ordo/sdk`: a typed client for the REST API (`Ordo`, `WorkspaceClient`) and `Names`, which turns team keys, status, label and user names into ids from a bootstrap.       |
+| `packages/cli`    | The `ordo` command on top of the SDK. Bundled into one dependency-free file that the Docker image serves at `/cli/ordo.mjs`.                                               |
 
 ## Access control
 
