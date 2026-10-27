@@ -112,4 +112,29 @@ describe('migrations', { timeout: 60_000 }, () => {
       { username: 'live-bot', bot_workspace_id: ws!.id, removed: false },
     ]);
   });
+
+  it('takes people who left a workspace off its teams', async () => {
+    const url = await freshDatabase('migrations_team_members');
+    const { db, sql } = createDb(url);
+    cleanup.push(() => sql.end());
+
+    const before = folderUpTo(entryIndex('0037_drop_leftover_team_members'));
+    cleanup.push(() => rmSync(before, { recursive: true, force: true }));
+    await migrate(db, { migrationsFolder: before });
+    const [stays, left] = await sql<{ id: string }[]>`insert into users (email, name, username)
+      values ('stays@x.test', 'Stays', 'stays'), ('left@x.test', 'Left', 'left') returning id`;
+    const [ws] = await sql<{ id: string }[]>`insert into workspaces (name, slug)
+      values ('W', 'w') returning id`;
+    const [team] = await sql<{ id: string }[]>`insert into teams (workspace_id, name, key)
+      values (${ws!.id}, 'Core', 'COR') returning id`;
+    await sql`insert into workspace_members (workspace_id, user_id, role)
+      values (${ws!.id}, ${stays!.id}, 'owner')`;
+    await sql`insert into team_members (team_id, user_id, role)
+      values (${team!.id}, ${stays!.id}, 'admin'), (${team!.id}, ${left!.id}, 'member')`;
+
+    await migrate(db, { migrationsFolder: migrationsFolder() });
+    const rows = await sql<{ username: string }[]>`
+      select u.username from team_members tm join users u on u.id = tm.user_id`;
+    expect(rows.map((r) => r.username)).toEqual(['stays']);
+  });
 });

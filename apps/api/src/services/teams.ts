@@ -1,8 +1,22 @@
-import { cycleAutomationOf, DEFAULT_WORKFLOW_STATES, SORT_GAP, type Team } from '@ordo/shared';
+import {
+  cycleAutomationOf,
+  DEFAULT_WORKFLOW_STATES,
+  SORT_GAP,
+  type Team,
+  type TeamRole,
+} from '@ordo/shared';
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
-import { teamKeyAliases, teamMembers, teams, workflowStates } from '../db/schema.ts';
+import {
+  teamKeyAliases,
+  teamMembers,
+  teams,
+  workflowStates,
+  workspaceMembers,
+} from '../db/schema.ts';
+import { badRequest } from '../lib/errors.ts';
 import { type Access, teamScope } from './access.ts';
+import { auditCtx } from './audit.ts';
 import { type Ctx, emit } from './context.ts';
 import { toTriageRule, triageRulesOf } from './triage.ts';
 
@@ -100,4 +114,48 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
         description: s.description,
       })),
   }));
+}
+
+/**
+ * Puts a workspace member on a team, or changes their role there. Callers check who may; this
+ * checks they belong to the workspace.
+ */
+export async function addTeamMember(ctx: Ctx, teamId: string, userId: string, role: TeamRole) {
+  const [member] = await ctx.tx
+    .select({ userId: workspaceMembers.userId })
+    .from(workspaceMembers)
+    .where(
+      and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId)),
+    );
+  if (!member) throw badRequest('That person is not a member of this workspace').as('not_member');
+  await ctx.tx
+    .insert(teamMembers)
+    .values({ teamId, userId, role })
+    .onConflictDoUpdate({ target: [teamMembers.teamId, teamMembers.userId], set: { role } });
+  emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
+  emit(ctx, { kind: 'member', action: 'updated', id: userId });
+  await auditCtx(ctx, {
+    action: 'team.member_added',
+    targetType: 'team',
+    targetId: teamId,
+    data: { userId, role, ...(ctx.source === 'scim' && { via: 'scim' }) },
+  });
+}
+
+/** Takes someone off a team; false when they weren't on it. */
+export async function removeTeamMember(ctx: Ctx, teamId: string, userId: string) {
+  const removed = await ctx.tx
+    .delete(teamMembers)
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
+    .returning({ userId: teamMembers.userId });
+  if (!removed.length) return false;
+  emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
+  emit(ctx, { kind: 'member', action: 'updated', id: userId });
+  await auditCtx(ctx, {
+    action: 'team.member_removed',
+    targetType: 'team',
+    targetId: teamId,
+    data: { userId, ...(ctx.source === 'scim' && { via: 'scim' }) },
+  });
+  return true;
 }
