@@ -142,6 +142,8 @@ export const AUDIT_ACTIONS = [
   'sso.provider_created',
   'sso.provider_updated',
   'sso.provider_deleted',
+  'scim.token_created',
+  'scim.token_deleted',
   'webhook.created',
   'webhook.updated',
   'webhook.deleted',
@@ -191,7 +193,7 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** Groups of audit actions, by prefix, for filtering the audit log. */
 export const AUDIT_CATEGORIES = {
-  security: ['auth.', 'sso.', 'api_key.', 'oauth.', 'domain.'],
+  security: ['auth.', 'sso.', 'scim.', 'api_key.', 'oauth.', 'domain.'],
   members: ['member.', 'invite.', 'placeholder.', 'admin.'],
   teams: ['team.'],
   workspace: ['workspace.', 'settings.'],

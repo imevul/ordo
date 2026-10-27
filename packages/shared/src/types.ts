@@ -783,6 +783,8 @@ export interface WorkspaceSettings {
   aiEnabled: boolean;
   /** Whose model: the instance's (if it has one) or the workspace's own (Settings → AI assistance). */
   aiSource: 'instance' | 'workspace';
+  /** Role for people the directory (SCIM) adds. */
+  scimDefaultRole: 'member' | 'guest';
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -796,6 +798,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   accentColor: null,
   aiEnabled: true,
   aiSource: 'instance',
+  scimDefaultRole: 'member',
 };
 
 export interface WorkspaceDomain {
@@ -854,6 +857,16 @@ export interface AuthProvider {
   defaultRole: 'member' | 'guest';
   groupClaim: string | null;
   groupRoles: Record<string, 'admin' | 'member' | 'guest'>;
+  createdAt: string;
+}
+
+/** A token an identity provider provisions the workspace with. The secret is shown once. */
+export interface ScimToken {
+  id: string;
+  name: string;
+  prefix: string;
+  createdBy: string | null;
+  lastUsedAt: string | null;
   createdAt: string;
 }
 

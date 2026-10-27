@@ -22,6 +22,8 @@ export const SESSION_COOKIE = 'ordo_session';
 const SESSION_DAYS = 30;
 const DAY = 86_400_000;
 export const API_KEY_PREFIX = 'ordo_';
+/** SCIM tokens (services/scim.ts) share the prefix's start but are never API keys. */
+export const SCIM_TOKEN_PREFIX = 'ordo_scim_';
 
 export interface AuthUser {
   id: string;
@@ -178,7 +180,8 @@ export async function resolveUser(
   if (header?.startsWith('Bearer ')) {
     const token = header.slice(7).trim();
     if (token.startsWith(ACCESS_PREFIX)) return resolveAccessToken(db, token);
-    if (!token.startsWith(API_KEY_PREFIX)) return null;
+    // SCIM tokens provision a workspace (routes/scim.ts); they are nobody.
+    if (token.startsWith(SCIM_TOKEN_PREFIX) || !token.startsWith(API_KEY_PREFIX)) return null;
     const [row] = await db
       .select({ user: userColumns, keyId: apiKeys.id })
       .from(apiKeys)

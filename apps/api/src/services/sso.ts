@@ -1,7 +1,7 @@
 import { AVATAR_COLORS, type MemberRole } from '@ordo/shared';
 import { and, eq, isNotNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { Tx } from '../db/client.ts';
+import type { DbOrTx } from '../db/client.ts';
 import {
   authProviders,
   authStates,
@@ -87,7 +87,7 @@ export function roleFromGroups(
   return null;
 }
 
-async function domainVerifiedFor(tx: Tx, workspaceId: string, email: string) {
+export async function domainVerifiedFor(tx: DbOrTx, workspaceId: string, email: string) {
   const domain = email.split('@')[1]?.toLowerCase();
   if (!domain) return false;
   const [row] = await tx
@@ -103,7 +103,7 @@ async function domainVerifiedFor(tx: Tx, workspaceId: string, email: string) {
   return !!row;
 }
 
-async function uniqueUsername(tx: Tx, base: string) {
+export async function uniqueUsername(tx: DbOrTx, base: string) {
   const clean =
     base
       .toLowerCase()

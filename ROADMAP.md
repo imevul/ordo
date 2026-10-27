@@ -131,7 +131,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 
 - [x] ✅ Passkeys: passwordless sign-in with autofill, and as a second factor
 - [x] ✅ SAML 2.0 SSO alongside OIDC (SP metadata, test mode, group roles)
-- [~] ⬜ SCIM 2.0 provisioning: users to members (deactivating suspends), groups to teams (Okta, Entra ID, Authentik)
+- [~] 🟡 SCIM 2.0 provisioning: users to members (deactivating suspends), groups to teams (Okta, Entra ID, Authentik) — users shipped; groups next
 - [ ] ⬜ Offline-first sync: a local copy of the workspace, a change feed, offline edits replayed on reconnect
 
 ### Phase 12 — Desktop and mobile apps

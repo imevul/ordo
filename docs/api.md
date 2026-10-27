@@ -87,6 +87,10 @@ Joining by domain (no workspace prefix):
 | GET    | `/workspaces/joinable` | Workspaces you may join through your verified email domain |
 | POST   | `/workspaces/:id/join` | Join one of them                                           |
 
+Directory sync lives at `/api/scim/v2` (SCIM 2.0, authenticated with a workspace's SCIM token rather than a user):
+see [scim.md](scim.md#endpoints). Workspace admins manage tokens with `GET|POST /scim/tokens` (`{ name }` → the token,
+shown once) and `DELETE /scim/tokens/:id` under the workspace prefix.
+
 Account endpoints (no workspace prefix): `GET /me/account`, `PATCH /me/preferences`, `POST|DELETE /me/avatar`,
 `POST /me/email`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/2fa/setup|enable|disable|recovery-codes`,
 `GET /me/passkeys`, `POST /me/passkeys/options` (`{ password? }` → `{ challengeId, options }`), `POST /me/passkeys`
