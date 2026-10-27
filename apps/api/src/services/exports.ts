@@ -19,6 +19,7 @@ import {
   issueRelations,
   issues,
   labels,
+  projectDocuments,
   projects,
   projectUpdates,
   users,
@@ -262,6 +263,17 @@ async function jsonExport(
       db.select().from(customerRequests).where(inArray(customerRequests.issueId, ids)),
     ),
     projects: projectList,
+    projectDocuments: projectList.length
+      ? await db
+          .select()
+          .from(projectDocuments)
+          .where(
+            inArray(
+              projectDocuments.projectId,
+              projectList.map((p) => p.id),
+            ),
+          )
+      : [],
     projectUpdates: projectList.length
       ? await db
           .select()

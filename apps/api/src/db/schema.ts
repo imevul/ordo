@@ -441,6 +441,27 @@ export const projects = pgTable(
   (t) => [index('projects_workspace_idx').on(t.workspaceId)],
 );
 
+export const projectDocuments = pgTable(
+  'project_documents',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    content: text('content').notNull().default(''),
+    sortOrder: doublePrecision('sort_order').notNull().default(0),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    updatedById: uuid('updated_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('project_documents_project_idx').on(t.projectId)],
+);
+
 export const projectTeams = pgTable(
   'project_teams',
   {

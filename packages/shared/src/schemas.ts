@@ -490,6 +490,18 @@ export const createCustomerRequestSchema = z.object({
   contact: z.string().trim().max(300).nullish(),
 });
 
+export const createDocumentSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  content: markdown.default(''),
+});
+export const updateDocumentSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  content: markdown.optional(),
+  /** The version this edit is based on; a newer saved one turns the edit into a 409. */
+  baseUpdatedAt: z.string().optional(),
+  sortOrder: z.number().optional(),
+});
+
 export const createInitiativeSchema = z.object({
   name: name,
   description: markdown.nullish(),

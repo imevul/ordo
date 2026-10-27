@@ -171,8 +171,10 @@ const projectsRoute = createRoute({
 const projectRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/project/$projectId',
-  validateSearch: (s: Record<string, unknown>): { tab?: 'issues' } =>
-    s.tab === 'issues' ? { tab: 'issues' } : {},
+  validateSearch: (s: Record<string, unknown>): { tab?: 'issues' | 'docs'; doc?: string } => ({
+    ...(s.tab === 'issues' || s.tab === 'docs' ? { tab: s.tab } : {}),
+    ...(s.tab === 'docs' && typeof s.doc === 'string' ? { doc: s.doc } : {}),
+  }),
   component: ProjectDetailPage,
 });
 const initiativesRoute = createRoute({

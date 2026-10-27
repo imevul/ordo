@@ -28,6 +28,7 @@ import { authRoutes } from './routes/auth.ts';
 import { authProviderRoutes } from './routes/authProviders.ts';
 import { customerRoutes } from './routes/customers.ts';
 import { cycleRoutes } from './routes/cycles.ts';
+import { documentRoutes } from './routes/documents.ts';
 import { exportRoutes } from './routes/exports.ts';
 import { fileRoutes } from './routes/files.ts';
 import { githubCallbackRoutes, githubWorkspaceRoutes } from './routes/github.ts';
@@ -212,6 +213,7 @@ export async function buildApp(
       await w.register(templateRoutes);
       await w.register(initiativeRoutes);
       await w.register(customerRoutes);
+      await w.register(documentRoutes);
       await w.register(viewRoutes);
       await w.register(notificationRoutes);
       await w.register(searchRoutes);

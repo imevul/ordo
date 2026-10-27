@@ -206,6 +206,11 @@ progress, paused, completed, canceled), a **lead**, **start** and **target dates
 Post **project updates** with a health (on track, at risk, off track) to keep everyone informed; the latest
 health shows in the project list. Progress is computed from the project's issues.
 
+**Documents** live in a project's _Docs_ tab: specs, decisions, notes, written in the same editor as issues. They save
+on their own a second after you stop typing. If someone else saved the document while you were editing, Ordo doesn't
+overwrite them: it asks whether to load their version or keep yours. Anyone who can see the project can read its
+documents; everyone but guests can write them. (Pasting files into documents isn't supported yet.)
+
 **Initiatives** (sidebar → _Initiatives_) are bigger goals that group projects across teams and quarters, each
 with a status (planned, active, completed), an owner, a target date and progress summed over its projects. Add
 projects from the initiative's page, or pick the _Initiative_ on a project; a project belongs to one initiative at

@@ -238,6 +238,8 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 | GET / POST           | `/initiatives`                  | `{ name, description?, status?: "planned" \| "active" \| "completed", ownerId?, targetDate?, color? }`                                |
 | PATCH / DELETE       | `/initiatives/:id`              | Same fields, plus `sortOrder`; deleting keeps its projects. Projects join one with `initiativeId`                                     |
 | POST                 | `/projects/:id/milestones`      | `{ name, description?, targetDate? }` → the project, with `milestones` (each with `progress`)                                         |
+| GET / POST           | `/projects/:id/documents`       | List (without `content`) / create `{ title, content? }`                                                                               |
+| GET / PATCH / DELETE | `/documents/:id`                | `PATCH { title?, content?, baseUpdatedAt? }` — with `baseUpdatedAt`, a newer saved version answers 409                                |
 | PATCH / DELETE       | `/milestones/:id`               | `{ name?, description?, targetDate?, sortOrder? }` → the project; deleting keeps its issues in the project                            |
 | DELETE               | `/project-updates/:id`          |                                                                                                                                       |
 | GET                  | `/cycles`                       | All cycles with progress                                                                                                              |

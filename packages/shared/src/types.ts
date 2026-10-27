@@ -267,6 +267,19 @@ export interface CustomerRequestWithIssue extends CustomerRequest {
   issue: { id: string; identifier: string; title: string; stateId: string; teamId: string };
 }
 
+/** A document in a project: specs, notes, decisions. */
+export interface ProjectDocument {
+  id: string;
+  projectId: string;
+  title: string;
+  /** Markdown; left out of lists. */
+  content?: string;
+  createdById: string | null;
+  updatedById: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 /** A workspace-level goal that groups projects. */
 export interface Initiative {
   id: string;
