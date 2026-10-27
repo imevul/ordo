@@ -10,14 +10,15 @@
   },
   "scripts": {
     "dev": "pnpm --parallel --filter @ordo/api --filter @ordo/web dev",
-    "build": "pnpm --filter @ordo/web build && pnpm --filter @ordo/api build",
+    "build": "pnpm --filter @ordo/web build && pnpm --filter @ordo/cli build && pnpm --filter @ordo/api build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
     "lint": "biome check .",
     "format": "biome check --write .",
     "db:generate": "pnpm --filter @ordo/api db:generate",
     "db:migrate": "pnpm --filter @ordo/api db:migrate",
-    "db:seed": "pnpm --filter @ordo/api db:seed"
+    "db:seed": "pnpm --filter @ordo/api db:seed",
+    "ordo": "pnpm --silent --filter @ordo/cli start"
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.3",

@@ -1,0 +1,27 @@
+{
+  "name": "@ordo/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The ordo command: Ordo issues from the terminal",
+  "type": "module",
+  "exports": {
+    ".": "./src/main.ts"
+  },
+  "bin": {
+    "ordo": "./dist/ordo.mjs"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "tsx src/bin.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@ordo/sdk": "workspace:*",
+    "@ordo/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15"
+  }
+}

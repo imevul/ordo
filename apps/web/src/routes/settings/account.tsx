@@ -883,3 +883,37 @@ export function ApiKeysSection() {
     </SettingsCard>
   );
 }
+
+/** The ordo CLI, served by this instance; it signs in with a personal key. */
+export function CliCard() {
+  const origin = window.location.origin;
+  const install = `curl -fsSL ${origin}/cli/ordo.mjs -o ~/.local/bin/ordo && chmod +x ~/.local/bin/ordo\nordo login ${origin}`;
+  return (
+    <SettingsCard
+      title="Command line"
+      description={
+        <>
+          The <span className="font-mono text-text">ordo</span> command lists, creates and updates
+          issues from a terminal, with one of these keys. It needs Node.js 22 or newer. See{' '}
+          <span className="font-mono">docs/cli.md</span>.
+        </>
+      }
+    >
+      <div className="flex items-start gap-2">
+        <pre className="min-w-0 flex-1 overflow-x-auto border border-border-soft bg-bg p-3 font-mono text-[11.5px] leading-relaxed">
+          {install}
+        </pre>
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm flex-none"
+          onClick={() => {
+            navigator.clipboard?.writeText(install);
+            toast.success('Copied');
+          }}
+        >
+          <Copy size={12} /> Copy
+        </button>
+      </div>
+    </SettingsCard>
+  );
+}

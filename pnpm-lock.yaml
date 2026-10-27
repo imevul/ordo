@@ -269,6 +269,12 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      '@ordo/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@ordo/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
       '@types/mailparser':
         specifier: 3.9.0
         version: 3.9.0
@@ -417,6 +423,31 @@ importers:
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+
+  packages/cli:
+    dependencies:
+      '@ordo/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      '@ordo/shared':
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      '@types/node':
+        specifier: 26.6.5
+        version: 26.6.5
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      tsx:
+        specifier: 4.23.15
+        version: 4.23.15
+
+  packages/sdk:
+    dependencies:
+      '@ordo/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/shared:
     dependencies:

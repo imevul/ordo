@@ -1,7 +1,8 @@
 # REST API
 
 Everything the web app does goes through this API, so anything you can click you can script. AI agents can use the
-[MCP server](mcp.md) instead, which wraps the issue endpoints in tools.
+[MCP server](mcp.md) instead, which wraps the issue endpoints in tools. For scripts there's the `ordo` command
+line and a TypeScript client ([cli.md](cli.md)).
 
 - Base URL: `https://ordo.example.com/api`
 - Bodies are JSON (`Content-Type: application/json`). Responses are JSON.
