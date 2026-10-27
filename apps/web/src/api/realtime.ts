@@ -34,6 +34,8 @@ export function useRealtime(slug: string): RealtimeStatus {
       pending = new Set();
       const inv = (key: readonly unknown[]) => qc.invalidateQueries({ queryKey: key });
       if (kinds.has('issue') || kinds.has('comment')) {
+        // Lists the local copy answers are disabled queries, which this leaves alone; the
+        // online-only ones (trash, text search) still need it.
         inv(['ws', slug, 'issues']);
         inv(keys.issue(slug));
         inv(['ws', slug, 'history']);

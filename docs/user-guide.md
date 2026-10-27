@@ -299,7 +299,7 @@ Open **Settings** (workspace menu, or `G` then `S`):
   they already have an account, otherwise in yours. Rare error messages, and posts in shared chat channels, stay in
   English. **Appearance**: dark, light, or
   **System** (the default), which follows your device and switches when it does. It's saved per browser; the command menu has _Switch to light theme_ and friends
-  too. **Offline copy** (when your instance allows it): keep a copy of your workspaces in this browser, so they open
+  too. **Offline copy** (on by default, unless your instance says otherwise): keep a copy of your workspaces in this browser, so they open
   at once and lists stay readable without a connection. Changes you make to issues and comments while offline show
   straight away and are sent when you're back (the sidebar says how many are waiting); anything the server turns
   down is listed there with its text, so nothing you wrote is lost. The copy is deleted when you sign out; turn it
