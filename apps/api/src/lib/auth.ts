@@ -96,6 +96,7 @@ export async function createSession(
   userId: string,
   req: FastifyRequest,
   sso?: { authProviderId: string; ssoExpiresAt: string | null },
+  method: 'password' | 'passkey' = 'password',
 ) {
   const token = randomToken();
   const now = new Date();
@@ -110,11 +111,16 @@ export async function createSession(
     ssoExpiresAt: sso?.ssoExpiresAt ?? null,
   });
   setSessionCookie(app, reply, token);
-  if (!sso) await auditSsoBypass(app.db, userId, req);
+  if (!sso) await auditSsoBypass(app.db, userId, req, method);
 }
 
 /** Owners of require-SSO workspaces may still use their password; each such sign-in is audited there. */
-async function auditSsoBypass(db: Db, userId: string, req: FastifyRequest) {
+async function auditSsoBypass(
+  db: Db,
+  userId: string,
+  req: FastifyRequest,
+  method: 'password' | 'passkey',
+) {
   const owned = await db
     .select({ id: workspaces.id })
     .from(workspaceMembers)
@@ -133,7 +139,7 @@ async function auditSsoBypass(db: Db, userId: string, req: FastifyRequest) {
         action: 'auth.sso_bypass',
         actorId: userId,
         workspaceId: ws.id,
-        data: { method: 'password' },
+        data: { method },
       },
       { ip: req.ip ?? null, userAgent: req.headers['user-agent']?.slice(0, 300) ?? null },
     );

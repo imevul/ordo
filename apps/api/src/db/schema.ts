@@ -924,6 +924,41 @@ export const recoveryCodes = pgTable(
   (t) => [index('mfa_recovery_codes_user_idx').on(t.userId)],
 );
 
+/** WebAuthn credentials (passkeys): sign-in without a password, or a second factor after one. */
+export const passkeys = pgTable(
+  'passkeys',
+  {
+    id: pk(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** The credential id, base64url. */
+    credentialId: text('credential_id').notNull().unique(),
+    /** COSE public key, base64url. */
+    publicKey: text('public_key').notNull(),
+    counter: bigint('counter', { mode: 'number' }).notNull().default(0),
+    transports: text('transports').array().notNull().default(sql`'{}'::text[]`),
+    /** Synced across devices (iCloud Keychain, Google Password Manager…) rather than bound to one. */
+    backedUp: boolean('backed_up').notNull().default(false),
+    name: text('name').notNull(),
+    lastUsedAt: ts('last_used_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('passkeys_user_idx').on(t.userId)],
+);
+
+/**
+ * One WebAuthn ceremony's challenge, used once. `userId` is null for passwordless sign-in, where
+ * who it is comes from the passkey itself.
+ */
+export const webauthnChallenges = pgTable('webauthn_challenges', {
+  id: text('id').primaryKey(),
+  challenge: text('challenge').notNull(),
+  purpose: text('purpose').$type<'register' | 'login' | 'mfa'>().notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  expiresAt: ts('expires_at').notNull(),
+});
+
 /** Uploaded files. The bytes live in the storage backend under `storage_key`. */
 export const files = pgTable(
   'files',

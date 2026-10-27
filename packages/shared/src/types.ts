@@ -593,6 +593,21 @@ export interface InstanceConfig {
   emailEnabled: boolean;
   allowWorkspaceCreation: boolean;
   version: string;
+  /**
+   * Where passkeys work: the instance's public origin, when it's https (or localhost); null when
+   * passkeys can't be used. They're bound to that address, so other addresses can't offer them.
+   */
+  passkeyOrigin: string | null;
+}
+
+/** One of the signed-in person's passkeys (Settings → Security). */
+export interface Passkey {
+  id: string;
+  name: string;
+  /** Synced through a password manager rather than bound to one device. */
+  backedUp: boolean;
+  createdAt: string;
+  lastUsedAt: string | null;
 }
 
 export interface SearchResults {

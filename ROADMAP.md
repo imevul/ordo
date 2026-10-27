@@ -126,7 +126,18 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ MCP server for AI agents (Streamable HTTP, per workspace, personal API keys; search, read, create, update and
   comment on issues) and Settings → AI agents with setup snippets and an agent prompt
 - [x] ✅ GraphQL API, TypeScript SDK, CLI; optional AI assistance (Claude API or a local OpenAI-compatible model: summaries, drafts, triage suggestions); OAuth sign-in for MCP (claude.ai connectors)
-- ⬜ Later: passkeys, SCIM, SAML, offline-first sync, desktop app, Helm chart and prebuilt images
+
+### Phase 11 — Enterprise sign-in and offline-first
+
+- [~] 🟡 Passkeys: passwordless sign-in with autofill, and as a second factor — sign-in shipped; second factor next
+- [ ] ⬜ SAML 2.0 SSO alongside OIDC (SP metadata, test mode, group roles)
+- [ ] ⬜ SCIM 2.0 provisioning: users to members (deactivating suspends), groups to teams (Okta, Entra ID, Authentik)
+- [ ] ⬜ Offline-first sync: a local copy of the workspace, a change feed, offline edits replayed on reconnect
+
+### Phase 12 — Desktop and mobile apps
+
+- [ ] ⬜ Desktop app
+- [ ] ⬜ Mobile apps
 
 ## Known limitations
 

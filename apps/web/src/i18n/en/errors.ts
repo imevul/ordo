@@ -76,6 +76,8 @@ export default {
     ai_not_set_up_workspace: "This workspace's own AI model isn't set up",
     ai_own_not_allowed: "This instance doesn't let workspaces use their own AI model",
     ai_locked: "This instance's AI settings apply to every workspace",
+    passkey_failed: "That passkey couldn't be verified",
+    reauth_needed: 'Sign in again to change your passkeys',
     ai_off_workspace: 'AI assistance is turned off in this workspace',
     ai_off: 'AI assistance is off',
     ai_empty: 'The model sent an empty answer',

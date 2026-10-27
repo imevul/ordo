@@ -52,6 +52,14 @@ export default {
         title: 'Tvåstegsverifiering är av',
         body: 'För att logga in i Ordo behövs nu bara ditt lösenord.',
       },
+      passkeyAdded: {
+        title: 'En lösennyckel har lagts till på ditt Ordo-konto',
+        body: 'Lösennyckeln ”{name}” kan nu logga in på ditt konto.',
+      },
+      passkeyRemoved: {
+        title: 'En lösennyckel har tagits bort från ditt Ordo-konto',
+        body: 'Lösennyckeln ”{name}” kan inte längre logga in på ditt konto.',
+      },
       emailChanged: {
         title: 'Din e-postadress i Ordo har ändrats',
         body: 'Ditt konto använder nu {email}.',

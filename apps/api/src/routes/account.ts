@@ -1,16 +1,28 @@
 import multipart from '@fastify/multipart';
 import {
   type Account,
+  addPasskeySchema,
   changeEmailSchema,
   disableTwoFactorSchema,
+  type Passkey,
+  passkeyOptionsSchema,
   passwordConfirmSchema,
+  removePasskeySchema,
+  renamePasskeySchema,
   type SessionInfo,
   totpCodeSchema,
   updatePreferencesSchema,
 } from '@ordo/shared';
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { recoveryCodes, sessions, users, workspaceMembers, workspaces } from '../db/schema.ts';
+import {
+  passkeys,
+  recoveryCodes,
+  sessions,
+  users,
+  workspaceMembers,
+  workspaces,
+} from '../db/schema.ts';
 import { localeOf } from '../i18n/index.ts';
 import { requireUser } from '../lib/auth.ts';
 import { verifyPassword } from '../lib/crypto.ts';
@@ -27,6 +39,13 @@ import {
   verifySecondFactor,
   verifyTotp,
 } from '../services/mfa.ts';
+import {
+  addPasskey,
+  listPasskeys,
+  registrationOptions,
+  relyingParty,
+  toPasskey,
+} from '../services/passkeys.ts';
 import { createToken } from '../services/tokens.ts';
 
 /** Sessions are identified to the user by a prefix of their hash; never by the cookie token. */
@@ -267,6 +286,103 @@ export async function accountRoutes(app: FastifyInstance) {
       { action: 'auth.session_revoked', actorId: user.id, data: { others: true } },
       requestMeta(req),
     );
+    return { ok: true };
+  });
+
+  // ─── passkeys ────────────────────────────────────────────────────────
+
+  /**
+   * Adding or removing a passkey changes how the account signs in: it needs the password, or for
+   * an account without one (SSO), a sign-in within the last 15 minutes.
+   */
+  const reauthenticate = async (
+    req: FastifyRequest,
+    user: typeof users.$inferSelect,
+    password: string | undefined,
+  ) => {
+    if (user.passwordHash) return confirmPassword(user, password);
+    const [session] = req.sessionId
+      ? await db.select().from(sessions).where(eq(sessions.id, req.sessionId))
+      : [];
+    if (!session || Date.now() - new Date(session.createdAt).getTime() > 15 * 60_000)
+      throw forbidden('Sign in again to change your passkeys').as('reauth_needed');
+  };
+
+  app.get('/me/passkeys', async (req): Promise<Passkey[]> => {
+    const user = requireUser(req);
+    return (await listPasskeys(db, user.id)).map(toPasskey);
+  });
+
+  app.post('/me/passkeys/options', async (req) => {
+    const user = await loadUser(req);
+    if (!relyingParty(app).usable)
+      throw badRequest('Passkeys need Ordo on an https address').as('passkey_failed');
+    const { password } = parse(passkeyOptionsSchema, req.body);
+    await reauthenticate(req, user, password);
+    return registrationOptions(app, user);
+  });
+
+  app.post('/me/passkeys', async (req): Promise<Passkey> => {
+    const user = await loadUser(req);
+    const input = parse(addPasskeySchema, req.body);
+    const row = await db.transaction(async (tx) => {
+      const key = await addPasskey(app, tx, user.id, input);
+      await audit(
+        tx,
+        { action: 'auth.passkey_added', actorId: user.id, data: { name: key.name } },
+        requestMeta(req),
+      );
+      await queueEmail(
+        tx,
+        user.email,
+        securityEmail(localeOf(user.preferences), {
+          notice: 'passkeyAdded',
+          params: { name: key.name },
+        }),
+      );
+      return key;
+    });
+    return toPasskey(row);
+  });
+
+  app.patch('/me/passkeys/:id', async (req): Promise<Passkey> => {
+    const user = requireUser(req);
+    const { id } = req.params as { id: string };
+    const { name } = parse(renamePasskeySchema, req.body);
+    const [row] = await db
+      .update(passkeys)
+      .set({ name })
+      .where(and(eq(passkeys.id, id), eq(passkeys.userId, user.id)))
+      .returning();
+    if (!row) throw notFound('Passkey');
+    return toPasskey(row);
+  });
+
+  app.delete('/me/passkeys/:id', async (req) => {
+    const user = await loadUser(req);
+    const { id } = req.params as { id: string };
+    const { password } = parse(removePasskeySchema, req.body ?? {});
+    await reauthenticate(req, user, password);
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .delete(passkeys)
+        .where(and(eq(passkeys.id, id), eq(passkeys.userId, user.id)))
+        .returning();
+      if (!row) throw notFound('Passkey');
+      await audit(
+        tx,
+        { action: 'auth.passkey_removed', actorId: user.id, data: { name: row.name } },
+        requestMeta(req),
+      );
+      await queueEmail(
+        tx,
+        user.email,
+        securityEmail(localeOf(user.preferences), {
+          notice: 'passkeyRemoved',
+          params: { name: row.name },
+        }),
+      );
+    });
     return { ok: true };
   });
 

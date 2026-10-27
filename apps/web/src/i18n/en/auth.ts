@@ -20,6 +20,7 @@ export default {
     continueWith: 'Continue with {name}',
     lastUsed: 'last used on this device',
     forget: 'forget',
+    signInWithPasskey: 'Sign in with a passkey',
     signInWithSso: 'Sign in with SSO',
   },
   mfa: {

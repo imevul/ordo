@@ -19,6 +19,7 @@ export default {
     continueWith: 'Fortsätt med {name}',
     lastUsed: 'senast använd på den här enheten',
     forget: 'glöm',
+    signInWithPasskey: 'Logga in med lösennyckel',
     signInWithSso: 'Logga in med SSO',
   },
   mfa: {

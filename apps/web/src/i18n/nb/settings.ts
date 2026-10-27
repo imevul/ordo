@@ -86,6 +86,29 @@ export default {
     newHint: 'Minst 8 tegn. Når du endrer det, logges de andre øktene dine ut.',
     change: 'Endre passord',
   },
+  passkeys: {
+    title: 'Tilgangsnøkler',
+    description:
+      'Logg inn med fingeravtrykk, ansikt eller enhetens PIN-kode i stedet for passord. Tilgangsnøkler kan ikke fiskes, og passordbehandleren din kan ta dem med til de andre enhetene dine.',
+    needsHttps: 'Tilgangsnøkler krever at Ordo nås på en https-adresse. Spør administratoren din.',
+    otherOrigin:
+      'Tilgangsnøkler hører til instansens egen adresse. Åpne den på {origin} for å legge til eller bruke dem.',
+    unsupported: 'Denne nettleseren støtter ikke tilgangsnøkler.',
+    empty: '// ingen tilgangsnøkler ennå',
+    add: 'Legg til en tilgangsnøkkel',
+    name: 'Navn',
+    rename: 'Gi nytt navn',
+    confirmPassword: 'Bekreft med passordet ditt',
+    synced: 'synkronisert',
+    used: 'brukt {time}',
+    addedAgo: 'lagt til {time}',
+    added: 'Tilgangsnøkkelen er lagt til',
+    removed: 'Tilgangsnøkkelen er fjernet',
+    removeNamed: 'Fjern {name}',
+    removeTitle: 'Fjerne «{name}»?',
+    removeBody:
+      'Den kan ikke lenger logge inn i Ordo. Du kan også slette den fra enheten eller passordbehandleren.',
+  },
   twoFactor: {
     title: 'Tofaktorautentisering',
     description:

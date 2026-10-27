@@ -8,13 +8,20 @@ import {
 } from '@ordo/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { BadgeCheck, KeyRound, TriangleAlert } from 'lucide-react';
+import { BadgeCheck, Fingerprint, KeyRound, TriangleAlert } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { ApiError, api } from '../api/client.ts';
 import { keys, useConfig, useMe } from '../api/queries.ts';
 import { OrdoMark } from '../components/icons.tsx';
 import { Spinner } from '../components/PageHeader.tsx';
 import { getLocale, t, tx } from '../i18n/index.ts';
+import {
+  cancelPasskeyRequest,
+  passkeyAutofillSupported,
+  passkeyCancelled,
+  passkeysHere,
+  signInWithPasskey,
+} from '../lib/passkeys.ts';
 import { forgetLastSso, lastSso, ssoStartUrl } from '../lib/sso.ts';
 
 function AuthLayout({
@@ -139,6 +146,47 @@ export function LoginPage() {
       await fn();
     } catch (err) {
       setError(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const passkeys = passkeysHere(config.data?.passkeyOrigin);
+  // Bumped to ask the browser again: a passkey request's challenge lasts five minutes.
+  const [passkeyRound, setPasskeyRound] = useState(0);
+
+  // Offers passkeys in the email field's autofill, where the browser supports it.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `done` changes every render
+  useEffect(() => {
+    if (step !== 'email' || !passkeys) return;
+    let live = true;
+    passkeyAutofillSupported().then((ok) => {
+      if (!ok || !live) return;
+      // Quietly: nobody asked for this one, so a failure isn't theirs to read.
+      signInWithPasskey(true)
+        .then(() => live && done())
+        .catch((err) => {
+          if (live && !passkeyCancelled(err)) console.warn('Passkey autofill:', err);
+        });
+    });
+    const renew = setTimeout(() => setPasskeyRound((n) => n + 1), 4 * 60_000);
+    return () => {
+      live = false;
+      clearTimeout(renew);
+      cancelPasskeyRequest();
+    };
+  }, [step, passkeys, passkeyRound]);
+
+  const passkeySignIn = async () => {
+    cancelPasskeyRequest();
+    setBusy(true);
+    setError(null);
+    try {
+      await signInWithPasskey();
+      done();
+    } catch (err) {
+      if (!passkeyCancelled(err)) setError(message(err));
+      setPasskeyRound((n) => n + 1);
     } finally {
       setBusy(false);
     }
@@ -326,7 +374,7 @@ export function LoginPage() {
         <TextField
           label={t('auth.email')}
           type="email"
-          autoComplete="username"
+          autoComplete={passkeys ? 'username webauthn' : 'username'}
           required
           autoFocus
           value={email}
@@ -354,6 +402,16 @@ export function LoginPage() {
       >
         <KeyRound size={13} /> {t('auth.login.signInWithSso')}
       </button>
+      {passkeys && (
+        <button
+          type="button"
+          className="btn btn-ghost mt-2 w-full"
+          disabled={busy}
+          onClick={passkeySignIn}
+        >
+          <Fingerprint size={13} /> {t('auth.login.signInWithPasskey')}
+        </button>
+      )}
     </AuthLayout>
   );
 }

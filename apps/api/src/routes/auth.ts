@@ -9,6 +9,7 @@ import {
   loginSchema,
   type Me,
   mfaLoginSchema,
+  passkeyLoginSchema,
   resetPasswordSchema,
   signupSchema,
   tokenSchema,
@@ -48,6 +49,12 @@ import { signedFileUrl } from '../services/files.ts';
 import { passwordResetEmail, securityEmail, verifyEmailEmail } from '../services/mail-templates.ts';
 import { queueEmail } from '../services/mailer.ts';
 import { verifySecondFactor } from '../services/mfa.ts';
+import {
+  authenticationOptions,
+  passkeyFailed,
+  relyingParty,
+  verifyPasskey,
+} from '../services/passkeys.ts';
 import { createTeam } from '../services/teams.ts';
 import { consumeToken, createToken } from '../services/tokens.ts';
 import { joinWorkspace } from '../services/workspaces.ts';
@@ -133,6 +140,7 @@ export async function authRoutes(app: FastifyInstance) {
       emailEnabled: app.mailer.enabled,
       allowWorkspaceCreation: settings.get('allowWorkspaceCreation'),
       version: env.version,
+      passkeyOrigin: relyingParty(app).usable ? relyingParty(app).origin : null,
     };
   });
 
@@ -218,6 +226,42 @@ export async function authRoutes(app: FastifyInstance) {
       requestMeta(req),
     );
     await createSession(app, reply, user.id, req);
+    return { ok: true };
+  });
+
+  // ─── passkeys: sign in without a password ────────────────────────────
+
+  app.post('/auth/passkey/options', authLimit, async () => {
+    if (!relyingParty(app).usable)
+      throw badRequest('Passkeys need Ordo on an https address').as('passkey_failed');
+    return authenticationOptions(app, 'login', null);
+  });
+
+  app.post('/auth/passkey', authLimit, async (req, reply) => {
+    const input = parse(passkeyLoginSchema, req.body);
+    let userId: string;
+    try {
+      ({ userId } = await verifyPasskey(app, db, input, 'login', null));
+    } catch (err) {
+      await audit(
+        db,
+        { action: 'auth.login_failed', actorId: null, data: { method: 'passkey' } },
+        requestMeta(req),
+      );
+      throw err;
+    }
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (!user || user.kind !== 'human') throw passkeyFailed();
+    if (user.disabledAt)
+      throw forbidden('This account has been disabled. Contact your administrator.').as(
+        'account_disabled',
+      );
+    await audit(
+      db,
+      { action: 'auth.login', actorId: user.id, data: { method: 'passkey' } },
+      requestMeta(req),
+    );
+    await createSession(app, reply, user.id, req, undefined, 'passkey');
     return { ok: true };
   });
 

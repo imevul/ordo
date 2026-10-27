@@ -299,7 +299,9 @@ Open **Settings** (workspace menu, or `G` then `S`):
   English. **Appearance**: dark, light, or
   **System** (the default), which follows your device and switches when it does. It's saved per browser; the command menu has _Switch to light theme_ and friends
   too.
-- **Security** — change your password (this signs out your other sessions); turn on **two-factor authentication**
+- **Security** — change your password (this signs out your other sessions); add **passkeys** to sign in with your
+  fingerprint, face or device PIN instead of a password (_Sign in with a passkey_ on the sign-in page, or pick one in
+  the email field's suggestions; they work at your instance's own address); turn on **two-factor authentication**
   with any authenticator app, and keep the ten recovery codes somewhere safe — each works once if you lose your
   device; see and revoke your **sessions**.
 - **Connected accounts** — sign-in identities you've linked (and a button to connect your workspace's SSO
