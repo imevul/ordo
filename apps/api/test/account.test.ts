@@ -195,6 +195,21 @@ describe('sessions', () => {
   });
 });
 
+describe('language', () => {
+  it('defaults to English and keeps the choice on the account', async () => {
+    const { client } = await signup(app, 'Lars Locale');
+    expect((await client.get('/api/auth/me')).data.locale).toBe('en');
+    const res = await client.patch('/api/me/preferences', { locale: 'sv' });
+    expect(res.statusCode).toBe(200);
+    expect(res.data.locale).toBe('sv');
+    expect((await client.get('/api/auth/me')).data.locale).toBe('sv');
+    expect((await client.get('/api/me/account')).data.preferences.locale).toBe('sv');
+    // Other preferences are untouched; unknown languages are refused.
+    expect((await client.get('/api/me/account')).data.preferences.weekStartsOn).toBe(1);
+    expect((await client.patch('/api/me/preferences', { locale: 'de' })).statusCode).toBe(400);
+  });
+});
+
 describe('avatars', () => {
   // 1×1 transparent PNG
   const png = Buffer.from(

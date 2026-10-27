@@ -5,6 +5,7 @@ import {
   useFloating,
 } from '@floating-ui/react';
 import { type ReactNode, useEffect, useState } from 'react';
+import { t } from '../../i18n/index.ts';
 import { useHotkey, useHotkeyScope } from '../../lib/hotkeys.ts';
 
 interface Props {
@@ -51,7 +52,7 @@ export function ConfirmModal({
   open,
   title,
   body,
-  confirmLabel = 'Confirm',
+  confirmLabel = t('common.confirm'),
   danger,
   onConfirm,
   onClose,
@@ -67,12 +68,14 @@ export function ConfirmModal({
   return (
     <Modal open={open} onClose={onClose} width={440} label={title} align="center">
       <div className="p-6">
-        <div className="section-label mb-4">{danger ? 'Careful' : 'Confirm'}</div>
+        <div className="section-label mb-4">
+          {danger ? t('shell.confirm.careful') : t('common.confirm')}
+        </div>
         <h2 className="text-lg font-bold tracking-tight">{title}</h2>
         <div className="mt-2 text-[13.5px] text-muted">{body}</div>
         <div className="mt-6 flex justify-end gap-2">
           <button className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             autoFocus
@@ -131,7 +134,7 @@ export function ConfirmHost() {
       open
       title={req.title}
       body={req.body ?? null}
-      confirmLabel={req.confirmLabel ?? (req.danger ? 'Delete' : 'Confirm')}
+      confirmLabel={req.confirmLabel ?? (req.danger ? t('common.delete') : t('common.confirm'))}
       danger={req.danger}
       onConfirm={() => done(true)}
       onClose={() => done(false)}

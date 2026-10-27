@@ -2,7 +2,8 @@ import type { Issue, UpdateIssueInput } from '@ordo/shared';
 import { Link } from '@tanstack/react-router';
 import { GitBranch } from 'lucide-react';
 import { memo } from 'react';
-import { dueState, shortDate, slaState } from '../lib/format.ts';
+import { t } from '../i18n/index.ts';
+import { dueState, longDate, shortDate, slaState } from '../lib/format.ts';
 import { isDone } from '../lib/issues.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { ProjectIcon } from './icons.tsx';
@@ -46,7 +47,9 @@ export const IssueRow = memo(function IssueRow({
         type="button"
         role="checkbox"
         aria-checked={selected}
-        aria-label={selected ? `Deselect ${issue.identifier}` : `Select ${issue.identifier}`}
+        aria-label={t(selected ? 'issues.row.deselect' : 'issues.row.select', {
+          id: issue.identifier,
+        })}
         className={`flex h-6 w-6 flex-none items-center justify-center ${selected ? '' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'}`}
         onClick={(e) => onToggleSelect(e.shiftKey)}
       >
@@ -70,7 +73,7 @@ export const IssueRow = memo(function IssueRow({
       {issue.subIssueCount > 0 && (
         <span
           className="flex flex-none items-center gap-1 font-mono text-[11px] text-index"
-          title="Sub-issues"
+          title={t('issues.row.subIssues')}
         >
           <GitBranch size={12} />
           {issue.completedSubIssueCount}/{issue.subIssueCount}
@@ -93,7 +96,9 @@ export const IssueRow = memo(function IssueRow({
         {sla && (
           <span
             className={`tag font-mono ${sla.state === 'breached' ? 'text-error' : sla.state === 'risk' ? 'text-warning' : ''}`}
-            title={`SLA ${sla.state === 'breached' ? 'ran out' : 'runs out'} ${new Date(issue.slaBreachesAt!).toLocaleString()}`}
+            title={t(sla.state === 'breached' ? 'issues.row.slaRanOut' : 'issues.row.slaRunsOut', {
+              time: longDate(issue.slaBreachesAt!),
+            })}
           >
             {sla.label}
           </span>

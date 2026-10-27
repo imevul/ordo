@@ -5,6 +5,7 @@ import {
   ESTIMATE_SCALE_NAMES,
   FAVORITE_KINDS,
   INITIATIVE_STATUSES,
+  LOCALES,
   MEMBER_ROLES,
   NOTIFICATION_TYPES,
   PROJECT_HEALTH,
@@ -90,6 +91,7 @@ export const disableTwoFactorSchema = z.object({
 });
 
 export const updatePreferencesSchema = z.object({
+  locale: z.enum(LOCALES).optional(),
   timezone: z.string().max(64).nullable().optional(),
   weekStartsOn: z.union([z.literal(0), z.literal(1)]).optional(),
   notifications: z

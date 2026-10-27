@@ -1,4 +1,5 @@
 import type { Member } from '@ordo/shared';
+import { t } from '../../i18n/index.ts';
 
 /**
  * A member, a bot (which may belong to an integration that's since been removed), or a
@@ -13,7 +14,7 @@ export type Person = Member & { bot?: boolean; removed?: boolean; placeholder?: 
  */
 export function ActorName({
   person,
-  fallback = 'Someone',
+  fallback = t('shell.actor.someone'),
   className = 'text-text',
 }: {
   person: Person | null | undefined;
@@ -27,17 +28,17 @@ export function ActorName({
       {person.removed && (
         <span
           className="ml-1 cursor-help align-[1px] font-mono text-[9.5px] tracking-[0.1em] text-index uppercase"
-          title="This integration was disconnected. What it did stays in the history."
+          title={t('shell.actor.removedHint')}
         >
-          removed
+          {t('shell.actor.removed')}
         </span>
       )}
       {person.placeholder && (
         <span
           className="ml-1 cursor-help align-[1px] font-mono text-[9.5px] tracking-[0.1em] text-index uppercase"
-          title="Imported from another tool. Not an Ordo account yet: admins can merge it into one."
+          title={t('shell.actor.importedHint')}
         >
-          imported
+          {t('shell.actor.imported')}
         </span>
       )}
     </span>

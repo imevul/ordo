@@ -1,5 +1,4 @@
 import type { Comment, HistoryChange, HistoryEntry, IssueDetail } from '@ordo/shared';
-import { estimateLabel, priorityLabel } from '@ordo/shared';
 import { MoreHorizontal, Reply } from 'lucide-react';
 import { type ReactNode, useMemo, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
@@ -10,6 +9,8 @@ import {
   useHistory,
   useWsMutation,
 } from '../api/queries.ts';
+import { getLocale, INTL_TAG, t, tx } from '../i18n/index.ts';
+import { estimateLabel, priorityLabel } from '../i18n/labels.ts';
 import { longDate, relativeTime, shortDate } from '../lib/format.ts';
 import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 import { PriorityIcon, StatusIcon } from './icons.tsx';
@@ -20,130 +21,139 @@ import { ActorName } from './ui/ActorName.tsx';
 import { Avatar } from './ui/Avatar.tsx';
 import { Popover } from './ui/Popover.tsx';
 
+/** "Ada, Bo and Cy" in the reader's language. */
+const list = (items: string[]) =>
+  new Intl.ListFormat(INTL_TAG[getLocale()], { type: 'conjunction' }).format(items);
+
+/** One history line: who did what, as a single message so translations can order the words. */
 function ChangeText({
   c,
+  actor,
   actorId,
   issue,
 }: {
   c: HistoryChange;
+  actor: ReactNode;
   actorId: string | null;
   issue: IssueDetail;
 }) {
   const ws = useWorkspace();
   const name = (id: unknown) =>
-    typeof id === 'string' ? (ws.memberById.get(id)?.name ?? 'someone') : 'nobody';
+    typeof id === 'string'
+      ? (ws.memberById.get(id)?.name ?? t('issue.activity.fallback.someone'))
+      : t('issue.activity.fallback.nobody');
   const strong = (x: ReactNode) => <span className="text-text">{x}</span>;
   switch (c.field) {
     case 'created':
-      return <>created the issue</>;
+      return tx('issue.activity.created', { actor });
     case 'deleted':
-      return <>moved the issue to trash</>;
+      return tx('issue.activity.trashed', { actor });
     case 'restored':
-      return <>restored the issue</>;
+      return tx('issue.activity.restored', { actor });
     case 'archived':
-      return c.to ? <>archived the issue</> : <>unarchived the issue</>;
+      return tx(c.to ? 'issue.activity.archived' : 'issue.activity.unarchived', { actor });
     case 'state': {
       const s = ws.stateById.get(c.to as string);
-      return (
-        <>
-          changed status to{' '}
-          {s ? (
-            <span className="inline-flex items-center gap-1 align-[-2px] text-text">
-              <StatusIcon type={s.type} color={s.color} size={12} /> {s.name}
-            </span>
-          ) : (
-            strong('another status')
-          )}
-        </>
-      );
+      return tx('issue.activity.status', {
+        actor,
+        status: s ? (
+          <span className="inline-flex items-center gap-1 align-[-2px] text-text">
+            <StatusIcon type={s.type} color={s.color} size={12} /> {s.name}
+          </span>
+        ) : (
+          strong(t('issue.activity.fallback.status'))
+        ),
+      });
     }
     case 'assignee':
-      if (!c.to) return <>removed assignee {strong(name(c.from))}</>;
-      if (c.to === actorId) return <>self-assigned the issue</>;
-      return <>assigned the issue to {strong(name(c.to))}</>;
+      if (!c.to) return tx('issue.activity.assigneeRemoved', { actor, name: strong(name(c.from)) });
+      if (c.to === actorId) return tx('issue.activity.selfAssigned', { actor });
+      return tx('issue.activity.assigned', { actor, name: strong(name(c.to)) });
     case 'priority':
-      return (
-        <>
-          set priority to{' '}
+      return tx('issue.activity.priority', {
+        actor,
+        priority: (
           <span className="inline-flex items-center gap-1 align-[-2px] text-text">
             <PriorityIcon priority={c.to as number} size={12} /> {priorityLabel(c.to as number)}
           </span>
-        </>
-      );
+        ),
+      });
     case 'title':
-      return <>changed the title to {strong(`"${c.to}"`)}</>;
+      return tx('issue.activity.title', { actor, title: String(c.to), b: strong });
     case 'description':
-      return <>updated the description</>;
+      return tx('issue.activity.description', { actor });
     case 'labels': {
       const from = (c.from as string[]) ?? [];
       const to = (c.to as string[]) ?? [];
-      const added = to
-        .filter((l) => !from.includes(l))
-        .map((l) => ws.labelById.get(l)?.name ?? 'label');
-      const removed = from
-        .filter((l) => !to.includes(l))
-        .map((l) => ws.labelById.get(l)?.name ?? 'label');
-      return (
-        <>
-          {added.length > 0 && <>added {strong(added.join(', '))}</>}
-          {added.length > 0 && removed.length > 0 && ' and '}
-          {removed.length > 0 && <>removed {strong(removed.join(', '))}</>}
-        </>
-      );
+      const labelName = (l: string) =>
+        ws.labelById.get(l)?.name ?? t('issue.activity.fallback.label');
+      const added = to.filter((l) => !from.includes(l)).map(labelName);
+      const removed = from.filter((l) => !to.includes(l)).map(labelName);
+      if (added.length && removed.length)
+        return tx('issue.activity.labelsChanged', {
+          actor,
+          added: strong(list(added)),
+          removed: strong(list(removed)),
+        });
+      if (added.length)
+        return tx('issue.activity.labelsAdded', { actor, labels: strong(list(added)) });
+      return tx('issue.activity.labelsRemoved', { actor, labels: strong(list(removed)) });
     }
     case 'project':
-      return c.to ? (
-        <>added to project {strong(ws.projectById.get(c.to as string)?.name ?? 'a project')}</>
-      ) : (
-        <>removed from project</>
-      );
+      return c.to
+        ? tx('issue.activity.projectSet', {
+            actor,
+            project: strong(
+              ws.projectById.get(c.to as string)?.name ?? t('issue.activity.fallback.project'),
+            ),
+          })
+        : tx('issue.activity.projectRemoved', { actor });
     case 'milestone': {
       const m = ws.projects.flatMap((p) => p.milestones).find((x) => x.id === c.to);
-      return c.to ? (
-        <>moved to milestone {strong(m?.name ?? 'a milestone')}</>
-      ) : (
-        <>removed from milestone</>
-      );
+      return c.to
+        ? tx('issue.activity.milestoneSet', {
+            actor,
+            milestone: strong(m?.name ?? t('issue.activity.fallback.milestone')),
+          })
+        : tx('issue.activity.milestoneRemoved', { actor });
     }
     case 'cycle': {
       const cy = c.to ? ws.cycleById.get(c.to as string) : null;
-      return c.to ? (
-        <>added to {strong(cy ? cycleName(cy) : 'a cycle')}</>
-      ) : (
-        <>removed from cycle</>
-      );
+      return c.to
+        ? tx('issue.activity.cycleSet', {
+            actor,
+            cycle: strong(cy ? cycleName(cy) : t('issue.activity.fallback.cycle')),
+          })
+        : tx('issue.activity.cycleRemoved', { actor });
     }
     case 'parent':
-      return c.to ? (
-        <>made this a sub-issue{issue.parent ? <> of {strong(issue.parent.identifier)}</> : null}</>
-      ) : (
-        <>removed the parent issue</>
-      );
+      if (!c.to) return tx('issue.activity.parentRemoved', { actor });
+      return issue.parent
+        ? tx('issue.activity.subIssueOf', { actor, parent: strong(issue.parent.identifier) })
+        : tx('issue.activity.subIssue', { actor });
     case 'estimate': {
       const team = ws.teamById.get(issue.teamId);
-      return c.to == null ? (
-        <>removed the estimate</>
-      ) : (
-        <>
-          set estimate to {strong(estimateLabel(team?.estimateScale ?? 'linear', c.to as number))}
-        </>
-      );
+      return c.to == null
+        ? tx('issue.activity.estimateRemoved', { actor })
+        : tx('issue.activity.estimateSet', {
+            actor,
+            estimate: strong(estimateLabel(team?.estimateScale ?? 'linear', c.to as number)),
+          });
     }
     case 'dueDate':
-      return c.to ? (
-        <>set due date to {strong(shortDate(c.to as string))}</>
-      ) : (
-        <>removed the due date</>
-      );
+      return c.to
+        ? tx('issue.activity.dueDateSet', { actor, date: strong(shortDate(c.to as string)) })
+        : tx('issue.activity.dueDateRemoved', { actor });
     case 'team':
-      return (
-        <>
-          moved from {strong(ws.teamById.get(c.from as string)?.name ?? 'another team')} to{' '}
-          {strong(ws.teamById.get(c.to as string)?.name ?? 'a team')}
-        </>
-      );
+      return tx('issue.activity.team', {
+        actor,
+        from: strong(
+          ws.teamById.get(c.from as string)?.name ?? t('issue.activity.fallback.fromTeam'),
+        ),
+        to: strong(ws.teamById.get(c.to as string)?.name ?? t('issue.activity.fallback.toTeam')),
+      });
     default:
-      return <>changed {c.field}</>;
+      return tx('issue.activity.changed', { actor, field: c.field });
   }
 }
 
@@ -156,7 +166,12 @@ function HistoryItem({ entry, issue }: { entry: HistoryEntry; issue: IssueDetail
         <div key={i} className="flex items-start gap-2.5 py-1.5 pl-1 text-[12.5px] text-muted">
           <span className="mt-[3px] h-[7px] w-[7px] flex-none bg-border" aria-hidden />
           <span className="min-w-0">
-            <ActorName person={actor} /> <ChangeText c={c} actorId={entry.actorId} issue={issue} />
+            <ChangeText
+              c={c}
+              actor={<ActorName person={actor} fallback={t('issue.activity.someone')} />}
+              actorId={entry.actorId}
+              issue={issue}
+            />
             <span className="text-index" title={longDate(entry.createdAt)}>
               {' '}
               · {relativeTime(entry.createdAt)}
@@ -215,10 +230,14 @@ function CommentItem({
               size={18}
             />
           )}
-          <ActorName person={author} fallback="Former member" className="font-medium" />
+          <ActorName
+            person={author}
+            fallback={t('issue.comments.formerMember')}
+            className="font-medium"
+          />
           <span className="text-index" title={longDate(comment.createdAt)}>
             {relativeTime(comment.createdAt)}
-            {comment.editedAt && ' · edited'}
+            {comment.editedAt && ` · ${t('issue.comments.edited')}`}
           </span>
           <div className="ml-auto flex items-center gap-1">
             <ReactionPicker comment={comment} issueId={issueId} />
@@ -227,7 +246,7 @@ function CommentItem({
                 type="button"
                 className="flex h-6 w-6 items-center justify-center text-index hover:text-text"
                 onClick={() => setReplying(true)}
-                aria-label="Reply"
+                aria-label={t('issue.comments.reply')}
               >
                 <Reply size={13} />
               </button>
@@ -240,7 +259,7 @@ function CommentItem({
                   <button
                     type="button"
                     className="flex h-6 w-6 items-center justify-center text-index hover:text-text"
-                    aria-label="Comment actions"
+                    aria-label={t('issue.comments.actions')}
                   >
                     <MoreHorizontal size={14} />
                   </button>
@@ -257,7 +276,7 @@ function CommentItem({
                           close();
                         }}
                       >
-                        Edit
+                        {t('common.edit')}
                       </button>
                     )}
                     <button
@@ -268,7 +287,7 @@ function CommentItem({
                         close();
                       }}
                     >
-                      Delete
+                      {t('common.delete')}
                     </button>
                   </div>
                 )}
@@ -299,7 +318,7 @@ function CommentItem({
                   className="btn btn-ghost btn-sm"
                   onClick={() => setEditing(false)}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -309,7 +328,7 @@ function CommentItem({
                     setEditing(false);
                   }}
                 >
-                  Save
+                  {t('common.save')}
                 </button>
               </div>
             </div>
@@ -334,7 +353,7 @@ function CommentItem({
                 onUpload={upload}
                 autoFocus
                 minRows={2}
-                placeholder="Leave a reply…"
+                placeholder={t('issue.comments.replyPlaceholder')}
                 onSubmit={() => {
                   if (!reply.trim()) return;
                   sendReply.mutate(reply);
@@ -385,7 +404,7 @@ export function Activity({ issue }: { issue: IssueDetail }) {
 
   return (
     <section className="mt-10">
-      <div className="section-label mb-3">Activity</div>
+      <div className="section-label mb-3">{t('issue.activity.heading')}</div>
       {items.map((it) =>
         it.kind === 'h' ? (
           <HistoryItem key={it.h.id} entry={it.h} issue={issue} />
@@ -404,7 +423,7 @@ export function Activity({ issue }: { issue: IssueDetail }) {
           onChange={setDraft}
           onUpload={upload}
           onSubmit={submit}
-          placeholder="Leave a comment…  (⌘/Ctrl+Enter to send)"
+          placeholder={t('issue.comments.placeholder')}
           minRows={3}
         />
         <div className="mt-2 flex justify-end">
@@ -414,7 +433,7 @@ export function Activity({ issue }: { issue: IssueDetail }) {
             onClick={submit}
             disabled={!draft.trim() || send.isPending}
           >
-            Comment <span className="arrow">→</span>
+            {t('issue.comments.send')} <span className="arrow">→</span>
           </button>
         </div>
       </div>

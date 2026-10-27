@@ -3,13 +3,13 @@ import {
   type Issue,
   type IssueDisplay,
   type OrderBy,
-  PRIORITIES,
   prioritySortKey,
-  STATE_TYPE_LABELS,
   STATE_TYPES,
   type StateType,
   type UpdateIssueInput,
 } from '@ordo/shared';
+import { t } from '../i18n/index.ts';
+import { priorityLabel, stateTypeLabel } from '../i18n/labels.ts';
 import { cycleName, type WorkspaceData } from './workspace.tsx';
 
 export interface IssueGroup {
@@ -83,10 +83,10 @@ export function groupIssues(
             (i) => i.stateId === s.id,
           );
       } else {
-        for (const t of STATE_TYPES) {
+        for (const type of STATE_TYPES) {
           add(
-            { key: t, label: STATE_TYPE_LABELS[t], value: t, stateType: t },
-            (i) => ws.stateById.get(i.stateId)?.type === t,
+            { key: type, label: stateTypeLabel(type), value: type, stateType: type },
+            (i) => ws.stateById.get(i.stateId)?.type === type,
           );
         }
       }
@@ -94,10 +94,7 @@ export function groupIssues(
     }
     case 'priority':
       for (const p of [1, 2, 3, 4, 0]) {
-        add(
-          { key: `p${p}`, label: PRIORITIES.find((x) => x.value === p)!.label, value: p },
-          (i) => i.priority === p,
-        );
+        add({ key: `p${p}`, label: priorityLabel(p), value: p }, (i) => i.priority === p);
       }
       break;
     case 'assignee':
@@ -106,12 +103,12 @@ export function groupIssues(
           { key: m.id, label: m.name, value: m.id, color: m.avatarColor },
           (i) => i.assigneeId === m.id,
         );
-      add({ key: 'none', label: 'No assignee', value: null }, (i) => !i.assigneeId);
+      add({ key: 'none', label: t('issues.none.assignee'), value: null }, (i) => !i.assigneeId);
       break;
     case 'project':
       for (const p of ws.projects)
         add({ key: p.id, label: p.name, value: p.id, color: p.color }, (i) => i.projectId === p.id);
-      add({ key: 'none', label: 'No project', value: null }, (i) => !i.projectId);
+      add({ key: 'none', label: t('issues.none.project'), value: null }, (i) => !i.projectId);
       break;
     case 'milestone': {
       // Milestones of the projects in view, in project then date order.
@@ -128,7 +125,7 @@ export function groupIssues(
             },
             (i) => i.milestoneId === m.id,
           );
-      add({ key: 'none', label: 'No milestone', value: null }, (i) => !i.milestoneId);
+      add({ key: 'none', label: t('issues.none.milestone'), value: null }, (i) => !i.milestoneId);
       break;
     }
     case 'cycle': {
@@ -144,7 +141,7 @@ export function groupIssues(
           (i) => i.cycleId === c.id,
         );
       }
-      add({ key: 'none', label: 'No cycle', value: null }, (i) => !i.cycleId);
+      add({ key: 'none', label: t('issues.none.cycle'), value: null }, (i) => !i.cycleId);
       break;
     }
     case 'label':
@@ -152,10 +149,13 @@ export function groupIssues(
         add({ key: l.id, label: l.name, value: l.id, color: l.color }, (i) =>
           i.labelIds.includes(l.id),
         );
-      add({ key: 'none', label: 'No labels', value: null }, (i) => i.labelIds.length === 0);
+      add(
+        { key: 'none', label: t('issues.none.labels'), value: null },
+        (i) => i.labelIds.length === 0,
+      );
       break;
     default:
-      groups.push({ key: 'all', label: 'All issues', value: null, issues: sorted });
+      groups.push({ key: 'all', label: t('issues.allIssues'), value: null, issues: sorted });
   }
 
   return display.showEmptyGroups || by === 'none'

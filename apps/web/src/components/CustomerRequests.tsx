@@ -4,6 +4,7 @@ import { Building2, Plus, X } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
 import { relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Popover } from './ui/Popover.tsx';
@@ -53,13 +54,13 @@ export function CustomerRequests({
 
   return (
     <section className="mt-8">
-      <div className="mb-2 flex items-center gap-3">
-        <div className="section-label flex-1">Customer requests</div>
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="section-label flex-1">{t('issue.customers.title')}</div>
         <Popover
           width={360}
           trigger={
             <button type="button" className="btn btn-ghost btn-sm">
-              <Plus size={12} /> Add request
+              <Plus size={12} /> {t('issue.customers.add')}
             </button>
           }
         >
@@ -68,11 +69,11 @@ export function CustomerRequests({
               <input
                 className="input mb-2"
                 list="ordo-customers"
-                placeholder="Customer (new names are created)"
+                placeholder={t('issue.customers.customerPlaceholder')}
                 required
                 value={customer}
                 onChange={(e) => setCustomer(e.target.value)}
-                aria-label="Customer"
+                aria-label={t('common.customer')}
               />
               <datalist id="ordo-customers">
                 {ws.customers.map((c) => (
@@ -81,20 +82,20 @@ export function CustomerRequests({
               </datalist>
               <textarea
                 className="input mb-2 min-h-20 resize-y py-2"
-                placeholder="What they asked for, in their words"
+                placeholder={t('issue.customers.bodyPlaceholder')}
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                aria-label="Request"
+                aria-label={t('issue.customers.bodyLabel')}
               />
               <input
                 className="input mb-3"
-                placeholder="Contact (optional), e.g. Ada <ada@acme.com>"
+                placeholder={t('issue.customers.contactPlaceholder')}
                 value={contact}
                 onChange={(e) => setContact(e.target.value)}
-                aria-label="Contact"
+                aria-label={t('issue.customers.contactLabel')}
               />
               <button className="btn btn-primary btn-sm w-full" disabled={add.isPending}>
-                Add request
+                {t('issue.customers.add')}
               </button>
             </form>
           )}
@@ -111,7 +112,7 @@ export function CustomerRequests({
                 params={{ slug: ws.slug, customerId: r.customerId }}
                 className="text-[13.5px] hover:text-highlight"
               >
-                {c?.name ?? 'Customer'}
+                {c?.name ?? t('common.customer')}
               </Link>
               <span className="ml-auto font-mono text-[11px] text-index">
                 {[r.contact, r.source === 'manual' ? null : r.source, relativeTime(r.createdAt)]
@@ -122,7 +123,7 @@ export function CustomerRequests({
                 type="button"
                 className="flex h-6 w-6 items-center justify-center text-index opacity-0 group-hover:opacity-100 hover:text-text"
                 onClick={() => remove.mutate(r.id, { onSuccess: onChange })}
-                aria-label="Remove request"
+                aria-label={t('issue.customers.remove')}
               >
                 <X size={13} />
               </button>
@@ -136,7 +137,7 @@ export function CustomerRequests({
         );
       })}
       {issue.customerRequests.length === 0 && (
-        <p className="px-2 font-mono text-[12px] text-index">// who asked for this?</p>
+        <p className="px-2 font-mono text-[12px] text-index">{t('issue.customers.empty')}</p>
       )}
     </section>
   );

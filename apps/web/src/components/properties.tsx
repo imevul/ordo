@@ -1,9 +1,7 @@
 import {
   ESTIMATE_SCALES,
-  estimateLabel,
   LABEL_COLORS,
   type Label,
-  priorityLabel,
   STATE_TYPES,
   type UpdateIssueInput,
 } from '@ordo/shared';
@@ -12,6 +10,8 @@ import { CalendarDays, Hexagon, Milestone, RefreshCcw, Tag, Users } from 'lucide
 import type { ReactNode } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
+import { estimateLabel, priorityLabel } from '../i18n/labels.ts';
 import { addDays, dueState, shortDate, today } from '../lib/format.ts';
 import { cycleName, upcomingCycles, useWorkspace, type WorkspaceData } from '../lib/workspace.tsx';
 import { PriorityIcon, ProjectIcon, StatusIcon, TeamIcon } from './icons.tsx';
@@ -47,12 +47,12 @@ export const priorityOptions = (): Option[] =>
   }));
 
 export const assigneeOptions = (ws: WorkspaceData): Option[] => [
-  { value: 'none', label: 'No assignee', icon: <EmptyAvatar size={16} /> },
+  { value: 'none', label: t('issues.none.assignee'), icon: <EmptyAvatar size={16} /> },
   ...[...ws.members]
     .sort((a, b) => (a.id === ws.me.id ? -1 : b.id === ws.me.id ? 1 : a.name.localeCompare(b.name)))
     .map((m) => ({
       value: m.id,
-      label: m.id === ws.me.id ? `${m.name} (you)` : m.name,
+      label: m.id === ws.me.id ? t('issues.props.you', { name: m.name }) : m.name,
       keywords: `${m.username} ${m.email}`,
       icon: <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={16} />,
     })),
@@ -68,7 +68,11 @@ export const labelOptions = (ws: WorkspaceData, teamId?: string): Option[] =>
     }));
 
 export const projectOptions = (ws: WorkspaceData, teamId?: string): Option[] => [
-  { value: 'none', label: 'No project', icon: <Hexagon size={14} className="text-index" /> },
+  {
+    value: 'none',
+    label: t('issues.none.project'),
+    icon: <Hexagon size={14} className="text-index" />,
+  },
   ...ws.projects
     .filter((p) => !teamId || p.teamIds.includes(teamId))
     .filter((p) => p.status !== 'completed' && p.status !== 'canceled')
@@ -76,7 +80,11 @@ export const projectOptions = (ws: WorkspaceData, teamId?: string): Option[] => 
 ];
 
 export const cycleOptions = (ws: WorkspaceData, teamId: string): Option[] => [
-  { value: 'none', label: 'No cycle', icon: <RefreshCcw size={14} className="text-index" /> },
+  {
+    value: 'none',
+    label: t('issues.none.cycle'),
+    icon: <RefreshCcw size={14} className="text-index" />,
+  },
   ...upcomingCycles(ws.cycles, teamId).map((c) => ({
     value: c.id,
     label: cycleName(c),
@@ -89,7 +97,7 @@ export function estimateOptions(ws: WorkspaceData, teamId: string): Option[] {
   const team = ws.teamById.get(teamId);
   if (!team || team.estimateScale === 'none') return [];
   return [
-    { value: 'none', label: 'No estimate' },
+    { value: 'none', label: t('enums.noEstimate') },
     ...ESTIMATE_SCALES[team.estimateScale].map((v) => ({
       value: String(v),
       label: estimateLabel(team.estimateScale, v),
@@ -98,11 +106,11 @@ export function estimateOptions(ws: WorkspaceData, teamId: string): Option[] {
 }
 
 export const teamOptions = (ws: WorkspaceData): Option[] =>
-  ws.teams.map((t) => ({
-    value: t.id,
-    label: t.name,
-    hint: t.key,
-    icon: <TeamIcon color={t.color} label={t.key} />,
+  ws.teams.map((team) => ({
+    value: team.id,
+    label: team.name,
+    hint: team.key,
+    icon: <TeamIcon color={team.color} label={team.key} />,
   }));
 
 /** Converts a picked option value into an issue patch. */
@@ -178,7 +186,7 @@ export function Picker({
           onSelect={onSelect}
           onClose={close}
           onCreate={onCreate}
-          createLabel={(q) => `Create label "${q}"`}
+          createLabel={(q) => t('issues.props.createLabel', { name: q })}
         />
       )}
     </Popover>
@@ -218,7 +226,7 @@ export function StatusProp({ issue, onPatch, variant = 'chip' }: IssuePropProps)
   const state = ws.stateById.get(issue.stateId);
   return (
     <Picker
-      placeholder="Change status…"
+      placeholder={t('issues.props.changeStatus')}
       options={statusOptions(ws, issue.teamId)}
       selected={[issue.stateId]}
       onSelect={(v) => onPatch({ stateId: v })}
@@ -227,7 +235,7 @@ export function StatusProp({ issue, onPatch, variant = 'chip' }: IssuePropProps)
           type="button"
           className={cls(variant)}
           title={state?.name}
-          aria-label={`Status: ${state?.name}`}
+          aria-label={t('issues.props.statusIs', { status: state?.name ?? '' })}
         >
           {state && <StatusIcon type={state.type} color={state.color} />}
           {variant !== 'icon' && <span>{state?.name}</span>}
@@ -240,7 +248,7 @@ export function StatusProp({ issue, onPatch, variant = 'chip' }: IssuePropProps)
 export function PriorityProp({ issue, onPatch, variant = 'chip' }: IssuePropProps) {
   return (
     <Picker
-      placeholder="Set priority…"
+      placeholder={t('issues.props.setPriority')}
       options={priorityOptions()}
       selected={[String(issue.priority)]}
       onSelect={(v) => onPatch({ priority: Number(v) })}
@@ -250,13 +258,13 @@ export function PriorityProp({ issue, onPatch, variant = 'chip' }: IssuePropProp
           type="button"
           className={cls(variant)}
           title={priorityLabel(issue.priority)}
-          aria-label={`Priority: ${priorityLabel(issue.priority)}`}
+          aria-label={t('issues.props.priorityIs', { priority: priorityLabel(issue.priority) })}
         >
           <PriorityIcon priority={issue.priority} />
           {variant !== 'icon' && (
             <span>
               {issue.priority === 0 && variant === 'chip'
-                ? 'Priority'
+                ? t('common.priority')
                 : priorityLabel(issue.priority)}
             </span>
           )}
@@ -271,7 +279,7 @@ export function AssigneeProp({ issue, onPatch, variant = 'chip' }: IssuePropProp
   const m = issue.assigneeId ? ws.memberById.get(issue.assigneeId) : null;
   return (
     <Picker
-      placeholder="Assign to…"
+      placeholder={t('issues.props.assignTo')}
       options={assigneeOptions(ws)}
       selected={[issue.assigneeId ?? 'none']}
       onSelect={(v) => onPatch({ assigneeId: v === 'none' ? null : v })}
@@ -279,8 +287,8 @@ export function AssigneeProp({ issue, onPatch, variant = 'chip' }: IssuePropProp
         <button
           type="button"
           className={cls(variant)}
-          title={m ? m.name : 'Unassigned'}
-          aria-label={`Assignee: ${m?.name ?? 'none'}`}
+          title={m ? m.name : t('common.unassigned')}
+          aria-label={m ? t('issues.props.assigneeIs', { name: m.name }) : t('common.unassigned')}
         >
           {m ? (
             <Avatar
@@ -294,7 +302,7 @@ export function AssigneeProp({ issue, onPatch, variant = 'chip' }: IssuePropProp
           ) : (
             <Users size={14} />
           )}
-          {variant !== 'icon' && <span>{m ? m.name : 'Assignee'}</span>}
+          {variant !== 'icon' && <span>{m ? m.name : t('common.assignee')}</span>}
         </button>
       }
     />
@@ -314,7 +322,7 @@ export function LabelsProp({ issue, onPatch, variant = 'chip' }: IssuePropProps)
   return (
     <Picker
       multi
-      placeholder="Add labels…"
+      placeholder={t('issues.props.addLabels')}
       options={labelOptions(ws, issue.teamId)}
       selected={issue.labelIds}
       onSelect={(v) => onPatch(patchFor('labels', v, issue))}
@@ -328,7 +336,7 @@ export function LabelsProp({ issue, onPatch, variant = 'chip' }: IssuePropProps)
             {selected.length === 0 && (
               <>
                 <Tag size={14} />
-                <span>Add label</span>
+                <span>{t('issues.props.addLabel')}</span>
               </>
             )}
             {selected.map((l) => (
@@ -339,13 +347,13 @@ export function LabelsProp({ issue, onPatch, variant = 'chip' }: IssuePropProps)
             ))}
           </button>
         ) : (
-          <button type="button" className={cls(variant)} aria-label="Labels">
+          <button type="button" className={cls(variant)} aria-label={t('common.labels')}>
             <Tag size={14} />
             {variant === 'chip' && (
               <span>
                 {selected.length
-                  ? `${selected.length} label${selected.length > 1 ? 's' : ''}`
-                  : 'Labels'}
+                  ? t('issues.props.labelCount', { count: selected.length })
+                  : t('common.labels')}
               </span>
             )}
           </button>
@@ -371,11 +379,11 @@ export function MilestoneProp({
   const current = project.milestones.find((m) => m.id === issue.milestoneId);
   return (
     <Picker
-      placeholder="Set milestone…"
+      placeholder={t('issues.props.setMilestone')}
       options={[
         {
           value: 'none',
-          label: 'No milestone',
+          label: t('issues.none.milestone'),
           icon: <Milestone size={14} className="text-index" />,
         },
         ...project.milestones.map((m) => ({
@@ -388,9 +396,11 @@ export function MilestoneProp({
       selected={[issue.milestoneId ?? 'none']}
       onSelect={(v) => onPatch({ milestoneId: v === 'none' ? null : v })}
       trigger={
-        <button type="button" className={cls(variant)} aria-label="Milestone">
+        <button type="button" className={cls(variant)} aria-label={t('common.milestone')}>
           <Milestone size={14} />
-          {variant !== 'icon' && <span className="truncate">{current?.name ?? 'Milestone'}</span>}
+          {variant !== 'icon' && (
+            <span className="truncate">{current?.name ?? t('common.milestone')}</span>
+          )}
         </button>
       }
     />
@@ -402,14 +412,16 @@ export function ProjectProp({ issue, onPatch, variant = 'chip' }: IssuePropProps
   const p = issue.projectId ? ws.projectById.get(issue.projectId) : null;
   return (
     <Picker
-      placeholder="Set project…"
+      placeholder={t('issues.props.setProject')}
       options={projectOptions(ws, issue.teamId)}
       selected={[issue.projectId ?? 'none']}
       onSelect={(v) => onPatch({ projectId: v === 'none' ? null : v })}
       trigger={
-        <button type="button" className={cls(variant)} aria-label="Project">
+        <button type="button" className={cls(variant)} aria-label={t('common.project')}>
           {p ? <ProjectIcon color={p.color} /> : <Hexagon size={14} />}
-          {variant !== 'icon' && <span className="truncate">{p ? p.name : 'Project'}</span>}
+          {variant !== 'icon' && (
+            <span className="truncate">{p ? p.name : t('common.project')}</span>
+          )}
         </button>
       }
     />
@@ -423,15 +435,15 @@ export function CycleProp({ issue, onPatch, variant = 'chip' }: IssuePropProps) 
   const c = issue.cycleId ? ws.cycleById.get(issue.cycleId) : null;
   return (
     <Picker
-      placeholder="Set cycle…"
+      placeholder={t('issues.props.setCycle')}
       options={cycleOptions(ws, issue.teamId)}
       selected={[issue.cycleId ?? 'none']}
       onSelect={(v) => onPatch({ cycleId: v === 'none' ? null : v })}
       width={300}
       trigger={
-        <button type="button" className={cls(variant)} aria-label="Cycle">
+        <button type="button" className={cls(variant)} aria-label={t('common.cycle')}>
           <RefreshCcw size={14} />
-          {variant !== 'icon' && <span>{c ? cycleName(c) : 'Cycle'}</span>}
+          {variant !== 'icon' && <span>{c ? cycleName(c) : t('common.cycle')}</span>}
         </button>
       }
     />
@@ -444,19 +456,19 @@ export function EstimateProp({ issue, onPatch, variant = 'chip' }: IssuePropProp
   if (!team || team.estimateScale === 'none') return null;
   return (
     <Picker
-      placeholder="Set estimate…"
+      placeholder={t('issues.props.setEstimate')}
       options={estimateOptions(ws, issue.teamId)}
       selected={[issue.estimate == null ? 'none' : String(issue.estimate)]}
       onSelect={(v) => onPatch({ estimate: v === 'none' ? null : Number(v) })}
       width={200}
       trigger={
-        <button type="button" className={cls(variant)} aria-label="Estimate">
+        <button type="button" className={cls(variant)} aria-label={t('common.estimate')}>
           <span className="font-mono text-[11px]">◇</span>
           <span>
             {issue.estimate == null
               ? variant === 'field'
-                ? 'No estimate'
-                : 'Estimate'
+                ? t('enums.noEstimate')
+                : t('common.estimate')
               : estimateLabel(team.estimateScale, issue.estimate)}
           </span>
         </button>
@@ -477,14 +489,18 @@ export function DueDateProp({
     <Popover
       width={240}
       trigger={
-        <button type="button" className={`${cls(variant)} ${color}`} aria-label="Due date">
+        <button
+          type="button"
+          className={`${cls(variant)} ${color}`}
+          aria-label={t('common.dueDate')}
+        >
           <CalendarDays size={14} />
           <span>
             {issue.dueDate
               ? shortDate(issue.dueDate)
               : variant === 'field'
-                ? 'No due date'
-                : 'Due date'}
+                ? t('common.noDueDate')
+                : t('common.dueDate')}
           </span>
         </button>
       }
@@ -504,9 +520,9 @@ export function DueDateProp({
             }}
           />
           {[
-            ['Today', today()],
-            ['Tomorrow', addDays(today(), 1)],
-            ['In a week', addDays(today(), 7)],
+            [t('issues.props.today'), today()],
+            [t('issues.props.tomorrow'), addDays(today(), 1)],
+            [t('issues.props.inAWeek'), addDays(today(), 7)],
           ].map(([label, value]) => (
             <button
               type="button"
@@ -530,7 +546,7 @@ export function DueDateProp({
                 close();
               }}
             >
-              Clear due date
+              {t('issues.props.clearDueDate')}
             </button>
           )}
         </div>

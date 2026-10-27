@@ -1,5 +1,6 @@
 import { type ThemeMode, themedColor } from '@ordo/shared';
 import { useSyncExternalStore } from 'react';
+import { t } from '../i18n/index.ts';
 import { readPref, writePref } from './store.ts';
 
 /**
@@ -9,11 +10,15 @@ import { readPref, writePref } from './store.ts';
  */
 export type ThemePref = 'system' | 'light' | 'dark';
 
-export const THEME_PREFS: { value: ThemePref; label: string }[] = [
-  { value: 'system', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-];
+/** The choices in order. `label` is read when used, so it is in the current language. */
+export const THEME_PREFS: { readonly value: ThemePref; readonly label: string }[] = (
+  ['system', 'light', 'dark'] as const
+).map((value) => ({
+  value,
+  get label() {
+    return t(`settings.appearance.${value}`);
+  },
+}));
 
 /** The browser chrome colour (address bar, PWA title bar) for each theme: its `bg`. */
 const CHROME: Record<ThemeMode, string> = { dark: '#09090b', light: '#fbf9fa' };

@@ -1,6 +1,7 @@
 import type { Issue } from '@ordo/shared';
 import { type ReactNode, useState } from 'react';
 import { useSearch } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { StatusIcon } from './icons.tsx';
 import { Popover } from './ui/Popover.tsx';
@@ -44,7 +45,7 @@ export function IssueSearchPicker({
                 close();
               }
             }}
-            placeholder="Search issues by title or ID…"
+            placeholder={t('issues.search.placeholder')}
             className="h-9 border-b border-border-soft bg-transparent px-3 text-[13px] outline-none placeholder:text-index"
           />
           <div className="min-h-0 overflow-y-auto py-1">
@@ -71,10 +72,14 @@ export function IssueSearchPicker({
               );
             })}
             {q && results.length === 0 && (
-              <div className="px-3 py-3 font-mono text-[11px] text-index">// no matches</div>
+              <div className="px-3 py-3 font-mono text-[11px] text-index">
+                {t('issues.search.noMatches')}
+              </div>
             )}
             {!q && (
-              <div className="px-3 py-3 font-mono text-[11px] text-index">// type to search</div>
+              <div className="px-3 py-3 font-mono text-[11px] text-index">
+                {t('issues.search.typeToSearch')}
+              </div>
             )}
           </div>
         </div>

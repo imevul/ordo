@@ -19,7 +19,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
 import {
@@ -28,6 +28,7 @@ import {
   useUpdateIssue,
   useWsMutation,
 } from '../api/queries.ts';
+import { type MessageKey, t, tx } from '../i18n/index.ts';
 import { longDate, relativeTime, slaState } from '../lib/format.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
 import { isDone } from '../lib/issues.ts';
@@ -61,13 +62,13 @@ import { Avatar } from './ui/Avatar.tsx';
 import { ConfirmModal } from './ui/Modal.tsx';
 import { Popover } from './ui/Popover.tsx';
 
-const RELATION_LABELS: Record<RelationView, string> = {
-  blocks: 'Blocks',
-  blocked_by: 'Blocked by',
-  related: 'Related to',
-  duplicate_of: 'Duplicate of',
-  duplicated_by: 'Duplicated by',
-};
+const RELATION_KEYS = {
+  blocks: 'issue.relations.blocks',
+  blocked_by: 'issue.relations.blockedBy',
+  related: 'issue.relations.related',
+  duplicate_of: 'issue.relations.duplicateOf',
+  duplicated_by: 'issue.relations.duplicatedBy',
+} as const satisfies Record<RelationView, MessageKey>;
 
 function Title({ issue, onSave }: { issue: IssueDetail; onSave: (title: string) => void }) {
   const [value, setValue] = useState(issue.title);
@@ -81,8 +82,8 @@ function Title({ issue, onSave }: { issue: IssueDetail; onSave: (title: string) 
     }
   }, [value]);
   const commit = () => {
-    const t = value.trim();
-    if (t && t !== issue.title) onSave(t);
+    const next = value.trim();
+    if (next && next !== issue.title) onSave(next);
     else setValue(issue.title);
   };
   return (
@@ -103,7 +104,7 @@ function Title({ issue, onSave }: { issue: IssueDetail; onSave: (title: string) 
         }
       }}
       className="w-full resize-none overflow-hidden bg-transparent text-[24px] leading-tight font-bold tracking-[-0.02em] outline-none"
-      aria-label="Issue title"
+      aria-label={t('issue.detail.titleLabel')}
     />
   );
 }
@@ -130,15 +131,15 @@ function Description({ issue, onSave }: { issue: IssueDetail; onSave: (d: string
           onCancel={() => setEditing(false)}
           autoFocus
           minRows={6}
-          placeholder="Add a description…"
+          placeholder={t('issue.detail.addDescription')}
           onUpload={upload}
         />
         <div className="mt-2 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button type="button" className="btn btn-primary btn-sm" onClick={save}>
-            Save
+            {t('common.save')}
           </button>
         </div>
       </div>
@@ -155,11 +156,14 @@ function Description({ issue, onSave }: { issue: IssueDetail; onSave: (d: string
       {issue.description.trim() ? (
         <Markdown source={issue.description} />
       ) : (
-        <p className="text-[14px] text-index">Add a description…</p>
+        <p className="text-[14px] text-index">{t('issue.detail.addDescription')}</p>
       )}
     </div>
   );
 }
+
+/** The dim "> created" style keyword in the issue's metadata lines. */
+const k = (s: ReactNode) => <span className="text-muted">{s}</span>;
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -238,9 +242,9 @@ export function IssueDetailView({
   const trash = async () => {
     await api.del(wsPath(ws.slug, `/issues/${issue.id}`));
     done();
-    toast(`${issue.identifier} moved to trash`, {
+    toast(t('issue.detail.trashed', { identifier: issue.identifier }), {
       action: {
-        label: 'Undo',
+        label: t('common.undo'),
         onClick: async () => {
           await api.post(wsPath(ws.slug, `/issues/${issue.id}/restore`));
           done();
@@ -251,9 +255,9 @@ export function IssueDetailView({
       navigate({ to: '/$slug/team/$key/$tab', params: { ...p, key: team.key, tab: 'all' } });
   };
 
-  const copy = (text: string, what: string) => {
+  const copy = (text: string, message: string) => {
     navigator.clipboard?.writeText(text);
-    toast.success(`Copied ${what}`);
+    toast.success(message);
   };
 
   // Linking a PR is as easy as naming the branch after the issue.
@@ -264,7 +268,7 @@ export function IssueDetailView({
         title: issue.title,
         username: ws.me.username,
       }),
-      'branch name',
+      t('issue.detail.branchCopied'),
     );
   useHotkey('mod+>', copyBranch, { enabled: !compact });
 
@@ -286,9 +290,9 @@ export function IssueDetailView({
             </Link>
             <Sep />
             {issue.identifier}
-            {issue.deletedAt && <span className="text-error"> // in trash</span>}
+            {issue.deletedAt && <span className="text-error"> {t('issue.detail.inTrash')}</span>}
             {issue.archivedAt && !issue.deletedAt && (
-              <span className="text-index"> // archived</span>
+              <span className="text-index"> {t('issue.detail.archived')}</span>
             )}
           </>
         }
@@ -300,9 +304,13 @@ export function IssueDetailView({
                 placement="bottom-end"
                 width={200}
                 trigger={
-                  <button type="button" className="btn btn-ghost btn-sm" aria-label="Ask AI">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    aria-label={t('issue.detail.askAi')}
+                  >
                     <Sparkles size={13} />
-                    <span className="hidden lg:inline">Ask AI</span>
+                    <span className="hidden lg:inline">{t('issue.detail.askAi')}</span>
                   </button>
                 }
               >
@@ -313,14 +321,14 @@ export function IssueDetailView({
                       className="menu-item"
                       onClick={() => setAiPanel('summary')}
                     >
-                      Summarize
+                      {t('issue.detail.summarize')}
                     </button>
                     <button
                       type="button"
                       className="menu-item"
                       onClick={() => setAiPanel('triage')}
                     >
-                      Suggest properties
+                      {t('issue.detail.suggestProperties')}
                     </button>
                   </div>
                 )}
@@ -330,19 +338,24 @@ export function IssueDetailView({
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => subscribe.mutate(!subscribed)}
-              title={subscribed ? 'Unsubscribe' : 'Subscribe to updates'}
+              title={subscribed ? t('issue.detail.unsubscribe') : t('issue.detail.subscribeTitle')}
               aria-pressed={subscribed}
             >
               {subscribed ? <BellOff size={13} /> : <Bell size={13} />}
-              <span className="hidden lg:inline">{subscribed ? 'Unsubscribe' : 'Subscribe'}</span>
+              <span className="hidden lg:inline">
+                {subscribed ? t('issue.detail.unsubscribe') : t('issue.detail.subscribe')}
+              </span>
             </button>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() =>
-                copy(`${location.origin}/${ws.slug}/issue/${issue.identifier}`, 'link')
+                copy(
+                  `${location.origin}/${ws.slug}/issue/${issue.identifier}`,
+                  t('issue.detail.linkCopied'),
+                )
               }
-              aria-label="Copy link"
+              aria-label={t('issue.detail.copyLink')}
             >
               <Link2 size={13} />
             </button>
@@ -350,7 +363,11 @@ export function IssueDetailView({
               placement="bottom-end"
               width={200}
               trigger={
-                <button type="button" className="btn btn-ghost btn-sm" aria-label="More actions">
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  aria-label={t('issue.detail.moreActions')}
+                >
                   <MoreHorizontal size={14} />
                 </button>
               }
@@ -360,12 +377,12 @@ export function IssueDetailView({
                   <button
                     type="button"
                     className="menu-item"
-                    onClick={() => copy(issue.identifier, 'ID')}
+                    onClick={() => copy(issue.identifier, t('issue.detail.idCopied'))}
                   >
-                    <Copy size={14} /> Copy ID
+                    <Copy size={14} /> {t('issue.detail.copyId')}
                   </button>
                   <button type="button" className="menu-item" onClick={copyBranch}>
-                    <Copy size={14} /> Copy git branch name
+                    <Copy size={14} /> {t('issue.detail.copyBranch')}
                   </button>
                   <button
                     type="button"
@@ -374,11 +391,11 @@ export function IssueDetailView({
                   >
                     {issue.archivedAt ? (
                       <>
-                        <ArchiveRestore size={14} /> Unarchive
+                        <ArchiveRestore size={14} /> {t('common.unarchive')}
                       </>
                     ) : (
                       <>
-                        <Archive size={14} /> Archive
+                        <Archive size={14} /> {t('common.archive')}
                       </>
                     )}
                   </button>
@@ -387,7 +404,7 @@ export function IssueDetailView({
                     className="menu-item text-error"
                     onClick={() => setConfirmDelete(true)}
                   >
-                    <Trash2 size={14} /> Move to trash
+                    <Trash2 size={14} /> {t('issue.detail.moveToTrash')}
                   </button>
                 </div>
               )}
@@ -422,9 +439,9 @@ export function IssueDetailView({
 
             {/* Sub-issues */}
             <section className="mt-8">
-              <div className="mb-2 flex items-center gap-3">
+              <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
                 <div className="section-label flex-1">
-                  Sub-issues
+                  {t('issue.detail.subIssues')}
                   {issue.subIssues.length > 0 && (
                     <span className="text-muted">
                       {issue.completedSubIssueCount}/{issue.subIssueCount}
@@ -443,7 +460,7 @@ export function IssueDetailView({
                     })
                   }
                 >
-                  <Plus size={12} /> Add
+                  <Plus size={12} /> {t('common.add')}
                 </button>
               </div>
               {issue.subIssues.map((s) => {
@@ -470,7 +487,7 @@ export function IssueDetailView({
                       {s.title}
                     </Link>
                     {st?.type === 'completed' && (
-                      <span className="chip [--chip:var(--color-success)]">done</span>
+                      <span className="chip [--chip:var(--color-success)]">{t('common.done')}</span>
                     )}
                     {assignee && (
                       <Avatar
@@ -487,18 +504,19 @@ export function IssueDetailView({
 
             {/* Relations */}
             <section className="mt-8">
-              <div className="mb-2 flex items-center gap-3">
-                <div className="section-label flex-1">Relations</div>
+              <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div className="section-label flex-1">{t('issue.relations.title')}</div>
                 <select
                   value={relType}
                   onChange={(e) => setRelType(e.target.value as typeof relType)}
                   className="h-[1.625rem] border border-border bg-bg px-1.5 text-[12px] text-muted outline-none focus:border-primary"
-                  aria-label="Relation type"
+                  aria-label={t('issue.relations.type')}
                 >
-                  <option value="related">Related to</option>
-                  <option value="blocks">Blocks</option>
-                  <option value="blocked_by">Blocked by</option>
-                  <option value="duplicate_of">Duplicate of</option>
+                  {(['related', 'blocks', 'blocked_by', 'duplicate_of'] as const).map((type) => (
+                    <option key={type} value={type}>
+                      {t(RELATION_KEYS[type])}
+                    </option>
+                  ))}
                 </select>
                 <IssueSearchPicker
                   exclude={[issue.id, ...issue.relations.map((r) => r.issue.id)]}
@@ -510,7 +528,7 @@ export function IssueDetailView({
                   }
                   trigger={
                     <button type="button" className="btn btn-ghost btn-sm">
-                      <Plus size={12} /> Link
+                      <Plus size={12} /> {t('issue.relations.link')}
                     </button>
                   }
                 />
@@ -525,7 +543,7 @@ export function IssueDetailView({
                     <span
                       className={`w-24 flex-none font-mono text-[10.5px] tracking-[0.08em] uppercase ${r.type === 'blocked_by' ? 'text-warning' : 'text-index'}`}
                     >
-                      {RELATION_LABELS[r.type]}
+                      {t(RELATION_KEYS[r.type])}
                     </span>
                     {st && <StatusIcon type={st.type} color={st.color} />}
                     <span className="w-16 flex-none font-mono text-[11px] text-index">
@@ -542,7 +560,7 @@ export function IssueDetailView({
                       type="button"
                       className="flex h-6 w-6 items-center justify-center text-index opacity-0 group-hover:opacity-100 hover:text-text"
                       onClick={() => removeRelation.mutate(r.id, { onSuccess: done })}
-                      aria-label="Remove relation"
+                      aria-label={t('issue.relations.remove')}
                     >
                       <X size={13} />
                     </button>
@@ -560,14 +578,14 @@ export function IssueDetailView({
         </div>
 
         <aside className="hidden w-72 flex-none overflow-y-auto border-l border-border-soft bg-surface/40 p-4 lg:block">
-          <div className="section-label mb-3">Properties</div>
-          <Field label="Status">
+          <div className="section-label mb-3">{t('issue.detail.properties')}</div>
+          <Field label={t('common.status')}>
             <StatusProp issue={issue} onPatch={patch} variant="field" />
           </Field>
-          <Field label="Priority">
+          <Field label={t('common.priority')}>
             <PriorityProp issue={issue} onPatch={patch} variant="field" />
           </Field>
-          <Field label="Assignee">
+          <Field label={t('common.assignee')}>
             <AssigneeProp issue={issue} onPatch={patch} variant="field" />
           </Field>
           {sla && (
@@ -576,34 +594,34 @@ export function IssueDetailView({
                 className={`px-2 font-mono text-[12px] ${sla.state === 'breached' ? 'text-error' : sla.state === 'risk' ? 'text-warning' : 'text-muted'}`}
                 title={new Date(issue.slaBreachesAt!).toLocaleString()}
               >
-                {sla.state === 'breached' ? 'ran out ' : ''}
-                {sla.label.replace('SLA ', '')}
-                {sla.state === 'breached' ? ' ago' : ' left'}
+                {t(sla.state === 'breached' ? 'issue.detail.slaBreached' : 'issue.detail.slaLeft', {
+                  time: sla.span,
+                })}
               </span>
             </Field>
           )}
-          <Field label="Labels">
+          <Field label={t('common.labels')}>
             <LabelsProp issue={issue} onPatch={patch} variant="field" />
           </Field>
-          <Field label="Project">
+          <Field label={t('common.project')}>
             <ProjectProp issue={issue} onPatch={patch} variant="field" />
           </Field>
           {issue.projectId && !!ws.projectById.get(issue.projectId)?.milestones.length && (
-            <Field label="Milestone">
+            <Field label={t('common.milestone')}>
               <MilestoneProp issue={issue} onPatch={patch} variant="field" />
             </Field>
           )}
           {team.cyclesEnabled && (
-            <Field label="Cycle">
+            <Field label={t('common.cycle')}>
               <CycleProp issue={issue} onPatch={patch} variant="field" />
             </Field>
           )}
           {team.estimateScale !== 'none' && (
-            <Field label="Estimate">
+            <Field label={t('common.estimate')}>
               <EstimateProp issue={issue} onPatch={patch} variant="field" />
             </Field>
           )}
-          <Field label="Due date">
+          <Field label={t('common.dueDate')}>
             <DueDateProp
               issue={issue}
               onPatch={patch}
@@ -611,9 +629,9 @@ export function IssueDetailView({
               done={!!issue.completedAt || !!issue.canceledAt}
             />
           </Field>
-          <Field label="Team">
+          <Field label={t('common.team')}>
             <Picker
-              placeholder="Move to team…"
+              placeholder={t('issue.detail.moveToTeam')}
               options={teamOptions(ws)}
               selected={[issue.teamId]}
               onSelect={(teamId) => {
@@ -622,7 +640,7 @@ export function IssueDetailView({
                   .patch<{ identifier: string }>(wsPath(ws.slug, `/issues/${issue.id}`), { teamId })
                   .then((moved) => {
                     done();
-                    toast.success(`Moved to ${moved.identifier}`);
+                    toast.success(t('issue.detail.movedTo', { identifier: moved.identifier }));
                     if (!compact)
                       navigate({
                         to: '/$slug/issue/$identifier',
@@ -642,7 +660,7 @@ export function IssueDetailView({
               }
             />
           </Field>
-          <Field label="Parent">
+          <Field label={t('common.parent')}>
             <div className="flex items-center gap-1">
               <IssueSearchPicker
                 exclude={[issue.id, ...issue.subIssues.map((s) => s.id)]}
@@ -653,7 +671,7 @@ export function IssueDetailView({
                     className="prop min-w-0 flex-1 justify-start bg-transparent shadow-none hover:bg-text/[0.03]"
                   >
                     <span className="truncate">
-                      {issue.parent ? issue.parent.identifier : 'Set parent'}
+                      {issue.parent ? issue.parent.identifier : t('issue.detail.setParent')}
                     </span>
                   </button>
                 }
@@ -663,7 +681,7 @@ export function IssueDetailView({
                   type="button"
                   className="flex h-6 w-6 flex-none items-center justify-center text-index hover:text-text"
                   onClick={() => patch({ parentId: null })}
-                  aria-label="Remove parent"
+                  aria-label={t('issue.detail.removeParent')}
                 >
                   <X size={13} />
                 </button>
@@ -673,34 +691,32 @@ export function IssueDetailView({
 
           <div className="mt-6 border-t border-border-soft pt-4 font-mono text-[11px] leading-6 text-index">
             <div>
-              <span className="text-muted">&gt; created</span> {relativeTime(issue.createdAt)}
-              {creator && (
-                <>
-                  {' '}
-                  by <ActorName person={creator} className="" />
-                </>
-              )}
+              {creator
+                ? tx('issue.detail.createdBy', {
+                    k,
+                    time: relativeTime(issue.createdAt),
+                    name: <ActorName person={creator} className="" />,
+                  })
+                : tx('issue.detail.created', { k, time: relativeTime(issue.createdAt) })}
             </div>
             <div title={longDate(issue.updatedAt)}>
-              <span className="text-muted">&gt; updated</span> {relativeTime(issue.updatedAt)}
+              {tx('issue.detail.updated', { k, time: relativeTime(issue.updatedAt) })}
             </div>
             {issue.completedAt && (
               <div>
-                <span className="text-muted">&gt; completed</span> {relativeTime(issue.completedAt)}
+                {tx('issue.detail.completed', { k, time: relativeTime(issue.completedAt) })}
               </div>
             )}
-            <div>
-              <span className="text-muted">&gt; subscribers</span> {issue.subscriberIds.length}
-            </div>
+            <div>{tx('issue.detail.subscribers', { k, count: issue.subscriberIds.length })}</div>
           </div>
         </aside>
       </div>
       <ConfirmModal
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
-        title={`Move ${issue.identifier} to trash?`}
-        body="You can restore it from the trash later."
-        confirmLabel="Move to trash"
+        title={t('issue.detail.confirmTrashTitle', { identifier: issue.identifier })}
+        body={t('issue.detail.confirmTrashBody')}
+        confirmLabel={t('issue.detail.moveToTrash')}
         danger
         onConfirm={trash}
       />

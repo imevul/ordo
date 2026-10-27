@@ -1,63 +1,65 @@
+import { t } from '../i18n/index.ts';
 import { modKey } from '../lib/hotkeys.ts';
 import { ui, useUi } from '../lib/store.ts';
 import { Modal } from './ui/Modal.tsx';
 
-export const SHORTCUTS: { section: string; items: [string, string][] }[] = [
+/** The shortcut list, in the current language. Key names stay as printed on the keyboard. */
+export const shortcuts = (): { section: string; items: [string, string][] }[] => [
   {
-    section: 'General',
+    section: t('shell.shortcuts.sections.general'),
     items: [
-      [`${modKey} K`, 'Command menu'],
-      ['C', 'Create issue'],
-      ['/', 'Search'],
-      ['?', 'Keyboard shortcuts'],
-      ['Esc', 'Close / clear selection'],
+      [`${modKey} K`, t('shell.shortcuts.commandMenu')],
+      ['C', t('shell.shortcuts.createIssue')],
+      ['/', t('common.search')],
+      ['?', t('shell.shortcuts.title')],
+      ['Esc', t('shell.shortcuts.closeOrClear')],
     ],
   },
   {
-    section: 'Navigation',
+    section: t('shell.shortcuts.sections.navigation'),
     items: [
-      ['G then I', 'Inbox'],
-      ['G then M', 'My issues'],
-      ['G then T', 'Team issues'],
-      ['G then P', 'Projects'],
-      ['G then V', 'Views'],
-      ['G then S', 'Settings'],
+      ['G then I', t('shell.nav.inbox')],
+      ['G then M', t('shell.nav.myIssues')],
+      ['G then T', t('shell.shortcuts.teamIssues')],
+      ['G then P', t('common.projects')],
+      ['G then V', t('shell.nav.views')],
+      ['G then S', t('common.settings')],
     ],
   },
   {
-    section: 'Issue lists',
+    section: t('shell.shortcuts.sections.issueLists'),
     items: [
-      ['J / K', 'Move focus down / up'],
-      ['Enter', 'Open focused issue'],
-      ['X', 'Select (Shift for range)'],
-      [`${modKey} A`, 'Select all'],
-      ['V', 'Toggle list / board'],
+      ['J / K', t('shell.shortcuts.moveFocus')],
+      ['Enter', t('shell.shortcuts.openFocused')],
+      ['X', t('shell.shortcuts.select')],
+      [`${modKey} A`, t('shell.shortcuts.selectAll')],
+      ['V', t('shell.shortcuts.toggleLayout')],
     ],
   },
   {
-    section: 'Issue actions',
+    section: t('shell.shortcuts.sections.issueActions'),
     items: [
-      ['S', 'Change status'],
-      ['P', 'Set priority'],
-      ['A', 'Assign'],
-      ['I', 'Assign to me'],
-      ['L', 'Labels'],
-      ['Shift P', 'Project'],
-      ['Shift C', 'Cycle'],
-      ['E', 'Estimate'],
-      [`${modKey} ⌫`, 'Move to trash'],
-      [`${modKey} Shift .`, 'Copy git branch name (open issue)'],
-      [`${modKey} Enter`, 'Submit (forms, comments)'],
-      [`${modKey} B / ${modKey} I`, 'Bold / italic (in text)'],
+      ['S', t('shell.palette.pages.status')],
+      ['P', t('shell.palette.pages.priority')],
+      ['A', t('shell.shortcuts.assign')],
+      ['I', t('shell.palette.assignToMe')],
+      ['L', t('common.labels')],
+      ['Shift P', t('common.project')],
+      ['Shift C', t('common.cycle')],
+      ['E', t('common.estimate')],
+      [`${modKey} ⌫`, t('shell.palette.moveToTrash')],
+      [`${modKey} Shift .`, t('shell.shortcuts.copyBranch')],
+      [`${modKey} Enter`, t('shell.shortcuts.submit')],
+      [`${modKey} B / ${modKey} I`, t('shell.shortcuts.boldItalic')],
     ],
   },
   {
-    section: 'Inbox',
+    section: t('shell.nav.inbox'),
     items: [
-      ['J / K', 'Next / previous notification'],
-      ['U', 'Toggle read'],
-      ['H', 'Snooze'],
-      ['⌫', 'Delete notification'],
+      ['J / K', t('shell.shortcuts.nextPrevNotification')],
+      ['U', t('shell.shortcuts.toggleRead')],
+      ['H', t('shell.shortcuts.snooze')],
+      ['⌫', t('shell.shortcuts.deleteNotification')],
     ],
   },
 ];
@@ -69,12 +71,12 @@ export function ShortcutsHelp() {
       open={open}
       onClose={() => ui.set({ shortcuts: false })}
       width={720}
-      label="Keyboard shortcuts"
+      label={t('shell.shortcuts.title')}
     >
       <div className="overflow-y-auto p-6">
-        <div className="section-label mb-5">Keyboard shortcuts</div>
+        <div className="section-label mb-5">{t('shell.shortcuts.title')}</div>
         <div className="grid gap-x-10 gap-y-6 sm:grid-cols-2">
-          {SHORTCUTS.map((s) => (
+          {shortcuts().map((s) => (
             <div key={s.section}>
               <div className="mb-2 font-mono text-[11px] tracking-[0.14em] text-index uppercase">
                 {s.section}
@@ -89,7 +91,7 @@ export function ShortcutsHelp() {
                     {k.split(' ').map((p) =>
                       p === 'then' ? (
                         <span key={p} className="text-[11px] text-index">
-                          then
+                          {t('shell.shortcuts.thenKey')}
                         </span>
                       ) : (
                         <kbd key={p} className="kbd">

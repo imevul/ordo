@@ -3,6 +3,7 @@ import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ApiError } from './api/client.ts';
+import { setLocale, storedLocale } from './i18n/index.ts';
 import { makeRouter } from './router.tsx';
 import './styles/app.css';
 
@@ -22,6 +23,10 @@ const router = makeRouter(queryClient);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// The language this browser used last, so the first paint is already in it; if the signed-in
+// person's own choice (from /auth/me) differs, WorkspaceLayout switches to it.
+await setLocale(storedLocale());
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

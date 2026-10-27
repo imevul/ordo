@@ -2,6 +2,9 @@ import {
   type Account,
   AVATAR_COLORS,
   type EmailDigest,
+  LOCALE_NAMES,
+  LOCALES,
+  type Locale,
   NOTIFICATION_TYPES,
   type NotificationType,
   type UserPreferences,
@@ -27,6 +30,7 @@ import { keys, useAccount, useApiKeys, useConfig, useSessions } from '../../api/
 import { Spinner } from '../../components/PageHeader.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
+import { switchLocale, t } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
 import { disablePush, enablePush, type PushState, pushState } from '../../lib/push.ts';
 import { setThemePref, THEME_PREFS, useTheme } from '../../lib/theme.ts';
@@ -81,6 +85,7 @@ export function AccountSection() {
     <>
       <ProfileCard account={account} />
       <EmailCard account={account} />
+      <LanguageCard account={account} />
       <AppearanceCard />
     </>
   );
@@ -88,15 +93,49 @@ export function AccountSection() {
 
 const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon };
 
+function LanguageCard({ account }: { account: Account }) {
+  const choose = async (locale: Locale) => {
+    try {
+      await api.patch('/me/preferences', { locale });
+      switchLocale(locale);
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
+  };
+  return (
+    <SettingsCard
+      title={t('settings.language.title')}
+      description={t('settings.language.description')}
+    >
+      <select
+        className="input max-w-64"
+        value={account.preferences.locale}
+        onChange={(e) => choose(e.target.value as Locale)}
+        aria-label={t('settings.language.title')}
+      >
+        {LOCALES.map((l) => (
+          <option key={l} value={l}>
+            {LOCALE_NAMES[l]}
+          </option>
+        ))}
+      </select>
+    </SettingsCard>
+  );
+}
+
 function AppearanceCard() {
   const { pref } = useTheme();
   return (
     <SettingsCard
-      title="Appearance"
-      description="Saved in this browser. System follows your device's light or dark setting."
+      title={t('settings.appearance.title')}
+      description={t('settings.appearance.description')}
     >
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Theme">
-        {THEME_PREFS.map(({ value, label }) => {
+      <div
+        className="flex flex-wrap gap-2"
+        role="group"
+        aria-label={t('settings.appearance.theme')}
+      >
+        {THEME_PREFS.map(({ value }) => {
           const Icon = THEME_ICONS[value];
           return (
             <button
@@ -107,7 +146,7 @@ function AppearanceCard() {
               className={`flex items-center gap-2 border px-3 py-1.5 text-[13px] ${pref === value ? 'border-primary text-text' : 'border-border-soft text-muted hover:text-text'}`}
             >
               <Icon size={14} className={pref === value ? 'text-primary' : ''} />
-              {label}
+              {t(`settings.appearance.${value}`)}
             </button>
           );
         })}

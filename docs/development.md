@@ -77,6 +77,33 @@ Add a route in `apps/web/src/router.tsx`, a component in `src/routes/`, read par
 `useParams({ from: '<route id>' })`, and link to it with typed `<Link to=… params=…>`. Most issue screens are a
 thin wrapper around `IssuesView` with a `baseFilter`.
 
+### Add or change text in the web app
+
+Every word a person reads comes from a catalogue in `apps/web/src/i18n/`: English in `en/`, Swedish in `sv/`,
+Norwegian Bokmål in `nb/`, one file per area (`issues.ts`, `shell.ts`, `settings.ts`…).
+
+```tsx
+import { t, tx } from '../i18n/index.ts';
+
+<button>{t('issues.create.submit')}</button>
+toast.success(t('issues.moved', { count: ids.length }));          // { one: '…', other: '…' }
+<p>{tx('issue.activity.assigned', { actor: <ActorName … />, b: (c) => <strong>{c}</strong> })}</p>
+```
+
+- Add the English message first; it's the source and the fallback. Swedish and Norwegian may lag behind: a missing
+  message shows in English, and `pnpm test` prints how many are missing per language.
+- `{name}` placeholders and `<tag>…</tag>` markup must match English in every translation (a test checks).
+  Write whole sentences as one message so a translation can reorder them; never glue translated pieces together.
+- Messages with a number are plural objects (`{ one, other }`) picked by `count`.
+- Call `t()` while rendering, not at module scope: the catalogue loads after the module, and changing language
+  remounts the app so every `t()` runs again.
+- Labels for fixed values (priorities, state types, statuses, roles, estimates) come from `i18n/labels.ts`, not the
+  English `*_LABELS` constants in `@ordo/shared`, which stay for the API and CLI.
+- Dates go through `lib/format.ts` (`shortDate`, `longDate`, `relativeTime`), which follow the language.
+
+To add a language, add its code to `LOCALES` and `LOCALE_NAMES` in `packages/shared/src/constants.ts`, a folder
+like `sv/`, a loader in `LOADERS` and an `INTL_TAG` in `i18n/index.ts`, and a date-fns locale in `lib/format.ts`.
+
 ## Conventions
 
 See [AGENTS.md](../AGENTS.md) — it's the canonical list (validation, tenant scoping, mutations, styling,

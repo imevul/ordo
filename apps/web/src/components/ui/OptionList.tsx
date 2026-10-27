@@ -1,5 +1,6 @@
 import { Check } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { t } from '../../i18n/index.ts';
 
 export interface Option {
   value: string;
@@ -26,7 +27,7 @@ export function OptionList({
   options,
   selected = [],
   multi,
-  placeholder = 'Filter…',
+  placeholder = t('shell.filter'),
   onSelect,
   onClose,
   onCreate,
@@ -136,12 +137,16 @@ export function OptionList({
           >
             <span className="text-primary">+</span>
             <span className="truncate">
-              {createLabel ? createLabel(query.trim()) : `Create "${query.trim()}"`}
+              {createLabel
+                ? createLabel(query.trim())
+                : t('shell.optionList.create', { query: query.trim() })}
             </span>
           </button>
         )}
         {count === 0 && (
-          <div className="px-3 py-3 font-mono text-[11px] text-index">// no matches</div>
+          <div className="px-3 py-3 font-mono text-[11px] text-index">
+            // {t('shell.optionList.noMatches')}
+          </div>
         )}
       </div>
     </div>

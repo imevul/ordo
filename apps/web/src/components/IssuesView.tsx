@@ -21,6 +21,7 @@ import {
   useUpdateIssue,
   useWsMutation,
 } from '../api/queries.ts';
+import { t, tx } from '../i18n/index.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
 import { groupIssues, type IssueGroup, patchForGroup, visibleIssues } from '../lib/issues.ts';
 import { readPref, ui, writePref } from '../lib/store.ts';
@@ -159,9 +160,9 @@ export function IssuesView(props: Props) {
     if (!ids.length) return;
     trash.mutate(ids, {
       onSuccess: () =>
-        toast(`${ids.length} issue${ids.length > 1 ? 's' : ''} moved to trash`, {
+        toast(t('issues.view.movedToTrash', { count: ids.length }), {
           action: {
-            label: 'Undo',
+            label: t('common.undo'),
             onClick: async () => {
               await Promise.all(
                 ids.map((id) => api.post(wsPath(ws.slug, `/issues/${id}/restore`))),
@@ -229,7 +230,7 @@ export function IssuesView(props: Props) {
     (v: { filters: IssueFilter; display: IssueDisplay }) =>
       api.patch(wsPath(ws.slug, `/views/${view!.id}`), v),
     {
-      success: 'View saved',
+      success: t('issues.view.viewSaved'),
     },
   );
   const viewDirty =
@@ -251,7 +252,7 @@ export function IssuesView(props: Props) {
                 className="btn btn-primary btn-sm"
                 onClick={() => updateView.mutate({ filters: userFilter, display })}
               >
-                <Save size={13} /> Save
+                <Save size={13} /> {t('common.save')}
               </button>
             )}
             {!view && !ws.isGuest && hasUserFilters(userFilter) && (
@@ -261,7 +262,7 @@ export function IssuesView(props: Props) {
                 onClick={() => setSaveOpen(true)}
               >
                 <Save size={13} />
-                <span className="hidden sm:inline">Save view</span>
+                <span className="hidden sm:inline">{t('issues.view.saveView')}</span>
               </button>
             )}
             <button
@@ -269,10 +270,10 @@ export function IssuesView(props: Props) {
               className={`btn btn-ghost btn-sm ${insights ? 'text-primary' : ''}`}
               aria-pressed={insights}
               onClick={() => toggleInsights(!insights)}
-              title="Insights"
+              title={t('issues.view.insights')}
             >
               <ChartColumn size={13} />
-              <span className="hidden lg:inline">Insights</span>
+              <span className="hidden lg:inline">{t('issues.view.insights')}</span>
             </button>
             <FilterButton filter={userFilter} onChange={setUserFilter} teamId={teamId} />
             <DisplayOptions display={display} onChange={setDisplay} />
@@ -283,10 +284,10 @@ export function IssuesView(props: Props) {
               onClick={() =>
                 ui.openCreateIssue({ teamId: teamId ?? ws.myTeams[0]?.id, ...props.createDefaults })
               }
-              aria-label="New issue"
+              aria-label={t('issues.newIssue')}
             >
               <Plus size={13} />
-              <span className="hidden md:inline">New</span>
+              <span className="hidden md:inline">{t('issues.view.newShort')}</span>
             </button>
           </>
         }
@@ -298,15 +299,15 @@ export function IssuesView(props: Props) {
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           {isLoading && !data ? (
-            <Spinner label="loading issues" />
+            <Spinner label={t('issues.view.loading')} />
           ) : issues.length === 0 ? (
             <EmptyState
-              title={props.emptyTitle ?? 'nothing here'}
+              title={props.emptyTitle ?? t('issues.view.emptyTitle')}
               body={
                 props.emptyBody ??
                 (hasUserFilters(userFilter)
-                  ? 'No issues match these filters.'
-                  : 'Create an issue to get started.')
+                  ? t('issues.view.noMatches')
+                  : t('issues.view.getStarted'))
               }
               action={
                 <button
@@ -319,7 +320,7 @@ export function IssuesView(props: Props) {
                     })
                   }
                 >
-                  New issue <span className="arrow">→</span>
+                  {t('issues.newIssue')} <span className="arrow">→</span>
                 </button>
               }
             />
@@ -363,7 +364,10 @@ export function IssuesView(props: Props) {
         <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">
           <div className="panel panel-sm panel-raised pointer-events-auto flex items-center gap-1 p-1.5 pl-3">
             <span className="mr-2 font-mono text-[12px]">
-              <span className="text-primary">{selected.size}</span> selected
+              {tx('issues.view.selected', {
+                count: selected.size,
+                b: (c) => <span className="text-primary">{c}</span>,
+              })}
             </span>
             {(['status', 'priority', 'assignee', 'labels', 'project'] as const).map((page) => (
               <button
@@ -372,14 +376,14 @@ export function IssuesView(props: Props) {
                 className="btn btn-ghost btn-sm"
                 onClick={() => ui.openPalette(page, [...selected])}
               >
-                {page}
+                {t(`common.${page}`)}
               </button>
             ))}
             <button
               type="button"
               className="btn btn-danger btn-sm"
               onClick={() => trashTargets([...selected])}
-              aria-label="Move to trash"
+              aria-label={t('issues.view.moveToTrash')}
             >
               <Trash2 size={13} />
             </button>
@@ -387,7 +391,7 @@ export function IssuesView(props: Props) {
               type="button"
               className="ml-1 flex h-7 w-7 items-center justify-center text-index hover:text-text"
               onClick={() => setSelected(new Set())}
-              aria-label="Clear selection"
+              aria-label={t('issues.view.clearSelection')}
             >
               <X size={14} />
             </button>

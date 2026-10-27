@@ -95,6 +95,10 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
   Markdown source, chosen per browser. Markdown is the storage format, so the rich editor's schema
   (`lib/richtext.ts`) holds only what GFM can store; extend it there and add a case to `richtext.test.ts`, which
   checks that every document round-trips and loads.
+- **Text:** every visible string goes through `t()` / `tx()` (`apps/web/src/i18n/`), English first; Swedish and
+  Norwegian fall back to English when a message is missing. Whole sentences per message, `{placeholders}` and plural
+  objects, never `t()` at module scope. Fixed-value labels from `i18n/labels.ts`. See
+  [docs/development.md](docs/development.md#add-or-change-text-in-the-web-app).
 - **Keyboard:** register shortcuts with `useHotkey` (`src/lib/hotkeys.ts`). Modals push a scope via
   `useHotkeyScope` so page shortcuts don't fire underneath. Document new shortcuts in
   `components/ShortcutsHelp.tsx` and `docs/keyboard-shortcuts.md`.

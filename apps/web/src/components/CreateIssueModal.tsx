@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
 import { useAttachmentUpload, useCreateIssue } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
 import { modKey } from '../lib/hotkeys.ts';
 import { ui, useUi } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
@@ -99,40 +100,43 @@ export function CreateIssueModal() {
         : f,
     );
 
-  const templates = ws.templates.filter((t) => !t.teamId || ws.teamById.has(t.teamId));
+  const templates = ws.templates.filter((tpl) => !tpl.teamId || ws.teamById.has(tpl.teamId));
 
   /**
    * Fills the form from a template: its team, the properties it sets, and its title and description
    * where you haven't written your own (a description you started gets the template's below it).
    */
-  const applyTemplate = (t: IssueTemplate) =>
+  const applyTemplate = (tpl: IssueTemplate) =>
     setForm((f) => {
       if (!f) return f;
       const base =
-        t.teamId && t.teamId !== f.teamId
-          ? { ...initial({ teamId: t.teamId }), title: f.title, description: f.description }
+        tpl.teamId && tpl.teamId !== f.teamId
+          ? { ...initial({ teamId: tpl.teamId }), title: f.title, description: f.description }
           : f;
       const tTeam = ws.teamById.get(base.teamId)!;
-      const usable = t.labelIds.filter((id) => {
+      const usable = tpl.labelIds.filter((id) => {
         const label = ws.labelById.get(id);
         return label && (!label.teamId || label.teamId === base.teamId);
       });
       return {
         ...base,
-        title: base.title.trim() ? base.title : t.title,
+        title: base.title.trim() ? base.title : tpl.title,
         description: !base.description.trim()
-          ? t.description
-          : t.description.trim()
-            ? `${base.description}\n\n${t.description}`
+          ? tpl.description
+          : tpl.description.trim()
+            ? `${base.description}\n\n${tpl.description}`
             : base.description,
         stateId:
-          t.stateId && tTeam.states.some((s) => s.id === t.stateId) ? t.stateId : base.stateId,
-        priority: t.priority ?? base.priority,
+          tpl.stateId && tTeam.states.some((s) => s.id === tpl.stateId)
+            ? tpl.stateId
+            : base.stateId,
+        priority: tpl.priority ?? base.priority,
         assigneeId:
-          t.assigneeId && ws.memberById.has(t.assigneeId) ? t.assigneeId : base.assigneeId,
+          tpl.assigneeId && ws.memberById.has(tpl.assigneeId) ? tpl.assigneeId : base.assigneeId,
         labelIds: [...new Set([...base.labelIds, ...usable])],
-        projectId: t.projectId && ws.projectById.has(t.projectId) ? t.projectId : base.projectId,
-        estimate: t.estimate ?? base.estimate,
+        projectId:
+          tpl.projectId && ws.projectById.has(tpl.projectId) ? tpl.projectId : base.projectId,
+        estimate: tpl.estimate ?? base.estimate,
       };
     });
 
@@ -141,7 +145,7 @@ export function CreateIssueModal() {
    * and labels are only filled in, never replaced; Undo brings the notes back.
    */
   const draft = async () => {
-    const notes = [form.title, form.description].filter((t) => t.trim()).join('\n\n');
+    const notes = [form.title, form.description].filter((s) => s.trim()).join('\n\n');
     if (!notes.trim()) return;
     setDrafting(true);
     try {
@@ -161,11 +165,11 @@ export function CreateIssueModal() {
             }
           : f,
       );
-      toast('Written with AI — check it before creating', {
-        action: { label: 'Undo', onClick: () => setForm(before) },
+      toast(t('issues.create.aiDone'), {
+        action: { label: t('common.undo'), onClick: () => setForm(before) },
       });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Writing with AI failed');
+      toast.error(err instanceof Error ? err.message : t('issues.create.aiFailed'));
     } finally {
       setDrafting(false);
     }
@@ -189,10 +193,10 @@ export function CreateIssueModal() {
     };
     create.mutate(input, {
       onSuccess: (issue) => {
-        toast.success(`${issue.identifier} created`, {
+        toast.success(t('issues.create.created', { id: issue.identifier }), {
           description: issue.title,
           action: {
-            label: 'View',
+            label: t('issues.create.open'),
             onClick: () =>
               navigate({
                 to: '/$slug/issue/$identifier',
@@ -207,7 +211,7 @@ export function CreateIssueModal() {
   };
 
   return (
-    <Modal open onClose={close} width={720} label="New issue">
+    <Modal open onClose={close} width={720} label={t('issues.newIssue')}>
       <div
         className="flex min-h-0 flex-col"
         onKeyDown={(e) => {
@@ -219,7 +223,7 @@ export function CreateIssueModal() {
       >
         <div className="flex items-center gap-2 px-4 pt-3">
           <Picker
-            placeholder="Move to team…"
+            placeholder={t('issues.create.moveToTeam')}
             options={teamOptions(ws)}
             selected={[form.teamId]}
             onSelect={changeTeam}
@@ -232,26 +236,26 @@ export function CreateIssueModal() {
           />
           <ChevronRight size={12} className="text-index" />
           <span className="kicker text-[11px] uppercase tracking-[0.14em]">
-            {parent ? 'New sub-issue' : 'New issue'}
+            {parent ? t('issues.create.newSubIssue') : t('issues.newIssue')}
           </span>
           {templates.length > 0 && (
             <Picker
-              placeholder="Use template…"
-              options={templates.map((t) => ({
-                value: t.id,
-                label: t.name,
-                hint: t.teamId ? ws.teamById.get(t.teamId)?.key : undefined,
+              placeholder={t('issues.create.useTemplate')}
+              options={templates.map((tpl) => ({
+                value: tpl.id,
+                label: tpl.name,
+                hint: tpl.teamId ? ws.teamById.get(tpl.teamId)?.key : undefined,
                 icon: <FileText size={14} className="text-index" />,
               }))}
               selected={[]}
               onSelect={(id) => {
-                const t = templates.find((x) => x.id === id);
-                if (t) applyTemplate(t);
+                const tpl = templates.find((x) => x.id === id);
+                if (tpl) applyTemplate(tpl);
               }}
               trigger={
                 <button type="button" className="prop ml-2">
                   <FileText size={13} />
-                  <span>Template</span>
+                  <span>{t('issues.create.template')}</span>
                 </button>
               }
             />
@@ -262,17 +266,17 @@ export function CreateIssueModal() {
               className="prop ml-2"
               onClick={draft}
               disabled={drafting || !(form.title.trim() || form.description.trim())}
-              title="Turn what you've typed into a well-written issue"
+              title={t('issues.create.aiHint')}
             >
               <Sparkles size={13} />
-              <span>{drafting ? 'Writing…' : 'Write with AI'}</span>
+              <span>{drafting ? t('issues.create.aiWriting') : t('issues.create.aiWrite')}</span>
             </button>
           )}
           <button
             type="button"
             className="ml-auto flex h-7 w-7 items-center justify-center text-index hover:text-text"
             onClick={close}
-            aria-label="Close"
+            aria-label={t('common.close')}
           >
             <X size={15} />
           </button>
@@ -290,7 +294,7 @@ export function CreateIssueModal() {
                   ?.focus();
               }
             }}
-            placeholder="Issue title"
+            placeholder={t('issues.create.titlePlaceholder')}
             className="mt-3 w-full bg-transparent text-[20px] font-semibold tracking-[-0.01em] outline-none placeholder:text-index"
           />
           <MarkdownEditor
@@ -298,7 +302,7 @@ export function CreateIssueModal() {
             value={form.description}
             onChange={(v) => setForm({ ...form, description: v })}
             onSubmit={submit}
-            placeholder="Add description…"
+            placeholder={t('issues.create.descriptionPlaceholder')}
             minRows={4}
             onUpload={upload}
             className="mt-1 -mx-3"
@@ -322,7 +326,7 @@ export function CreateIssueModal() {
               onChange={(e) => setMore(e.target.checked)}
               className="accent-primary"
             />
-            Create more
+            {t('issues.create.createMore')}
           </label>
           <span className="ml-auto font-mono text-[11px] text-index">{modKey}+Enter</span>
           <button
@@ -331,7 +335,7 @@ export function CreateIssueModal() {
             onClick={submit}
             disabled={!form.title.trim() || create.isPending}
           >
-            Create issue <span className="arrow">→</span>
+            {t('issues.create.submit')} <span className="arrow">→</span>
           </button>
         </div>
       </div>

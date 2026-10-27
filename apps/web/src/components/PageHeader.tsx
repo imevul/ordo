@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { t } from '../i18n/index.ts';
 
 /** Top bar of every page: a mono HUD kicker ("ENG // ISSUES") above the title, actions on the right. */
 export function PageHeader({
@@ -58,7 +59,7 @@ export function EmptyState({
   );
 }
 
-export function Spinner({ label = 'loading' }: { label?: string }) {
+export function Spinner({ label = t('shell.spinner.loading') }: { label?: string }) {
   return (
     <div className="flex flex-1 items-center justify-center p-10 font-mono text-[12px] text-index">
       &gt; {label}

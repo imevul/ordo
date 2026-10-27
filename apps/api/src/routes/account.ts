@@ -76,6 +76,7 @@ export async function accountRoutes(app: FastifyInstance) {
       emailVerified: !!user.emailVerifiedAt,
       hasPassword: !!user.passwordHash,
       twoFactorEnabled: !!user.totpEnabledAt,
+      locale: resolvePreferences(user.preferences).locale,
       preferences: resolvePreferences(user.preferences),
     };
   });
@@ -86,6 +87,7 @@ export async function accountRoutes(app: FastifyInstance) {
     const current = resolvePreferences(user.preferences);
     const next = {
       ...current,
+      ...(input.locale !== undefined ? { locale: input.locale } : {}),
       ...(input.timezone !== undefined ? { timezone: input.timezone } : {}),
       ...(input.weekStartsOn !== undefined ? { weekStartsOn: input.weekStartsOn } : {}),
       notifications: {
