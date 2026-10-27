@@ -17,6 +17,7 @@ import {
   schedulePolls,
 } from './services/integrations.ts';
 import type { Email } from './services/mail-templates.ts';
+import { runRecurring } from './services/recurring.ts';
 import { purgeExpiredStates } from './services/sso.ts';
 import { purgeExpiredTokens } from './services/tokens.ts';
 import { deliverWebhook } from './services/webhooks.ts';
@@ -59,6 +60,8 @@ export function registerJobs(app: FastifyInstance) {
   // Cycle dates are days, so hourly is plenty; a missed run catches up on the next.
   jobs.define('cycles.automate', () => automateCycles(app));
   jobs.every('cycles.automate', 3600);
+  jobs.define('issues.recur', () => runRecurring(app));
+  jobs.every('issues.recur', 3600);
   jobs.define('issues.autoArchive', () => autoArchive(app));
   jobs.every('issues.autoArchive', 3600);
 

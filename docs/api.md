@@ -226,6 +226,8 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 | GET / POST           | `/projects`                | `{ name, teamIds, description?, color?, status?, leadId?, startDate?, targetDate? }`                                                  |
 | GET / PATCH / DELETE | `/projects/:id`            | Deleting keeps the issues                                                                                                             |
 | GET / POST           | `/projects/:id/updates`    | `{ body, health: "on_track" \| "at_risk" \| "off_track" }`                                                                            |
+| GET / POST           | `/recurring`               | Template schedules: `{ templateId, teamId, every: 1–52, unit: "day" \| "week" \| "month", nextOn }`                                   |
+| PATCH / DELETE       | `/recurring/:id`           | `{ every?, unit?, nextOn?, paused? }`                                                                                                 |
 | GET / POST           | `/initiatives`             | `{ name, description?, status?: "planned" \| "active" \| "completed", ownerId?, targetDate?, color? }`                                |
 | PATCH / DELETE       | `/initiatives/:id`         | Same fields, plus `sortOrder`; deleting keeps its projects. Projects join one with `initiativeId`                                     |
 | POST                 | `/projects/:id/milestones` | `{ name, description?, targetDate? }` → the project, with `milestones` (each with `progress`)                                         |

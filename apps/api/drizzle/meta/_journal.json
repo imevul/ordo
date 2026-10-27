@@ -169,6 +169,13 @@
       "when": 1793059873012,
       "tag": "0023_initiatives",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793060649720,
+      "tag": "0024_recurring_issues",
+      "breakpoints": true
     }
   ]
 }

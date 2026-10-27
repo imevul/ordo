@@ -21,6 +21,7 @@ import type {
   NotificationType,
   ProjectHealth,
   ProjectStatus,
+  RecurrenceUnit,
   RelationType,
   StateType,
   TeamRole,
@@ -321,6 +322,33 @@ export const initiatives = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [index('initiatives_workspace_idx').on(t.workspaceId)],
+);
+
+/** Schedules that turn a template into a new issue every so often. */
+export const recurringIssues = pgTable(
+  'recurring_issues',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    templateId: uuid('template_id')
+      .notNull()
+      .references(() => issueTemplates.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    every: integer('every').notNull(),
+    unit: text('unit').$type<RecurrenceUnit>().notNull(),
+    nextOn: date('next_on', { mode: 'string' }).notNull(),
+    paused: boolean('paused').notNull().default(false),
+    lastIssueId: uuid('last_issue_id').references((): AnyPgColumn => issues.id, {
+      onDelete: 'set null',
+    }),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('recurring_issues_next_idx').on(t.nextOn)],
 );
 
 export const projects = pgTable(

@@ -9,6 +9,7 @@ import {
   NOTIFICATION_TYPES,
   PROJECT_HEALTH,
   PROJECT_STATUSES,
+  RECURRENCE_UNITS,
   SLUG_PATTERN,
   STATE_TYPES,
   TEAM_KEY_PATTERN,
@@ -273,6 +274,19 @@ export const createTemplateSchema = z.object({
   labelIds: templateFields.labelIds.default([]),
 });
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
+
+export const createRecurringSchema = z.object({
+  templateId: id,
+  teamId: id,
+  every: z.number().int().min(1).max(52),
+  unit: z.enum(RECURRENCE_UNITS),
+  nextOn: isoDate,
+});
+export type CreateRecurringInput = z.infer<typeof createRecurringSchema>;
+export const updateRecurringSchema = createRecurringSchema
+  .pick({ every: true, unit: true, nextOn: true })
+  .extend({ paused: z.boolean() })
+  .partial();
 
 /** The team can't change: a status or labels only make sense in the team they were picked for. */
 export const updateTemplateSchema = z.object(templateFields).partial();
