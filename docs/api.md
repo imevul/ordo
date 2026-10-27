@@ -276,7 +276,7 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 `member`, `view`, `favorite`, `notification`, `import`, `export`; `action` is `created`, `updated` or `deleted`. Notification and
 favorite events are delivered only to their user. Events are hints — refetch what you display.
 
-A GraphQL API is on the [roadmap](../ROADMAP.md).
+There is also a [GraphQL API](graphql.md) per workspace, for reading issues with everything around them in one request.
 
 ## Webhooks
 

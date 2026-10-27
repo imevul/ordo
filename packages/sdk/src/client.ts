@@ -87,12 +87,15 @@ export class Ordo {
         error?: string;
         message?: string;
         details?: unknown;
+        // GraphQL answers errors in its own shape.
+        errors?: { message: string; extensions?: { code?: string } }[];
       };
+      const gql = err.errors?.[0];
       throw new OrdoError(
         res.status,
-        err.error ?? 'error',
-        err.message ?? (res.statusText || `HTTP ${res.status}`),
-        err.details,
+        err.error ?? gql?.extensions?.code ?? 'error',
+        err.message ?? gql?.message ?? (res.statusText || `HTTP ${res.status}`),
+        err.details ?? err.errors,
       );
     }
     return data as T;
@@ -160,6 +163,25 @@ export class WorkspaceClient {
 
   notifications() {
     return this.request<Notification[]>('GET', '/notifications');
+  }
+
+  /**
+   * A GraphQL query or mutation (see docs/graphql.md). Resolves to `data`; GraphQL errors throw an
+   * OrdoError with the first error's message and code, and `details` holding all of them.
+   */
+  async graphql<T = Record<string, unknown>>(
+    query: string,
+    variables?: Record<string, unknown>,
+  ): Promise<T> {
+    const res = await this.request<{
+      data?: T;
+      errors?: { message: string; extensions?: { code?: string } }[];
+    }>('POST', '/graphql', { query, variables });
+    if (res.errors?.length) {
+      const first = res.errors[0]!;
+      throw new OrdoError(200, first.extensions?.code ?? 'graphql', first.message, res.errors);
+    }
+    return res.data as T;
   }
 
   async *#allIssues(filter: IssueFilter, pageSize: number): AsyncGenerator<Issue> {

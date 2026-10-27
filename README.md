@@ -94,6 +94,7 @@ chamfered corners instead of rounded ones ([docs/design.md](docs/design.md)).
 | [docs/sso.md](docs/sso.md)                               | Single sign-on (OpenID Connect) per workspace      |
 | [docs/integrations/](docs/integrations/README.md)        | GitHub, GitLab, Forgejo/Gitea                      |
 | [docs/api.md](docs/api.md)                               | REST API, webhooks and realtime events             |
+| [docs/graphql.md](docs/graphql.md)                       | GraphQL API                                        |
 | [docs/cli.md](docs/cli.md)                               | The `ordo` command line and the TypeScript SDK     |
 | [docs/mcp.md](docs/mcp.md)                               | MCP server for AI agents                           |
 | [docs/architecture.md](docs/architecture.md)             | How it's built, data model                         |

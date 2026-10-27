@@ -98,7 +98,7 @@ for await (const i of acme.issues.all({ assigneeIds: ['me'], stateTypes: ['start
 
 - `Ordo`: `me()`, `health()`, `workspace(slug)`, and `request(method, path, body?)` for anything else.
 - `WorkspaceClient`: `bootstrap()`, `teams()`, `projects()`, `cycles()`, `labels()`, `search(q)`, `notifications()`,
-  `request(…)`, and `issues.list | all | get | create | update | trash | archive | unarchive | history | comments |
+  `graphql(query, variables)` ([GraphQL API](graphql.md)), `request(…)`, and `issues.list | all | get | create | update | trash | archive | unarchive | history | comments |
   comment | link`. Issue ids can be identifiers (`ENG-42`) everywhere.
 - Failed calls throw `OrdoError` with `status`, `code` (the API's `error`, e.g. `not_found`, `sso_required`),
   `message` and `details`.

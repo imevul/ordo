@@ -586,6 +586,8 @@ describe('route inventory', () => {
     'DELETE /exports/:id': 'workspace admins only',
     'POST /placeholders/:id/merge': 'workspace admins only (placeholders.test.ts)',
     'GET /mcp': 'always 405',
+    'POST /graphql': "resolvers call the REST services with the caller's access (graphql.test.ts)",
+    'GET /graphql': 'always 405',
     'DELETE /mcp': 'always 405',
   };
 

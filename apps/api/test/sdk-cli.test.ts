@@ -88,6 +88,19 @@ describe('sdk', () => {
     expect(err.status).toBe(404);
   });
 
+  it('runs GraphQL, with errors as OrdoError', async () => {
+    const kit = new Ordo({ url, token }).workspace('kit');
+    const data = await kit.graphql<{ issue: { title: string } }>(
+      'query($id: ID!) { issue(id: $id) { title } }',
+      { id: 'ENG-1' },
+    );
+    expect(data.issue.title).toBe('From the SDK');
+    await expect(kit.graphql('{ nope }')).rejects.toMatchObject({ status: 400 });
+    await expect(
+      kit.graphql('mutation { issueUpdate(id: "ENG-999", input: { title: "x" }) { id } }'),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
   it('resolves names', async () => {
     const me = await new Ordo({ url, token }).me();
     const names = new Names(boot, me.id);
