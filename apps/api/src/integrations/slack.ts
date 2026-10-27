@@ -1,3 +1,6 @@
+import { and, eq } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
+import { integrationApps, integrations } from '../db/schema.ts';
 import {
   type ChatIncoming,
   chatFeed,
@@ -5,6 +8,7 @@ import {
   runChatCommand,
   unfurl,
 } from '../services/chat.ts';
+import { allSecrets, queueInbound, readAppSecrets } from '../services/integrations.ts';
 import { callApi, hmacHex, safeEqual } from './http.ts';
 import { runSocket } from './socket.ts';
 import type {
@@ -20,15 +24,65 @@ import type {
  * or Socket Mode (Ordo holds a socket open to Slack; needs an app-level token, works behind NAT).
  * The `/ordo` command, mentions and direct messages run chat commands; the "Create Ordo issue"
  * message shortcut files a message; issue links unfurl.
+ *
+ * Two ways in: pasting a bot token from a Slack app made by hand (`token` mode), or "Add to Slack"
+ * with the instance's own Slack app (`app` mode, routes/slack.ts). App-mode integrations share
+ * the app's signing secret, app-level token and URL (`/api/hooks/slack/app`), told apart by the
+ * Slack team (workspace) id kept in `externalId`.
  */
 
 interface SlackConfig {
+  mode?: 'token' | 'app';
   delivery: 'events' | 'socket';
 }
 
+/** The instance's Slack app (there's at most one) and its secrets. */
+export async function slackApp(app: FastifyInstance) {
+  const [row] = await app.db
+    .select()
+    .from(integrationApps)
+    .where(eq(integrationApps.provider, 'slack'));
+  return row ? { row, secrets: readAppSecrets(app, row) } : null;
+}
+
+/** Which Slack workspace a payload (event, command, interaction) comes from. */
+function teamOf(req: InboundRequest): string | undefined {
+  try {
+    const p = parseInbound(req) as SlackInbound & { team_id?: string };
+    return p.team_id ?? p.command?.team_id ?? p.interaction?.team?.id;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The app-mode integration for a Slack workspace, if one is connected. */
+async function integrationForTeam(app: FastifyInstance, appId: string, teamId: string) {
+  const [row] = await app.db
+    .select()
+    .from(integrations)
+    .where(
+      and(
+        eq(integrations.provider, 'slack'),
+        eq(integrations.appId, appId),
+        eq(integrations.externalId, teamId),
+      ),
+    );
+  return row ?? null;
+}
+
+const signedBySlack = (req: InboundRequest, signingSecret: string | undefined) => {
+  const ts = Number(req.headers['x-slack-request-timestamp']);
+  // Old timestamps are replays.
+  if (!signingSecret || !ts || Math.abs(Date.now() / 1000 - ts) > 300) return false;
+  return safeEqual(
+    req.headers['x-slack-signature'],
+    `v0=${hmacHex(signingSecret, `v0:${ts}:${req.body}`)}`,
+  );
+};
+
 const cfg = (row: IntegrationRow) => row.config as unknown as SlackConfig;
 // Overridable for tests (a mock Slack) and nothing else.
-const apiUrl = () => process.env.ORDO_SLACK_API_URL ?? 'https://slack.com/api';
+export const slackApiUrl = () => process.env.ORDO_SLACK_API_URL ?? 'https://slack.com/api';
 
 /** Slack answers 200 with `ok: false` for most errors. */
 async function slack<T = Record<string, unknown>>(
@@ -39,7 +93,7 @@ async function slack<T = Record<string, unknown>>(
 ) {
   const { data } = await callApi<{ ok: boolean; error?: string } & T>(
     ictx.app,
-    `${apiUrl()}/${method}`,
+    `${slackApiUrl()}/${method}`,
     { method: 'POST', headers: { authorization: `Bearer ${token}` }, body },
   );
   if (!data.ok) throw new Error(`Slack ${method}: ${data.error ?? 'failed'}`);
@@ -84,6 +138,7 @@ interface SlackInteraction {
   trigger_id?: string;
   response_url: string;
   user: { id: string; username?: string; name?: string };
+  team?: { id: string };
   channel: { id: string };
   message: { ts: string; text?: string; user?: string };
 }
@@ -196,6 +251,21 @@ export const slackProvider: IntegrationProvider = {
 
   configure({ config, secrets }) {
     const delivery = config.delivery === 'socket' ? 'socket' : 'events';
+    if (config.mode === 'app') {
+      // Installed with "Add to Slack": the token came from Slack, the delivery from the app.
+      if (!String(secrets.botToken ?? '').startsWith('xoxb-'))
+        throw new Error('The bot token starts with xoxb-');
+      return {
+        config: {
+          mode: 'app',
+          delivery,
+          channels: parseChannels(config.channels),
+          // The Slack workspace's name, for people.
+          ...(config.team ? { team: String(config.team) } : {}),
+        },
+        secrets: { botToken: String(secrets.botToken) },
+      };
+    }
     if (!secrets.botToken || !String(secrets.botToken).startsWith('xoxb-'))
       throw new Error('The bot token starts with xoxb-');
     if (delivery === 'events' && !secrets.signingSecret)
@@ -217,15 +287,32 @@ export const slackProvider: IntegrationProvider = {
     await ictx.saveState({ team: auth.team, teamId: auth.team_id, botUserId: auth.user_id });
   },
 
-  verify(req, _row, secrets) {
-    const ts = Number(req.headers['x-slack-request-timestamp']);
-    // Old timestamps are replays.
-    if (!secrets.signingSecret || !ts || Math.abs(Date.now() / 1000 - ts) > 300) return false;
-    return safeEqual(
-      req.headers['x-slack-signature'],
-      `v0=${hmacHex(secrets.signingSecret, `v0:${ts}:${req.body}`)}`,
-    );
+  async uninstall(ictx) {
+    // Gives the bot token back, so the app leaves the Slack workspace's list of installed apps.
+    if (cfg(ictx.integration).mode === 'app') await slack(ictx, 'auth.revoke').catch(() => {});
   },
+
+  async challenge(app, key, req) {
+    if (key !== 'app' || parseInbound(req).type !== 'url_verification') return null;
+    const found = await slackApp(app);
+    if (!found || !signedBySlack(req, found.secrets.signingSecret)) return { status: 401 };
+    return { body: { challenge: parseInbound(req).challenge } };
+  },
+
+  async resolveInbound(app, key, req) {
+    if (key !== 'app') {
+      return app.db
+        .select()
+        .from(integrations)
+        .where(and(eq(integrations.provider, 'slack'), eq(integrations.inboundToken, key)));
+    }
+    const found = await slackApp(app);
+    const team = teamOf(req);
+    const row = found && team ? await integrationForTeam(app, found.row.id, team) : null;
+    return row ? [row] : [];
+  },
+
+  verify: (req, _row, secrets) => signedBySlack(req, secrets.signingSecret),
 
   ackInbound(req) {
     const parsed = parseInbound(req);
@@ -251,29 +338,42 @@ export const slackProvider: IntegrationProvider = {
 
   wantsConnection: (row) => cfg(row).delivery === 'socket',
 
-  /** Socket Mode: Slack pushes the same payloads over a socket; each is acked, then queued. */
+  /**
+   * Socket Mode: Slack pushes the same payloads over a socket; each is acked, then queued. An app
+   * shares its sockets between the workspaces it's installed in and hands each event to any of
+   * them, so in app mode deliveries go to the integration of the event's team.
+   */
   async connect(ictx, io) {
+    const appMode = cfg(ictx.integration).mode === 'app';
+    const secrets = appMode ? await allSecrets(ictx.app, ictx.integration) : ictx.secrets;
     const { url } = await slack<{ url: string }>(
       ictx,
       'apps.connections.open',
       {},
-      ictx.secrets.appToken,
+      secrets.appToken,
     );
+    const deliver = async (req: InboundRequest) => {
+      const team = appMode ? teamOf(req) : undefined;
+      if (!team || team === ictx.integration.externalId) return io.deliver(req);
+      const target = await integrationForTeam(ictx.app, ictx.integration.appId!, team);
+      if (target && target.status !== 'disabled')
+        await queueInbound(ictx.app, slackProvider, target, req);
+    };
     await runSocket(url, io.signal, async (raw, send, close) => {
       const env = raw as { envelope_id?: string; type: string; payload?: unknown };
       if (env.envelope_id) send({ envelope_id: env.envelope_id });
       if (env.type === 'hello') await io.connected();
       else if (env.type === 'disconnect') close();
       else if (env.type === 'events_api')
-        await io.deliver({ headers: {}, query: {}, body: JSON.stringify(env.payload) });
+        await deliver({ headers: {}, query: {}, body: JSON.stringify(env.payload) });
       else if (env.type === 'slash_commands')
-        await io.deliver({
+        await deliver({
           headers: {},
           query: {},
           body: new URLSearchParams(env.payload as Record<string, string>).toString(),
         });
       else if (env.type === 'interactive')
-        await io.deliver({
+        await deliver({
           headers: {},
           query: {},
           body: new URLSearchParams({ payload: JSON.stringify(env.payload) }).toString(),

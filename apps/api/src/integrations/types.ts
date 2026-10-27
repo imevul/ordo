@@ -106,6 +106,11 @@ export interface IntegrationProvider extends IntegrationProviderInfo {
     key: string,
     req: InboundRequest,
   ): Promise<IntegrationRow[]>;
+  /**
+   * Answers a URL handshake before any integration is looked up: a shared app URL is checked by
+   * the service as soon as the app is registered, when no integration uses it yet.
+   */
+  challenge?(app: FastifyInstance, key: string, req: InboundRequest): Promise<InboundAck | null>;
   /** Checks the request's signature against the raw body. False → 401. */
   verify?(req: InboundRequest, integration: IntegrationRow, secrets: Secrets): boolean;
   /** Idempotency key for a delivery (e.g. `X-GitHub-Delivery`); defaults to a hash of the body. */

@@ -50,6 +50,7 @@ import { projectRoutes } from './routes/projects.ts';
 import { pushRoutes } from './routes/push.ts';
 import { realtimeRoutes } from './routes/realtime.ts';
 import { searchRoutes } from './routes/search.ts';
+import { slackCallbackRoutes, slackWorkspaceRoutes } from './routes/slack.ts';
 import { ssoRoutes } from './routes/sso.ts';
 import { teamRoutes } from './routes/teams.ts';
 import { templateRoutes } from './routes/templates.ts';
@@ -205,6 +206,7 @@ export async function buildApp(
   await app.register(ssoRoutes, { prefix: '/api' });
   await app.register(hookRoutes, { prefix: '/api/hooks' });
   await app.register(githubCallbackRoutes, { prefix: '/api' });
+  await app.register(slackCallbackRoutes, { prefix: '/api' });
   await app.register(adminRoutes, { prefix: '/api/admin' });
   await app.register(realtimeRoutes, { prefix: '/api' });
 
@@ -241,6 +243,7 @@ export async function buildApp(
       await w.register(exportRoutes);
       await w.register(placeholderRoutes);
       await w.register(githubWorkspaceRoutes);
+      await w.register(slackWorkspaceRoutes);
       await w.register(externalAccountRoutes);
       await w.register(mcpRoutes);
       await w.register(graphqlRoutes);

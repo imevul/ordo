@@ -36,6 +36,9 @@ export async function hookRoutes(app: FastifyInstance) {
       body: Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '',
     };
 
+    const handshake = await provider.challenge?.(app, hookKey, inbound);
+    if (handshake) return reply.code(handshake.status ?? 200).send(handshake.body ?? '');
+
     const rows = provider.resolveInbound
       ? await provider.resolveInbound(app, hookKey, inbound)
       : await app.db

@@ -53,12 +53,12 @@ the same as something that doesn't exist; actions the caller can see but isn't a
 | 403    | `sso_required` | The workspace requires SSO; `details.options` lists its providers     |
 | 404    | `not_found`    | Doesn't exist, or you're not a member of the workspace                |
 | 409    | `conflict`     | Unique constraint (email, workspace URL, team key, username)          |
+| 429    |                | Rate limited (auth endpoints)                                         |
 
 `message` is always English. Common errors also carry a `messageKey` (one of `API_MESSAGE_KEYS` in
 `@ordo/shared`, e.g. `wrong_credentials`, `not_found`, `admins_only`) and, when the sentence has values in it,
 `params`; the web app uses them to show the error in the reader's language. Match on `error` in your code, not on
 `message`.
-| 429    |                | Rate limited (auth endpoints)                                         |
 
 ## Instance & account
 
@@ -360,21 +360,24 @@ Ordo if an admin chose to send them.
 
 ## Integrations
 
-| Method     | Path                                    |                                                                                                        |
-| ---------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| GET        | `/integrations`                         | _Admin._ `{ providers, integrations }` — what can be connected and what is                             |
-| POST       | `/integrations`                         | _Admin._ Connect with a token `{ provider, name?, config, secrets }` ([setup](integrations/README.md)) |
-| PATCH      | `/integrations/:id`                     | _Admin._ `{ name?, config?, secrets?, enabled? }` — secrets merge; empty values keep the stored ones   |
-| DELETE     | `/integrations/:id`                     | _Admin._ Disconnect (removes the webhooks Ordo created); links on issues stay                          |
-| GET        | `/integrations/github/app`              | _Admin._ The instance's GitHub App, if any                                                             |
-| POST       | `/integrations/github/manifest`         | _Instance admin._ `{ org? }` → `{ action, manifest }` to POST to GitHub                                |
-| POST       | `/integrations/github/install`          | _Admin._ `{ url }` to install the GitHub App for this workspace                                        |
-| GET / POST | `/me/external-accounts`                 | Your claimed forge usernames `{ provider, host, username }`                                            |
-| DELETE     | `/me/external-accounts/:id`             |                                                                                                        |
-| GET        | `/me/chat-accounts`                     | `{ services }` — chat integrations, how to link, and your linked accounts                              |
-| POST       | `/me/chat-accounts/:integrationId/code` | `{ code, hint, expiresInMinutes }` — a one-time code to send from your chat account                    |
-| PATCH      | `/me/chat-accounts/:id`                 | `{ notify }` — direct-message notifications on or off                                                  |
-| DELETE     | `/me/chat-accounts/:id`                 | Unlink                                                                                                 |
+| Method     | Path                                    |                                                                                                            |
+| ---------- | --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| GET        | `/integrations`                         | _Admin._ `{ providers, integrations }` — what can be connected and what is                                 |
+| POST       | `/integrations`                         | _Admin._ Connect with a token `{ provider, name?, config, secrets }` ([setup](integrations/README.md))     |
+| PATCH      | `/integrations/:id`                     | _Admin._ `{ name?, config?, secrets?, enabled? }` — secrets merge; empty values keep the stored ones       |
+| DELETE     | `/integrations/:id`                     | _Admin._ Disconnect (removes the webhooks Ordo created); links on issues stay                              |
+| GET        | `/integrations/github/app`              | _Admin._ The instance's GitHub App, if any                                                                 |
+| POST       | `/integrations/github/manifest`         | _Instance admin._ `{ org? }` → `{ action, manifest }` to POST to GitHub                                    |
+| POST       | `/integrations/github/install`          | _Admin._ `{ url }` to install the GitHub App for this workspace                                            |
+| GET        | `/integrations/slack/app`               | _Admin._ The instance's Slack app, if any, and (for instance admins) manifest links to create it           |
+| PUT        | `/integrations/slack/app`               | _Instance admin._ `{ delivery, clientId, clientSecret?, signingSecret?, appToken? }` saves its credentials |
+| POST       | `/integrations/slack/install`           | _Admin._ `{ url }` to Slack's consent screen ("Add to Slack") for this workspace                           |
+| GET / POST | `/me/external-accounts`                 | Your claimed forge usernames `{ provider, host, username }`                                                |
+| DELETE     | `/me/external-accounts/:id`             |                                                                                                            |
+| GET        | `/me/chat-accounts`                     | `{ services }` — chat integrations, how to link, and your linked accounts                                  |
+| POST       | `/me/chat-accounts/:integrationId/code` | `{ code, hint, expiresInMinutes }` — a one-time code to send from your chat account                        |
+| PATCH      | `/me/chat-accounts/:id`                 | `{ notify }` — direct-message notifications on or off                                                      |
+| DELETE     | `/me/chat-accounts/:id`                 | Unlink                                                                                                     |
 
 Chat integrations take `config.channels`: `[{ id, name?, teamIds, events, defaultTeamId? }]`, where `events` lists
 `issue.created`, `issue.status`, `issue.completed`, `comment.created` and `project_update.created`, and empty
