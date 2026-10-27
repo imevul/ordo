@@ -35,6 +35,7 @@ export function useRealtime(slug: string): RealtimeStatus {
         inv(['ws', slug, 'search']);
       }
       if (kinds.has('notification')) inv(keys.notifications(slug));
+      if (kinds.has('customer') || kinds.has('issue')) inv(['ws', slug, 'customerRequests']);
       if (kinds.has('projectUpdate')) inv(['ws', slug, 'projectUpdates']);
       if (kinds.has('import')) inv(['ws', slug, 'imports']);
       if (kinds.has('export')) inv(['ws', slug, 'exports']);

@@ -222,6 +222,14 @@ _Milestones_ on the project page, then put issues in one with the issue's _Miles
 the issue's project has milestones). Choosing a milestone also sets the project, and moving an issue to another
 project takes it out of its milestone. Group any issue view by milestone under _Display_.
 
+## Customers and requests
+
+**Customers** (sidebar → _Customers_) are the organisations you build for. Each has email domains (so mail from
+`@acme.com` is filed under Acme), an owner and notes. A **customer request** ties a customer to an issue with what
+they asked for in their words and who asked: add one under _Customer requests_ on an issue (typing a new name creates
+the customer). A customer's page lists their requests and the issues behind them, and the customer list shows how
+many requests and still-open issues each has, so you can see who's waiting on what. Guests don't see customers.
+
 ## Labels and estimates
 
 Labels are workspace-wide or limited to one team (**Settings → Labels**, or create one on the fly from the label

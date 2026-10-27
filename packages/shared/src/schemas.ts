@@ -469,6 +469,27 @@ export const createProjectSchema = z.object({
   initiativeId: id.nullish(),
 });
 
+const domain = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .regex(/^(?=.{1,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/, 'Expected a domain like acme.com');
+
+export const createCustomerSchema = z.object({
+  name: name,
+  domains: z.array(domain).max(20).default([]),
+  ownerId: id.nullish(),
+  notes: z.string().max(5000).nullish(),
+});
+export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
+export const updateCustomerSchema = createCustomerSchema.partial();
+
+export const createCustomerRequestSchema = z.object({
+  customerId: id,
+  body: z.string().trim().max(10_000).default(''),
+  contact: z.string().trim().max(300).nullish(),
+});
+
 export const createInitiativeSchema = z.object({
   name: name,
   description: markdown.nullish(),

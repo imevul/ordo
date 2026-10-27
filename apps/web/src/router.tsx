@@ -19,6 +19,7 @@ import {
   ResetPasswordPage,
   SignupPage,
 } from './routes/auth.tsx';
+import { CustomerPage, CustomersPage } from './routes/customers.tsx';
 import { CycleDetailPage, CyclesPage } from './routes/cycles.tsx';
 import { InboxPage } from './routes/inbox.tsx';
 import { InitiativePage, InitiativesPage } from './routes/initiatives.tsx';
@@ -184,6 +185,16 @@ const initiativeRoute = createRoute({
   path: '/initiative/$initiativeId',
   component: InitiativePage,
 });
+const customersRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/customers',
+  component: CustomersPage,
+});
+const customerRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/customer/$customerId',
+  component: CustomerPage,
+});
 const roadmapRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/roadmap',
@@ -249,6 +260,8 @@ const routeTree = rootRoute.addChildren([
     initiativesRoute,
     initiativeRoute,
     roadmapRoute,
+    customersRoute,
+    customerRoute,
     viewsRoute,
     viewRoute,
     issueRoute,

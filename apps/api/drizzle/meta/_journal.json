@@ -190,6 +190,13 @@
       "when": 1793061226256,
       "tag": "0026_triage_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1793061557849,
+      "tag": "0027_customers",
+      "breakpoints": true
     }
   ]
 }

@@ -326,6 +326,49 @@ export const issueTemplates = pgTable(
   (t) => [index('issue_templates_workspace_idx').on(t.workspaceId)],
 );
 
+export const customers = pgTable(
+  'customers',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    domains: text('domains').array().notNull().default(sql`'{}'`),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    notes: text('notes'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('customers_workspace_idx').on(t.workspaceId)],
+);
+
+/** A customer asking for an issue: what they said, who said it, where it came from. */
+export const customerRequests = pgTable(
+  'customer_requests',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    customerId: uuid('customer_id')
+      .notNull()
+      .references(() => customers.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references((): AnyPgColumn => issues.id, { onDelete: 'cascade' }),
+    body: text('body').notNull().default(''),
+    contact: text('contact'),
+    source: text('source').$type<'manual' | 'email' | 'api'>().notNull().default('manual'),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('customer_requests_issue_idx').on(t.issueId),
+    index('customer_requests_customer_idx').on(t.customerId),
+  ],
+);
+
 /** Workspace-level goals; each project belongs to at most one. */
 export const initiatives = pgTable(
   'initiatives',

@@ -223,27 +223,32 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 
 ### Projects, cycles, labels, views
 
-| Method               | Path                       |                                                                                                                                       |
-| -------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| GET / POST           | `/projects`                | `{ name, teamIds, description?, color?, status?, leadId?, startDate?, targetDate? }`                                                  |
-| GET / PATCH / DELETE | `/projects/:id`            | Deleting keeps the issues                                                                                                             |
-| GET / POST           | `/projects/:id/updates`    | `{ body, health: "on_track" \| "at_risk" \| "off_track" }`                                                                            |
-| GET / POST           | `/recurring`               | Template schedules: `{ templateId, teamId, every: 1–52, unit: "day" \| "week" \| "month", nextOn }`                                   |
-| PATCH / DELETE       | `/recurring/:id`           | `{ every?, unit?, nextOn?, paused? }`                                                                                                 |
-| GET / POST           | `/initiatives`             | `{ name, description?, status?: "planned" \| "active" \| "completed", ownerId?, targetDate?, color? }`                                |
-| PATCH / DELETE       | `/initiatives/:id`         | Same fields, plus `sortOrder`; deleting keeps its projects. Projects join one with `initiativeId`                                     |
-| POST                 | `/projects/:id/milestones` | `{ name, description?, targetDate? }` → the project, with `milestones` (each with `progress`)                                         |
-| PATCH / DELETE       | `/milestones/:id`          | `{ name?, description?, targetDate?, sortOrder? }` → the project; deleting keeps its issues in the project                            |
-| DELETE               | `/project-updates/:id`     |                                                                                                                                       |
-| GET                  | `/cycles`                  | All cycles with progress                                                                                                              |
-| POST                 | `/teams/:id/cycles`        | `{ startsAt, endsAt, name?, description? }` — numbered per team                                                                       |
-| PATCH / DELETE       | `/cycles/:id`              | Deleting unassigns its issues                                                                                                         |
-| POST                 | `/labels`                  | `{ name, color, teamId? }`                                                                                                            |
-| PATCH / DELETE       | `/labels/:id`              |                                                                                                                                       |
-| GET / POST           | `/templates`               | Issue templates; create `{ name, teamId?, title?, description?, stateId?, priority?, assigneeId?, projectId?, estimate?, labelIds? }` |
-| PATCH / DELETE       | `/templates/:id`           | Same fields except `teamId` (`null` clears a default)                                                                                 |
-| POST                 | `/views`                   | `{ name, filters, display?, shared?, teamId? }`                                                                                       |
-| PATCH / DELETE       | `/views/:id`               | Owner or admin                                                                                                                        |
+| Method               | Path                            |                                                                                                                                       |
+| -------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| GET / POST           | `/projects`                     | `{ name, teamIds, description?, color?, status?, leadId?, startDate?, targetDate? }`                                                  |
+| GET / PATCH / DELETE | `/projects/:id`                 | Deleting keeps the issues                                                                                                             |
+| GET / POST           | `/projects/:id/updates`         | `{ body, health: "on_track" \| "at_risk" \| "off_track" }`                                                                            |
+| GET / POST           | `/customers`                    | `{ name, domains?, ownerId?, notes? }` (not for guests); list includes `requestCount`, `openIssueCount`                               |
+| PATCH / DELETE       | `/customers/:id`                | Same fields; deleting removes its requests                                                                                            |
+| GET                  | `/customers/:id/requests`       | Requests on issues you can see, each with its `issue`                                                                                 |
+| POST                 | `/issues/:id/customer-requests` | `{ customerId, body?, contact? }`; issue details list them as `customerRequests`                                                      |
+| DELETE               | `/customer-requests/:id`        |                                                                                                                                       |
+| GET / POST           | `/recurring`                    | Template schedules: `{ templateId, teamId, every: 1–52, unit: "day" \| "week" \| "month", nextOn }`                                   |
+| PATCH / DELETE       | `/recurring/:id`                | `{ every?, unit?, nextOn?, paused? }`                                                                                                 |
+| GET / POST           | `/initiatives`                  | `{ name, description?, status?: "planned" \| "active" \| "completed", ownerId?, targetDate?, color? }`                                |
+| PATCH / DELETE       | `/initiatives/:id`              | Same fields, plus `sortOrder`; deleting keeps its projects. Projects join one with `initiativeId`                                     |
+| POST                 | `/projects/:id/milestones`      | `{ name, description?, targetDate? }` → the project, with `milestones` (each with `progress`)                                         |
+| PATCH / DELETE       | `/milestones/:id`               | `{ name?, description?, targetDate?, sortOrder? }` → the project; deleting keeps its issues in the project                            |
+| DELETE               | `/project-updates/:id`          |                                                                                                                                       |
+| GET                  | `/cycles`                       | All cycles with progress                                                                                                              |
+| POST                 | `/teams/:id/cycles`             | `{ startsAt, endsAt, name?, description? }` — numbered per team                                                                       |
+| PATCH / DELETE       | `/cycles/:id`                   | Deleting unassigns its issues                                                                                                         |
+| POST                 | `/labels`                       | `{ name, color, teamId? }`                                                                                                            |
+| PATCH / DELETE       | `/labels/:id`                   |                                                                                                                                       |
+| GET / POST           | `/templates`                    | Issue templates; create `{ name, teamId?, title?, description?, stateId?, priority?, assigneeId?, projectId?, estimate?, labelIds? }` |
+| PATCH / DELETE       | `/templates/:id`                | Same fields except `teamId` (`null` clears a default)                                                                                 |
+| POST                 | `/views`                        | `{ name, filters, display?, shared?, teamId? }`                                                                                       |
+| PATCH / DELETE       | `/views/:id`                    | Owner or admin                                                                                                                        |
 
 ### Notifications & search
 

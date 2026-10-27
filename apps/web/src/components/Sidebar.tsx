@@ -2,6 +2,7 @@ import type { Favorite } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
+  Building2,
   ChartGantt,
   ChevronRight,
   CircleDot,
@@ -240,6 +241,12 @@ export function Sidebar({
             <ChartGantt size={15} />
             Roadmap
           </Link>
+          {!ws.isGuest && (
+            <Link to="/$slug/customers" params={p} className="nav-item">
+              <Building2 size={15} />
+              Customers
+            </Link>
+          )}
           <Link to="/$slug/views" params={p} className="nav-item">
             <Layers size={15} />
             Views

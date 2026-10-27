@@ -26,6 +26,7 @@ import { adminRoutes } from './routes/admin.ts';
 import { attachmentDownloadRoutes, attachmentRoutes } from './routes/attachments.ts';
 import { authRoutes } from './routes/auth.ts';
 import { authProviderRoutes } from './routes/authProviders.ts';
+import { customerRoutes } from './routes/customers.ts';
 import { cycleRoutes } from './routes/cycles.ts';
 import { exportRoutes } from './routes/exports.ts';
 import { fileRoutes } from './routes/files.ts';
@@ -210,6 +211,7 @@ export async function buildApp(
       await w.register(labelRoutes);
       await w.register(templateRoutes);
       await w.register(initiativeRoutes);
+      await w.register(customerRoutes);
       await w.register(viewRoutes);
       await w.register(notificationRoutes);
       await w.register(searchRoutes);

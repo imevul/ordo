@@ -11,6 +11,7 @@ export type EntityKind =
   | 'label'
   | 'template'
   | 'initiative'
+  | 'customer'
   | 'team'
   | 'state'
   | 'workspace'
