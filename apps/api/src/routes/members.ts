@@ -8,17 +8,17 @@ import {
 } from '@ordo/shared';
 import { and, asc, eq, gt, isNotNull, isNull, ne } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { invites, workspaceDomains, workspaceMembers, workspaces } from '../db/schema.ts';
+import { invites, workspaceDomains, workspaces } from '../db/schema.ts';
 import { localeForEmail } from '../i18n/index.ts';
 import { requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { randomToken } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { auditCtx } from '../services/audit.ts';
-import { emit } from '../services/context.ts';
 import { inviteEmail } from '../services/mail-templates.ts';
 import { queueEmail } from '../services/mailer.ts';
-import { assertNotLastOwner, memberRole, workspaceSettings } from '../services/workspaces.ts';
+import { removeMember, setMemberRole, setSuspended } from '../services/members.ts';
+import { memberRole, workspaceSettings } from '../services/workspaces.ts';
 
 export async function memberRoutes(app: FastifyInstance) {
   const { db } = app;
@@ -38,34 +38,8 @@ export async function memberRoutes(app: FastifyInstance) {
       if (touchesOwner && !ws.access.isOwner)
         throw forbidden('Only owners can grant or change ownership').as('owners_grant');
       if (userId === ctx.userId && input.suspended) throw badRequest("You can't suspend yourself");
-      if (current === 'owner' && ((input.role && input.role !== 'owner') || input.suspended)) {
-        await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
-      }
-      const where = and(
-        eq(workspaceMembers.workspaceId, ctx.workspaceId),
-        eq(workspaceMembers.userId, userId),
-      );
-      if (input.role) {
-        await ctx.tx.update(workspaceMembers).set({ role: input.role }).where(where);
-        await auditCtx(ctx, {
-          action: 'member.role_changed',
-          targetType: 'user',
-          targetId: userId,
-          data: { role: input.role },
-        });
-      }
-      if (input.suspended !== undefined) {
-        await ctx.tx
-          .update(workspaceMembers)
-          .set({ suspendedAt: input.suspended ? new Date().toISOString() : null })
-          .where(where);
-        await auditCtx(ctx, {
-          action: input.suspended ? 'member.suspended' : 'member.unsuspended',
-          targetType: 'user',
-          targetId: userId,
-        });
-      }
-      emit(ctx, { kind: 'member', action: 'updated', id: userId });
+      if (input.role) await setMemberRole(ctx, userId, input.role);
+      if (input.suspended !== undefined) await setSuspended(ctx, userId, input.suspended);
       return { ok: true };
     });
   });
@@ -82,23 +56,8 @@ export async function memberRoutes(app: FastifyInstance) {
       if (current === 'owner') {
         if (userId !== user.id && !ws.access.isOwner)
           throw forbidden('Only owners can remove an owner').as('owners_remove_owner');
-        await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
       }
-      await ctx.tx
-        .delete(workspaceMembers)
-        .where(
-          and(
-            eq(workspaceMembers.workspaceId, ctx.workspaceId),
-            eq(workspaceMembers.userId, userId),
-          ),
-        );
-      emit(ctx, { kind: 'member', action: 'deleted', id: userId });
-      await auditCtx(ctx, {
-        action: 'member.removed',
-        targetType: 'user',
-        targetId: userId,
-        data: { self: userId === user.id },
-      });
+      await removeMember(ctx, userId);
       return { ok: true };
     });
   });

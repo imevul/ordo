@@ -20,7 +20,6 @@ import {
   teams,
   triageRules,
   workflowStates,
-  workspaceMembers,
 } from '../db/schema.ts';
 import { requireAccess, requireAdmin, requireWorkspace } from '../lib/auth.ts';
 import {
@@ -35,7 +34,7 @@ import { mutate } from '../lib/mutate.ts';
 import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
 import { type Ctx, emit } from '../services/context.ts';
-import { createTeam, listTeams } from '../services/teams.ts';
+import { addTeamMember, createTeam, listTeams, removeTeamMember } from '../services/teams.ts';
 import { assertTriageRule, toTriageRule } from '../services/triage.ts';
 
 /** Loads a team of the workspace and checks the caller's access to it. */
@@ -259,32 +258,7 @@ export async function teamRoutes(app: FastifyInstance) {
       if (!selfJoin && !canAdminTeam(ctx.access, teamId)) {
         throw forbidden('Only team admins can add people to this team').as('team_admins_add');
       }
-      const [member] = await ctx.tx
-        .select({ userId: workspaceMembers.userId })
-        .from(workspaceMembers)
-        .where(
-          and(
-            eq(workspaceMembers.workspaceId, ctx.workspaceId),
-            eq(workspaceMembers.userId, userId),
-          ),
-        );
-      if (!member)
-        throw badRequest('That person is not a member of this workspace').as('not_member');
-      await ctx.tx
-        .insert(teamMembers)
-        .values({ teamId, userId, role: input.role })
-        .onConflictDoUpdate({
-          target: [teamMembers.teamId, teamMembers.userId],
-          set: { role: input.role },
-        });
-      emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
-      emit(ctx, { kind: 'member', action: 'updated', id: userId });
-      await auditCtx(ctx, {
-        action: 'team.member_added',
-        targetType: 'team',
-        targetId: teamId,
-        data: { userId, role: input.role },
-      });
+      await addTeamMember(ctx, teamId, userId, input.role);
       return { ok: true };
     });
   });
@@ -317,20 +291,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const { teamId, userId } = req.params as { teamId: string; userId: string };
     return mutate(app, req, async (ctx) => {
       await loadTeam(ctx, teamId, userId === ctx.userId ? 'read' : 'admin');
-      const removed = await ctx.tx
-        .delete(teamMembers)
-        .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
-        .returning({ userId: teamMembers.userId });
-      if (removed.length) {
-        emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
-        emit(ctx, { kind: 'member', action: 'updated', id: userId });
-        await auditCtx(ctx, {
-          action: 'team.member_removed',
-          targetType: 'team',
-          targetId: teamId,
-          data: { userId },
-        });
-      }
+      await removeTeamMember(ctx, teamId, userId);
       return { ok: true };
     });
   });

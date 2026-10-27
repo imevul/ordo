@@ -116,6 +116,19 @@ describe('members', () => {
     );
   });
 
+  it('takes removed members off the workspace teams', async () => {
+    const teamId = boot.teams[0]!.id;
+    const { client } = await join('member', [teamId]);
+    const id = (await me(client)).id;
+    const onTeam = async () =>
+      ((await owner.get(`${ws}/teams`)).data as { id: string; memberIds: string[] }[])
+        .find((t) => t.id === teamId)!
+        .memberIds.includes(id);
+    expect(await onTeam()).toBe(true);
+    expect((await owner.del(`${ws}/members/${id}`)).statusCode).toBe(200);
+    expect(await onTeam()).toBe(false);
+  });
+
   it('transfers ownership, then lets the new owner delete the workspace', async () => {
     const o2 = (await signup(app, 'Second Owner')).client;
     await o2.post('/api/workspaces', {
