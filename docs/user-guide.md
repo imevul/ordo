@@ -269,6 +269,17 @@ language), or an identifier like `ENG-12`. `Mod K` opens the command menu: type 
 with issues focused or selected — change their properties. Search results appear in the command menu after two
 characters.
 
+## The app on your desktop and phone
+
+Ordo installs like an app: in Chrome or Edge use _Install Ordo_ in the address bar or menu; on iPhone and iPad,
+_Share → Add to Home Screen_ in Safari; on Android, _Add to home screen_. It opens in its own window and keeps
+working through a flaky connection (what's changed shows up once you're back online).
+
+**Push notifications** reach that device even when Ordo isn't open: turn them on under **Settings → Notifications
+→ Push notifications**, once per browser or device (on iPhone, from the installed app). Everything that lands in
+your Inbox is pushed, except reactions; tapping a notification opens the issue. Push needs Ordo on HTTPS (or
+`localhost`).
+
 ## Your account
 
 Open **Settings** (workspace menu, or `G` then `S`):

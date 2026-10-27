@@ -778,6 +778,31 @@ export const instanceSettings = pgTable('instance_settings', {
   updatedAt: updatedAt(),
 });
 
+/** Keys the instance makes for itself (the VAPID key pair for web push), encrypted. */
+export const instanceKeys = pgTable('instance_keys', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  createdAt: createdAt(),
+});
+
+/** A browser (or installed app) that wants this person's notifications pushed to it. */
+export const pushSubscriptions = pgTable(
+  'push_subscriptions',
+  {
+    id: pk(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull().unique(),
+    p256dh: text('p256dh').notNull(),
+    auth: text('auth').notNull(),
+    userAgent: text('user_agent'),
+    createdAt: createdAt(),
+    lastUsedAt: ts('last_used_at'),
+  },
+  (t) => [index('push_subscriptions_user_idx').on(t.userId)],
+);
+
 /** One-time tokens sent by email (password reset, email verification/change) or used between login steps (MFA). */
 export const authTokens = pgTable(
   'auth_tokens',

@@ -5,6 +5,7 @@ import { issueSubscribers, issues, notifications } from '../db/schema.ts';
 import { usersWithTeamAccess } from './access.ts';
 import { queueChatNotifications } from './chat.ts';
 import { type Ctx, emit } from './context.ts';
+import { queuePush } from './push.ts';
 
 export async function subscribe(ctx: Ctx, issueId: string, userIds: (string | null | undefined)[]) {
   const ids = [...new Set(userIds.filter((x): x is string => !!x))];
@@ -61,9 +62,10 @@ export async function notify(
       })),
     )
     .returning({ id: notifications.id, userId: notifications.userId });
-  // Reactions are too small for a direct message; they wait in the inbox.
+  // Reactions are too small for a direct message or a push; they wait in the inbox.
   if (input.type !== 'comment_reaction') {
     await queueChatNotifications(ctx.tx, ctx.workspaceId, rows);
+    await queuePush(ctx.tx, rows);
   }
   for (const r of rows)
     emit(ctx, {
