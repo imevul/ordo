@@ -28,8 +28,10 @@ import {
   type SQL,
   sql,
 } from 'drizzle-orm';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client.ts';
 import {
+  type comments,
   cycles,
   issueHistory,
   issueLabels,
@@ -43,7 +45,7 @@ import {
   teams,
   workflowStates,
 } from '../db/schema.ts';
-import { badRequest, notFound } from '../lib/errors.ts';
+import { badRequest, conflict, notFound } from '../lib/errors.ts';
 import {
   type Access,
   assertTeamAccess,
@@ -619,6 +621,22 @@ function importedTimestamps(type: StateType, i: ImportedIssueFields) {
 // ─── mutations ─────────────────────────────────────────────────────────
 
 /**
+ * A create sent again with the id the client chose: true when the caller already made that row
+ * (so the retry returns it), 409 when the id belongs to something else.
+ */
+export async function retriedCreate(
+  ctx: Ctx,
+  table: typeof issues | typeof comments | typeof issueRelations,
+  id: string,
+  ownerColumn: AnyPgColumn,
+) {
+  const [row] = await ctx.tx.select({ owner: ownerColumn }).from(table).where(eq(table.id, id));
+  if (!row) return false;
+  if (row.owner !== ctx.userId) throw conflict('That id is already in use').as('id_taken');
+  return true;
+}
+
+/**
  * Creates an issue. Imports pass `imported` to keep the source's creator, timestamps and number;
  * the acting user (the importer) is then neither the creator nor subscribed.
  */
@@ -627,6 +645,10 @@ export async function createIssue(
   input: CreateIssueInput,
   imported?: ImportedIssueFields,
 ): Promise<Issue> {
+  if (input.id) {
+    const retried = await retriedCreate(ctx, issues, input.id, issues.creatorId);
+    if (retried) return getIssue(ctx.tx, ctx.access, input.id);
+  }
   const team = await teamOf(ctx, input.teamId);
   const state = input.stateId
     ? await stateOf(ctx, team.id, input.stateId)
@@ -676,6 +698,7 @@ export async function createIssue(
   const [row] = await ctx.tx
     .insert(issues)
     .values({
+      ...(input.id && { id: input.id }),
       workspaceId: ctx.workspaceId,
       teamId: team.id,
       number,

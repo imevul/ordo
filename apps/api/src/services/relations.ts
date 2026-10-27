@@ -4,7 +4,7 @@ import { issueRelations, issues, workflowStates } from '../db/schema.ts';
 import { badRequest, notFound } from '../lib/errors.ts';
 import { canReadTeam } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
-import { getIssue, updateIssue } from './issues.ts';
+import { getIssue, retriedCreate, updateIssue } from './issues.ts';
 
 /**
  * Links two issues the caller can both read. One relation per pair; a new one replaces the old.
@@ -18,6 +18,13 @@ export async function createRelation(
 ) {
   const issue = await getIssue(ctx.tx, ctx.access, issueIdOrIdentifier);
   const other = await getIssue(ctx.tx, ctx.access, input.relatedIssueId);
+  if (input.id && (await retriedCreate(ctx, issueRelations, input.id, issueRelations.createdBy))) {
+    const [again] = await ctx.tx
+      .select()
+      .from(issueRelations)
+      .where(eq(issueRelations.id, input.id));
+    return again!;
+  }
   if (issue.id === other.id) throw badRequest('An issue cannot relate to itself').as('relate_self');
   const [from, to] = input.type === 'blocked_by' ? [other, issue] : [issue, other];
   const type =
@@ -45,7 +52,13 @@ export async function createRelation(
   }
   const [row] = await ctx.tx
     .insert(issueRelations)
-    .values({ issueId: from.id, relatedIssueId: to.id, type, createdBy: ctx.userId })
+    .values({
+      ...(input.id && { id: input.id }),
+      issueId: from.id,
+      relatedIssueId: to.id,
+      type,
+      createdBy: ctx.userId,
+    })
     .returning();
   // Marking a duplicate closes it, like Linear does.
   if (type === 'duplicate' && !imported) {

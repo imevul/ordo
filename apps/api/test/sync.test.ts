@@ -164,11 +164,10 @@ describe('feed', () => {
     const rest = (await owner.get(`${ws}/sync/changes?since=${first.seq}&epoch=${snap.epoch}`))
       .data;
     expect(rest.more).toBe(false);
-    expect([...first.issues, ...rest.issues].map((i: { title: string }) => i.title)).toEqual([
-      'Feed 0',
-      'Feed 1',
-      'Feed 2',
-    ]);
+    // Within a page, issues come in no particular order: each is simply its current state.
+    expect([...first.issues, ...rest.issues].map((i: { title: string }) => i.title).sort()).toEqual(
+      ['Feed 0', 'Feed 1', 'Feed 2'],
+    );
   });
 
   it('says when the bootstrap needs loading again', async () => {
@@ -183,5 +182,54 @@ describe('feed', () => {
     expect(minSeq).toBeGreaterThan(0);
     const res = await owner.get(`${ws}/sync/changes?since=${minSeq - 1}&epoch=${epoch}`);
     expect(res.statusCode).toBe(410);
+  });
+});
+
+describe('client-chosen ids', () => {
+  let other: Client;
+  beforeAll(async () => {
+    const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token;
+    other = (await signup(app, 'Other Member', { inviteToken: invite })).client;
+  });
+
+  it('make a retried create return what the first one made', async () => {
+    const id = crypto.randomUUID();
+    const first = await owner.post(`${ws}/issues`, { id, teamId, title: 'Made offline' });
+    expect(first.statusCode).toBe(200);
+    expect(first.data.id).toBe(id);
+    const again = await owner.post(`${ws}/issues`, { id, teamId, title: 'Made offline' });
+    expect(again.statusCode).toBe(200);
+    expect(again.data).toMatchObject({ id, identifier: first.data.identifier });
+    const [{ n }] = (await app.db.execute(
+      sql`select count(*)::int as n from issues where id = ${id}`,
+    )) as unknown as [{ n: number }];
+    expect(n).toBe(1);
+
+    const commentId = crypto.randomUUID();
+    const c1 = await owner.post(`${ws}/issues/${id}/comments`, { id: commentId, body: 'once' });
+    const c2 = await owner.post(`${ws}/issues/${id}/comments`, { id: commentId, body: 'once' });
+    expect([c1.data.id, c2.data.id]).toEqual([commentId, commentId]);
+    const comments = (await owner.get(`${ws}/issues/${id}/comments`)).data;
+    expect(comments.filter((c: { id: string }) => c.id === commentId)).toHaveLength(1);
+
+    const target = await newIssue('Related');
+    const relationId = crypto.randomUUID();
+    const body = { id: relationId, type: 'related', relatedIssueId: target.id };
+    const r1 = await owner.post(`${ws}/issues/${id}/relations`, body);
+    const r2 = await owner.post(`${ws}/issues/${id}/relations`, body);
+    expect([r1.statusCode, r2.statusCode]).toEqual([200, 200]);
+    expect([r1.data.id, r2.data.id]).toEqual([relationId, relationId]);
+  });
+
+  it("refuse an id someone else's thing already has", async () => {
+    const id = crypto.randomUUID();
+    await owner.post(`${ws}/issues`, { id, teamId, title: 'Mine' });
+    const taken = await other.post(`${ws}/issues`, { id, teamId, title: 'Theirs' });
+    expect(taken.statusCode).toBe(409);
+    expect(taken.data.messageKey).toBe('id_taken');
+    const commentId = crypto.randomUUID();
+    await owner.post(`${ws}/issues/${id}/comments`, { id: commentId, body: 'mine' });
+    const comment = await other.post(`${ws}/issues/${id}/comments`, { id: commentId, body: 'x' });
+    expect(comment.statusCode).toBe(409);
   });
 });

@@ -316,7 +316,12 @@ as they are now, `deletedIssueIds` and `deletedCommentIds` (deleted, trashed, ar
 `bootstrapChanged` (teams, members, labels, projects… changed: load the snapshot again) and `kinds` (other things
 that changed, such as `notification`). Only changes you're allowed to see are included, but `seq` moves past the
 others too. `410 resync` means the workspace started a new epoch (an import, a deleted team) or you're further
-behind than the 30 days the log keeps: start again from the snapshot. Read the snapshot before the issue pages; a
+behind than the 30 days the log keeps: start again from the snapshot.
+
+Creating an issue, comment or relation accepts an `id` (a UUID you choose), so you can refer to it before the server
+answers. Sending the same create again with the same `id` returns what the first one made, which makes replaying a
+queue of offline changes safe; an `id` that already belongs to someone else's issue, comment or relation gets
+`409 id_taken`. Read the snapshot before the issue pages; a
 change made while you load shows up in the changes after it.
 
 There is also a [GraphQL API](graphql.md) per workspace, for reading issues with everything around them in one request.

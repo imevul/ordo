@@ -19,7 +19,7 @@ import { badRequest, forbidden, notFound } from '../lib/errors.ts';
 import { type Access, canReadTeam, teamScope, usersWithTeamAccess } from './access.ts';
 import { claimAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
-import { getIssue } from './issues.ts';
+import { getIssue, retriedCreate } from './issues.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 
 const MENTION_RE = /(?:^|[\s(])@([a-z0-9._-]{2,32})/g;
@@ -129,6 +129,10 @@ export async function createComment(
 ) {
   const authorId = imported ? imported.authorId : ctx.userId;
   const issue = await getIssue(ctx.tx, ctx.access, issueIdOrIdentifier);
+  if (input.id && (await retriedCreate(ctx, comments, input.id, comments.authorId))) {
+    const [again] = await commentsByIds(ctx.tx, ctx.access, [input.id]);
+    if (again) return again;
+  }
   if (input.parentId) {
     const [parent] = await ctx.tx
       .select({ issueId: comments.issueId })
@@ -139,6 +143,7 @@ export async function createComment(
   const [comment] = await ctx.tx
     .insert(comments)
     .values({
+      ...(input.id && { id: input.id }),
       issueId: issue.id,
       authorId,
       body: input.body,
