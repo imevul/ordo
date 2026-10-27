@@ -815,17 +815,53 @@ export interface JoinableWorkspace {
   memberCount: number;
 }
 
+/** How Ordo talks to a SAML identity provider (from its metadata, or typed in). */
+export interface SamlSettings {
+  /** The IdP's entity ID: assertions must be issued by it. */
+  idpEntityId: string;
+  /** Where to send people to sign in (HTTP-Redirect binding). */
+  ssoUrl: string;
+  /** PEM certificates the IdP signs with; more than one while it rotates keys. */
+  certificates: string[];
+  /** NameID format to ask for; null lets the IdP choose. */
+  nameIdFormat: string | null;
+  /** Attribute names, when the IdP doesn't use one of the usual ones. */
+  emailAttribute: string | null;
+  nameAttribute: string | null;
+  /** Where the metadata came from, to fetch it again when certificates change. */
+  metadataUrl: string | null;
+}
+
+export interface SamlCertificateInfo {
+  subject: string;
+  notAfter: string;
+  fingerprint: string;
+}
+
 export interface AuthProvider {
   id: string;
   name: string;
-  issuer: string;
-  clientId: string;
+  protocol: 'oidc' | 'saml';
+  /** OpenID Connect only. */
+  issuer: string | null;
+  clientId: string | null;
   scopes: string;
+  /** SAML only. */
+  saml: (SamlSettings & { certificateInfo: SamlCertificateInfo[] }) | null;
+  /** SAML: emails from this IdP may match accounts on the workspace's verified domains. */
+  trustEmail: boolean;
   enabled: boolean;
   defaultRole: 'member' | 'guest';
   groupClaim: string | null;
   groupRoles: Record<string, 'admin' | 'member' | 'guest'>;
   createdAt: string;
+}
+
+/** What the IdP needs to know about Ordo, for one SAML provider. */
+export interface SamlServiceProvider {
+  entityId: string;
+  acsUrl: string;
+  metadataUrl: string;
 }
 
 /** A sign-in option offered on the login page. */

@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as oidc from 'openid-client';
 import { authProviders, authStates } from '../db/schema.ts';
+import { badRequest } from '../lib/errors.ts';
 import { safeFetch } from '../lib/safeFetch.ts';
 import { type Provider, type SsoClaims, STATE_TTL_MS, safeRedirect, takeState } from './sso.ts';
 
@@ -21,6 +22,9 @@ export async function providerConfig(
   app: FastifyInstance,
   provider: Provider,
 ): Promise<oidc.Configuration> {
+  const { issuer, clientId, clientSecret } = provider;
+  if (provider.protocol !== 'oidc' || !issuer || !clientId || !clientSecret)
+    throw new Error('Not an OpenID Connect provider');
   const key = `${provider.id}:${provider.updatedAt}`;
   const cached = configs.get(key);
   if (cached && Date.now() - cached.at < 600_000) return cached.config;
@@ -46,8 +50,8 @@ export async function providerConfig(
   const discover = (issuer: string) =>
     oidc.discovery(
       new URL(issuer),
-      provider.clientId,
-      app.keyring.decrypt(provider.clientSecret, secretAad(provider.id)),
+      clientId,
+      app.keyring.decrypt(clientSecret, secretAad(provider.id)),
       undefined,
       {
         [oidc.customFetch]: customFetch,
@@ -58,13 +62,11 @@ export async function providerConfig(
     );
   let config: oidc.Configuration;
   try {
-    config = await discover(provider.issuer);
+    config = await discover(issuer);
   } catch (err) {
     // Issuers must match to the character, and some end in "/" (Authentik) while others don't
     // (Keycloak). Admins paste either, so try the other spelling before giving up, and keep it.
-    const other = provider.issuer.endsWith('/')
-      ? provider.issuer.replace(/\/+$/, '')
-      : `${provider.issuer}/`;
+    const other = issuer.endsWith('/') ? issuer.replace(/\/+$/, '') : `${issuer}/`;
     try {
       config = await discover(other);
     } catch {
@@ -123,6 +125,9 @@ export async function completeLogin(
     callbackUrl.searchParams.get('state'),
     cookieState,
   );
+  // A SAML attempt's state can't finish here.
+  if (!row.codeVerifier || !row.nonce)
+    throw badRequest('This sign-in attempt expired. Try again.').as('sign_in_expired');
   const config = await providerConfig(app, provider);
   const tokens = await oidc.authorizationCodeGrant(config, callbackUrl, {
     pkceCodeVerifier: row.codeVerifier,

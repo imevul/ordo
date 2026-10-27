@@ -77,6 +77,7 @@ export default {
     ai_own_not_allowed: "This instance doesn't let workspaces use their own AI model",
     ai_locked: "This instance's AI settings apply to every workspace",
     passkey_failed: "That passkey couldn't be verified",
+    invalid_certificate: "That isn't an X.509 certificate",
     reauth_needed: 'Sign in again to change your passkeys',
     ai_off_workspace: 'AI assistance is turned off in this workspace',
     ai_off: 'AI assistance is off',

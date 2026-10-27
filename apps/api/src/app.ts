@@ -286,10 +286,14 @@ const MCP_ROUTE = '/api/w/:ws/mcp';
  * CSRF. This adds a header check so that stays true as form and multipart parsers are added.
  * Signed inbound webhooks (/api/hooks/*) authenticate by signature and are exempt.
  */
+const SAML_ACS = /^\/api\/auth\/saml\/[0-9a-f-]{36}\/acs$/;
+
 function rejectCrossSite(req: FastifyRequest) {
   if (SAFE_METHODS.has(req.method) || req.url.startsWith('/api/hooks/')) return;
   // Apps call the OAuth token endpoints from anywhere, authenticated by what they post, never by cookie.
   if (OAUTH_CLIENT_PATHS.has(req.url.split('?')[0]!)) return;
+  // SAML identity providers post their responses from their own site; the response is its proof.
+  if (SAML_ACS.test(req.url)) return;
   if (req.headers.authorization?.startsWith('Bearer ')) return;
   const site = req.headers['sec-fetch-site'];
   if (site === 'cross-site') throw new HttpError(403, 'Cross-site request blocked', 'forbidden');

@@ -23,6 +23,7 @@ import type {
   ProjectStatus,
   RecurrenceUnit,
   RelationType,
+  SamlSettings,
   SlaHours,
   StateType,
   TeamRole,
@@ -1075,11 +1076,20 @@ export const authProviders = pgTable(
       .notNull()
       .references(() => workspaces.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    issuer: text('issuer').notNull(),
-    clientId: text('client_id').notNull(),
-    /** Encrypted (aad auth_providers:<id>:client_secret). */
-    clientSecret: text('client_secret').notNull(),
+    protocol: text('protocol').$type<'oidc' | 'saml'>().notNull().default('oidc'),
+    /** OpenID Connect only. */
+    issuer: text('issuer'),
+    clientId: text('client_id'),
+    /** Encrypted (aad auth_providers:<id>:client_secret). OpenID Connect only. */
+    clientSecret: text('client_secret'),
     scopes: text('scopes').notNull().default('openid email profile'),
+    /** SAML only: the identity provider's entity ID, sign-in URL and signing certificates. */
+    saml: jsonb('saml').$type<SamlSettings>(),
+    /**
+     * SAML has no "email verified": the admin vouches for the IdP's emails here. Even then they're
+     * trusted only on the workspace's verified domains.
+     */
+    trustEmail: boolean('trust_email').notNull().default(false),
     enabled: boolean('enabled').notNull().default(true),
     /** Role for people who join through this provider. */
     defaultRole: text('default_role').$type<'member' | 'guest'>().notNull().default('member'),
@@ -1124,8 +1134,13 @@ export const authStates = pgTable('auth_states', {
   providerId: uuid('provider_id')
     .notNull()
     .references(() => authProviders.id, { onDelete: 'cascade' }),
-  nonce: text('nonce').notNull(),
-  codeVerifier: text('code_verifier').notNull(),
+  /** OpenID Connect. */
+  nonce: text('nonce'),
+  codeVerifier: text('code_verifier'),
+  /** SAML: the AuthnRequest's ID, which the response must answer. */
+  requestId: text('request_id'),
+  /** SAML: what the validated response said, kept until the browser comes back with its cookie. */
+  claims: jsonb('claims').$type<Record<string, unknown>>(),
   /** login | link (attach to `userId`) | test (show claims to an admin). */
   mode: text('mode').$type<'login' | 'link' | 'test'>().notNull().default('login'),
   userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
