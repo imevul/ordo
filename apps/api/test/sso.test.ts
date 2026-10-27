@@ -151,6 +151,13 @@ describe('sign-in', () => {
     expect(cookieOf(refused.res.headers['set-cookie'], 'ordo_last_sso')).toBeUndefined();
   });
 
+  it('starts from the protocol-neutral address too', async () => {
+    const res = await app.inject({ method: 'GET', url: `/api/auth/sso/${providerId}/start` });
+    expect(res.statusCode).toBe(302);
+    expect(String(res.headers.location)).toContain('/authorize?');
+    expect(cookieOf(res.headers['set-cookie'], 'ordo_oidc')).toBeTruthy();
+  });
+
   it('sends a remembered but deleted provider back to the sign-in page', async () => {
     const res = await app.inject({
       method: 'GET',

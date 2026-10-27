@@ -10,7 +10,7 @@ import { requireAdmin } from '../lib/auth.ts';
 import { badRequest, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { auditCtx } from '../services/audit.ts';
-import { secretAad } from '../services/sso.ts';
+import { secretAad } from '../services/oidc.ts';
 
 const toProvider = (p: typeof authProviders.$inferSelect): AuthProvider => ({
   id: p.id,
