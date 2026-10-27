@@ -465,6 +465,9 @@ describe('route inventory', () => {
       "setArchived uses getIssue with the caller's access (archive.test.ts)",
     'POST /issues/:id/unarchive':
       "setArchived uses getIssue with the caller's access (archive.test.ts)",
+    'POST /projects/:id/milestones': 'loadProject, like PATCH /projects/:id (milestones.test.ts)',
+    'PATCH /milestones/:id': "loadMilestone checks the milestone's project (milestones.test.ts)",
+    'DELETE /milestones/:id': "loadMilestone checks the milestone's project (milestones.test.ts)",
     'GET /templates': 'listTemplates, same as bootstrap (templates.test.ts)',
     'POST /templates': 'assertLabelTeam, like labels (templates.test.ts)',
     'PATCH /templates/:id': 'loadTemplate checks the team (templates.test.ts)',

@@ -173,6 +173,18 @@ export interface Project {
   updatedAt: string;
   progress: Progress;
   health: ProjectHealth | null;
+  /** In order: by target date, then as arranged. */
+  milestones: Milestone[];
+}
+
+export interface Milestone {
+  id: string;
+  projectId: string;
+  name: string;
+  description: string | null;
+  targetDate: string | null;
+  sortOrder: number;
+  progress: Progress;
 }
 
 export interface Progress {
@@ -217,6 +229,8 @@ export interface Issue {
   /** Null when the creator's account was deleted. */
   creatorId: string | null;
   projectId: string | null;
+  /** A milestone of the issue's project. */
+  milestoneId: string | null;
   cycleId: string | null;
   parentId: string | null;
   estimate: number | null;

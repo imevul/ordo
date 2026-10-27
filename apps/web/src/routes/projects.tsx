@@ -1,5 +1,6 @@
 import {
   LABEL_COLORS,
+  type Milestone,
   PROJECT_HEALTH,
   PROJECT_HEALTH_LABELS,
   PROJECT_STATUS_LABELS,
@@ -8,7 +9,7 @@ import {
   type ProjectHealth,
 } from '@ordo/shared';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { Plus, Star, Trash2 } from 'lucide-react';
+import { Milestone as MilestoneIcon, Plus, Star, Trash2 } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys, useProjectUpdates, useWsMutation } from '../api/queries.ts';
@@ -20,7 +21,7 @@ import { EmptyState, PageHeader, Sep } from '../components/PageHeader.tsx';
 import { ProgressBar, ProgressStats } from '../components/Progress.tsx';
 import { assigneeOptions, Picker } from '../components/properties.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
-import { ConfirmModal, Modal } from '../components/ui/Modal.tsx';
+import { ConfirmModal, confirmDialog, Modal } from '../components/ui/Modal.tsx';
 import { relativeTime, shortDate } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
@@ -250,6 +251,119 @@ export function ProjectsPage() {
   );
 }
 
+function MilestoneRow({ milestone }: { milestone: Milestone }) {
+  const ws = useWorkspace();
+  const [name, setName] = useState(milestone.name);
+  useEffect(() => setName(milestone.name), [milestone.name]);
+  const save = useWsMutation(ws.slug, (body: object) =>
+    api.patch(wsPath(ws.slug, `/milestones/${milestone.id}`), body),
+  );
+  const remove = useWsMutation(ws.slug, () =>
+    api.del(wsPath(ws.slug, `/milestones/${milestone.id}`)),
+  );
+  const p = milestone.progress;
+  return (
+    <div className="grid grid-cols-[auto_1fr_8.5rem_7rem_auto] items-center gap-3 border-b border-border-soft py-2">
+      <MilestoneIcon size={14} className="text-muted" />
+      <input
+        value={name}
+        disabled={ws.isGuest}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={() => name.trim() && name !== milestone.name && save.mutate({ name })}
+        onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+        className="min-w-0 bg-transparent text-[13.5px] outline-none focus:shadow-[inset_0_-1px_0_var(--color-primary)]"
+        aria-label="Milestone name"
+      />
+      <input
+        type="date"
+        value={milestone.targetDate ?? ''}
+        disabled={ws.isGuest}
+        onChange={(e) => save.mutate({ targetDate: e.target.value || null })}
+        className="input h-7 px-1.5 font-mono text-[11.5px]"
+        aria-label="Target date"
+      />
+      <span className="font-mono text-[11px] text-index" title="Completed of all issues">
+        {p.completed}/{p.total} · {p.total ? Math.round((p.completed / p.total) * 100) : 0}%
+      </span>
+      {!ws.isGuest ? (
+        <button
+          type="button"
+          className="flex h-6 w-6 items-center justify-center text-index hover:text-error"
+          onClick={async () => {
+            if (
+              await confirmDialog({
+                title: `Delete milestone “${milestone.name}”?`,
+                body: 'Its issues stay in the project.',
+                danger: true,
+              })
+            )
+              remove.mutate(undefined);
+          }}
+          aria-label={`Delete ${milestone.name}`}
+        >
+          <Trash2 size={13} />
+        </button>
+      ) : (
+        <span />
+      )}
+    </div>
+  );
+}
+
+/** Stages of the project, each with a target date and its own progress. */
+function ProjectMilestones({ project }: { project: Project }) {
+  const ws = useWorkspace();
+  const [name, setName] = useState('');
+  const [targetDate, setTargetDate] = useState('');
+  const create = useWsMutation(ws.slug, (body: object) =>
+    api.post(wsPath(ws.slug, `/projects/${project.id}/milestones`), body),
+  );
+  if (ws.isGuest && project.milestones.length === 0) return null;
+  return (
+    <div className="mt-8">
+      <div className="section-label mb-2">Milestones</div>
+      {project.milestones.map((m) => (
+        <MilestoneRow key={m.id} milestone={m} />
+      ))}
+      {!ws.isGuest && (
+        <form
+          className="mt-2 flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!name.trim()) return;
+            create.mutate(
+              { name, targetDate: targetDate || null },
+              {
+                onSuccess: () => {
+                  setName('');
+                  setTargetDate('');
+                },
+              },
+            );
+          }}
+        >
+          <input
+            className="input min-w-0 flex-1"
+            placeholder="New milestone, e.g. Beta"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            type="date"
+            className="input w-36 font-mono text-[12px]"
+            value={targetDate}
+            onChange={(e) => setTargetDate(e.target.value)}
+            aria-label="Target date"
+          />
+          <button className="btn btn-ghost btn-sm" disabled={!name.trim()}>
+            <Plus size={13} /> Add
+          </button>
+        </form>
+      )}
+    </div>
+  );
+}
+
 function ProjectOverview({ project }: { project: Project }) {
   const ws = useWorkspace();
   const save = useWsMutation(ws.slug, (body: object) =>
@@ -332,6 +446,8 @@ function ProjectOverview({ project }: { project: Project }) {
           <ProgressStats progress={project.progress} />
           <ProgressBar progress={project.progress} className="mt-3" />
         </div>
+
+        <ProjectMilestones project={project} />
 
         <div className="mt-10">
           <div className="section-label mb-3">Updates</div>

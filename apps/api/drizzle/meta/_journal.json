@@ -155,6 +155,13 @@
       "when": 1793059097103,
       "tag": "0021_auto_archive",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1793059460602,
+      "tag": "0022_project_milestones",
+      "breakpoints": true
     }
   ]
 }

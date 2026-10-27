@@ -12,10 +12,10 @@ export const emptyProgress = (): Progress => ({
   completedEstimate: 0,
 });
 
-/** Issue counts per project or cycle, keyed by its id — counting only issues the viewer can see. */
+/** Issue counts per project, milestone or cycle, keyed by its id — counting only issues the viewer can see. */
 export async function progressBy(
   db: DbOrTx,
-  column: 'project_id' | 'cycle_id',
+  column: 'project_id' | 'cycle_id' | 'milestone_id',
   access: Access,
 ): Promise<Map<string, Progress>> {
   const col = sql.raw(`i.${column}`);

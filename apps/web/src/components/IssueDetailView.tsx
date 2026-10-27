@@ -45,6 +45,7 @@ import {
   DueDateProp,
   EstimateProp,
   LabelsProp,
+  MilestoneProp,
   Picker,
   PriorityProp,
   ProjectProp,
@@ -524,6 +525,11 @@ export function IssueDetailView({
           <Field label="Project">
             <ProjectProp issue={issue} onPatch={patch} variant="field" />
           </Field>
+          {issue.projectId && !!ws.projectById.get(issue.projectId)?.milestones.length && (
+            <Field label="Milestone">
+              <MilestoneProp issue={issue} onPatch={patch} variant="field" />
+            </Field>
+          )}
           {team.cyclesEnabled && (
             <Field label="Cycle">
               <CycleProp issue={issue} onPatch={patch} variant="field" />

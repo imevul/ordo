@@ -7,6 +7,7 @@ const GROUP_LABELS: Record<string, string> = {
   priority: 'Priority',
   assignee: 'Assignee',
   project: 'Project',
+  milestone: 'Milestone',
   cycle: 'Cycle',
   label: 'Label',
   none: 'No grouping',

@@ -8,7 +8,7 @@ import {
   type UpdateIssueInput,
 } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Hexagon, RefreshCcw, Tag, Users } from 'lucide-react';
+import { CalendarDays, Hexagon, Milestone, RefreshCcw, Tag, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys } from '../api/queries.ts';
@@ -350,6 +350,48 @@ export function LabelsProp({ issue, onPatch, variant = 'chip' }: IssuePropProps)
             )}
           </button>
         )
+      }
+    />
+  );
+}
+
+/** The issue's milestone within its project; nothing to show without a project that has some. */
+export function MilestoneProp({
+  issue,
+  onPatch,
+  variant = 'chip',
+}: {
+  issue: { projectId: string | null; milestoneId: string | null };
+  onPatch: (patch: UpdateIssueInput) => void;
+  variant?: Variant;
+}) {
+  const ws = useWorkspace();
+  const project = issue.projectId ? ws.projectById.get(issue.projectId) : null;
+  if (!project || project.milestones.length === 0) return null;
+  const current = project.milestones.find((m) => m.id === issue.milestoneId);
+  return (
+    <Picker
+      placeholder="Set milestone…"
+      options={[
+        {
+          value: 'none',
+          label: 'No milestone',
+          icon: <Milestone size={14} className="text-index" />,
+        },
+        ...project.milestones.map((m) => ({
+          value: m.id,
+          label: m.name,
+          hint: m.targetDate ? shortDate(m.targetDate) : undefined,
+          icon: <Milestone size={14} className="text-muted" />,
+        })),
+      ]}
+      selected={[issue.milestoneId ?? 'none']}
+      onSelect={(v) => onPatch({ milestoneId: v === 'none' ? null : v })}
+      trigger={
+        <button type="button" className={cls(variant)} aria-label="Milestone">
+          <Milestone size={14} />
+          {variant !== 'icon' && <span className="truncate">{current?.name ?? 'Milestone'}</span>}
+        </button>
       }
     />
   );

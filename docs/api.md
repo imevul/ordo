@@ -193,21 +193,21 @@ from the bytes — are served inline; everything else downloads as `application/
 
 `POST /issues/query` takes an `IssueFilter`. All fields are optional and combine with AND; arrays are OR.
 
-| Field                    | Type                                                                     | Notes                                            |
-| ------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------ |
-| `teamId`                 | uuid                                                                     |                                                  |
-| `stateIds`               | uuid[]                                                                   |                                                  |
-| `stateTypes`             | (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`)[] |                                                  |
-| `priorities`             | (0–4)[]                                                                  | 0 none, 1 urgent, 2 high, 3 medium, 4 low        |
-| `assigneeIds`            | (uuid \| `"me"` \| `"none"`)[]                                           |                                                  |
-| `creatorIds`             | (uuid \| `"me"`)[]                                                       |                                                  |
-| `labelIds`               | uuid[]                                                                   | has any of                                       |
-| `projectIds`, `cycleIds` | (uuid \| `"none"`)[]                                                     |                                                  |
-| `parentId`               | uuid                                                                     | sub-issues of                                    |
-| `subscribedBy`           | `"me"`                                                                   |                                                  |
-| `q`                      | string                                                                   | words (full text, as prefixes), or an identifier |
-| `trashed`                | boolean                                                                  | only trashed issues                              |
-| `archived`               | `"include"` \| `"only"`                                                  | archived issues are left out otherwise           |
+| Field                                    | Type                                                                     | Notes                                            |
+| ---------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
+| `teamId`                                 | uuid                                                                     |                                                  |
+| `stateIds`                               | uuid[]                                                                   |                                                  |
+| `stateTypes`                             | (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`)[] |                                                  |
+| `priorities`                             | (0–4)[]                                                                  | 0 none, 1 urgent, 2 high, 3 medium, 4 low        |
+| `assigneeIds`                            | (uuid \| `"me"` \| `"none"`)[]                                           |                                                  |
+| `creatorIds`                             | (uuid \| `"me"`)[]                                                       |                                                  |
+| `labelIds`                               | uuid[]                                                                   | has any of                                       |
+| `projectIds`, `milestoneIds`, `cycleIds` | (uuid \| `"none"`)[]                                                     |                                                  |
+| `parentId`                               | uuid                                                                     | sub-issues of                                    |
+| `subscribedBy`                           | `"me"`                                                                   |                                                  |
+| `q`                                      | string                                                                   | words (full text, as prefixes), or an identifier |
+| `trashed`                                | boolean                                                                  | only trashed issues                              |
+| `archived`                               | `"include"` \| `"only"`                                                  | archived issues are left out otherwise           |
 
 ```bash
 curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
@@ -221,21 +221,23 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 
 ### Projects, cycles, labels, views
 
-| Method               | Path                    |                                                                                                                                       |
-| -------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| GET / POST           | `/projects`             | `{ name, teamIds, description?, color?, status?, leadId?, startDate?, targetDate? }`                                                  |
-| GET / PATCH / DELETE | `/projects/:id`         | Deleting keeps the issues                                                                                                             |
-| GET / POST           | `/projects/:id/updates` | `{ body, health: "on_track" \| "at_risk" \| "off_track" }`                                                                            |
-| DELETE               | `/project-updates/:id`  |                                                                                                                                       |
-| GET                  | `/cycles`               | All cycles with progress                                                                                                              |
-| POST                 | `/teams/:id/cycles`     | `{ startsAt, endsAt, name?, description? }` — numbered per team                                                                       |
-| PATCH / DELETE       | `/cycles/:id`           | Deleting unassigns its issues                                                                                                         |
-| POST                 | `/labels`               | `{ name, color, teamId? }`                                                                                                            |
-| PATCH / DELETE       | `/labels/:id`           |                                                                                                                                       |
-| GET / POST           | `/templates`            | Issue templates; create `{ name, teamId?, title?, description?, stateId?, priority?, assigneeId?, projectId?, estimate?, labelIds? }` |
-| PATCH / DELETE       | `/templates/:id`        | Same fields except `teamId` (`null` clears a default)                                                                                 |
-| POST                 | `/views`                | `{ name, filters, display?, shared?, teamId? }`                                                                                       |
-| PATCH / DELETE       | `/views/:id`            | Owner or admin                                                                                                                        |
+| Method               | Path                       |                                                                                                                                       |
+| -------------------- | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| GET / POST           | `/projects`                | `{ name, teamIds, description?, color?, status?, leadId?, startDate?, targetDate? }`                                                  |
+| GET / PATCH / DELETE | `/projects/:id`            | Deleting keeps the issues                                                                                                             |
+| GET / POST           | `/projects/:id/updates`    | `{ body, health: "on_track" \| "at_risk" \| "off_track" }`                                                                            |
+| POST                 | `/projects/:id/milestones` | `{ name, description?, targetDate? }` → the project, with `milestones` (each with `progress`)                                         |
+| PATCH / DELETE       | `/milestones/:id`          | `{ name?, description?, targetDate?, sortOrder? }` → the project; deleting keeps its issues in the project                            |
+| DELETE               | `/project-updates/:id`     |                                                                                                                                       |
+| GET                  | `/cycles`                  | All cycles with progress                                                                                                              |
+| POST                 | `/teams/:id/cycles`        | `{ startsAt, endsAt, name?, description? }` — numbered per team                                                                       |
+| PATCH / DELETE       | `/cycles/:id`              | Deleting unassigns its issues                                                                                                         |
+| POST                 | `/labels`                  | `{ name, color, teamId? }`                                                                                                            |
+| PATCH / DELETE       | `/labels/:id`              |                                                                                                                                       |
+| GET / POST           | `/templates`               | Issue templates; create `{ name, teamId?, title?, description?, stateId?, priority?, assigneeId?, projectId?, estimate?, labelIds? }` |
+| PATCH / DELETE       | `/templates/:id`           | Same fields except `teamId` (`null` clears a default)                                                                                 |
+| POST                 | `/views`                   | `{ name, filters, display?, shared?, teamId? }`                                                                                       |
+| PATCH / DELETE       | `/views/:id`               | Owner or admin                                                                                                                        |
 
 ### Notifications & search
 
