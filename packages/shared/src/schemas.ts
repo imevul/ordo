@@ -490,6 +490,12 @@ export const createCustomerRequestSchema = z.object({
   contact: z.string().trim().max(300).nullish(),
 });
 
+export const snoozeSchema = z.object({
+  ids: z.array(id).min(1).max(200),
+  /** A future time, or null to wake them now. */
+  until: z.iso.datetime({ offset: true }).nullable(),
+});
+
 export const createDocumentSchema = z.object({
   title: z.string().trim().min(1).max(200),
   content: markdown.default(''),

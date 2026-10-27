@@ -51,6 +51,15 @@ export const SHORTCUTS: { section: string; items: [string, string][] }[] = [
       [`${modKey} B / ${modKey} I`, 'Bold / italic (in text)'],
     ],
   },
+  {
+    section: 'Inbox',
+    items: [
+      ['J / K', 'Next / previous notification'],
+      ['U', 'Toggle read'],
+      ['H', 'Snooze'],
+      ['⌫', 'Delete notification'],
+    ],
+  },
 ];
 
 export function ShortcutsHelp() {

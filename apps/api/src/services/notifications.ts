@@ -1,5 +1,6 @@
 import type { NotificationType } from '@ordo/shared';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
+import type { FastifyInstance } from 'fastify';
 import { issueSubscribers, issues, notifications } from '../db/schema.ts';
 import { usersWithTeamAccess } from './access.ts';
 import { queueChatNotifications } from './chat.ts';
@@ -72,4 +73,24 @@ export async function notify(
       userId: r.userId,
       issueId: input.issueId,
     });
+}
+
+/**
+ * Every minute: snoozes that ran out end. Those notifications come back unread at the top of the
+ * inbox, and their people's inboxes refresh.
+ */
+export async function wakeSnoozed(app: FastifyInstance) {
+  const woken = await app.db.execute<{ id: string; user_id: string; workspace_id: string }>(sql`
+    update notifications set snoozed_until = null, woke_at = now(), read_at = null
+    where snoozed_until <= now()
+    returning id, user_id, workspace_id`);
+  app.realtime.publish(
+    [...woken].map((n) => ({
+      kind: 'notification' as const,
+      action: 'updated' as const,
+      id: n.id,
+      workspaceId: n.workspace_id,
+      userId: n.user_id,
+    })),
+  );
 }

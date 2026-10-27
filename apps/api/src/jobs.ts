@@ -17,6 +17,7 @@ import {
   schedulePolls,
 } from './services/integrations.ts';
 import type { Email } from './services/mail-templates.ts';
+import { wakeSnoozed } from './services/notifications.ts';
 import { runRecurring } from './services/recurring.ts';
 import { announceSlaBreaches } from './services/sla.ts';
 import { purgeExpiredStates } from './services/sso.ts';
@@ -32,6 +33,8 @@ export function registerJobs(app: FastifyInstance) {
   });
 
   jobs.define('notifications.email', () => sendNotificationEmails(app));
+  jobs.define('notifications.wake', () => wakeSnoozed(app));
+  jobs.every('notifications.wake', 60);
   jobs.every('notifications.email', 60);
 
   // The outbox: one dispatch per transaction, then one job per webhook delivery / integration.

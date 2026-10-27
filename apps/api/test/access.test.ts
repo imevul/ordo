@@ -529,6 +529,7 @@ describe('route inventory', () => {
     'DELETE /favorites/:id': "the caller's own data",
     'POST /notifications/read': "the caller's own notifications",
     'POST /notifications/delete': "the caller's own notifications",
+    'POST /notifications/snooze': "the caller's own notifications (snooze.test.ts)",
     'DELETE /': 'owners only, confirmed by slug',
     'POST /logo': 'workspace admins only',
     'DELETE /logo': 'workspace admins only',

@@ -254,12 +254,13 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 
 ### Notifications & search
 
-| Method | Path                    |                                            |
-| ------ | ----------------------- | ------------------------------------------ |
-| GET    | `/notifications`        | Latest 200                                 |
-| POST   | `/notifications/read`   | `{ ids?, unread? }` — omit `ids` for all   |
-| POST   | `/notifications/delete` | `{ ids }` or `{ read: true }`              |
-| GET    | `/search?q=`            | `{ issues, projects }`, best matches first |
+| Method | Path                    |                                                                                              |
+| ------ | ----------------------- | -------------------------------------------------------------------------------------------- |
+| GET    | `/notifications`        | Latest 200                                                                                   |
+| POST   | `/notifications/read`   | `{ ids?, unread? }` — omit `ids` for all                                                     |
+| POST   | `/notifications/delete` | `{ ids }` or `{ read: true }`                                                                |
+| POST   | `/notifications/snooze` | `{ ids, until }` — an ISO time, or `null` to wake; `GET /notifications?snoozed=1` lists them |
+| GET    | `/search?q=`            | `{ issues, projects }`, best matches first                                                   |
 
 ## Realtime
 
