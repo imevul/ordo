@@ -19,7 +19,7 @@ import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { type MessageKey, t, tx } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { ChatForm, chatForms } from './chat.tsx';
+import { ChatForm, chatForms, SlackAppPanel } from './chat.tsx';
 import { EmailForm } from './email-intake.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
@@ -622,6 +622,18 @@ function ConnectModal({
   useEffect(() => setTab('app'), [provider]);
   if (!provider) return null;
   const isGithub = provider.key === 'github';
+  const isSlack = provider.key === 'slack';
+  const tabs: [string, string][] | null = isGithub
+    ? [
+        ['app', 'GitHub App'],
+        ['token', t('integrations.connect.accessTokenTab')],
+      ]
+    : isSlack
+      ? [
+          ['app', t('integrations.slackApp.tab')],
+          ['token', t('integrations.slackApp.manualTab')],
+        ]
+      : null;
   return (
     <Modal
       open
@@ -634,22 +646,24 @@ function ConnectModal({
         <div className="section-label mb-4">
           {t('integrations.connect.title', { provider: provider.name })}
         </div>
-        {isGithub && (
+        {tabs && (
           <div className="mb-5 flex gap-1 border-b border-border-soft">
-            {(['app', 'token'] as const).map((k) => (
+            {tabs.map(([k, label]) => (
               <button
                 key={k}
                 type="button"
                 className={`-mb-px border-b-2 px-3 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase ${tab === k ? 'border-primary text-text' : 'border-transparent text-index hover:text-text'}`}
-                onClick={() => setTab(k)}
+                onClick={() => setTab(k as 'app' | 'token')}
               >
-                {k === 'app' ? 'GitHub App' : t('integrations.connect.accessTokenTab')}
+                {label}
               </button>
             ))}
           </div>
         )}
         {isGithub && tab === 'app' ? (
           <GithubAppPanel onCancel={onClose} />
+        ) : isSlack && tab === 'app' ? (
+          <SlackAppPanel onCancel={onClose} />
         ) : provider.key === 'email' ? (
           <EmailForm provider={provider} onDone={onDone} onCancel={onClose} />
         ) : chatForms()[provider.key] ? (

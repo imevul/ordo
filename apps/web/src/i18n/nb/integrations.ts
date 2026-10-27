@@ -96,6 +96,35 @@ export default {
     needsInstanceAdmin:
       'En instansadmin må opprette GitHub-appen én gang. Inntil da kan du koble til med et token.',
   },
+  slackApp: {
+    tab: 'Legg til i Slack',
+    manualTab: 'Manuelt',
+    intro: 'Koble til et Slack-arbeidsområde med ett klikk via denne instansens Slack-app.',
+    add: 'Legg til i Slack',
+    needsHttps:
+      'Slack sender bare folk tilbake til https-adresser, og denne instansen er på {url}. Sett ORDO_PUBLIC_URL til en https-adresse, eller koble til manuelt.',
+    needsInstanceAdmin:
+      'En instansadmin må sette opp Slack-appen én gang. Inntil da kan du koble til manuelt med et token.',
+    setupIntro:
+      'Sett opp Slack-appen én gang; deretter kan alle admins i arbeidsområdene legge til Ordo i Slack med ett klikk.',
+    step1: '1. Hvordan Slack når Ordo',
+    step2: '2. Opprett appen',
+    step2Body:
+      'Slack åpnes med Ordos manifest fylt ut. Velg hvilket arbeidsområde som skal eie appen, og opprett den.',
+    createApp: 'Opprett Slack-appen',
+    step3: '3. Kopier legitimasjonen',
+    step3Body: 'Fra Basic Information → App Credentials.',
+    step3Socket:
+      'Fra Basic Information → App Credentials, og et token på appnivå (App-Level Tokens → Generate, med connections:write).',
+    clientId: 'Klient-ID',
+    clientSecret: 'Klienthemmelighet',
+    save: 'Lagre Slack-appen',
+    saved: 'Slack-appen er lagret',
+    change: 'Endre Slack-appen',
+    changeHint:
+      'Tomme hemmeligheter beholdes. Tilkoblede arbeidsområder bytter til den nye leveringsmåten.',
+    connectedWith: 'Koblet til med Legg til i Slack til {team}. Tokenet håndteres av Slack.',
+  },
   chat: {
     deliveryHeading: 'Slik får Ordo meldinger fra {provider}',
     channels: 'Kanaler',

@@ -100,6 +100,34 @@ export default {
     needsInstanceAdmin:
       'An instance admin has to create the GitHub App once. Until then, connect with a token.',
   },
+  slackApp: {
+    tab: 'Add to Slack',
+    manualTab: 'Manual',
+    intro: 'Connect a Slack workspace in one click with this instance’s Slack app.',
+    add: 'Add to Slack',
+    needsHttps:
+      'Slack only sends people back to https addresses, and this instance is at {url}. Set ORDO_PUBLIC_URL to an https address, or connect manually.',
+    needsInstanceAdmin:
+      'An instance admin has to set up the Slack app once. Until then, connect manually with a token.',
+    setupIntro:
+      'Set up the Slack app once; then any workspace admin can add Ordo to Slack in one click.',
+    step1: '1. How Slack reaches Ordo',
+    step2: '2. Create the app',
+    step2Body:
+      'Slack opens with Ordo’s manifest filled in. Pick a workspace to own the app and create it.',
+    createApp: 'Create the Slack app',
+    step3: '3. Copy its credentials',
+    step3Body: 'From Basic Information → App Credentials.',
+    step3Socket:
+      'From Basic Information → App Credentials, and an app-level token (App-Level Tokens → Generate, with connections:write).',
+    clientId: 'Client ID',
+    clientSecret: 'Client secret',
+    save: 'Save the Slack app',
+    saved: 'Slack app saved',
+    change: 'Change the Slack app',
+    changeHint: 'Blank secrets stay as they are. Connected workspaces switch to the new delivery.',
+    connectedWith: 'Connected with Add to Slack to {team}. Tokens are managed by Slack.',
+  },
   chat: {
     deliveryHeading: 'How Ordo hears from {provider}',
     channels: 'Channels',

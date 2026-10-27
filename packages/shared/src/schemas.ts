@@ -787,3 +787,15 @@ export const createApiImportSchema = z.discriminatedUnion('source', [
 export type CreateApiImportInput = z.infer<typeof createApiImportSchema>;
 
 export const createExportSchema = z.object({ format: z.enum(EXPORT_FORMATS) });
+
+/** The instance's Slack app, for one-click installs. Blank secrets keep the stored ones. */
+export const slackAppSchema = z.object({
+  delivery: z.enum(['events', 'socket']),
+  clientId: z
+    .string()
+    .trim()
+    .regex(/^\d+\.\d+$/, 'The client ID looks like 1234567890.1234567890'),
+  clientSecret: z.string().trim().max(200).optional(),
+  signingSecret: z.string().trim().max(200).optional(),
+  appToken: z.string().trim().max(300).optional(),
+});
