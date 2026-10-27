@@ -122,10 +122,11 @@ export const useHistory = (slug: string, issueId: string | undefined) =>
     enabled: !!issueId,
   });
 
-export const useNotifications = (slug: string) =>
+export const useNotifications = (slug: string, snoozed = false) =>
   useQuery({
-    queryKey: keys.notifications(slug),
-    queryFn: () => api.get<Notification[]>(wsPath(slug, '/notifications')),
+    queryKey: [...keys.notifications(slug), snoozed ? 'snoozed' : 'inbox'],
+    queryFn: () =>
+      api.get<Notification[]>(wsPath(slug, `/notifications${snoozed ? '?snoozed=1' : ''}`)),
   });
 
 export const useProjectUpdates = (slug: string, projectId: string) =>

@@ -81,8 +81,9 @@ In the rich text editor, Markdown typed at the start of a line or around a word 
 
 ## Inbox
 
-| Keys      | Action                       |
-| --------- | ---------------------------- |
-| `J` / `K` | Next / previous notification |
-| `U`       | Toggle read                  |
-| `⌫`       | Delete notification          |
+| Keys      | Action                        |
+| --------- | ----------------------------- |
+| `J` / `K` | Next / previous notification  |
+| `U`       | Toggle read                   |
+| `H`       | Snooze (or, in Snoozed, wake) |
+| `⌫`       | Delete notification           |

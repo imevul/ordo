@@ -1,6 +1,6 @@
 import type { Notification } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { CheckCheck, Trash2 } from 'lucide-react';
+import { AlarmClock, AlarmClockOff, CheckCheck, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys, useIssue, useNotifications } from '../api/queries.ts';
@@ -9,6 +9,7 @@ import { StatusIcon } from '../components/icons.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
 import { ActorName } from '../components/ui/ActorName.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
+import { Popover } from '../components/ui/Popover.tsx';
 import { relativeTime } from '../lib/format.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
@@ -34,10 +35,29 @@ function describe(n: Notification, stateName: (id: string) => string) {
   }
 }
 
+/** When "snooze until …" ends, in the viewer's local time. */
+function snoozeChoices(now = new Date()) {
+  const at = (days: number, hour: number) => {
+    const d = new Date(now);
+    d.setDate(d.getDate() + days);
+    d.setHours(hour, 0, 0, 0);
+    return d;
+  };
+  const toMonday = (8 - now.getDay()) % 7 || 7;
+  return [
+    { label: 'In an hour', until: new Date(now.getTime() + 3_600_000) },
+    { label: 'Later today', until: new Date(now.getTime() + 3 * 3_600_000) },
+    { label: 'Tomorrow morning', until: at(1, 9) },
+    { label: 'Next week', until: at(toMonday, 9) },
+  ];
+}
+
 export function InboxPage() {
   const ws = useWorkspace();
   const qc = useQueryClient();
-  const { data, isLoading } = useNotifications(ws.slug);
+  const [showSnoozed, setShowSnoozed] = useState(false);
+  const { data, isLoading } = useNotifications(ws.slug, showSnoozed);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const list = data ?? [];
   const selected = list.find((n) => n.id === selectedId) ?? null;
@@ -49,6 +69,15 @@ export function InboxPage() {
   };
   const markRead = async (ids?: string[], unread = false) => {
     await api.post(wsPath(ws.slug, '/notifications/read'), { ids, unread });
+    refresh();
+  };
+  const snooze = async (ids: string[], until: Date | null) => {
+    await api.post(wsPath(ws.slug, '/notifications/snooze'), {
+      ids,
+      until: until?.toISOString() ?? null,
+    });
+    if (ids.includes(selectedId ?? '')) setSelectedId(null);
+    setSnoozeOpen(false);
     refresh();
   };
   const remove = async (body: { ids?: string[]; read?: boolean }) => {
@@ -67,6 +96,11 @@ export function InboxPage() {
   useHotkey(['k', 'arrowup'], () => idx > 0 && open(list[idx - 1]!));
   useHotkey('u', () => selected && markRead([selected.id], !!selected.readAt));
   useHotkey(['backspace', 'delete'], () => selected && remove({ ids: [selected.id] }));
+  useHotkey('h', () => {
+    if (!selected) return;
+    if (showSnoozed) snooze([selected.id], null);
+    else setSnoozeOpen(true);
+  });
 
   return (
     <div className="flex h-full min-h-0">
@@ -81,9 +115,72 @@ export function InboxPage() {
               inbox
             </>
           }
-          title="Inbox"
+          title={showSnoozed ? 'Snoozed' : 'Inbox'}
           actions={
             <>
+              {selected && !showSnoozed && (
+                <Popover
+                  open={snoozeOpen}
+                  onOpenChange={setSnoozeOpen}
+                  placement="bottom-end"
+                  width={220}
+                  trigger={
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      title="Snooze (H)"
+                      aria-label="Snooze"
+                    >
+                      <AlarmClock size={13} />
+                    </button>
+                  }
+                >
+                  {() => (
+                    <div className="py-1">
+                      {snoozeChoices().map((c) => (
+                        <button
+                          type="button"
+                          key={c.label}
+                          className="menu-item"
+                          onClick={() => snooze([selected.id], c.until)}
+                        >
+                          {c.label}
+                          <span className="ml-auto font-mono text-[10.5px] text-index">
+                            {c.until.toLocaleString(undefined, {
+                              weekday: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </Popover>
+              )}
+              {selected && showSnoozed && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => snooze([selected.id], null)}
+                  title="Unsnooze (H)"
+                >
+                  <AlarmClockOff size={13} />
+                </button>
+              )}
+              <button
+                type="button"
+                className={`btn btn-ghost btn-sm ${showSnoozed ? 'text-primary' : ''}`}
+                onClick={() => {
+                  setShowSnoozed(!showSnoozed);
+                  setSelectedId(null);
+                }}
+                aria-pressed={showSnoozed}
+                title={showSnoozed ? 'Back to the inbox' : 'Show snoozed'}
+              >
+                <AlarmClock size={13} />
+                <span className="hidden lg:inline">{showSnoozed ? 'Inbox' : 'Snoozed'}</span>
+              </button>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
@@ -109,8 +206,12 @@ export function InboxPage() {
           {isLoading && <Spinner />}
           {!isLoading && list.length === 0 && (
             <EmptyState
-              title="all caught up"
-              body="Assignments, mentions and comments on issues you follow land here."
+              title={showSnoozed ? 'nothing snoozed' : 'all caught up'}
+              body={
+                showSnoozed
+                  ? 'Snoozed notifications wait here and come back unread when it’s time.'
+                  : 'Assignments, mentions and comments on issues you follow land here.'
+              }
             />
           )}
           {list.map((n) => {
@@ -141,7 +242,9 @@ export function InboxPage() {
                     {s && <StatusIcon type={s.type} color={s.color} size={12} />}
                     <span className="font-mono text-[11px] text-index">{n.issue?.identifier}</span>
                     <span className="ml-auto flex-none font-mono text-[10.5px] text-index">
-                      {relativeTime(n.createdAt)}
+                      {n.snoozedUntil
+                        ? `until ${new Date(n.snoozedUntil).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`
+                        : relativeTime(n.createdAt)}
                     </span>
                   </span>
                   <span
@@ -187,7 +290,7 @@ export function InboxPage() {
           <div className="hud-ground flex h-full">
             <EmptyState
               title="inbox"
-              body="Select a notification to see the issue. J/K to move, U to toggle read, ⌫ to delete."
+              body="Select a notification to see the issue. J/K to move, U to toggle read, H to snooze, ⌫ to delete."
             />
           </div>
         )}

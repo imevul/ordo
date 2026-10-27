@@ -455,6 +455,8 @@ export interface Notification {
   commentId: string | null;
   actorId: string | null;
   readAt: string | null;
+  /** Hidden from the inbox until then. */
+  snoozedUntil: string | null;
   createdAt: string;
   issue: IssueRef | null;
   data: Record<string, unknown>;

@@ -185,6 +185,11 @@ The **Inbox** collects notifications: assigned / unassigned, mentions, comments 
 follow, issues marked urgent, and reactions to your comments. Select one to read the issue alongside. `U` toggles read, `⌫` deletes;
 the header buttons mark everything read or clear read notifications.
 
+**Snooze** a notification (`H`, or the clock button) to hide it until later: in an hour, later today, tomorrow
+morning or next week, in your own time zone. It leaves the inbox and the unread count, isn't emailed meanwhile, and
+comes back unread at the top when the time comes. **Snoozed** in the inbox header lists what's waiting; `H` there
+brings one back right away.
+
 ## Cycles
 
 Cycles are a team's time-boxed iterations (usually 1–2 weeks). Turn them on per team, create them under

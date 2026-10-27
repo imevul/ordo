@@ -701,6 +701,10 @@ export const notifications = pgTable(
     readAt: ts('read_at'),
     /** Set once the notification went out by email (or was skipped by preferences). */
     emailedAt: ts('emailed_at'),
+    /** Hidden from the inbox until then. */
+    snoozedUntil: ts('snoozed_until'),
+    /** When a snooze ended: the inbox sorts by this, or by creation. */
+    wokeAt: ts('woke_at'),
     createdAt: createdAt(),
   },
   (t) => [index('notifications_user_idx').on(t.userId, t.workspaceId)],

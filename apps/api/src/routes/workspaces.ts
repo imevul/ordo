@@ -7,7 +7,7 @@ import {
   transferOwnershipSchema,
   updateWorkspaceSchema,
 } from '@ordo/shared';
-import { and, asc, count, desc, eq, isNull, lt, or } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
   auditLog,
@@ -85,6 +85,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
             eq(notifications.workspaceId, ws.id),
             eq(notifications.userId, user.id),
             isNull(notifications.readAt),
+            or(isNull(notifications.snoozedUntil), sql`${notifications.snoozedUntil} <= now()`),
           ),
         ),
       workspaceBots(db, ws.id),
