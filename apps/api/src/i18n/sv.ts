@@ -52,6 +52,10 @@ export default {
         title: 'Tvåstegsverifiering är av',
         body: 'För att logga in i Ordo behövs nu bara ditt lösenord.',
       },
+      totpOff: {
+        title: 'Din autentiseringsapp används inte längre för att logga in i Ordo',
+        body: 'När du loggar in med lösenord får du nu i stället använda en av dina lösennycklar (eller en återställningskod).',
+      },
       passkeyAdded: {
         title: 'En lösennyckel har lagts till på ditt Ordo-konto',
         body: 'Lösennyckeln ”{name}” kan nu logga in på ditt konto.',

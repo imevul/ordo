@@ -7,7 +7,7 @@
     <meta name="theme-color" content="#09090b" />
     <script>
       // The light/dark choice (src/lib/theme.ts), applied before the first paint.
-      (function () {
+      (() => {
         var pref = 'system';
         try {
           pref = JSON.parse(localStorage.getItem('ordo:theme')) || 'system';

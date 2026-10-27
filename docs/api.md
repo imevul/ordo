@@ -90,7 +90,12 @@ Account endpoints (no workspace prefix): `GET /me/account`, `PATCH /me/preferenc
 `GET /me/passkeys`, `POST /me/passkeys/options` (`{ password? }` → `{ challengeId, options }`), `POST /me/passkeys`
 (`{ challengeId, response, name? }`), `PATCH|DELETE /me/passkeys/:id`, `POST /auth/passkey/options` and
 `POST /auth/passkey` (`{ challengeId, response }`: sign in without a password),
-`POST /auth/forgot`, `POST /auth/reset`, `POST /auth/mfa`, `POST /auth/verify-email`. Instance administration lives
+`POST /auth/forgot`, `POST /auth/reset`, `POST /auth/mfa`, `POST /auth/verify-email`. When an account has a
+second factor, `POST /auth/login` answers `{ ok: false, mfaRequired: true, mfaToken, factors }`, where `factors`
+lists what the account can finish with (`totp`, `passkey`, `recovery`). Finish with `POST /auth/mfa`, either
+`{ mfaToken, code }` (an authenticator code or a recovery code) or `{ mfaToken, passkey: { challengeId, response } }`
+after `POST /auth/mfa/passkey/options` (`{ mfaToken }` → `{ challengeId, options }`). A wrong answer keeps the
+`mfaToken` usable for another try. Instance administration lives
 under `/api/admin/*` (instance admins only; see [admin.md](admin.md)).
 
 ## Workspace-scoped endpoints

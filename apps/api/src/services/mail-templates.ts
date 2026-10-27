@@ -120,7 +120,8 @@ export type SecurityNotice =
   | 'twoFactorOff'
   | 'emailChanged'
   | 'passkeyAdded'
-  | 'passkeyRemoved';
+  | 'passkeyRemoved'
+  | 'totpOff';
 
 export function securityEmail(
   locale: Locale,

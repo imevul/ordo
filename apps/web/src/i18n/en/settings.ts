@@ -92,7 +92,7 @@ export default {
   passkeys: {
     title: 'Passkeys',
     description:
-      'Sign in with your fingerprint, face or device PIN instead of a password. Passkeys can’t be phished, and your password manager can carry them to your other devices.',
+      'Sign in with your fingerprint, face or device PIN instead of a password. Passkeys can’t be phished, and your password manager can carry them to your other devices. Once you have one, signing in with your password asks for a passkey too.',
     needsHttps: 'Passkeys need Ordo on an https address. Ask your administrator.',
     otherOrigin:
       'Passkeys belong to this instance’s own address. Open it at {origin} to add or use them.',
@@ -111,12 +111,14 @@ export default {
     removeTitle: 'Remove “{name}”?',
     removeBody:
       'It won’t sign in to Ordo any more. You can delete it from your device or password manager too.',
+    newCodes: 'Get new codes',
+    newCodesBody: 'New recovery codes replace the old ones, which stop working.',
   },
   twoFactor: {
-    title: 'Two-factor authentication',
+    title: 'Authenticator app',
     description:
       'Require a code from an authenticator app (1Password, Bitwarden, Aegis, Google Authenticator…) when signing in.',
-    turnedOff: 'Two-factor authentication is off',
+    turnedOff: 'Authenticator app turned off',
     regeneratePrompt: 'Enter a current 6-digit code from your authenticator app',
     /** Chip shown when two-factor is enabled. */
     on: 'on',

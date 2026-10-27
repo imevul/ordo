@@ -7,6 +7,7 @@ import {
   type Passkey,
   passkeyOptionsSchema,
   passwordConfirmSchema,
+  recoveryCodesSchema,
   removePasskeySchema,
   renamePasskeySchema,
   type SessionInfo,
@@ -35,6 +36,8 @@ import { securityEmail, verifyEmailEmail } from '../services/mail-templates.ts';
 import { queueEmail } from '../services/mailer.ts';
 import {
   beginTotp,
+  hasRecoveryCodes,
+  hasSecondFactor,
   regenerateRecoveryCodes,
   verifySecondFactor,
   verifyTotp,
@@ -95,7 +98,8 @@ export async function accountRoutes(app: FastifyInstance) {
       workspaces: memberships,
       emailVerified: !!user.emailVerifiedAt,
       hasPassword: !!user.passwordHash,
-      twoFactorEnabled: !!user.totpEnabledAt,
+      twoFactorEnabled: await hasSecondFactor(db, user),
+      totpEnabled: !!user.totpEnabledAt,
       locale: resolvePreferences(user.preferences).locale,
       preferences: resolvePreferences(user.preferences),
     };
@@ -322,11 +326,15 @@ export async function accountRoutes(app: FastifyInstance) {
     return registrationOptions(app, user);
   });
 
-  app.post('/me/passkeys', async (req): Promise<Passkey> => {
+  app.post('/me/passkeys', async (req): Promise<Passkey & { recoveryCodes?: string[] }> => {
     const user = await loadUser(req);
     const input = parse(addPasskeySchema, req.body);
+    let codes: string[] | undefined;
     const row = await db.transaction(async (tx) => {
       const key = await addPasskey(app, tx, user.id, input);
+      // A passkey asks for itself after the password from now on: hand out a way back in.
+      if (!(await hasRecoveryCodes(tx, user.id)))
+        codes = await regenerateRecoveryCodes(tx, user.id);
       await audit(
         tx,
         { action: 'auth.passkey_added', actorId: user.id, data: { name: key.name } },
@@ -342,7 +350,7 @@ export async function accountRoutes(app: FastifyInstance) {
       );
       return key;
     });
-    return toPasskey(row);
+    return { ...toPasskey(row), ...(codes && { recoveryCodes: codes }) };
   });
 
   app.patch('/me/passkeys/:id', async (req): Promise<Passkey> => {
@@ -369,6 +377,9 @@ export async function accountRoutes(app: FastifyInstance) {
         .where(and(eq(passkeys.id, id), eq(passkeys.userId, user.id)))
         .returning();
       if (!row) throw notFound('Passkey');
+      // The last factor gone: recovery codes would only stand in for nothing.
+      if (!(await hasSecondFactor(tx, user)))
+        await tx.delete(recoveryCodes).where(eq(recoveryCodes.userId, user.id));
       await audit(
         tx,
         { action: 'auth.passkey_removed', actorId: user.id, data: { name: row.name } },
@@ -434,12 +445,14 @@ export async function accountRoutes(app: FastifyInstance) {
         .update(users)
         .set({ totpEnabledAt: null, totpSecret: null })
         .where(eq(users.id, user.id));
-      await tx.delete(recoveryCodes).where(eq(recoveryCodes.userId, user.id));
+      // With passkeys left, two-factor stays on and the recovery codes stay useful.
+      const stillOn = await hasSecondFactor(tx, { id: user.id, totpEnabledAt: null });
+      if (!stillOn) await tx.delete(recoveryCodes).where(eq(recoveryCodes.userId, user.id));
       await audit(tx, { action: 'auth.2fa_disabled', actorId: user.id }, requestMeta(req));
       await queueEmail(
         tx,
         user.email,
-        securityEmail(localeOf(user.preferences), { notice: 'twoFactorOff' }),
+        securityEmail(localeOf(user.preferences), { notice: stillOn ? 'totpOff' : 'twoFactorOff' }),
       );
     });
     return { ok: true };
@@ -447,9 +460,13 @@ export async function accountRoutes(app: FastifyInstance) {
 
   app.post('/me/2fa/recovery-codes', async (req) => {
     const user = await loadUser(req);
-    const { code } = parse(totpCodeSchema, req.body);
-    if (!user.totpEnabledAt || !verifyTotp(app.keyring, user, code))
-      throw badRequest('That code is not valid').as('invalid_code');
+    const { code, password } = parse(recoveryCodesSchema, req.body);
+    if (user.totpEnabledAt) {
+      if (!code || !verifyTotp(app.keyring, user, code))
+        throw badRequest('That code is not valid').as('invalid_code');
+    } else if (await hasSecondFactor(db, user)) {
+      await reauthenticate(req, user, password);
+    } else throw badRequest('That code is not valid').as('invalid_code');
     return { recoveryCodes: await regenerateRecoveryCodes(db, user.id) };
   });
 }

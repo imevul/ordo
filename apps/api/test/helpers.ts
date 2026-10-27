@@ -27,7 +27,11 @@ export async function testApp(overrides: Parameters<typeof loadEnv>[0] = {}) {
 /** A tiny cookie-carrying client around app.inject. */
 export class Client {
   cookie = '';
-  constructor(private app: FastifyInstance) {}
+  /** `ip` sets where requests seem to come from (rate limits count per address). */
+  constructor(
+    private app: FastifyInstance,
+    private opts: { ip?: string } = {},
+  ) {}
 
   async req(
     method: string,
@@ -39,6 +43,7 @@ export class Client {
       url,
       payload: body as object,
       headers: this.cookie ? { cookie: this.cookie } : {},
+      ...(this.opts.ip && { remoteAddress: this.opts.ip }),
     });
     const set = res.headers['set-cookie'];
     const session = (Array.isArray(set) ? set : [set]).find((c) => c?.startsWith('ordo_session='));
@@ -94,8 +99,9 @@ export async function signup(
   name = 'Ada Lovelace',
   extra: Record<string, unknown> = {},
 ) {
-  const c = new Client(app);
   n++;
+  // Each person signs up from their own address, so busy test files don't share a rate limit.
+  const c = new Client(app, { ip: `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}` });
   // Test files run in parallel workers, each counting from 1, so the time alone can collide.
   const email = `${name.split(' ')[0]!.toLowerCase()}${n}-${Date.now()}-${randomBytes(3).toString('hex')}@example.com`;
   const res = await c.post('/api/auth/signup', {

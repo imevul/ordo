@@ -29,6 +29,13 @@ export default {
     code: 'Kode',
     verify: 'Bekreft',
     back: 'tilbake',
+    titlePasskey: 'Bekreft at det er deg.',
+    helpPasskey:
+      'Bruk en av tilgangsnøklene dine for å fullføre innloggingen. Mistet dem? Skriv inn en av gjenopprettingskodene dine i stedet.',
+    helpRecovery:
+      'Tilgangsnøklene dine kan ikke brukes i denne nettleseren eller på denne adressen. Skriv inn en av gjenopprettingskodene dine i stedet.',
+    usePasskey: 'Bruk en tilgangsnøkkel',
+    recoveryCode: 'Gjenopprettingskode',
   },
   workspaceSso: {
     kicker: 'single sign-on',

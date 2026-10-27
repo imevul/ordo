@@ -302,8 +302,10 @@ Open **Settings** (workspace menu, or `G` then `S`):
 - **Security** — change your password (this signs out your other sessions); add **passkeys** to sign in with your
   fingerprint, face or device PIN instead of a password (_Sign in with a passkey_ on the sign-in page, or pick one in
   the email field's suggestions; they work at your instance's own address); turn on **two-factor authentication**
-  with any authenticator app, and keep the ten recovery codes somewhere safe — each works once if you lose your
-  device; see and revoke your **sessions**.
+  with any authenticator app. Passkeys count as a second factor too: once you have one, signing in with your
+  password asks for a passkey (or a code from your app, if you set one up). Your first second factor comes with ten
+  recovery codes — keep them somewhere safe; each works once if you lose your devices, and _New recovery codes_
+  replaces them. See and revoke your **sessions**.
 - **Connected accounts** — sign-in identities you've linked (and a button to connect your workspace's SSO
   provider), your usernames on connected forges so your pull requests show as yours, and your **chat** accounts:
   link one with a one-time code to get notifications as direct messages and to create issues from chat

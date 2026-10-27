@@ -1,8 +1,8 @@
 import { randomBytes } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, isNull } from 'drizzle-orm';
 import { Secret, TOTP } from 'otpauth';
 import type { DbOrTx } from '../db/client.ts';
-import { recoveryCodes, users } from '../db/schema.ts';
+import { passkeys, recoveryCodes, users } from '../db/schema.ts';
 import { sha256 } from '../lib/crypto.ts';
 import type { Keyring } from '../lib/secrets.ts';
 
@@ -67,13 +67,51 @@ export async function useRecoveryCode(db: DbOrTx, userId: string, code: string) 
   return !!row;
 }
 
-/** A TOTP code, or failing that an unused recovery code. */
+/** A TOTP code (when the authenticator app is on), or failing that an unused recovery code. */
 export async function verifySecondFactor(
   db: DbOrTx,
   keyring: Keyring,
-  user: { id: string; email: string; totpSecret: string | null },
+  user: { id: string; email: string; totpSecret: string | null; totpEnabledAt: string | null },
   code: string,
 ) {
-  if (/^\d{6}$/.test(code.trim()) && verifyTotp(keyring, user, code)) return true;
+  if (user.totpEnabledAt && /^\d{6}$/.test(code.trim()) && verifyTotp(keyring, user, code))
+    return true;
   return useRecoveryCode(db, user.id, code);
+}
+
+export type SecondFactor = 'totp' | 'passkey' | 'recovery';
+
+/**
+ * How someone can prove it's them after their password. An authenticator app or a passkey turns
+ * two-factor on; recovery codes are the way back in when the device is lost, never on their own.
+ */
+export async function secondFactors(
+  db: DbOrTx,
+  user: { id: string; totpEnabledAt: string | null },
+): Promise<SecondFactor[]> {
+  const [keys] = await db.select({ n: count() }).from(passkeys).where(eq(passkeys.userId, user.id));
+  const factors: SecondFactor[] = [];
+  if (user.totpEnabledAt) factors.push('totp');
+  if ((keys?.n ?? 0) > 0) factors.push('passkey');
+  if (!factors.length) return [];
+  const [codes] = await db
+    .select({ n: count() })
+    .from(recoveryCodes)
+    .where(and(eq(recoveryCodes.userId, user.id), isNull(recoveryCodes.usedAt)));
+  if ((codes?.n ?? 0) > 0) factors.push('recovery');
+  return factors;
+}
+
+export const hasSecondFactor = async (
+  db: DbOrTx,
+  user: { id: string; totpEnabledAt: string | null },
+) => (await secondFactors(db, user)).length > 0;
+
+/** Whether the person has recovery codes left (a first passkey hands them out otherwise). */
+export async function hasRecoveryCodes(db: DbOrTx, userId: string) {
+  const [row] = await db
+    .select({ n: count() })
+    .from(recoveryCodes)
+    .where(and(eq(recoveryCodes.userId, userId), isNull(recoveryCodes.usedAt)));
+  return (row?.n ?? 0) > 0;
 }

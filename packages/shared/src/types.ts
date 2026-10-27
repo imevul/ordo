@@ -743,7 +743,10 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
 export interface Account extends Me {
   emailVerified: boolean;
   hasPassword: boolean;
+  /** An authenticator app or a passkey asks for more than the password. */
   twoFactorEnabled: boolean;
+  /** The authenticator app (TOTP) is set up. */
+  totpEnabled: boolean;
   avatarUrl: string | null;
   preferences: UserPreferences;
 }

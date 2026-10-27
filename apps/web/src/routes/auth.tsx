@@ -17,6 +17,7 @@ import { Spinner } from '../components/PageHeader.tsx';
 import { getLocale, t, tx } from '../i18n/index.ts';
 import {
   cancelPasskeyRequest,
+  confirmWithPasskey,
   passkeyAutofillSupported,
   passkeyCancelled,
   passkeysHere,
@@ -125,6 +126,8 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   // Set after a correct password when the account has two-factor authentication.
   const [mfaToken, setMfaToken] = useState<string | null>(null);
+  // What the account can answer that step with: 'totp', 'passkey', 'recovery'.
+  const [factors, setFactors] = useState<string[]>([]);
   const [code, setCode] = useState('');
   // An SSO callback that failed sends people back here with ?error=.
   const [error, setError] = useState<string | null>(search.error ?? null);
@@ -204,32 +207,84 @@ export function LoginPage() {
       await api.post('/auth/mfa', { mfaToken, code });
       return done();
     }
-    const res = await api.post<{ ok: boolean; mfaRequired?: boolean; mfaToken?: string }>(
-      '/auth/login',
-      { email, password },
-    );
-    if (res.mfaRequired && res.mfaToken) setMfaToken(res.mfaToken);
-    else done();
+    const res = await api.post<{
+      ok: boolean;
+      mfaRequired?: boolean;
+      mfaToken?: string;
+      factors?: string[];
+    }>('/auth/login', { email, password });
+    if (res.mfaRequired && res.mfaToken) {
+      setFactors(res.factors ?? ['totp']);
+      setMfaToken(res.mfaToken);
+    } else done();
   });
 
+  const mfaWithPasskey = async () => {
+    if (!mfaToken) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await confirmWithPasskey(mfaToken);
+      done();
+    } catch (err) {
+      if (!passkeyCancelled(err)) setError(message(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (mfaToken) {
+    const totp = factors.includes('totp');
+    const passkey = passkeys && factors.includes('passkey');
+    // Without an authenticator app, the code field only takes recovery codes.
+    const help = totp
+      ? t('auth.mfa.help')
+      : passkey
+        ? t('auth.mfa.helpPasskey')
+        : t('auth.mfa.helpRecovery');
     return (
-      <AuthLayout kicker={t('auth.mfa.kicker')} title={t('auth.mfa.title')}>
+      <AuthLayout
+        kicker={t('auth.mfa.kicker')}
+        title={totp || !passkey ? t('auth.mfa.title') : t('auth.mfa.titlePasskey')}
+      >
         <form onSubmit={signIn}>
           <ErrorLine error={error} />
-          <p className="mb-5 text-[13px] text-muted">{t('auth.mfa.help')}</p>
+          <p className="mb-5 text-[13px] text-muted">{help}</p>
+          {passkey && !totp && (
+            <>
+              <button
+                type="button"
+                className="btn btn-primary w-full"
+                disabled={busy}
+                onClick={mfaWithPasskey}
+              >
+                <Fingerprint size={13} /> {t('auth.mfa.usePasskey')}
+              </button>
+              <OrDivider className="my-5" />
+            </>
+          )}
           <TextField
-            label={t('auth.mfa.code')}
+            label={totp ? t('auth.mfa.code') : t('auth.mfa.recoveryCode')}
             autoComplete="one-time-code"
             inputMode="text"
             required
-            autoFocus
+            autoFocus={totp || !passkey}
             value={code}
             onChange={(e) => setCode(e.target.value)}
           />
           <button className="btn btn-primary mt-2 w-full" disabled={busy}>
             {t('auth.mfa.verify')} <span className="arrow">→</span>
           </button>
+          {passkey && totp && (
+            <button
+              type="button"
+              className="btn btn-ghost mt-2 w-full"
+              disabled={busy}
+              onClick={mfaWithPasskey}
+            >
+              <Fingerprint size={13} /> {t('auth.mfa.usePasskey')}
+            </button>
+          )}
           <BackLink
             onClick={() => {
               setMfaToken(null);
@@ -362,11 +417,7 @@ export function LoginPage() {
               {t('auth.login.forget')}
             </button>
           </div>
-          <div className="mt-5 flex items-center gap-3 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-            <span className="h-px flex-1 bg-border-soft" />
-            {t('auth.or')}
-            <span className="h-px flex-1 bg-border-soft" />
-          </div>
+          <OrDivider className="mt-5" />
         </div>
       )}
       <form onSubmit={continueWithEmail}>
@@ -387,11 +438,7 @@ export function LoginPage() {
           {t('common.continue')} <span className="arrow">→</span>
         </button>
       </form>
-      <div className="my-5 flex items-center gap-3 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-        <span className="h-px flex-1 bg-border-soft" />
-        {t('auth.or')}
-        <span className="h-px flex-1 bg-border-soft" />
-      </div>
+      <OrDivider className="my-5" />
       <button
         type="button"
         className="btn btn-ghost w-full"
@@ -413,6 +460,18 @@ export function LoginPage() {
         </button>
       )}
     </AuthLayout>
+  );
+}
+
+function OrDivider({ className }: { className: string }) {
+  return (
+    <div
+      className={`${className} flex items-center gap-3 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase`}
+    >
+      <span className="h-px flex-1 bg-border-soft" />
+      {t('auth.or')}
+      <span className="h-px flex-1 bg-border-soft" />
+    </div>
   );
 }
 

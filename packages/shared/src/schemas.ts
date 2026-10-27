@@ -71,10 +71,21 @@ export const resetPasswordSchema = z.object({
 export const tokenSchema = z.object({ token: z.string().min(10).max(200) });
 
 /** Second login step when two-factor authentication is on: a TOTP code or a recovery code. */
-export const mfaLoginSchema = z.object({
-  mfaToken: z.string().min(10).max(200),
-  code: z.string().trim().min(6).max(20),
-});
+/** The second step of a password sign-in: a code (app or recovery), or a passkey. */
+export const mfaLoginSchema = z
+  .object({
+    mfaToken: z.string().min(10).max(200),
+    code: z.string().trim().min(6).max(20).optional(),
+    passkey: z
+      .object({
+        challengeId: z.string().min(10).max(100),
+        response: z.object({ id: z.string().min(1).max(1500) }).passthrough(),
+      })
+      .optional(),
+  })
+  .refine((v) => !!v.code !== !!v.passkey, 'Send a code or a passkey');
+
+export const mfaPasskeyOptionsSchema = z.object({ mfaToken: z.string().min(10).max(200) });
 
 export const changeEmailSchema = z.object({
   email: z.email().max(254),
@@ -88,6 +99,12 @@ export const totpCodeSchema = z.object({
     .string()
     .trim()
     .regex(/^\d{6}$/, 'Enter the 6-digit code'),
+});
+
+/** New recovery codes: a code from the authenticator app, or (passkeys only) the password. */
+export const recoveryCodesSchema = z.object({
+  code: z.string().trim().max(20).optional(),
+  password: z.string().max(200).optional(),
 });
 
 export const disableTwoFactorSchema = z.object({

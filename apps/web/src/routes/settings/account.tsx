@@ -437,8 +437,15 @@ function PasswordCard({ account }: { account: Account }) {
   );
 }
 
-/** Adding or removing a passkey: the password (when the account has one), and a name for new ones. */
-type PasskeyStep = { kind: 'add' } | { kind: 'remove'; id: string; name: string } | null;
+/**
+ * Adding or removing a passkey, or new recovery codes for an account whose only second factor is
+ * passkeys: the password (when the account has one), and a name for new passkeys.
+ */
+type PasskeyStep =
+  | { kind: 'add' }
+  | { kind: 'remove'; id: string; name: string }
+  | { kind: 'codes' }
+  | null;
 
 function PasskeysCard({ account }: { account: Account }) {
   const config = useConfig();
@@ -453,7 +460,12 @@ function PasskeysCard({ account }: { account: Account }) {
   const [name, setName] = useState('');
   const [renaming, setRenaming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const refresh = () => qc.invalidateQueries({ queryKey });
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const refreshAccount = useRefreshAccount();
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey });
+    refreshAccount();
+  };
 
   const origin = config.data?.passkeyOrigin;
   if (!passkeysHere(origin)) {
@@ -481,12 +493,21 @@ function PasskeysCard({ account }: { account: Account }) {
     if (!step) return;
     setBusy(true);
     try {
+      const pw = account.hasPassword ? password : undefined;
       if (step.kind === 'add') {
-        await addPasskey(account.hasPassword ? password : undefined, name.trim() || deviceName());
+        const added = await addPasskey(pw, name.trim() || deviceName());
+        if (added.recoveryCodes) setCodes(added.recoveryCodes);
         toast.success(t('settings.passkeys.added'));
+      } else if (step.kind === 'codes') {
+        const res = await api.post<{ recoveryCodes: string[] }>('/me/2fa/recovery-codes', {
+          password: pw,
+        });
+        setCodes(res.recoveryCodes);
       } else {
         await api.del(`/me/passkeys/${step.id}`, account.hasPassword ? { password } : {});
         toast.success(t('settings.passkeys.removed'));
+        // The last second factor took its recovery codes with it.
+        if (list.length === 1 && !account.totpEnabled) setCodes(null);
       }
       setStep(null);
       refresh();
@@ -508,6 +529,7 @@ function PasskeysCard({ account }: { account: Account }) {
     if (!ok) return;
     try {
       await api.del(`/me/passkeys/${p.id}`, {});
+      if (list.length === 1 && !account.totpEnabled) setCodes(null);
       refresh();
     } catch (err) {
       toast.error(errMsg(err));
@@ -530,6 +552,11 @@ function PasskeysCard({ account }: { account: Account }) {
       title={t('settings.passkeys.title')}
       description={t('settings.passkeys.description')}
     >
+      {codes && (
+        <div className="mb-4">
+          <RecoveryCodes codes={codes} />
+        </div>
+      )}
       {list.map((p) => (
         <div
           key={p.id}
@@ -541,7 +568,6 @@ function PasskeysCard({ account }: { account: Account }) {
               className="input h-7 min-w-0 flex-1 py-0 text-[13px]"
               defaultValue={p.name}
               aria-label={t('settings.passkeys.name')}
-              // biome-ignore lint/a11y/noAutofocus: the field appears because they asked to rename
               autoFocus
               onBlur={(e) => rename(p, e.target.value)}
               onKeyDown={(e) => {
@@ -591,6 +617,9 @@ function PasskeysCard({ account }: { account: Account }) {
               {t('settings.passkeys.removeBody')}
             </p>
           )}
+          {step.kind === 'codes' && (
+            <p className="mb-3 text-[13px] text-muted">{t('settings.passkeys.newCodesBody')}</p>
+          )}
           {account.hasPassword && (
             <FormRow label={t('settings.passkeys.confirmPassword')}>
               <input
@@ -608,7 +637,11 @@ function PasskeysCard({ account }: { account: Account }) {
               className={`btn ${step.kind === 'remove' ? 'btn-danger' : 'btn-primary'}`}
               disabled={busy}
             >
-              {step.kind === 'remove' ? t('common.remove') : t('common.continue')}
+              {step.kind === 'remove'
+                ? t('common.remove')
+                : step.kind === 'codes'
+                  ? t('settings.passkeys.newCodes')
+                  : t('common.continue')}
             </button>
             <button type="button" className="btn btn-ghost" onClick={() => setStep(null)}>
               {t('common.cancel')}
@@ -616,9 +649,21 @@ function PasskeysCard({ account }: { account: Account }) {
           </div>
         </form>
       ) : (
-        <button type="button" className="btn btn-ghost mt-3" onClick={() => start({ kind: 'add' })}>
-          <Fingerprint size={12} /> {t('settings.passkeys.add')}
-        </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" className="btn btn-ghost" onClick={() => start({ kind: 'add' })}>
+            <Fingerprint size={12} /> {t('settings.passkeys.add')}
+          </button>
+          {/* With an authenticator app, its card hands out recovery codes instead. */}
+          {list.length > 0 && !account.totpEnabled && (
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => start({ kind: 'codes' })}
+            >
+              {t('settings.twoFactor.newRecoveryCodes')}
+            </button>
+          )}
+        </div>
       )}
     </SettingsCard>
   );
@@ -731,7 +776,7 @@ function TwoFactorCard({ account }: { account: Account }) {
           <RecoveryCodes codes={codes} />
         </div>
       )}
-      {account.twoFactorEnabled ? (
+      {account.totpEnabled ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="chip mr-2 [--chip:var(--color-success)]">
             {t('settings.twoFactor.on')}

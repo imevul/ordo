@@ -93,7 +93,7 @@ export async function adminRoutes(app: FastifyInstance) {
         isInstanceAdmin: users.isInstanceAdmin,
         disabledAt: users.disabledAt,
         emailVerifiedAt: users.emailVerifiedAt,
-        twoFactor: sql<boolean>`${users.totpEnabledAt} is not null`,
+        twoFactor: sql<boolean>`(${users.totpEnabledAt} is not null or exists (select 1 from passkeys p where p.user_id = "users"."id"))`,
         createdAt: users.createdAt,
         // Spelled out: in a single-table select Drizzle leaves columns unqualified, and a bare "id"
         // inside these subqueries would bind to the subquery's own table.
