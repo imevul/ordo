@@ -49,6 +49,7 @@ import { placeholderRoutes } from './routes/placeholders.ts';
 import { projectRoutes } from './routes/projects.ts';
 import { pushRoutes } from './routes/push.ts';
 import { realtimeRoutes } from './routes/realtime.ts';
+import { scimAdminRoutes, scimRoutes } from './routes/scim.ts';
 import { searchRoutes } from './routes/search.ts';
 import { slackCallbackRoutes, slackWorkspaceRoutes } from './routes/slack.ts';
 import { ssoRoutes } from './routes/sso.ts';
@@ -204,6 +205,7 @@ export async function buildApp(
   await app.register(attachmentDownloadRoutes, { prefix: '/api' });
   await app.register(joiningRoutes, { prefix: '/api' });
   await app.register(ssoRoutes, { prefix: '/api' });
+  await app.register(scimRoutes, { prefix: '/api/scim/v2' });
   await app.register(hookRoutes, { prefix: '/api/hooks' });
   await app.register(githubCallbackRoutes, { prefix: '/api' });
   await app.register(slackCallbackRoutes, { prefix: '/api' });
@@ -224,6 +226,7 @@ export async function buildApp(
       await w.register(workspaceRoutes);
       await w.register(memberRoutes);
       await w.register(authProviderRoutes);
+      await w.register(scimAdminRoutes);
       await w.register(teamRoutes);
       await w.register(cycleRoutes);
       await w.register(issueRoutes);

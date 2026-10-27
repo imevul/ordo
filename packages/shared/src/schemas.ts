@@ -154,6 +154,7 @@ export const updateWorkspaceSchema = z.object({
       accentColor: z.string().regex(HEX_COLOR, 'Use a #rrggbb colour').nullable().optional(),
       aiEnabled: z.boolean().optional(),
       aiSource: z.enum(['instance', 'workspace']).optional(),
+      scimDefaultRole: z.enum(['member', 'guest']).optional(),
     })
     .optional(),
 });
@@ -719,6 +720,8 @@ export const updateAuthProviderSchema = z
     saml: samlSettingsSchema.optional(),
     trustEmail: z.boolean().optional(),
   });
+
+export const createScimTokenSchema = z.object({ name: z.string().trim().min(1).max(80) });
 
 /** IdP metadata to read SAML settings from: pasted XML, or a URL to fetch it from. */
 export const samlMetadataSchema = z

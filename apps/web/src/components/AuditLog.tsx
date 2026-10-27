@@ -412,7 +412,13 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
     case 'workspace.deleted':
       return a('workspaceDeleted');
     case 'member.joined':
-      return a(d.via === 'domain' ? 'memberJoinedByDomain' : 'memberJoined');
+      return a(
+        d.via === 'domain'
+          ? 'memberJoinedByDomain'
+          : d.via === 'scim'
+            ? 'memberJoinedByDirectory'
+            : 'memberJoined',
+      );
     case 'member.role_changed':
       return a('memberRoleChanged', { role: role(d.role) });
     case 'member.removed':
@@ -511,6 +517,14 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
       return a('importUndone');
     case 'placeholder.merged':
       return a('placeholderMerged');
+    case 'scim.token_created':
+      return a('scimTokenCreated');
+    case 'scim.token_deleted':
+      return a('scimTokenDeleted');
+    case 'auth.passkey_added':
+      return a('passkeyAdded');
+    case 'auth.passkey_removed':
+      return a('passkeyRemoved');
     case 'api_key.created':
       return a('apiKeyCreated');
     case 'api_key.revoked':

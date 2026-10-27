@@ -1148,6 +1148,47 @@ export const authStates = pgTable('auth_states', {
   expiresAt: ts('expires_at').notNull(),
 });
 
+// ─── SCIM (directory sync) ──────────────────────────────────────────────
+
+/** Bearer tokens an identity provider uses to provision one workspace over SCIM. */
+export const scimTokens = pgTable(
+  'scim_tokens',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    prefix: text('prefix').notNull(),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    lastUsedAt: ts('last_used_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('scim_tokens_workspace_idx').on(t.workspaceId)],
+);
+
+/** Members the workspace's directory manages, with the directory's own id for them. */
+export const scimUsers = pgTable(
+  'scim_users',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    externalId: text('external_id'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('scim_users_member_idx').on(t.workspaceId, t.userId),
+    index('scim_users_external_idx').on(t.workspaceId, t.externalId),
+  ],
+);
+
 // ─── Events, webhooks, integrations ──────────────────────────────────────
 
 /**

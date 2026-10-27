@@ -33,7 +33,8 @@ Admins can **suspend** a member — they keep their history but can't open the w
   (`_ordo-verify.example.com` → `ordo-verify=…`); and **join by domain**, which lets anyone with a _verified_ email at
   one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.
 - **Authentication** — single sign-on with your own identity provider (OpenID Connect or SAML), group → role mapping, and
-  **require SSO**. See [SSO](sso.md).
+  **require SSO** ([SSO](sso.md)); **directory sync** so your identity provider adds, suspends and removes members
+  ([SCIM](scim.md)).
 - **Integrations** — connect GitHub, GitLab or Forgejo/Gitea, and Slack, Discord, Matrix or Telegram; see
   [integrations](integrations/README.md).
 - **Webhooks** — send issue, comment, project and cycle events to your own endpoints, signed, with a delivery log,
