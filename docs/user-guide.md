@@ -41,7 +41,9 @@ Admins can **suspend** a member — they keep their history but can't open the w
 - **Import & export** — bring issues in from a CSV file, Linear, GitHub, GitLab, Forgejo/Gitea or Jira (with a
   dry run first, and undo afterwards), merge people from imports into members who've joined, and export the
   workspace as JSON or CSV. See [importing data](import-export.md).
-- **Audit log** — security-relevant changes: invites, role changes, team changes, domains, and more.
+- **Audit log** — security-relevant changes: invites, role changes, team changes, domains, and more. Filter by kind
+  of activity, person and time (or search the details), and open an entry to see exactly what changed and from which
+  IP address.
 - **Danger zone** (owners) — **transfer ownership** to another member (you become an admin), or **delete** the
   workspace for good.
 

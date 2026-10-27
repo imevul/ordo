@@ -1,13 +1,15 @@
 import multipart from '@fastify/multipart';
 import {
+  AUDIT_CATEGORIES,
   type AuditEntry,
+  auditQuerySchema,
   type Bootstrap,
   createFavoriteSchema,
   deleteWorkspaceSchema,
   transferOwnershipSchema,
   updateWorkspaceSchema,
 } from '@ordo/shared';
-import { and, asc, count, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, isNull, like, lt, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
   auditLog,
@@ -279,15 +281,37 @@ export async function workspaceRoutes(app: FastifyInstance) {
 
   app.get('/audit-log', async (req): Promise<AuditEntry[]> => {
     const ws = requireAdmin(req);
-    const { before, limit } = req.query as { before?: string; limit?: string };
+    const q = parse(auditQuerySchema, req.query);
+    const prefixes = q.category ? AUDIT_CATEGORIES[q.category] : null;
+    const pattern = q.q ? `%${q.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
     const rows = await db
       .select()
       .from(auditLog)
       .where(
-        and(eq(auditLog.workspaceId, ws.id), before ? lt(auditLog.createdAt, before) : undefined),
+        and(
+          eq(auditLog.workspaceId, ws.id),
+          prefixes ? or(...prefixes.map((p) => like(auditLog.action, `${p}%`))) : undefined,
+          q.actorId ? eq(auditLog.actorId, q.actorId) : undefined,
+          q.from ? gte(auditLog.createdAt, q.from) : undefined,
+          q.to ? lt(auditLog.createdAt, q.to) : undefined,
+          pattern
+            ? or(
+                ilike(auditLog.action, pattern),
+                ilike(auditLog.targetId, pattern),
+                ilike(auditLog.ip, pattern),
+                sql`${auditLog.data}::text ilike ${pattern}`,
+              )
+            : undefined,
+          // Entries made in the same transaction share a timestamp; the id breaks the tie.
+          q.before
+            ? q.beforeId
+              ? sql`(${auditLog.createdAt}, ${auditLog.id}) < (${q.before}::timestamptz, ${q.beforeId}::uuid)`
+              : lt(auditLog.createdAt, q.before)
+            : undefined,
+        ),
       )
-      .orderBy(desc(auditLog.createdAt))
-      .limit(Math.min(Number(limit) || 100, 500));
+      .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
+      .limit(q.limit);
     return rows.map(({ userAgent: _ua, ...r }) => r);
   });
 

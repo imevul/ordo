@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import {
+  AUDIT_CATEGORIES,
+  type AuditCategory,
   CHAT_EVENT_KINDS,
   DOMAIN_EVENT_TYPES,
   ESTIMATE_SCALE_NAMES,
@@ -803,4 +805,19 @@ export const slackAppSchema = z.object({
   clientSecret: z.string().trim().max(200).optional(),
   signingSecret: z.string().trim().max(200).optional(),
   appToken: z.string().trim().max(300).optional(),
+});
+
+/** Filters for a workspace's audit log; `before` + `beforeId` page to older entries. */
+export const auditQuerySchema = z.object({
+  category: z.enum(Object.keys(AUDIT_CATEGORIES) as [AuditCategory, ...AuditCategory[]]).optional(),
+  actorId: z.uuid().optional(),
+  /** Inclusive. */
+  from: z.iso.datetime({ offset: true }).optional(),
+  /** Exclusive. */
+  to: z.iso.datetime({ offset: true }).optional(),
+  /** Matched against the action, its target, IP address and details. */
+  q: z.string().trim().max(200).optional(),
+  before: z.iso.datetime({ offset: true }).optional(),
+  beforeId: z.uuid().optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
 });
