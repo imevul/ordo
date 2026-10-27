@@ -215,6 +215,26 @@
   .panel-sm {
     --panel-cut: var(--cut-sm);
   }
+  /*
+   * For panels whose content reaches the edges (a scrolling modal body, full-width menu items):
+   * `panel-clip` on the panel and one `panel-body` around its content keep the content inside
+   * the 1px border, cut corners included. The border is the panel's own background, so anything
+   * painted over the edge would hide it. Menus and popovers portal out, so nothing is cut off.
+   */
+  .panel-clip {
+    padding: 1px;
+  }
+  .panel-body {
+    /* The inner edge of the border: the outer cut moved 1px inwards (√2 − 1 along each edge). */
+    clip-path: polygon(
+      0 0,
+      calc(100% - var(--panel-cut) + 0.6px) 0,
+      100% calc(var(--panel-cut) - 0.6px),
+      100% 100%,
+      calc(var(--panel-cut) - 0.6px) 100%,
+      0 calc(100% - var(--panel-cut) + 0.6px)
+    );
+  }
   .panel-raised {
     --panel-fill: var(--color-raised);
   }
