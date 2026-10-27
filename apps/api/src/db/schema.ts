@@ -26,6 +26,8 @@ import type {
   SlaHours,
   StateType,
   TeamRole,
+  TriageActions,
+  TriageConditions,
   UserKind,
   UserPreferences,
   WebhookPayload,
@@ -208,6 +210,26 @@ export const teams = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('teams_workspace_key_idx').on(t.workspaceId, t.key)],
+);
+
+/** Rules that sort what lands in a team's triage. */
+export const triageRules = pgTable(
+  'triage_rules',
+  {
+    id: pk(),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    position: doublePrecision('position').notNull().default(0),
+    conditions: jsonb('conditions').$type<TriageConditions>().notNull().default({}),
+    actions: jsonb('actions').$type<TriageActions>().notNull().default({}),
+    /** Whose turn it is in a rotation. */
+    turn: integer('turn').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('triage_rules_team_idx').on(t.teamId)],
 );
 
 /** Former team keys, so identifiers in old branches, commits and links keep resolving. */

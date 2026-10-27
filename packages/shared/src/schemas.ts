@@ -285,6 +285,32 @@ export const createTemplateSchema = z.object({
 });
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 
+const triageRuleFields = {
+  name: z.string().trim().min(1).max(80),
+  enabled: z.boolean(),
+  conditions: z.object({
+    sources: z
+      .array(z.enum(['web', 'api', 'mcp', 'integration', 'email']))
+      .max(5)
+      .optional(),
+    text: z.string().trim().max(200).optional(),
+    labelIds: z.array(id).max(20).optional(),
+    priorities: z.array(z.number().int().min(0).max(4)).max(5).optional(),
+  }),
+  actions: z.object({
+    priority: z.number().int().min(0).max(4).optional(),
+    labelIds: z.array(id).max(20).optional(),
+    assigneeId: id.optional(),
+    rotation: z.array(id).min(1).max(50).optional(),
+    stateId: id.optional(),
+  }),
+};
+export const createTriageRuleSchema = z.object(triageRuleFields).partial({ enabled: true });
+export const updateTriageRuleSchema = z
+  .object(triageRuleFields)
+  .extend({ position: z.number() })
+  .partial();
+
 export const createRecurringSchema = z.object({
   templateId: id,
   teamId: id,

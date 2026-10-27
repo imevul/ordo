@@ -28,6 +28,7 @@ import { Avatar } from '../../components/ui/Avatar.tsx';
 import { ConfirmModal, confirmDialog } from '../../components/ui/Modal.tsx';
 import { Popover } from '../../components/ui/Popover.tsx';
 import { useWorkspace } from '../../lib/workspace.tsx';
+import { TriageRulesCard } from './triage-rules.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
 export function TeamsSection() {
@@ -421,6 +422,7 @@ export function TeamSettings({ team }: { team: Team }) {
         </SettingsCard>
 
         <SlaCard team={team} onSave={(slaHours) => save.mutate({ slaHours })} />
+        {team.triageEnabled && <TriageRulesCard team={team} />}
         {team.cyclesEnabled && (
           <CycleAutomationCard
             team={team}

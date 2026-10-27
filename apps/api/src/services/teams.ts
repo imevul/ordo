@@ -4,6 +4,7 @@ import type { DbOrTx } from '../db/client.ts';
 import { teamKeyAliases, teamMembers, teams, workflowStates } from '../db/schema.ts';
 import { type Access, teamScope } from './access.ts';
 import { type Ctx, emit } from './context.ts';
+import { toTriageRule, triageRulesOf } from './triage.ts';
 
 export async function createTeam(
   ctx: Ctx,
@@ -58,13 +59,14 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     .orderBy(asc(teams.name));
   if (rows.length === 0) return [];
   const ids = rows.map((t) => t.id);
-  const [states, members] = await Promise.all([
+  const [states, members, rules] = await Promise.all([
     db
       .select()
       .from(workflowStates)
       .where(inArray(workflowStates.teamId, ids))
       .orderBy(asc(workflowStates.position)),
     db.select().from(teamMembers).where(inArray(teamMembers.teamId, ids)),
+    triageRulesOf(db, ids),
   ]);
   return rows.map((t) => ({
     id: t.id,
@@ -81,6 +83,7 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     cycleAutomation: cycleAutomationOf(t.cycleAutomation),
     autoArchiveMonths: t.autoArchiveMonths,
     slaHours: t.slaHours,
+    triageRules: rules.filter((r) => r.teamId === t.id).map(toTriageRule),
     memberIds: members.filter((m) => m.teamId === t.id).map((m) => m.userId),
     members: members
       .filter((m) => m.teamId === t.id)

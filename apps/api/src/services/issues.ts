@@ -57,6 +57,7 @@ import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 import { isWorkspacePlaceholder } from './placeholders.ts';
 import { matchingIssueIds, textQuery, textRank } from './search.ts';
+import { applyTriageRules } from './triage.ts';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -675,9 +676,13 @@ export async function createIssue(
   emit(ctx, { kind: 'issue', action: 'created', id, teamId: team.id });
   if (input.parentId)
     emit(ctx, { kind: 'issue', action: 'updated', id: input.parentId, teamId: team.id });
-  const issue = await getIssue(ctx.tx, ctx.access, id);
-  record(ctx, 'issue.created', issue, { teamIds: [team.id] });
-  return issue;
+  const created = await getIssue(ctx.tx, ctx.access, id);
+  record(ctx, 'issue.created', created, { teamIds: [team.id] });
+  if (!imported && state.type === 'triage') {
+    await applyTriageRules(ctx, id, team.id);
+    return getIssue(ctx.tx, ctx.access, id);
+  }
+  return created;
 }
 
 export async function updateIssue(

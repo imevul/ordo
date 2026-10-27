@@ -2,11 +2,13 @@ import {
   addTeamMemberSchema,
   createStateSchema,
   createTeamSchema,
+  createTriageRuleSchema,
   cycleAutomationOf,
   SORT_GAP,
   updateStateSchema,
   updateTeamMemberSchema,
   updateTeamSchema,
+  updateTriageRuleSchema,
 } from '@ordo/shared';
 import { and, count, eq, isNull, max, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -16,6 +18,7 @@ import {
   teamKeyAliases,
   teamMembers,
   teams,
+  triageRules,
   workflowStates,
   workspaceMembers,
 } from '../db/schema.ts';
@@ -33,6 +36,7 @@ import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../ser
 import { auditCtx } from '../services/audit.ts';
 import { type Ctx, emit } from '../services/context.ts';
 import { createTeam, listTeams } from '../services/teams.ts';
+import { assertTriageRule, toTriageRule } from '../services/triage.ts';
 
 /** Loads a team of the workspace and checks the caller's access to it. */
 async function loadTeam(ctx: Ctx, teamId: string, need: 'read' | 'admin' = 'read') {
@@ -159,6 +163,60 @@ export async function teamRoutes(app: FastifyInstance) {
       throw keyTaken(err);
     }
     return (await listTeams(app.db, requireAccess(req))).find((t) => t.id === teamId);
+  });
+
+  // ─── triage rules (team admins) ──────────────────────────────────────
+
+  app.post('/teams/:teamId/triage-rules', async (req) => {
+    const { teamId } = req.params as { teamId: string };
+    const input = parse(createTriageRuleSchema, req.body);
+    return mutate(app, req, async (ctx) => {
+      await loadTeam(ctx, teamId, 'admin');
+      await assertTriageRule(ctx, teamId, input);
+      const [{ last }] = (await ctx.tx
+        .select({ last: max(triageRules.position) })
+        .from(triageRules)
+        .where(eq(triageRules.teamId, teamId))) as [{ last: number | null }];
+      const [row] = await ctx.tx
+        .insert(triageRules)
+        .values({ ...input, teamId, position: (last ?? 0) + SORT_GAP })
+        .returning();
+      emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
+      return toTriageRule(row!);
+    });
+  });
+
+  const loadRule = async (ctx: Ctx, id: string) => {
+    const [rule] = await ctx.tx.select().from(triageRules).where(eq(triageRules.id, id));
+    if (!rule) throw notFound('Triage rule');
+    await loadTeam(ctx, rule.teamId, 'admin');
+    return rule;
+  };
+
+  app.patch('/triage-rules/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    const input = parse(updateTriageRuleSchema, req.body);
+    return mutate(app, req, async (ctx) => {
+      const rule = await loadRule(ctx, id);
+      await assertTriageRule(ctx, rule.teamId, input);
+      const [row] = await ctx.tx
+        .update(triageRules)
+        .set(input)
+        .where(eq(triageRules.id, id))
+        .returning();
+      emit(ctx, { kind: 'team', action: 'updated', id: rule.teamId, teamId: rule.teamId });
+      return toTriageRule(row!);
+    });
+  });
+
+  app.delete('/triage-rules/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, async (ctx) => {
+      const rule = await loadRule(ctx, id);
+      await ctx.tx.delete(triageRules).where(eq(triageRules.id, id));
+      emit(ctx, { kind: 'team', action: 'updated', id: rule.teamId, teamId: rule.teamId });
+      return { ok: true };
+    });
   });
 
   app.delete('/teams/:teamId', async (req) => {
