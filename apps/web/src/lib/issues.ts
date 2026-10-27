@@ -113,6 +113,24 @@ export function groupIssues(
         add({ key: p.id, label: p.name, value: p.id, color: p.color }, (i) => i.projectId === p.id);
       add({ key: 'none', label: 'No project', value: null }, (i) => !i.projectId);
       break;
+    case 'milestone': {
+      // Milestones of the projects in view, in project then date order.
+      const used = new Set(issues.map((i) => i.projectId));
+      const projects = ws.projects.filter((p) => used.has(p.id));
+      for (const p of projects)
+        for (const m of p.milestones)
+          add(
+            {
+              key: m.id,
+              label: projects.length > 1 ? `${p.name} · ${m.name}` : m.name,
+              value: m.id,
+              color: p.color,
+            },
+            (i) => i.milestoneId === m.id,
+          );
+      add({ key: 'none', label: 'No milestone', value: null }, (i) => !i.milestoneId);
+      break;
+    }
     case 'cycle': {
       const cycles = ws.cycles.filter((c) => !singleTeam || c.teamId === singleTeam);
       for (const c of cycles) {
@@ -173,6 +191,8 @@ export function patchForGroup(
       return { projectId: group.value as string | null };
     case 'cycle':
       return { cycleId: group.value as string | null };
+    case 'milestone':
+      return { milestoneId: group.value as string | null };
     default:
       return null;
   }

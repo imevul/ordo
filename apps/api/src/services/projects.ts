@@ -1,12 +1,19 @@
 import type { CreateProjectInput, Project, ProjectHealth } from '@ordo/shared';
 import { and, asc, desc, eq, exists, inArray, min, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
-import { projects, projectTeams, projectUpdates, teams, workspaceMembers } from '../db/schema.ts';
+import {
+  projectMilestones,
+  projects,
+  projectTeams,
+  projectUpdates,
+  teams,
+  workspaceMembers,
+} from '../db/schema.ts';
 import { badRequest } from '../lib/errors.ts';
 import { type Access, assertCan, canReadTeam } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { progressBy } from './progress.ts';
-import { toProject } from './serialize.ts';
+import { toMilestone, toProject } from './serialize.ts';
 
 export async function assertProjectTeams(ctx: Ctx, teamIds: string[]) {
   const rows = await ctx.tx
@@ -94,7 +101,7 @@ export async function listProjects(
     .orderBy(asc(projects.sortOrder), asc(projects.createdAt));
   if (rows.length === 0) return [];
   const ids = rows.map((p) => p.id);
-  const [links, progress, updates] = await Promise.all([
+  const [links, progress, updates, milestoneRows, milestoneProgress] = await Promise.all([
     db.select().from(projectTeams).where(inArray(projectTeams.projectId, ids)),
     progressBy(db, 'project_id', access),
     db
@@ -105,6 +112,16 @@ export async function listProjects(
       .from(projectUpdates)
       .where(inArray(projectUpdates.projectId, ids))
       .orderBy(projectUpdates.projectId, desc(projectUpdates.createdAt)),
+    db
+      .select()
+      .from(projectMilestones)
+      .where(inArray(projectMilestones.projectId, ids))
+      .orderBy(
+        sql`${projectMilestones.targetDate} asc nulls last`,
+        asc(projectMilestones.sortOrder),
+        asc(projectMilestones.createdAt),
+      ),
+    progressBy(db, 'milestone_id', access),
   ]);
   const health = new Map<string, ProjectHealth>(updates.map((u) => [u.projectId, u.health]));
   return rows.map((p) =>
@@ -115,6 +132,9 @@ export async function listProjects(
         .map((l) => l.teamId),
       progress.get(p.id),
       health.get(p.id),
+      milestoneRows
+        .filter((m) => m.projectId === p.id)
+        .map((m) => toMilestone(m, milestoneProgress.get(m.id))),
     ),
   );
 }

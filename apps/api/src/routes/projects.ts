@@ -1,7 +1,13 @@
-import { createProjectSchema, createProjectUpdateSchema, updateProjectSchema } from '@ordo/shared';
-import { desc, eq } from 'drizzle-orm';
+import {
+  createMilestoneSchema,
+  createProjectSchema,
+  createProjectUpdateSchema,
+  updateMilestoneSchema,
+  updateProjectSchema,
+} from '@ordo/shared';
+import { desc, eq, max } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { projects, projectTeams, projectUpdates } from '../db/schema.ts';
+import { projectMilestones, projects, projectTeams, projectUpdates } from '../db/schema.ts';
 import { requireAccess } from '../lib/auth.ts';
 import { forbidden, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
@@ -78,6 +84,60 @@ export async function projectRoutes(app: FastifyInstance) {
       emit(ctx, { kind: 'project', action: 'deleted', id });
       emit(ctx, { kind: 'issue', action: 'updated', id });
       return { ok: true };
+    });
+  });
+
+  // ─── milestones ───────────────────────────────────────────────────────
+  // Part of the project: changes come back as the project (and reach webhooks as project.updated).
+
+  const projectChanged = async (ctx: Ctx, projectId: string) => {
+    emit(ctx, { kind: 'project', action: 'updated', id: projectId });
+    const [project] = await listProjects(ctx.tx, ctx.access, projectId);
+    record(ctx, 'project.updated', project!, { teamIds: project!.teamIds });
+    return project!;
+  };
+
+  const loadMilestone = async (ctx: Ctx, id: string) => {
+    const [m] = await ctx.tx.select().from(projectMilestones).where(eq(projectMilestones.id, id));
+    if (!m) throw notFound('Milestone');
+    await loadProject(ctx, m.projectId);
+    return m;
+  };
+
+  app.post('/projects/:id/milestones', async (req) => {
+    const { id } = req.params as { id: string };
+    const input = parse(createMilestoneSchema, req.body);
+    return mutate(app, req, async (ctx) => {
+      await loadProject(ctx, id);
+      const [{ last }] = (await ctx.tx
+        .select({ last: max(projectMilestones.sortOrder) })
+        .from(projectMilestones)
+        .where(eq(projectMilestones.projectId, id))) as [{ last: number | null }];
+      await ctx.tx
+        .insert(projectMilestones)
+        .values({ ...input, projectId: id, sortOrder: (last ?? 0) + 1024 });
+      return projectChanged(ctx, id);
+    });
+  });
+
+  app.patch('/milestones/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    const input = parse(updateMilestoneSchema, req.body);
+    return mutate(app, req, async (ctx) => {
+      const m = await loadMilestone(ctx, id);
+      await ctx.tx.update(projectMilestones).set(input).where(eq(projectMilestones.id, id));
+      return projectChanged(ctx, m.projectId);
+    });
+  });
+
+  app.delete('/milestones/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, async (ctx) => {
+      const m = await loadMilestone(ctx, id);
+      // Its issues stay in the project; the FK clears their milestone.
+      await ctx.tx.delete(projectMilestones).where(eq(projectMilestones.id, id));
+      emit(ctx, { kind: 'issue', action: 'updated', id });
+      return projectChanged(ctx, m.projectId);
     });
   });
 

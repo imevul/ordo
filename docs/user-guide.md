@@ -190,6 +190,11 @@ progress, paused, completed, canceled), a **lead**, **start** and **target dates
 Post **project updates** with a health (on track, at risk, off track) to keep everyone informed; the latest
 health shows in the project list. Progress is computed from the project's issues.
 
+**Milestones** break a project into stages, each with an optional target date and its own progress. Add them under
+_Milestones_ on the project page, then put issues in one with the issue's _Milestone_ property (it appears once
+the issue's project has milestones). Choosing a milestone also sets the project, and moving an issue to another
+project takes it out of its milestone. Group any issue view by milestone under _Display_.
+
 ## Labels and estimates
 
 Labels are workspace-wide or limited to one team (**Settings → Labels**, or create one on the fly from the label

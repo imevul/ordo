@@ -335,6 +335,23 @@ export const projectTeams = pgTable(
   (t) => [primaryKey({ columns: [t.projectId, t.teamId] })],
 );
 
+/** Stages of a project, each with an optional target date; issues of the project can belong to one. */
+export const projectMilestones = pgTable(
+  'project_milestones',
+  {
+    id: pk(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    targetDate: date('target_date', { mode: 'string' }),
+    sortOrder: doublePrecision('sort_order').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('project_milestones_project_idx').on(t.projectId)],
+);
+
 export const projectUpdates = pgTable(
   'project_updates',
   {
@@ -389,6 +406,9 @@ export const issues = pgTable(
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     creatorId: uuid('creator_id').references(() => users.id, { onDelete: 'set null' }),
     projectId: uuid('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    milestoneId: uuid('milestone_id').references(() => projectMilestones.id, {
+      onDelete: 'set null',
+    }),
     cycleId: uuid('cycle_id').references(() => cycles.id, { onDelete: 'set null' }),
     parentId: uuid('parent_id'),
     estimate: integer('estimate'),

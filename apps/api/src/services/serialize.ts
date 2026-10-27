@@ -1,6 +1,6 @@
-import type { Cycle, Label, Progress, Project, ProjectHealth, View } from '@ordo/shared';
+import type { Cycle, Label, Milestone, Progress, Project, ProjectHealth, View } from '@ordo/shared';
 import { DEFAULT_ISSUE_DISPLAY } from '@ordo/shared';
-import type { cycles, labels, projects, views } from '../db/schema.ts';
+import type { cycles, labels, projectMilestones, projects, views } from '../db/schema.ts';
 import { emptyProgress } from './progress.ts';
 
 export const toLabel = (l: typeof labels.$inferSelect): Label => ({
@@ -26,6 +26,7 @@ export const toProject = (
   teamIds: string[],
   progress?: Progress,
   health?: ProjectHealth | null,
+  milestones: Milestone[] = [],
 ): Project => ({
   id: p.id,
   name: p.name,
@@ -41,6 +42,20 @@ export const toProject = (
   updatedAt: p.updatedAt,
   progress: progress ?? emptyProgress(),
   health: health ?? null,
+  milestones,
+});
+
+export const toMilestone = (
+  m: typeof projectMilestones.$inferSelect,
+  progress?: Progress,
+): Milestone => ({
+  id: m.id,
+  projectId: m.projectId,
+  name: m.name,
+  description: m.description,
+  targetDate: m.targetDate,
+  sortOrder: m.sortOrder,
+  progress: progress ?? emptyProgress(),
 });
 
 export const toView = (v: typeof views.$inferSelect): View => ({

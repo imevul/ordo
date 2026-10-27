@@ -35,6 +35,7 @@ import {
   issueSubscribers,
   issues,
   labels,
+  projectMilestones,
   projects,
   teamKeyAliases,
   teams,
@@ -90,6 +91,7 @@ export function toIssue(r: IssueRow): Issue {
     assigneeId: r.assigneeId,
     creatorId: r.creatorId,
     projectId: r.projectId,
+    milestoneId: r.milestoneId,
     cycleId: r.cycleId,
     parentId: r.parentId,
     estimate: r.estimate,
@@ -138,7 +140,11 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
   }
   if (f.priorities?.length) conds.push(inArray(issues.priority, f.priorities));
   const nullable = (
-    col: typeof issues.assigneeId | typeof issues.projectId | typeof issues.cycleId,
+    col:
+      | typeof issues.assigneeId
+      | typeof issues.projectId
+      | typeof issues.milestoneId
+      | typeof issues.cycleId,
     values: string[] | undefined,
     mapper = (v: string) => v,
   ) => {
@@ -151,6 +157,7 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
   };
   nullable(issues.assigneeId, f.assigneeIds, me);
   nullable(issues.projectId, f.projectIds);
+  nullable(issues.milestoneId, f.milestoneIds);
   nullable(issues.cycleId, f.cycleIds);
   if (f.creatorIds?.length) conds.push(inArray(issues.creatorId, f.creatorIds.map(me)));
   if (f.labelIds?.length) {
@@ -424,6 +431,39 @@ export async function assertAssignee(ctx: Ctx, teamId: string, userId: string, i
   throw badRequest("Assignee isn't a member of this workspace, or can't access this team");
 }
 
+/** A milestone in this workspace; its project comes along. */
+async function milestoneOf(ctx: Ctx, milestoneId: string) {
+  const [m] = await ctx.tx
+    .select({ id: projectMilestones.id, projectId: projectMilestones.projectId })
+    .from(projectMilestones)
+    .innerJoin(projects, eq(projects.id, projectMilestones.projectId))
+    .where(and(eq(projectMilestones.id, milestoneId), eq(projects.workspaceId, ctx.workspaceId)));
+  if (!m) throw badRequest('Unknown milestone');
+  return m;
+}
+
+/**
+ * Keeps an issue's project and milestone consistent: picking a milestone sets its project, and
+ * moving to another project drops a milestone that belonged to the old one.
+ */
+async function projectAndMilestone(
+  ctx: Ctx,
+  current: { projectId: string | null; milestoneId: string | null },
+  projectId: string | null | undefined,
+  milestoneId: string | null | undefined,
+) {
+  if (milestoneId) {
+    const m = await milestoneOf(ctx, milestoneId);
+    if (projectId !== undefined && projectId !== m.projectId)
+      throw badRequest('The milestone belongs to another project');
+    return { projectId: m.projectId, milestoneId };
+  }
+  if (projectId !== undefined && projectId !== current.projectId && current.milestoneId) {
+    return { projectId, milestoneId: milestoneId === undefined ? null : milestoneId };
+  }
+  return { projectId, milestoneId };
+}
+
 export async function assertProject(ctx: Ctx, projectId: string) {
   const [p] = await ctx.tx
     .select({ id: projects.id })
@@ -538,6 +578,12 @@ export async function createIssue(
     : await defaultState(ctx, team);
   if (input.assigneeId) await assertAssignee(ctx, team.id, input.assigneeId, !!imported);
   if (input.projectId) await assertProject(ctx, input.projectId);
+  const placed = await projectAndMilestone(
+    ctx,
+    { projectId: null, milestoneId: null },
+    input.projectId,
+    input.milestoneId,
+  );
   if (input.cycleId) await assertCycle(ctx, team.id, input.cycleId);
   if (input.parentId) await assertParent(ctx, null, input.parentId);
   const labelIds = [...new Set(input.labelIds ?? [])];
@@ -584,7 +630,8 @@ export async function createIssue(
       priority: input.priority ?? 0,
       assigneeId: input.assigneeId ?? null,
       creatorId,
-      projectId: input.projectId ?? null,
+      projectId: placed.projectId ?? null,
+      milestoneId: placed.milestoneId ?? null,
       cycleId,
       parentId: input.parentId ?? null,
       estimate: input.estimate ?? null,
@@ -717,9 +764,13 @@ export async function updateIssue(
       await assertAssignee(ctx, teamId, patch.assigneeId);
     change('assigneeId', 'assignee', patch.assigneeId);
   }
-  if (patch.projectId !== undefined) {
-    if (patch.projectId) await assertProject(ctx, patch.projectId);
-    change('projectId', 'project', patch.projectId);
+  const placed = await projectAndMilestone(ctx, current, patch.projectId, patch.milestoneId);
+  if (placed.projectId !== undefined) {
+    if (placed.projectId) await assertProject(ctx, placed.projectId);
+    change('projectId', 'project', placed.projectId);
+  }
+  if (placed.milestoneId !== undefined) {
+    change('milestoneId', 'milestone', placed.milestoneId);
   }
   if (cycleId !== undefined) {
     if (cycleId) await assertCycle(ctx, teamId, cycleId);

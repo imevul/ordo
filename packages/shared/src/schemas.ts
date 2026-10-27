@@ -287,6 +287,7 @@ export const createIssueSchema = z.object({
   priority: z.number().int().min(0).max(4).optional(),
   assigneeId: id.nullish(),
   projectId: id.nullish(),
+  milestoneId: id.nullish(),
   cycleId: id.nullish(),
   parentId: id.nullish(),
   estimate: z.number().int().min(0).max(100).nullish(),
@@ -304,6 +305,7 @@ export const updateIssueSchema = z.object({
   priority: z.number().int().min(0).max(4).optional(),
   assigneeId: id.nullish(),
   projectId: id.nullish(),
+  milestoneId: id.nullish(),
   cycleId: id.nullish(),
   parentId: id.nullish(),
   estimate: z.number().int().min(0).max(100).nullish(),
@@ -336,6 +338,7 @@ export const issueFilterSchema = z.object({
   creatorIds: z.array(userRef).optional(),
   labelIds: z.array(id).optional(),
   projectIds: z.array(idOrNone).optional(),
+  milestoneIds: z.array(idOrNone).optional(),
   cycleIds: z.array(idOrNone).optional(),
   parentId: id.optional(),
   subscribedBy: z.literal('me').optional(),
@@ -351,6 +354,7 @@ export const GROUP_BY_OPTIONS = [
   'priority',
   'assignee',
   'project',
+  'milestone',
   'cycle',
   'label',
   'none',
@@ -414,6 +418,16 @@ export const createProjectSchema = z.object({
 });
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
+
+export const createMilestoneSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  description: z.string().max(5000).nullish(),
+  targetDate: isoDate.nullish(),
+});
+export type CreateMilestoneInput = z.infer<typeof createMilestoneSchema>;
+export const updateMilestoneSchema = createMilestoneSchema
+  .partial()
+  .extend({ sortOrder: z.number().optional() });
 
 export const updateProjectSchema = createProjectSchema
   .partial()

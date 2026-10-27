@@ -97,6 +97,14 @@ function ChangeText({
       ) : (
         <>removed from project</>
       );
+    case 'milestone': {
+      const m = ws.projects.flatMap((p) => p.milestones).find((x) => x.id === c.to);
+      return c.to ? (
+        <>moved to milestone {strong(m?.name ?? 'a milestone')}</>
+      ) : (
+        <>removed from milestone</>
+      );
+    }
     case 'cycle': {
       const cy = c.to ? ws.cycleById.get(c.to as string) : null;
       return c.to ? (
