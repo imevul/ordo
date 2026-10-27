@@ -7,6 +7,7 @@ import {
   type IssueFilter,
   type IssueRef,
   type IssueRelation,
+  type SlaHours,
   SORT_GAP,
   type StateType,
   type UpdateIssueInput,
@@ -106,6 +107,7 @@ export function toIssue(r: IssueRow): Issue {
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     deletedAt: r.deletedAt,
+    slaBreachesAt: r.slaBreachesAt,
     archivedAt: r.archivedAt,
   };
 }
@@ -431,6 +433,15 @@ export async function assertAssignee(ctx: Ctx, teamId: string, userId: string, i
   throw badRequest("Assignee isn't a member of this workspace, or can't access this team");
 }
 
+/**
+ * The SLA deadline for this priority under the team's hours, as SQL counted from `from` (the
+ * issue's creation; in SQL so it matches the stored timestamp exactly), or null without one.
+ */
+function slaDeadline(hours: SlaHours, priority: number, from: SQL) {
+  const h = hours[String(priority) as keyof SlaHours];
+  return h ? sql<string>`${from} + make_interval(hours => ${h})` : null;
+}
+
 /** A milestone in this workspace; its project comes along. */
 async function milestoneOf(ctx: Ctx, milestoneId: string) {
   const [m] = await ctx.tx
@@ -637,6 +648,8 @@ export async function createIssue(
       estimate: input.estimate ?? null,
       dueDate: input.dueDate ?? null,
       sortOrder,
+      // Imported issues keep their history; an SLA would only mark them breached on arrival.
+      slaBreachesAt: imported ? null : slaDeadline(team.slaHours, input.priority ?? 0, sql`now()`),
       ...(imported
         ? {
             ...importedTimestamps(state.type, imported),
@@ -758,6 +771,20 @@ export async function updateIssue(
     await claimAttachments(ctx, issueId, patch.description);
   }
   if (patch.priority !== undefined) change('priority', 'priority', patch.priority);
+  // The SLA clock runs from creation; a new priority or team changes the deadline.
+  if (set.priority !== undefined || set.teamId !== undefined) {
+    const [team] = await ctx.tx
+      .select({ slaHours: teams.slaHours })
+      .from(teams)
+      .where(eq(teams.id, teamId));
+    // An SQL expression, which update().set() takes like any value.
+    set.slaBreachesAt = slaDeadline(
+      team!.slaHours,
+      set.priority ?? current.priority,
+      sql`"issues"."created_at"`,
+    ) as unknown as string | null;
+    set.slaNotifiedAt = null;
+  }
   if (patch.assigneeId !== undefined) {
     // Re-sending an imported placeholder assignee is fine; choosing one isn't.
     if (patch.assigneeId && patch.assigneeId !== current.assigneeId)

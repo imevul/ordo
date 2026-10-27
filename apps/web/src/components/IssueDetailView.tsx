@@ -27,8 +27,9 @@ import {
   useUpdateIssue,
   useWsMutation,
 } from '../api/queries.ts';
-import { longDate, relativeTime } from '../lib/format.ts';
+import { longDate, relativeTime, slaState } from '../lib/format.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
+import { isDone } from '../lib/issues.ts';
 import { ui } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Activity } from './Activity.tsx';
@@ -179,6 +180,7 @@ export function IssueDetailView({
   const update = useUpdateIssue(ws.slug);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const patch = (p: UpdateIssueInput) => update.mutate({ id: issue.id, patch: p });
+  const sla = slaState(issue, isDone(ws, issue));
   const team = ws.teamById.get(issue.teamId)!;
   const creator = issue.creatorId ? ws.memberById.get(issue.creatorId) : undefined;
   const subscribed = issue.subscriberIds.includes(ws.me.id);
@@ -519,6 +521,18 @@ export function IssueDetailView({
           <Field label="Assignee">
             <AssigneeProp issue={issue} onPatch={patch} variant="field" />
           </Field>
+          {sla && (
+            <Field label="SLA">
+              <span
+                className={`px-2 font-mono text-[12px] ${sla.state === 'breached' ? 'text-error' : sla.state === 'risk' ? 'text-warning' : 'text-muted'}`}
+                title={new Date(issue.slaBreachesAt!).toLocaleString()}
+              >
+                {sla.state === 'breached' ? 'ran out ' : ''}
+                {sla.label.replace('SLA ', '')}
+                {sla.state === 'breached' ? ' ago' : ' left'}
+              </span>
+            </Field>
+          )}
           <Field label="Labels">
             <LabelsProp issue={issue} onPatch={patch} variant="field" />
           </Field>

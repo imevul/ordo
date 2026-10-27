@@ -675,6 +675,7 @@ const NOTIFICATION_HEADLINES: Record<NotificationType, (id: string, state: strin
   issue_status_changed: (id, state) => `moved ${id} to ${state}`,
   issue_priority_urgent: (id) => `marked ${id} urgent`,
   comment_reaction: (id) => `reacted to your comment on ${id}`,
+  issue_sla_breached: (id) => `${id} missed its SLA`,
 };
 
 /** Called with fresh notifications (in their transaction): a direct message per linked account. */

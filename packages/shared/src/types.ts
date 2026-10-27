@@ -97,10 +97,14 @@ export interface Team {
   cycleAutomation: CycleAutomation;
   /** Closed issues are archived this many months after they closed; null never. */
   autoArchiveMonths: number | null;
+  /** Hours to resolve an issue, by priority ("1" urgent … "4" low); missing means no SLA. */
+  slaHours: SlaHours;
   memberIds: string[];
   members: { userId: string; role: TeamRole }[];
   states: WorkflowState[];
 }
+
+export type SlaHours = Partial<Record<'1' | '2' | '3' | '4', number>>;
 
 /** Cycles that run themselves: created ahead of time, with unfinished work carried over. */
 export interface CycleAutomation {
@@ -281,6 +285,8 @@ export interface Issue {
   updatedAt: string;
   deletedAt: string | null;
   /** Archived issues are out of lists and boards, but still open by link and in search. */
+  /** When the team's SLA for this priority runs out; null without one. */
+  slaBreachesAt: string | null;
   archivedAt: string | null;
 }
 
@@ -515,6 +521,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
       issue_status_changed: false,
       issue_priority_urgent: true,
       comment_reaction: false,
+      issue_sla_breached: true,
     },
   },
 };

@@ -23,6 +23,7 @@ import type {
   ProjectStatus,
   RecurrenceUnit,
   RelationType,
+  SlaHours,
   StateType,
   TeamRole,
   UserKind,
@@ -198,6 +199,7 @@ export const teams = pgTable(
     defaultStateId: uuid('default_state_id'),
     gitAutomation: jsonb('git_automation').$type<GitAutomation>().notNull().default({}),
     autoArchiveMonths: integer('auto_archive_months'),
+    slaHours: jsonb('sla_hours').$type<SlaHours>().notNull().default({}),
     /** Partial; missing settings use DEFAULT_CYCLE_AUTOMATION. */
     cycleAutomation: jsonb('cycle_automation')
       .$type<Partial<CycleAutomation>>()
@@ -472,6 +474,9 @@ export const issues = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: ts('deleted_at'),
+    slaBreachesAt: ts('sla_breaches_at'),
+    /** Set once the breach was announced, so it's announced once. */
+    slaNotifiedAt: ts('sla_notified_at'),
     archivedAt: ts('archived_at'),
   },
   (t) => [

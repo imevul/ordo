@@ -27,6 +27,8 @@ function describe(n: Notification, stateName: (id: string) => string) {
       return `changed status to ${stateName(String(n.data.to ?? ''))}`;
     case 'issue_priority_urgent':
       return 'marked as urgent';
+    case 'issue_sla_breached':
+      return 'missed its SLA';
     case 'comment_reaction':
       return `reacted ${String(n.data.emoji ?? '')} to your comment`;
   }

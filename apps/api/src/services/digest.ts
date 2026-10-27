@@ -42,6 +42,7 @@ const DESCRIBE: Record<NotificationType, string> = {
   issue_status_changed: 'changed the status',
   issue_priority_urgent: 'marked it urgent',
   comment_reaction: 'reacted to your comment',
+  issue_sla_breached: 'missed its SLA',
 };
 
 /**

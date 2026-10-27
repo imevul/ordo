@@ -33,6 +33,31 @@ export function dueState(
   return 'later';
 }
 
+/**
+ * Where an issue stands against its SLA: time left, or how long ago it ran out. At risk in the
+ * last quarter of its window.
+ */
+export function slaState(
+  issue: { slaBreachesAt: string | null; createdAt: string },
+  done: boolean,
+  now = Date.now(),
+): { state: 'ok' | 'risk' | 'breached'; label: string } | null {
+  if (!issue.slaBreachesAt || done) return null;
+  const end = Date.parse(issue.slaBreachesAt);
+  const left = end - now;
+  const span = (ms: number) => {
+    const h = Math.abs(ms) / 3_600_000;
+    return h < 1
+      ? `${Math.max(1, Math.round(h * 60))}m`
+      : h < 48
+        ? `${Math.round(h)}h`
+        : `${Math.round(h / 24)}d`;
+  };
+  if (left <= 0) return { state: 'breached', label: `SLA −${span(left)}` };
+  const window = end - Date.parse(issue.createdAt);
+  return { state: left < window / 4 ? 'risk' : 'ok', label: `SLA ${span(left)}` };
+}
+
 export const initials = (name: string) =>
   name
     .split(/\s+/)
