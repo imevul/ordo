@@ -12,6 +12,7 @@ import {
 import { badRequest } from '../lib/errors.ts';
 import { type Access, assertCan, canReadTeam } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
+import { assertInitiative } from './initiatives.ts';
 import { progressBy } from './progress.ts';
 import { toMilestone, toProject } from './serialize.ts';
 
@@ -41,6 +42,7 @@ export async function createProject(ctx: Ctx, input: CreateProjectInput): Promis
   assertCan(ctx.access, 'projects.create', 'Guests cannot create projects');
   await assertProjectTeams(ctx, input.teamIds);
   await assertProjectLead(ctx, input.leadId);
+  await assertInitiative(ctx, input.initiativeId);
   const [{ first }] = (await ctx.tx
     .select({ first: min(projects.sortOrder) })
     .from(projects)

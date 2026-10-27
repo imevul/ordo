@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleDot,
   Eye,
+  Goal,
   Hexagon,
   Inbox,
   Layers,
@@ -226,6 +227,10 @@ export function Sidebar({
           Workspace
         </div>
         <div className="flex flex-col gap-px">
+          <Link to="/$slug/initiatives" params={p} className="nav-item">
+            <Goal size={15} />
+            Initiatives
+          </Link>
           <Link to="/$slug/projects" params={p} className="nav-item">
             <Hexagon size={15} />
             Projects

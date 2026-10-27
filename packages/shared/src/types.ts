@@ -4,6 +4,7 @@ import type {
   DomainEventType,
   EstimateScale,
   FavoriteKind,
+  InitiativeStatus,
   IssueLinkKind,
   MemberRole,
   NotificationType,
@@ -175,6 +176,25 @@ export interface Project {
   health: ProjectHealth | null;
   /** In order: by target date, then as arranged. */
   milestones: Milestone[];
+  initiativeId: string | null;
+}
+
+/** A workspace-level goal that groups projects. */
+export interface Initiative {
+  id: string;
+  name: string;
+  description: string | null;
+  status: InitiativeStatus;
+  ownerId: string | null;
+  targetDate: string | null;
+  color: string;
+  sortOrder: number;
+  /** Its projects the viewer can see. */
+  projectIds: string[];
+  /** Summed over those projects. */
+  progress: Progress;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Milestone {
@@ -387,6 +407,7 @@ export interface Bootstrap {
   teams: Team[];
   labels: Label[];
   templates: IssueTemplate[];
+  initiatives: Initiative[];
   projects: Project[];
   cycles: Cycle[];
   views: View[];

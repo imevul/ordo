@@ -25,6 +25,7 @@ import { audit, auditCtx } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { listCycles } from '../services/cycles.ts';
 import { deleteFile, saveFile, signedFileUrl } from '../services/files.ts';
+import { listInitiatives } from '../services/initiatives.ts';
 import { workspaceBots } from '../services/integrations.ts';
 import { listLabels } from '../services/labels.ts';
 import { workspacePlaceholders } from '../services/placeholders.ts';
@@ -108,6 +109,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       teams: teamList,
       labels: labelRows,
       templates,
+      initiatives: await listInitiatives(db, access, projects),
       projects,
       cycles,
       views: viewRows.map(toView),

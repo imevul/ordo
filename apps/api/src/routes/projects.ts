@@ -13,6 +13,7 @@ import { forbidden, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertCan } from '../services/access.ts';
 import { type Ctx, emit, record } from '../services/context.ts';
+import { assertInitiative } from '../services/initiatives.ts';
 import {
   assertProjectLead,
   assertProjectTeams,
@@ -54,6 +55,7 @@ export async function projectRoutes(app: FastifyInstance) {
     await mutate(app, req, async (ctx) => {
       await loadProject(ctx, id);
       await assertProjectLead(ctx, input.leadId);
+      await assertInitiative(ctx, input.initiativeId);
       const { teamIds, ...rest } = input;
       if (teamIds) {
         await assertProjectTeams(ctx, teamIds);

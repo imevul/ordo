@@ -10,6 +10,7 @@ export type EntityKind =
   | 'cycle'
   | 'label'
   | 'template'
+  | 'initiative'
   | 'team'
   | 'state'
   | 'workspace'

@@ -33,6 +33,7 @@ import { audit } from './audit.ts';
 import type { RequestMeta } from './context.ts';
 import { listCycles } from './cycles.ts';
 import { deleteFile, saveFile, signedFileUrl } from './files.ts';
+import { listInitiatives } from './initiatives.ts';
 import { workspaceIssuePage } from './issues.ts';
 import { listProjects } from './projects.ts';
 import { toLabel, toView } from './serialize.ts';
@@ -253,6 +254,7 @@ async function jsonExport(
     teams: await listTeams(db, access),
     labels: (await db.select().from(labels).where(eq(labels.workspaceId, ws.id))).map(toLabel),
     templates: await listTemplates(db, access),
+    initiatives: await listInitiatives(db, access, projectList),
     projects: projectList,
     projectUpdates: projectList.length
       ? await db

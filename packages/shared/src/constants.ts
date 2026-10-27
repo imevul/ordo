@@ -81,6 +81,14 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   canceled: 'Canceled',
 };
 
+export const INITIATIVE_STATUSES = ['planned', 'active', 'completed'] as const;
+export type InitiativeStatus = (typeof INITIATIVE_STATUSES)[number];
+export const INITIATIVE_STATUS_LABELS: Record<InitiativeStatus, string> = {
+  planned: 'Planned',
+  active: 'Active',
+  completed: 'Completed',
+};
+
 export const PROJECT_HEALTH = ['on_track', 'at_risk', 'off_track'] as const;
 export type ProjectHealth = (typeof PROJECT_HEALTH)[number];
 export const PROJECT_HEALTH_LABELS: Record<ProjectHealth, string> = {
@@ -251,6 +259,9 @@ export const DOMAIN_EVENT_TYPES = [
   'project.created',
   'project.updated',
   'project.deleted',
+  'initiative.created',
+  'initiative.updated',
+  'initiative.deleted',
   'project_update.created',
   'cycle.created',
   'cycle.updated',
