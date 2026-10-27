@@ -98,6 +98,8 @@ export default {
     allowPrivateHelp:
       'Let SSO discovery, webhooks and integrations reach LAN or loopback addresses (e.g. a self-hosted Keycloak on 10.0.0.5). Off protects against server-side request forgery.',
     uploads: 'Uploads',
+    /** Unit after the largest-attachment input. */
+    megabytes: 'MB',
     maxAttachment: 'Largest attachment',
     maxAttachmentHelp:
       "Files people attach to issues and comments, in megabytes. Keep your reverse proxy's body limit above this.",

@@ -100,6 +100,7 @@ export default {
     allowPrivateHelp:
       'La SSO-oppdagelse, webhooks og integrasjoner nå LAN- eller loopback-adresser (f.eks. en egen Keycloak på 10.0.0.5). Av beskytter mot server-side request forgery.',
     uploads: 'Opplastinger',
+    megabytes: 'MB',
     maxAttachment: 'Største vedlegg',
     maxAttachmentHelp:
       'Filer som legges ved saker og kommentarer, i megabyte. Hold grensen for forespørselsstørrelse i den omvendte proxyen din høyere enn dette.',
