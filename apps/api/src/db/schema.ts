@@ -1285,6 +1285,20 @@ export const chatMessages = pgTable(
   ],
 );
 
+/**
+ * A Matrix integration's end-to-end encryption keys (its device's Olm account, sessions and room
+ * keys): a snapshot of the crypto store, encrypted with the instance key. `version` goes up with
+ * every change, so a server holding an older copy in memory knows to reload it.
+ */
+export const matrixCryptoStores = pgTable('matrix_crypto_stores', {
+  integrationId: uuid('integration_id')
+    .primaryKey()
+    .references(() => integrations.id, { onDelete: 'cascade' }),
+  version: integer('version').notNull().default(0),
+  data: text('data').notNull(),
+  updatedAt: updatedAt(),
+});
+
 /** An account at an outside service (GitHub login, Slack user…) mapped to an Ordo user. */
 export const externalAccounts = pgTable(
   'external_accounts',

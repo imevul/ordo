@@ -176,7 +176,10 @@ export default {
       publicKeyHint: 'Finns under General Information; den verifierar förfrågningar från Discord.',
     },
     matrix: {
-      docs: 'Registrera ett konto för boten på din hemserver och klistra in dess åtkomsttoken. Ordo synkar från din hemserver, så inget behöver nå Ordo. Krypterade rum stöds inte.',
+      docs: 'Registrera ett konto för boten på din hemserver och klistra in åtkomsttoken från en ny inloggning. Ordo synkar från din hemserver, så inget behöver nå Ordo.',
+      encryption: 'Totalsträckskryptering',
+      encryptionHint:
+        'Låter boten läsa och skriva i krypterade rum. Kräver en token från en egen inloggning, inte en från Element eller en annan klient som redan har konfigurerat kryptering.',
       channelHint: 'Rum-id ser ut som !abc123:example.org (Room settings → Advanced).',
       homeserverUrl: 'Hemserverns URL',
     },

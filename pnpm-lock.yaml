@@ -238,12 +238,18 @@ importers:
       '@fastify/websocket':
         specifier: 11.3.4
         version: 11.3.4
+      '@matrix-org/matrix-sdk-crypto-wasm':
+        specifier: 18.9.0
+        version: 18.9.0
       '@ordo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       drizzle-orm:
         specifier: 0.45.4
         version: 0.45.4(@opentelemetry/api@1.10.0)(postgres@3.4.9)
+      fake-indexeddb:
+        specifier: 6.2.5
+        version: 6.2.5
       fastify:
         specifier: 5.12.7
         version: 5.12.7
@@ -1120,6 +1126,10 @@ packages:
   '@lukeed/ms@2.0.2':
     resolution: {integrity: sha512-9I2Zn6+NJLfaGoz9jN3lpwDgAYvfGeNYdbAIjJOqzs4Tpc+VU3Jqq4IofSUBKajiDS8k9fZIg18/z13mpk1bsA==}
     engines: {node: '>=8'}
+
+  '@matrix-org/matrix-sdk-crypto-wasm@18.9.0':
+    resolution: {integrity: sha512-NtLzNDTEfNASBjNCTGZHuk7N0jrQhS6Zx2CM857rCHZYYh/rpbKGQNrJ7azktm4S1P5Jy3WU3nwJTGohGw26qQ==}
+    engines: {node: '>= 18'}
 
   '@noble/hashes@2.4.0':
     resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
@@ -2271,6 +2281,10 @@ packages:
 
   extend@3.0.2:
     resolution: {integrity: sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g==}
+
+  fake-indexeddb@6.2.5:
+    resolution: {integrity: sha512-CGnyrvbhPlWYMngksqrSSUT1BAVP49dZocrHuK0SvtR0D5TMs5wP0o3j7jexDJW01KSadjBp1M/71o/KR3nD1w==}
+    engines: {node: '>=18'}
 
   fast-copy@4.3.0:
     resolution: {integrity: sha512-oWBZLHWpUYt2A471n+ayC4+bJSGDWpl2h3COgBxYX5xHFnr7KqOSrYJZX82ZmrtAfVK+SqsOuNMgsoL+lJquuQ==}
@@ -3912,6 +3926,8 @@ snapshots:
 
   '@lukeed/ms@2.0.2': {}
 
+  '@matrix-org/matrix-sdk-crypto-wasm@18.9.0': {}
+
   '@noble/hashes@2.4.0': {}
 
   '@opentelemetry/api@1.10.0': {}
@@ -4849,6 +4865,8 @@ snapshots:
   expect-type@1.4.0: {}
 
   extend@3.0.2: {}
+
+  fake-indexeddb@6.2.5: {}
 
   fast-copy@4.3.0: {}
 

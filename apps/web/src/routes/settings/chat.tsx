@@ -23,6 +23,8 @@ interface Field {
   key: string;
   label: string;
   secret?: boolean;
+  /** A yes/no setting; new connections start with it on. */
+  checkbox?: boolean;
   placeholder?: string;
   hint?: string;
   /** Only for these delivery modes. */
@@ -122,6 +124,12 @@ export const chatForms = (): Record<string, ChatForm> => ({
         placeholder: 'https://matrix.example.org',
       },
       { key: 'accessToken', label: t('integrations.chat.accessToken'), secret: true },
+      {
+        key: 'encryption',
+        label: t('integrations.chat.matrix.encryption'),
+        hint: t('integrations.chat.matrix.encryptionHint'),
+        checkbox: true,
+      },
     ],
   },
   telegram: {
@@ -317,7 +325,14 @@ export function ChatForm({
   );
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(
-      form.fields.map((f) => [f.key, f.secret ? '' : String(config[f.key] ?? '')]),
+      form.fields.map((f) => [
+        f.key,
+        f.checkbox
+          ? String(existing ? config[f.key] === true : true)
+          : f.secret
+            ? ''
+            : String(config[f.key] ?? ''),
+      ]),
     ),
   );
   const [channels, setChannels] = useState<ChatChannel[]>(
@@ -336,7 +351,10 @@ export function ChatForm({
       ...(delivery && !appMode && { delivery }),
     };
     const secrets: Record<string, string> = {};
-    for (const f of fields) (f.secret ? secrets : cfg)[f.key] = values[f.key]!.trim();
+    for (const f of fields) {
+      if (f.checkbox) cfg[f.key] = values[f.key] === 'true';
+      else (f.secret ? secrets : cfg)[f.key] = values[f.key]!.trim();
+    }
     try {
       const res = existing
         ? await api.patch<Integration>(wsPath(ws.slug, `/integrations/${existing.id}`), {
@@ -395,23 +413,38 @@ export function ChatForm({
           <div className="mb-4" />
         </>
       )}
-      {fields.map((f) => (
-        <FormRow
-          key={f.key}
-          label={f.label}
-          hint={f.secret && existing ? t('integrations.form.keepSecret') : f.hint}
-        >
-          <input
-            className="input font-mono"
-            type={f.secret ? 'password' : 'text'}
-            autoComplete="off"
-            required={!(f.secret && existing)}
-            placeholder={f.placeholder}
-            value={values[f.key]}
-            onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
-          />
-        </FormRow>
-      ))}
+      {fields.map((f) =>
+        f.checkbox ? (
+          <label key={f.key} className="mb-4 flex items-start gap-2 text-[13px]">
+            <input
+              type="checkbox"
+              className="mt-1 accent-primary"
+              checked={values[f.key] === 'true'}
+              onChange={(e) => setValues({ ...values, [f.key]: String(e.target.checked) })}
+            />
+            <span>
+              {f.label}
+              {f.hint && <span className="block text-[11.5px] text-index">{f.hint}</span>}
+            </span>
+          </label>
+        ) : (
+          <FormRow
+            key={f.key}
+            label={f.label}
+            hint={f.secret && existing ? t('integrations.form.keepSecret') : f.hint}
+          >
+            <input
+              className="input font-mono"
+              type={f.secret ? 'password' : 'text'}
+              autoComplete="off"
+              required={!(f.secret && existing)}
+              placeholder={f.placeholder}
+              value={values[f.key]}
+              onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
+            />
+          </FormRow>
+        ),
+      )}
       <ChannelsEditor value={channels} onChange={setChannels} hint={form.channelHint} />
       <div className="mt-6 flex justify-end gap-2">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>

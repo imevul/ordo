@@ -134,8 +134,9 @@ RS256 ID tokens); set `idp.next` to the claims of the next sign-in and `idp.tamp
 ## Gotchas
 
 - `pnpm` 12 blocks dependency build scripts unless listed under `allowBuilds` in `pnpm-workspace.yaml`.
-- The production image contains only `server.mjs`, `seed.mjs`, `drizzle/` and the web build — anything the API
-  needs at runtime must be bundleable by esbuild (no native modules; passwords use Node's built-in scrypt).
+- The production image contains only `server.mjs`, `seed.mjs`, `drizzle/`, the web build and `pkg/` (Matrix
+  encryption's WebAssembly, copied by `apps/api/build.mjs`) — anything the API needs at runtime must be bundleable by
+  esbuild (no native modules; passwords use Node's built-in scrypt).
 - Realtime fan-out uses Postgres `NOTIFY` (8 KB payload cap); `Realtime.publish` batches events under that.
 - Workspace URL slugs and team keys appear in URLs and identifiers — changing them breaks old links.
 

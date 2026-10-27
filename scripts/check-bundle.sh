@@ -27,6 +27,7 @@ cleanup() {
 trap cleanup EXIT
 db "create database $check_db"
 cp apps/api/dist/*.mjs apps/api/package.json "$dir/"
+cp -r apps/api/dist/pkg "$dir/pkg"
 cp -r apps/api/drizzle "$dir/drizzle"
 cp -r apps/web/dist "$dir/public"
 mkdir -p "$dir/public/cli" && cp packages/cli/dist/ordo.mjs "$dir/public/cli/"

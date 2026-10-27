@@ -95,7 +95,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   direct message, create issues from messages, link previews for people who can read the issue
 - ✅ Accounts linked with one-time codes; commands (`link`, `new`, `unlink`, `help`)
 - ✅ Works behind NAT: Slack Socket Mode, Discord gateway, Telegram long polling, Matrix sync, under leases
-- ⬜ Later: threaded comment sync, end-to-end encrypted Matrix rooms, one-click Slack install (OAuth)
+- [x] ✅ Threaded comment sync (Slack, Discord, Matrix, Telegram), end-to-end encrypted Matrix rooms, one-click Slack install (Add to Slack)
 
 ### Phase 9 — Importers and export ✅
 
