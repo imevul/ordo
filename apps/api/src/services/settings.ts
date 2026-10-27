@@ -2,6 +2,7 @@ import {
   INSTANCE_SETTING_DEFAULTS,
   type InstanceSettingEntry,
   type InstanceSettings,
+  WORKSPACE_AI_POLICIES,
 } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
@@ -32,6 +33,7 @@ const SCHEMAS: { [K in keyof InstanceSettings]: z.ZodType<InstanceSettings[K]> }
       apiKey: z.string().nullable(),
     })
     .nullable(),
+  workspaceAi: z.enum(WORKSPACE_AI_POLICIES),
 };
 
 export const SETTING_KEYS = Object.keys(SCHEMAS) as (keyof InstanceSettings)[];

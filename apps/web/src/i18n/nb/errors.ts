@@ -72,6 +72,8 @@ export default {
     export_not_ready: 'Eksporten lages fortsatt',
     ai_not_set_up: 'KI-hjelp er ikke satt opp på denne instansen',
     ai_not_set_up_workspace: 'Arbeidsområdets egen KI-modell er ikke satt opp',
+    ai_own_not_allowed: 'Denne instansen lar ikke arbeidsområder bruke en egen KI-modell',
+    ai_locked: 'Instansens KI-innstillinger gjelder for alle arbeidsområder',
     ai_off_workspace: 'KI-hjelp er slått av i dette arbeidsområdet',
     ai_off: 'KI-hjelp er slått av',
     ai_empty: 'Modellen sendte et tomt svar',

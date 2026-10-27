@@ -105,6 +105,15 @@ export default {
       "Files people attach to issues and comments, in megabytes. Keep your reverse proxy's body limit above this.",
   },
   ai: {
+    workspacesTitle: 'AI in workspaces',
+    workspaces: 'Workspace admins may',
+    workspacesHelp:
+      'What workspace admins can change under Settings → AI assistance. A model a workspace saved stays stored while it isn’t allowed, and is used again if it is.',
+    policy: {
+      own: 'Use their own model, or turn AI off',
+      instance: 'Only turn AI off',
+      locked: 'Change nothing: every workspace uses this model',
+    },
     title: 'AI assistance',
     description:
       'Issue summaries, drafts written from rough notes, and triage suggestions (priority, labels, duplicates). When someone asks, the issue text they can see is sent to this model; nothing is changed until they apply a suggestion. Workspace admins can turn it off for their workspace, or use their own model instead.',

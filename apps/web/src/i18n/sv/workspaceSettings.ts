@@ -60,10 +60,19 @@ export default {
     instanceNone: 'ingen är konfigurerad på den här instansen',
     instanceMissing:
       'Instansen har ingen modell konfigurerad, så AI-hjälp erbjuds inte. Använd en egen eller fråga en instansadmin.',
+    instanceMissingAsk:
+      'Instansen har ingen modell konfigurerad, så AI-hjälp erbjuds inte. Fråga en instansadmin.',
     useOwn: 'Vår egen modell',
     ownNone: 'konfigurera den nedan',
     off: 'Av',
     offHint: 'Ingen AI-hjälp i den här arbetsytan',
+    notAllowed: 'inte tillåtet på den här instansen',
+    policyInstance:
+      'En instansadmin låter arbetsytor stänga av AI-hjälpen, men inte använda en egen modell.',
+    policyLocked:
+      'En instansadmin har bestämt AI-hjälpen för alla arbetsytor: den använder instansens modell och kan inte stängas av här.',
+    storedUnused:
+      'Ni sparade en egen modell tidigare. Instansen tillåter den inte nu, så den används inte; den används igen om en instansadmin tillåter det.',
     ownTitle: 'Vår egen modell',
     ownDescription:
       'Används i stället för instansens för alla i arbetsytan. Nyckeln sparas krypterad och bara admins ser den, maskerad.',

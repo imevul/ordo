@@ -22,6 +22,7 @@ import {
 import { GIT_EVENTS } from './git.ts';
 import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
 import { HEX_COLOR } from './theme.ts';
+import { WORKSPACE_AI_POLICIES } from './types.ts';
 
 /** Request payload schemas, shared by the API (validation) and the web client (forms). */
 
@@ -169,6 +170,7 @@ export const adminSettingsSchema = z.object({
   allowWorkspaceCreation: z.boolean().optional(),
   allowPrivateNetworkTargets: z.boolean().optional(),
   maxAttachmentMb: z.number().int().min(1).max(1024).optional(),
+  workspaceAi: z.enum(WORKSPACE_AI_POLICIES).optional(),
   /** `url: ''` keeps the stored URL (the UI never sees it); `smtp: null` turns email off. */
   smtp: z
     .object({ url: z.string().max(2000), from: z.string().min(3).max(200) })

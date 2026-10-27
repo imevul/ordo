@@ -1,7 +1,14 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.6.3/schema.json",
   "files": {
-    "includes": ["**", "!**/dist", "!**/node_modules", "!apps/api/drizzle", "!pnpm-lock.yaml"]
+    "includes": [
+      "**",
+      "!**/dist",
+      "!**/node_modules",
+      "!apps/api/drizzle",
+      "!pnpm-lock.yaml",
+      "!.claude"
+    ]
   },
   "formatter": {
     "enabled": true,

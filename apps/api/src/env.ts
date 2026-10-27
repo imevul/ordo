@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { AiSettings } from '@ordo/shared';
+import { type AiSettings, WORKSPACE_AI_POLICIES, type WorkspaceAiPolicy } from '@ordo/shared';
 
 function bool(v: string | undefined, fallback: boolean) {
   if (v == null || v === '') return fallback;
@@ -67,6 +67,7 @@ export interface SettingsFromEnv {
   maxAttachmentMb?: number;
   smtp?: { url: string; from: string } | null;
   ai?: AiSettings | null;
+  workspaceAi?: WorkspaceAiPolicy;
 }
 
 export type StorageConfig =
@@ -142,6 +143,7 @@ export function loadEnv(overrides: Partial<Env> = {}): Env {
         : undefined,
       maxAttachmentMb: optionalInt(process.env.ORDO_MAX_ATTACHMENT_MB),
       ai: aiFromEnv(),
+      workspaceAi: WORKSPACE_AI_POLICIES.find((p) => p === process.env.ORDO_WORKSPACE_AI),
     },
     storage:
       process.env.ORDO_STORAGE === 's3'

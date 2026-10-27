@@ -72,7 +72,19 @@ Workspace admins choose under _Settings → AI assistance_:
   (masked), and _Test_ sends a one-line prompt. _Remove our model_ deletes it and goes back to the instance's.
 - **Off**: no AI buttons, and AI requests are refused for everyone in the workspace.
 
-So a request uses: nothing if the workspace turned it off; else the workspace's own model if it chose that; else
+Instance admins decide how much of that workspaces may change, under _Admin → Settings → AI in workspaces_ (or
+`ORDO_WORKSPACE_AI`):
+
+| Setting             | Workspace admins may                                                       |
+| ------------------- | -------------------------------------------------------------------------- |
+| `own` (the default) | use their own model, or turn AI off                                        |
+| `instance`          | only turn AI off; every workspace that has it on uses the instance's model |
+| `locked`            | change nothing: AI is on everywhere, with the instance's model             |
+
+A model a workspace saved stays stored while it isn't allowed (unused, and removable), and is used again if the
+setting goes back to `own`.
+
+So a request uses: nothing if the workspace turned it off (and may); else the workspace's own model if it chose that (and may); else
 the instance's. A workspace's own model is held to the instance's network rules, unlike the instance's: an
 OpenAI-compatible URL on a private network (a model on your LAN) only works when an instance admin allows
 _private network targets_, and a Claude model from a workspace always talks to `api.anthropic.com` (no custom base

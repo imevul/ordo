@@ -106,6 +106,15 @@ export default {
       'Filer som bifogas till ärenden och kommentarer, i megabyte. Håll gränsen för begärandets storlek i din omvända proxy högre än så.',
   },
   ai: {
+    workspacesTitle: 'AI i arbetsytor',
+    workspaces: 'Arbetsytornas admins får',
+    workspacesHelp:
+      'Vad arbetsytornas admins kan ändra under Inställningar → AI-hjälp. En modell som en arbetsyta har sparat finns kvar medan den inte är tillåten och används igen om den blir det.',
+    policy: {
+      own: 'Använda en egen modell eller stänga av AI',
+      instance: 'Bara stänga av AI',
+      locked: 'Inte ändra något: alla arbetsytor använder den här modellen',
+    },
     title: 'AI-hjälp',
     description:
       'Sammanfattningar av ärenden, utkast skrivna utifrån lösa anteckningar och förslag vid triage (prioritet, etiketter, dubbletter). När någon ber om det skickas den ärendetext personen kan se till den här modellen; inget ändras förrän personen tillämpar ett förslag. Admins för en arbetsyta kan stänga av det för sin arbetsyta eller använda en egen modell i stället.',

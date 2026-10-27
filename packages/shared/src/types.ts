@@ -636,7 +636,15 @@ export interface InstanceSettings {
   maxAttachmentMb: number;
   /** Optional AI assistance; null (the default) turns it off everywhere. */
   ai: AiSettings | null;
+  /**
+   * What workspace admins may change: `own` (use their own model, or turn AI off), `instance`
+   * (only turn it off), `locked` (every workspace uses the instance's model).
+   */
+  workspaceAi: WorkspaceAiPolicy;
 }
+
+export const WORKSPACE_AI_POLICIES = ['own', 'instance', 'locked'] as const;
+export type WorkspaceAiPolicy = (typeof WORKSPACE_AI_POLICIES)[number];
 
 /** Settings → AI assistance: the workspace's choice, and what each choice would use. */
 export interface WorkspaceAi {
@@ -648,6 +656,8 @@ export interface WorkspaceAi {
   own: (Omit<AiSettings, 'apiKey'> & { apiKey: string | null }) | null;
   /** Whether an OpenAI-compatible URL may point into the private network (an instance setting). */
   allowPrivateNetwork: boolean;
+  /** What this instance lets workspaces change. */
+  policy: WorkspaceAiPolicy;
 }
 
 /** The model behind AI assistance. Issue content the asking person can see is sent to it. */
@@ -668,6 +678,7 @@ export const INSTANCE_SETTING_DEFAULTS: InstanceSettings = {
   smtp: null,
   maxAttachmentMb: 25,
   ai: null,
+  workspaceAi: 'own',
 };
 
 export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof InstanceSettings> {

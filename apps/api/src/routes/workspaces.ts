@@ -22,7 +22,7 @@ import {
 import { requireAdmin, requireOwner, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { badRequest, conflict, isUniqueViolation, notFound, parse } from '../lib/errors.ts';
 import { mutate, requestMeta } from '../lib/mutate.ts';
-import { resolveWorkspaceAi } from '../services/ai/assist.ts';
+import { assertAiChangeAllowed, resolveWorkspaceAi } from '../services/ai/assist.ts';
 import { audit, auditCtx, auditFilters } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { listCustomers } from '../services/customers.ts';
@@ -139,6 +139,12 @@ export async function workspaceRoutes(app: FastifyInstance) {
   app.patch('/', async (req) => {
     requireAdmin(req);
     const input = parse(updateWorkspaceSchema, req.body);
+    if (input.settings?.aiEnabled !== undefined || input.settings?.aiSource)
+      assertAiChangeAllowed(app, {
+        // Turning it on, or back to the instance's model, is always fine.
+        aiEnabled: input.settings.aiEnabled,
+        aiSource: input.settings.aiSource === 'instance' ? undefined : input.settings.aiSource,
+      });
     try {
       return await mutate(app, req, async (ctx) => {
         const [current] = await ctx.tx
