@@ -378,7 +378,14 @@ export type UpdateTemplateInput = z.infer<typeof updateTemplateSchema>;
 
 export const updateLabelSchema = createLabelSchema.partial();
 
+/**
+ * Clients may choose a new thing's id (offline, they need it before the server answers). Sending
+ * the same create again with the same id returns what the first one made.
+ */
+const clientId = id.optional();
+
 export const createIssueSchema = z.object({
+  id: clientId,
   teamId: id,
   title: z.string().trim().min(1).max(500),
   description: markdown.optional(),
@@ -481,6 +488,7 @@ export type IssueDisplay = z.infer<typeof issueDisplaySchema>;
 export const DEFAULT_ISSUE_DISPLAY: IssueDisplay = issueDisplaySchema.parse({});
 
 export const createCommentSchema = z.object({
+  id: clientId,
   body: z.string().trim().min(1).max(50_000),
   parentId: id.nullish(),
 });
@@ -499,6 +507,7 @@ export function isSingleEmoji(value: string) {
 export const reactionEmojiSchema = z.string().refine(isSingleEmoji, 'Must be a single emoji');
 
 export const createRelationSchema = z.object({
+  id: clientId,
   type: z.enum(['blocks', 'blocked_by', 'related', 'duplicate_of']),
   relatedIssueId: id,
 });
