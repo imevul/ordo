@@ -287,3 +287,14 @@ export type ChatEventKind = (typeof CHAT_EVENT_KINDS)[number];
 
 export const ISSUE_LINK_KINDS = ['pull_request', 'branch', 'commit', 'message', 'link'] as const;
 export type IssueLinkKind = (typeof ISSUE_LINK_KINDS)[number];
+
+/** Languages the web app, emails and notifications are translated into. English is the default and fallback. */
+export const LOCALES = ['en', 'sv', 'nb'] as const;
+export type Locale = (typeof LOCALES)[number];
+export const DEFAULT_LOCALE: Locale = 'en';
+/** Each language's name in itself, for pickers. */
+export const LOCALE_NAMES: Record<Locale, string> = {
+  en: 'English',
+  sv: 'Svenska',
+  nb: 'Norsk bokmål',
+};

@@ -1,25 +1,51 @@
+import type { Locale } from '@ordo/shared';
 import {
+  type Locale as DateLocale,
   differenceInCalendarDays,
   format,
   formatDistanceToNowStrict,
   isThisYear,
   parseISO,
 } from 'date-fns';
+import { enUS, nb, sv } from 'date-fns/locale';
+import { getLocale, INTL_TAG, t } from '../i18n/index.ts';
+
+const DATE_LOCALES: Record<Locale, DateLocale> = { en: enUS, sv, nb };
+
+// Intl formatters are slow to build and dates are formatted per row; keep one per language.
+const cache = new Map<string, Intl.DateTimeFormat>();
+function dateFormat(options: Intl.DateTimeFormatOptions) {
+  const key = `${getLocale()}:${JSON.stringify(options)}`;
+  let f = cache.get(key);
+  if (!f) {
+    f = new Intl.DateTimeFormat(INTL_TAG[getLocale()], options);
+    cache.set(key, f);
+  }
+  return f;
+}
 
 export function relativeTime(iso: string) {
   const d = parseISO(iso);
   const diff = Date.now() - d.getTime();
-  if (diff < 45_000) return 'just now';
-  return `${formatDistanceToNowStrict(d)} ago`;
+  if (diff < 45_000) return t('time.justNow');
+  return formatDistanceToNowStrict(d, { addSuffix: true, locale: DATE_LOCALES[getLocale()] });
 }
 
+/** "Oct 26" this year, "Oct 26, 2025" otherwise, in the reader's language's order. */
 export function shortDate(iso: string) {
   const d = parseISO(iso);
-  return format(d, isThisYear(d) ? 'MMM d' : 'MMM d, yyyy');
+  return dateFormat(
+    isThisYear(d)
+      ? { month: 'short', day: 'numeric' }
+      : { month: 'short', day: 'numeric', year: 'numeric' },
+  ).format(d);
 }
 
 export function longDate(iso: string) {
-  return format(parseISO(iso), 'MMM d, yyyy · HH:mm');
+  const d = parseISO(iso);
+  const date = dateFormat({ month: 'short', day: 'numeric', year: 'numeric' }).format(d);
+  const time = dateFormat({ hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+  return `${date} · ${time}`;
 }
 
 export function dueState(
@@ -41,21 +67,30 @@ export function slaState(
   issue: { slaBreachesAt: string | null; createdAt: string },
   done: boolean,
   now = Date.now(),
-): { state: 'ok' | 'risk' | 'breached'; label: string } | null {
+): { state: 'ok' | 'risk' | 'breached'; label: string; span: string } | null {
   if (!issue.slaBreachesAt || done) return null;
   const end = Date.parse(issue.slaBreachesAt);
   const left = end - now;
   const span = (ms: number) => {
     const h = Math.abs(ms) / 3_600_000;
     return h < 1
-      ? `${Math.max(1, Math.round(h * 60))}m`
+      ? t('time.minutesShort', { count: Math.max(1, Math.round(h * 60)) })
       : h < 48
-        ? `${Math.round(h)}h`
-        : `${Math.round(h / 24)}d`;
+        ? t('time.hoursShort', { count: Math.round(h) })
+        : t('time.daysShort', { count: Math.round(h / 24) });
   };
-  if (left <= 0) return { state: 'breached', label: `SLA −${span(left)}` };
+  if (left <= 0)
+    return {
+      state: 'breached',
+      label: t('time.slaBreached', { span: span(left) }),
+      span: span(left),
+    };
   const window = end - Date.parse(issue.createdAt);
-  return { state: left < window / 4 ? 'risk' : 'ok', label: `SLA ${span(left)}` };
+  return {
+    state: left < window / 4 ? 'risk' : 'ok',
+    label: t('time.slaLeft', { span: span(left) }),
+    span: span(left),
+  };
 }
 
 export const initials = (name: string) =>

@@ -5,6 +5,7 @@ import { ApiError } from '../api/client.ts';
 import { useBootstrap, useMe } from '../api/queries.ts';
 import { AppShell } from '../components/AppShell.tsx';
 import { EmptyState, Spinner } from '../components/PageHeader.tsx';
+import { switchLocale, t } from '../i18n/index.ts';
 import { ssoStartUrl } from '../lib/sso.ts';
 import { WorkspaceProvider } from '../lib/workspace.tsx';
 
@@ -22,13 +23,18 @@ export function WorkspaceLayout() {
     if (signedOut) navigate({ to: '/login', search: { redirect: returnTo }, replace: true });
   }, [signedOut, navigate, returnTo]);
 
+  const locale = me.data?.locale;
+  useEffect(() => {
+    if (locale) switchLocale(locale);
+  }, [locale]);
+
   useEffect(() => {
     try {
       if (boot.data) localStorage.setItem('ordo:lastWorkspace', slug);
     } catch {}
   }, [boot.data, slug]);
 
-  if (!me.data) return <Spinner label="booting" />;
+  if (!me.data) return <Spinner label={t('shell.workspace.booting')} />;
   if (boot.error instanceof ApiError && boot.error.code === 'sso_required') {
     return <SsoRequired error={boot.error} returnTo={returnTo} />;
   }
@@ -37,18 +43,18 @@ export function WorkspaceLayout() {
     return (
       <div className="hud-ground flex h-full">
         <EmptyState
-          title={notFound ? 'workspace not found' : 'could not load workspace'}
-          body={notFound ? "It doesn't exist, or you're not a member." : boot.error.message}
+          title={notFound ? t('shell.workspace.notFound') : t('shell.workspace.loadFailed')}
+          body={notFound ? t('shell.workspace.notFoundBody') : boot.error.message}
           action={
             <Link to="/" className="btn btn-ghost">
-              Back <span className="arrow">→</span>
+              {t('common.back')} <span className="arrow">→</span>
             </Link>
           }
         />
       </div>
     );
   }
-  if (!boot.data) return <Spinner label="loading workspace" />;
+  if (!boot.data) return <Spinner label={t('shell.workspace.loading')} />;
   return (
     <WorkspaceProvider data={boot.data} me={me.data} slug={slug}>
       <AppShell />
@@ -63,10 +69,12 @@ function SsoRequired({ error, returnTo }: { error: ApiError; returnTo: string })
   return (
     <div className="hud-ground flex h-full">
       <EmptyState
-        title="sso required"
+        title={t('shell.workspace.ssoRequired')}
         body={
           options.length
-            ? `${details?.workspace ?? 'This workspace'} asks you to sign in through your organisation's identity provider.`
+            ? details?.workspace
+              ? t('shell.workspace.ssoBody', { workspace: details.workspace })
+              : t('shell.workspace.ssoBodyThisWorkspace')
             : error.message
         }
         action={
@@ -77,11 +85,12 @@ function SsoRequired({ error, returnTo }: { error: ApiError; returnTo: string })
                 href={ssoStartUrl(o.providerId, { redirect: returnTo })}
                 className="btn btn-primary"
               >
-                Continue with {o.name} <span className="arrow">→</span>
+                {t('shell.workspace.continueWith', { name: o.name })}{' '}
+                <span className="arrow">→</span>
               </a>
             ))}
             <Link to="/" className="btn btn-ghost">
-              Back
+              {t('common.back')}
             </Link>
           </div>
         }
@@ -100,10 +109,10 @@ export function NotFound() {
     <div className="hud-ground flex h-full">
       <EmptyState
         title="404"
-        body="Nothing lives at this address."
+        body={t('shell.workspace.pageNotFound')}
         action={
           <Link to="/" className="btn btn-ghost">
-            Home <span className="arrow">→</span>
+            {t('common.home')} <span className="arrow">→</span>
           </Link>
         }
       />

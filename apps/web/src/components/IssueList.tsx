@@ -2,6 +2,7 @@ import type { Issue, UpdateIssueInput } from '@ordo/shared';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { ChevronRight, Plus } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { t } from '../i18n/index.ts';
 import type { IssueGroup } from '../lib/issues.ts';
 import { IssueRow } from './IssueRow.tsx';
 import { PriorityIcon, StatusIcon } from './icons.tsx';
@@ -93,7 +94,7 @@ function GroupHeader({
         type="button"
         className={`ml-auto flex h-6 w-6 items-center justify-center text-index hover:text-text ${showAdd ? 'opacity-100' : 'opacity-0'}`}
         onClick={() => onCreateInGroup(group)}
-        aria-label={`New issue in ${group.label}`}
+        aria-label={t('issues.newIssueIn', { group: group.label })}
       >
         <Plus size={14} />
       </button>

@@ -41,6 +41,7 @@ import { requestMeta } from '../lib/mutate.ts';
 import { systemAccess } from '../services/access.ts';
 import { audit, auditCtx } from '../services/audit.ts';
 import type { Ctx } from '../services/context.ts';
+import { resolvePreferences } from '../services/digest.ts';
 import { signedFileUrl } from '../services/files.ts';
 import { passwordResetEmail, securityEmail, verifyEmailEmail } from '../services/mail-templates.ts';
 import { queueEmail } from '../services/mailer.ts';
@@ -369,8 +370,17 @@ export async function authRoutes(app: FastifyInstance) {
       .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
       .where(eq(workspaceMembers.userId, user.id))
       .orderBy(workspaces.name);
+    const [prefs] = await db
+      .select({ preferences: users.preferences })
+      .from(users)
+      .where(eq(users.id, user.id));
     const { avatarFileId, ...rest } = user;
-    return { ...rest, avatarUrl: signedFileUrl(app, avatarFileId), workspaces: memberships };
+    return {
+      ...rest,
+      avatarUrl: signedFileUrl(app, avatarFileId),
+      locale: resolvePreferences(prefs?.preferences).locale,
+      workspaces: memberships,
+    };
   });
 
   app.patch('/me', async (req) => {

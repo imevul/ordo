@@ -1,15 +1,11 @@
-import {
-  type AiSummary,
-  type AiTriage,
-  type IssueDetail,
-  PRIORITIES,
-  type UpdateIssueInput,
-} from '@ordo/shared';
+import type { AiSummary, AiTriage, IssueDetail, UpdateIssueInput } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { RefreshCw, Sparkles, X } from 'lucide-react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
+import { priorityLabel } from '../i18n/labels.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { PriorityIcon } from './icons.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -60,15 +56,15 @@ export function IssueAiPanel({
       <div className="mb-2 flex items-center gap-2">
         <Sparkles size={13} className="text-primary" />
         <span className="section-label flex-1">
-          {kind === 'summary' ? 'Summary' : 'Suggestions'}
+          {kind === 'summary' ? t('issue.ai.summary') : t('issue.ai.suggestions')}
         </span>
         <button
           type="button"
           className="flex h-6 w-6 items-center justify-center text-index hover:text-text disabled:opacity-40"
           onClick={() => query.refetch()}
           disabled={query.isFetching}
-          aria-label="Ask again"
-          title="Ask again"
+          aria-label={t('issue.ai.askAgain')}
+          title={t('issue.ai.askAgain')}
         >
           <RefreshCw size={12} />
         </button>
@@ -76,14 +72,14 @@ export function IssueAiPanel({
           type="button"
           className="flex h-6 w-6 items-center justify-center text-index hover:text-text"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t('common.close')}
         >
           <X size={13} />
         </button>
       </div>
       {query.isFetching ? (
         <p className="font-mono text-[12px] text-index">
-          &gt; thinking
+          &gt; {t('issue.ai.thinking')}
           <span className="cursor-blink" aria-hidden />
         </p>
       ) : query.error ? (
@@ -94,7 +90,7 @@ export function IssueAiPanel({
         <TriageSuggestions issue={issue} triage={query.data as AiTriage} onPatch={onPatch} />
       ) : null}
       <p className="mt-3 font-mono text-[10.5px] text-index">
-        by {model} · check before relying on it
+        {t('issue.ai.disclaimer', { model })}
       </p>
     </section>
   );
@@ -117,41 +113,39 @@ function TriageSuggestions({
         type: 'duplicate_of',
         relatedIssueId,
       }),
-    { success: 'Marked as duplicate', invalidate: [['ws', ws.slug, 'issue']] },
+    { success: t('issue.ai.markedDuplicate'), invalidate: [['ws', ws.slug, 'issue']] },
   );
   const labels = triage.labelIds
     .filter((id) => !issue.labelIds.includes(id))
     .map((id) => ws.labelById.get(id))
     .filter((l) => !!l);
   const priority =
-    triage.priority !== null && triage.priority !== issue.priority
-      ? PRIORITIES.find((p) => p.value === triage.priority)
-      : undefined;
+    triage.priority !== null && triage.priority !== issue.priority ? triage.priority : null;
   const linked = new Set(issue.relations.map((r) => r.issue.id));
-  const nothing = !priority && !labels.length && !triage.duplicates.length;
+  const nothing = priority === null && !labels.length && !triage.duplicates.length;
 
   return (
     <div className="space-y-3 text-[13px]">
       {triage.reason && <p className="text-muted">{triage.reason}</p>}
-      {nothing && <p className="text-index">Nothing to change.</p>}
-      {priority && (
+      {nothing && <p className="text-index">{t('issue.ai.nothingToChange')}</p>}
+      {priority !== null && (
         <div className="flex items-center gap-2">
-          <span className="w-20 text-[12px] text-index">Priority</span>
+          <span className="w-20 text-[12px] text-index">{t('common.priority')}</span>
           <span className="flex items-center gap-1.5">
-            <PriorityIcon priority={priority.value} size={13} /> {priority.label}
+            <PriorityIcon priority={priority} size={13} /> {priorityLabel(priority)}
           </span>
           <button
             type="button"
             className="btn btn-ghost btn-sm ml-auto"
-            onClick={() => onPatch({ priority: priority.value })}
+            onClick={() => onPatch({ priority })}
           >
-            Set
+            {t('issue.ai.set')}
           </button>
         </div>
       )}
       {labels.length > 0 && (
         <div className="flex items-center gap-2">
-          <span className="w-20 flex-none text-[12px] text-index">Labels</span>
+          <span className="w-20 flex-none text-[12px] text-index">{t('common.labels')}</span>
           <span className="flex flex-wrap gap-1">
             {labels.map((l) => (
               <span key={l.id} className="tag">
@@ -165,13 +159,13 @@ function TriageSuggestions({
             className="btn btn-ghost btn-sm ml-auto"
             onClick={() => onPatch({ addLabelIds: labels.map((l) => l.id) })}
           >
-            Add
+            {t('common.add')}
           </button>
         </div>
       )}
       {triage.duplicates.length > 0 && (
         <div>
-          <div className="mb-1 text-[12px] text-index">Possible duplicates</div>
+          <div className="mb-1 text-[12px] text-index">{t('issue.ai.possibleDuplicates')}</div>
           {triage.duplicates.map((d) => (
             <div key={d.id} className="flex items-start gap-2 border-t border-border-soft py-2">
               <div className="min-w-0 flex-1">
@@ -192,7 +186,7 @@ function TriageSuggestions({
                   onClick={() => markDuplicate.mutate(d.id)}
                   disabled={markDuplicate.isPending}
                 >
-                  Mark duplicate
+                  {t('issue.ai.markDuplicate')}
                 </button>
               )}
             </div>

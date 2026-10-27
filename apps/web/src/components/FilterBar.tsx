@@ -1,12 +1,8 @@
-import {
-  type IssueFilter,
-  PRIORITIES,
-  priorityLabel,
-  STATE_TYPE_LABELS,
-  STATE_TYPES,
-} from '@ordo/shared';
+import { type IssueFilter, STATE_TYPES, type StateType } from '@ordo/shared';
 import { ChevronRight, Filter, X } from 'lucide-react';
 import { useState } from 'react';
+import { type MessageKey, t } from '../i18n/index.ts';
+import { priorityLabel, priorityOptions, stateTypeLabel } from '../i18n/labels.ts';
 import { cycleName, useWorkspace, type WorkspaceData } from '../lib/workspace.tsx';
 import { PriorityIcon, ProjectIcon, StatusIcon } from './icons.tsx';
 import { labelOptions, statusOptions } from './properties.tsx';
@@ -26,18 +22,21 @@ type FilterKey =
 
 interface FilterDef {
   key: FilterKey;
-  label: string;
+  /** A message key: labels are looked up at render time, after the catalogue has loaded. */
+  label: MessageKey;
   options: (ws: WorkspaceData, teamId?: string) => Option[];
   numeric?: boolean;
 }
 
-const memberOptions = (ws: WorkspaceData, withNone: boolean, noneLabel: string): Option[] => [
+const memberOptions = (ws: WorkspaceData, withNone: boolean): Option[] => [
   {
     value: 'me',
-    label: 'Me',
+    label: t('issues.filter.me'),
     icon: <Avatar name={ws.me.name} color={ws.me.avatarColor} src={ws.me.avatarUrl} size={16} />,
   },
-  ...(withNone ? [{ value: 'none', label: noneLabel, icon: <EmptyAvatar size={16} /> }] : []),
+  ...(withNone
+    ? [{ value: 'none', label: t('issues.none.assignee'), icon: <EmptyAvatar size={16} /> }]
+    : []),
   ...ws.members
     .filter((m) => m.id !== ws.me.id)
     .map((m) => ({
@@ -50,25 +49,25 @@ const memberOptions = (ws: WorkspaceData, withNone: boolean, noneLabel: string):
 const DEFS: FilterDef[] = [
   {
     key: 'stateIds',
-    label: 'Status',
+    label: 'common.status',
     options: (ws, teamId) => (teamId ? statusOptions(ws, teamId) : []),
   },
   {
     key: 'stateTypes',
-    label: 'Status type',
+    label: 'issues.filter.statusType',
     options: () =>
-      STATE_TYPES.map((t) => ({
-        value: t,
-        label: STATE_TYPE_LABELS[t],
-        icon: <StatusIcon type={t} color="var(--color-muted)" />,
+      STATE_TYPES.map((type) => ({
+        value: type,
+        label: stateTypeLabel(type),
+        icon: <StatusIcon type={type} color="var(--color-muted)" />,
       })),
   },
   {
     key: 'priorities',
-    label: 'Priority',
+    label: 'common.priority',
     numeric: true,
     options: () =>
-      PRIORITIES.map((p) => ({
+      priorityOptions().map((p) => ({
         value: String(p.value),
         label: p.label,
         icon: <PriorityIcon priority={p.value} />,
@@ -76,16 +75,16 @@ const DEFS: FilterDef[] = [
   },
   {
     key: 'assigneeIds',
-    label: 'Assignee',
-    options: (ws) => memberOptions(ws, true, 'No assignee'),
+    label: 'common.assignee',
+    options: (ws) => memberOptions(ws, true),
   },
-  { key: 'creatorIds', label: 'Creator', options: (ws) => memberOptions(ws, false, '') },
-  { key: 'labelIds', label: 'Labels', options: (ws, teamId) => labelOptions(ws, teamId) },
+  { key: 'creatorIds', label: 'common.creator', options: (ws) => memberOptions(ws, false) },
+  { key: 'labelIds', label: 'common.labels', options: (ws, teamId) => labelOptions(ws, teamId) },
   {
     key: 'projectIds',
-    label: 'Project',
+    label: 'common.project',
     options: (ws) => [
-      { value: 'none', label: 'No project' },
+      { value: 'none', label: t('issues.none.project') },
       ...ws.projects.map((p) => ({
         value: p.id,
         label: p.name,
@@ -95,9 +94,9 @@ const DEFS: FilterDef[] = [
   },
   {
     key: 'cycleIds',
-    label: 'Cycle',
+    label: 'common.cycle',
     options: (ws, teamId) => [
-      { value: 'none', label: 'No cycle' },
+      { value: 'none', label: t('issues.none.cycle') },
       ...ws.cycles
         .filter((c) => !teamId || c.teamId === teamId)
         .map((c) => ({
@@ -113,18 +112,22 @@ function valueLabel(ws: WorkspaceData, key: FilterKey, v: string): string {
     case 'stateIds':
       return ws.stateById.get(v)?.name ?? '?';
     case 'stateTypes':
-      return STATE_TYPE_LABELS[v as keyof typeof STATE_TYPE_LABELS] ?? v;
+      return STATE_TYPES.includes(v as StateType) ? stateTypeLabel(v as StateType) : v;
     case 'priorities':
       return priorityLabel(Number(v));
     case 'assigneeIds':
     case 'creatorIds':
-      return v === 'me' ? 'Me' : v === 'none' ? 'Nobody' : (ws.memberById.get(v)?.name ?? '?');
+      return v === 'me'
+        ? t('issues.filter.me')
+        : v === 'none'
+          ? t('issues.filter.nobody')
+          : (ws.memberById.get(v)?.name ?? '?');
     case 'labelIds':
       return ws.labelById.get(v)?.name ?? '?';
     case 'projectIds':
-      return v === 'none' ? 'No project' : (ws.projectById.get(v)?.name ?? '?');
+      return v === 'none' ? t('issues.none.project') : (ws.projectById.get(v)?.name ?? '?');
     case 'cycleIds': {
-      if (v === 'none') return 'No cycle';
+      if (v === 'none') return t('issues.none.cycle');
       const c = ws.cycleById.get(v);
       return c ? cycleName(c) : '?';
     }
@@ -164,9 +167,13 @@ export function FilterButton({
       width={260}
       onOpenChange={(o) => !o && setKind(null)}
       trigger={
-        <button type="button" className="btn btn-ghost btn-sm" aria-label="Filter">
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          aria-label={t('issues.filter.button')}
+        >
           <Filter size={13} />
-          <span className="hidden sm:inline">Filter</span>
+          <span className="hidden sm:inline">{t('issues.filter.button')}</span>
         </button>
       }
     >
@@ -174,7 +181,7 @@ export function FilterButton({
         kind ? (
           <OptionList
             multi
-            placeholder={`${kind.label}…`}
+            placeholder={t('issues.filter.search', { filter: t(kind.label) })}
             options={kind.options(ws, teamId)}
             selected={getValues(filter, kind.key)}
             onSelect={(v) => {
@@ -187,10 +194,10 @@ export function FilterButton({
           />
         ) : (
           <OptionList
-            placeholder="Filter by…"
+            placeholder={t('issues.filter.filterBy')}
             options={defs.map((d) => ({
               value: d.key,
-              label: d.label,
+              label: t(d.label),
               hint: <ChevronRight size={12} />,
             }))}
             onSelect={(v) => setKind(defs.find((d) => d.key === v) ?? null)}
@@ -222,9 +229,9 @@ export function FilterChips({
             key={d.key}
             className="flex h-6 items-stretch text-[12px] shadow-[inset_0_0_0_1px_var(--color-border)]"
           >
-            <span className="flex items-center px-2 text-muted">{d.label}</span>
+            <span className="flex items-center px-2 text-muted">{t(d.label)}</span>
             <span className="flex items-center border-l border-border px-2 text-index">
-              {values.length > 1 ? 'is any of' : 'is'}
+              {values.length > 1 ? t('issues.filter.isAnyOf') : t('issues.filter.is')}
             </span>
             <Popover
               width={260}
@@ -261,7 +268,7 @@ export function FilterChips({
               type="button"
               className="flex items-center border-l border-border px-1.5 text-index hover:text-text"
               onClick={() => onChange(setValues(filter, d, []))}
-              aria-label={`Remove ${d.label} filter`}
+              aria-label={t('issues.filter.remove', { filter: t(d.label) })}
             >
               <X size={12} />
             </button>
@@ -273,7 +280,7 @@ export function FilterChips({
         className="ml-1 font-mono text-[11px] text-index uppercase tracking-[0.1em] hover:text-text"
         onClick={() => onChange({})}
       >
-        Clear
+        {t('common.clear')}
       </button>
     </div>
   );

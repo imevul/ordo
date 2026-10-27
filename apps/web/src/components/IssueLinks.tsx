@@ -12,6 +12,7 @@ import { type FormEvent, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
+import { type MessageKey, t } from '../i18n/index.ts';
 import { relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Popover } from './ui/Popover.tsx';
@@ -31,6 +32,15 @@ const STATE_COLORS: Record<string, string> = {
   review: 'var(--color-warning)',
   merged: 'var(--color-success)',
   closed: 'var(--color-muted)',
+};
+
+/** Names for the states we know; anything else a forge reports is shown as it came. */
+const STATE_KEYS: Record<string, MessageKey> = {
+  open: 'issue.links.state.open',
+  draft: 'issue.links.state.draft',
+  review: 'issue.links.state.review',
+  merged: 'issue.links.state.merged',
+  closed: 'issue.links.state.closed',
 };
 
 /** Pull requests, branches, commits, messages and plain links attached to an issue. */
@@ -57,20 +67,20 @@ export function IssueLinks({ issue, onChange }: { issue: IssueDetail; onChange: 
           onChange();
         },
         onError: (err) =>
-          toast.error(err instanceof Error ? err.message : 'Could not add the link'),
+          toast.error(err instanceof Error ? err.message : t('issue.links.addFailed')),
       },
     );
   };
 
   return (
     <section className="mt-8">
-      <div className="mb-2 flex items-center gap-3">
-        <div className="section-label flex-1">Links</div>
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="section-label flex-1">{t('issue.links.title')}</div>
         <Popover
           width={340}
           trigger={
             <button type="button" className="btn btn-ghost btn-sm">
-              <Plus size={12} /> Add link
+              <Plus size={12} /> {t('issue.links.add')}
             </button>
           }
         >
@@ -88,13 +98,13 @@ export function IssueLinks({ issue, onChange }: { issue: IssueDetail; onChange: 
               />
               <input
                 className="input mb-3"
-                placeholder="Title (optional)"
+                placeholder={t('issue.links.titleOptional')}
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                aria-label="Title"
+                aria-label={t('issue.links.titleLabel')}
               />
               <button className="btn btn-primary btn-sm w-full" disabled={add.isPending}>
-                Add
+                {t('common.add')}
               </button>
             </form>
           )}
@@ -108,9 +118,7 @@ export function IssueLinks({ issue, onChange }: { issue: IssueDetail; onChange: 
         />
       ))}
       {issue.links.length === 0 && (
-        <p className="px-2 font-mono text-[12px] text-index">
-          // pull requests and links show up here
-        </p>
+        <p className="px-2 font-mono text-[12px] text-index">{t('issue.links.empty')}</p>
       )}
     </section>
   );
@@ -133,7 +141,7 @@ function LinkRow({ link, onRemove }: { link: IssueLink; onRemove: () => void }) 
       </a>
       {link.state && (
         <span className="chip flex-none" style={{ ['--chip' as string]: color }}>
-          {link.state}
+          {STATE_KEYS[link.state] ? t(STATE_KEYS[link.state]!) : link.state}
         </span>
       )}
       <span className="hidden flex-none font-mono text-[11px] text-index sm:inline">
@@ -145,7 +153,7 @@ function LinkRow({ link, onRemove }: { link: IssueLink; onRemove: () => void }) 
         type="button"
         className="flex h-6 w-6 flex-none items-center justify-center text-index opacity-0 group-hover:opacity-100 hover:text-text"
         onClick={onRemove}
-        aria-label="Remove link"
+        aria-label={t('issue.links.remove')}
       >
         <X size={13} />
       </button>

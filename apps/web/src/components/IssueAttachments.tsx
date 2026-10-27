@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
 import { useAttachmentUpload, useWsMutation } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
 import { fileSize, relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
@@ -30,7 +31,9 @@ export function IssueAttachments({
       files.map((f) =>
         upload(f)
           .catch((err) =>
-            toast.error(err instanceof Error ? err.message : `Could not upload ${f.name}`),
+            toast.error(
+              err instanceof Error ? err.message : t('issue.uploadFailed', { name: f.name }),
+            ),
           )
           .finally(() => setPending((n) => n - 1)),
       ),
@@ -54,17 +57,21 @@ export function IssueAttachments({
         add([...e.dataTransfer.files]);
       }}
     >
-      <div className="mb-2 flex items-center gap-3">
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
         <div className="section-label flex-1">
-          Attachments
-          {pending > 0 && <span className="text-muted">uploading {pending}…</span>}
+          {t('issue.attachments.title')}
+          {pending > 0 && (
+            <span className="text-muted">
+              {t('issue.attachments.uploading', { count: pending })}
+            </span>
+          )}
         </div>
         <button
           type="button"
           className="btn btn-ghost btn-sm"
           onClick={() => input.current?.click()}
         >
-          <Plus size={12} /> Attach
+          <Plus size={12} /> {t('issue.attachments.attach')}
         </button>
         <input
           ref={input}
@@ -86,9 +93,7 @@ export function IssueAttachments({
         />
       ))}
       {issue.attachments.length === 0 && (
-        <p className="px-2 font-mono text-[12px] text-index">
-          // drop files here, or paste them into the description
-        </p>
+        <p className="px-2 font-mono text-[12px] text-index">{t('issue.attachments.empty')}</p>
       )}
     </section>
   );
@@ -138,7 +143,7 @@ function AttachmentRow({
           type="button"
           className="flex h-6 w-6 flex-none items-center justify-center text-index opacity-0 group-hover:opacity-100 hover:text-text focus:opacity-100"
           onClick={onRemove}
-          aria-label={`Remove ${att.filename}`}
+          aria-label={t('issue.attachments.remove', { name: att.filename })}
         >
           <X size={13} />
         </button>

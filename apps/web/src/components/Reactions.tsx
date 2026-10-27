@@ -1,6 +1,7 @@
 import { type Comment, QUICK_REACTIONS } from '@ordo/shared';
 import { SmilePlus } from 'lucide-react';
 import { useToggleReaction } from '../api/queries.ts';
+import { getLocale, INTL_TAG, t } from '../i18n/index.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Popover } from './ui/Popover.tsx';
 
@@ -45,9 +46,13 @@ export function ReactionBar({ comment, issueId }: { comment: Comment; issueId: s
   const toggle = useToggleReaction(ws.slug, issueId, ws.me.id);
   if (comment.reactions.length === 0) return null;
   const who = (ids: string[]) =>
-    ids
-      .map((id) => (id === ws.me.id ? 'You' : (ws.memberById.get(id)?.name ?? 'Former member')))
-      .join(', ');
+    new Intl.ListFormat(INTL_TAG[getLocale()], { type: 'conjunction' }).format(
+      ids.map((id) =>
+        id === ws.me.id
+          ? t('issue.reactions.you')
+          : (ws.memberById.get(id)?.name ?? t('issue.comments.formerMember')),
+      ),
+    );
   return (
     <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
       {comment.reactions.map((r) => {
@@ -59,7 +64,7 @@ export function ReactionBar({ comment, issueId }: { comment: Comment; issueId: s
             className="reaction"
             data-mine={mine}
             aria-pressed={mine}
-            title={`${who(r.userIds)} reacted with ${r.emoji}`}
+            title={t('issue.reactions.reactedWith', { names: who(r.userIds), emoji: r.emoji })}
             onClick={() => toggle.mutate({ commentId: comment.id, emoji: r.emoji, on: !mine })}
           >
             <span>{r.emoji}</span>
@@ -99,8 +104,8 @@ export function ReactionPicker({
               ? 'reaction text-index hover:text-text'
               : 'flex h-6 w-6 items-center justify-center text-index hover:text-text'
           }
-          aria-label="Add reaction"
-          title="Add reaction"
+          aria-label={t('issue.reactions.add')}
+          title={t('issue.reactions.add')}
         >
           <SmilePlus size={compact ? 13 : 14} />
         </button>

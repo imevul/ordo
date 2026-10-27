@@ -21,6 +21,7 @@ import { type GroupBy, type Issue, sortOrderBetween, type UpdateIssueInput } fro
 import { Link } from '@tanstack/react-router';
 import { GitBranch, Plus } from 'lucide-react';
 import { memo, useEffect, useState } from 'react';
+import { t } from '../i18n/index.ts';
 import { dueState, shortDate } from '../lib/format.ts';
 import { type IssueGroup, isDone, patchForGroup } from '../lib/issues.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
@@ -188,7 +189,7 @@ function Column({
           type="button"
           className="ml-auto flex h-6 w-6 items-center justify-center text-index hover:text-text"
           onClick={onCreate}
-          aria-label={`New issue in ${group.label}`}
+          aria-label={t('issues.newIssueIn', { group: group.label })}
         >
           <Plus size={14} />
         </button>
@@ -313,7 +314,7 @@ export function IssueBoard({
                 className="btn btn-ghost btn-sm mx-auto mt-1"
                 onClick={() => setShown((s) => ({ ...s, [g.key]: limit(g.key) + CARD_PAGE }))}
               >
-                Show more · {g.issues.length - limit(g.key)} left
+                {t('issues.board.showMore', { count: g.issues.length - limit(g.key) })}
               </button>
             )}
           </Column>

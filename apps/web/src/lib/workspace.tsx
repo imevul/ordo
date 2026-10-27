@@ -2,6 +2,7 @@ import type { Bootstrap, Cycle, Label, Me, Project, Team, View, WorkflowState } 
 import { accentVariables, isAdminRole } from '@ordo/shared';
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react';
 import type { Person } from '../components/ui/ActorName.tsx';
+import { t } from '../i18n/index.ts';
 import { useTheme } from './theme.ts';
 
 export interface WorkspaceData extends Bootstrap {
@@ -108,7 +109,7 @@ export function upcomingCycles(
   return cycles.filter((c) => c.teamId === teamId && c.endsAt > today);
 }
 
-export const cycleName = (c: Cycle) => c.name || `Cycle ${c.number}`;
+export const cycleName = (c: Cycle) => c.name || t('common.cycleNumber', { number: c.number });
 
 /**
  * Puts the workspace's accent on the document while it's open; leaving restores Hotline Pink

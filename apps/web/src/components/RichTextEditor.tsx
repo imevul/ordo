@@ -10,6 +10,7 @@ import { Bold, Code, Italic, Link2, Strikethrough } from 'lucide-react';
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { attachmentMarkdown } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
 import { markdownConverter, richTextExtensions } from '../lib/richtext.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Avatar } from './ui/Avatar.tsx';
@@ -87,7 +88,7 @@ const uploadPlaceholders = new Plugin<DecorationSet>({
       if (action && 'add' in action) {
         const el = document.createElement('span');
         el.className = 'upload-placeholder';
-        el.textContent = `Uploading ${action.add.name}…`;
+        el.textContent = t('issue.editor.uploading', { name: action.add.name });
         next = next.add(tr.doc, [Decoration.widget(action.add.pos, el, { id: action.add.id })]);
       } else if (action) {
         next = next.remove(next.find(undefined, undefined, (spec) => spec.id === action.remove));
@@ -127,7 +128,7 @@ export function RichTextEditor({
   });
   known.current = {
     usernames: new Set(ws.members.map((m) => m.username)),
-    teamKeys: new Set(ws.teams.map((t) => t.key)),
+    teamKeys: new Set(ws.teams.map((team) => team.key)),
     members: ws.members,
   };
   // The Markdown this editor last produced, so echoes of our own onChange don't reset the content.
@@ -274,7 +275,9 @@ export function RichTextEditor({
         },
         (err) => {
           if (!view.isDestroyed) view.dispatch(view.state.tr.setMeta(uploadKey, { remove: id }));
-          toast.error(err instanceof Error ? err.message : `Could not upload ${file.name}`);
+          toast.error(
+            err instanceof Error ? err.message : t('issue.uploadFailed', { name: file.name }),
+          );
         },
       );
     }
@@ -353,25 +356,25 @@ function FormatBubble({ editor }: { editor: Editor }) {
     {
       key: 'bold',
       icon: Bold,
-      label: 'Bold',
+      label: t('issue.editor.bold'),
       run: () => editor.chain().focus().toggleBold().run(),
     },
     {
       key: 'italic',
       icon: Italic,
-      label: 'Italic',
+      label: t('issue.editor.italic'),
       run: () => editor.chain().focus().toggleItalic().run(),
     },
     {
       key: 'strike',
       icon: Strikethrough,
-      label: 'Strikethrough',
+      label: t('issue.editor.strike'),
       run: () => editor.chain().focus().toggleStrike().run(),
     },
     {
       key: 'code',
       icon: Code,
-      label: 'Code',
+      label: t('issue.editor.code'),
       run: () => editor.chain().focus().toggleCode().run(),
     },
   ] as const;
@@ -382,7 +385,7 @@ function FormatBubble({ editor }: { editor: Editor }) {
     if (!href) chain.unsetLink().run();
     else if (LINK.test(href) || /^[\w-]+(\.[\w-]+)+/.test(href)) {
       chain.setLink({ href: LINK.test(href) ? href : `https://${href}` }).run();
-    } else return toast.error('Links need to start with http(s)://, mailto: or /');
+    } else return toast.error(t('issue.editor.badLink'));
     setLink(null);
   };
 
@@ -416,8 +419,8 @@ function FormatBubble({ editor }: { editor: Editor }) {
             type="button"
             className="flex h-7 w-7 items-center justify-center text-muted hover:bg-bg hover:text-text data-[on=true]:text-primary"
             data-on={state.link}
-            title="Link"
-            aria-label="Link"
+            title={t('issue.editor.link')}
+            aria-label={t('issue.editor.link')}
             onClick={() => setLink(state.href)}
           >
             <Link2 size={14} />
@@ -434,7 +437,7 @@ function FormatBubble({ editor }: { editor: Editor }) {
           <input
             autoFocus
             className="w-56 bg-transparent px-2 py-1 font-mono text-[12px] outline-none placeholder:text-index"
-            placeholder="https://… (empty removes)"
+            placeholder={t('issue.editor.linkPlaceholder')}
             value={link}
             onChange={(e) => setLink(e.target.value)}
             onKeyDown={(e) => {
@@ -447,7 +450,7 @@ function FormatBubble({ editor }: { editor: Editor }) {
             }}
           />
           <button type="submit" className="btn btn-ghost btn-sm">
-            Set
+            {t('issue.editor.setLink')}
           </button>
         </form>
       )}

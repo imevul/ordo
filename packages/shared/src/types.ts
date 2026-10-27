@@ -6,6 +6,7 @@ import type {
   FavoriteKind,
   InitiativeStatus,
   IssueLinkKind,
+  Locale,
   MemberRole,
   NotificationType,
   Priority,
@@ -16,6 +17,7 @@ import type {
   TeamRole,
   UserKind,
 } from './constants.ts';
+import { DEFAULT_LOCALE } from './constants.ts';
 import { DEFAULT_BRANCH_FORMAT, type GitAutomation } from './git.ts';
 import type { IssueDisplay, IssueFilter } from './schemas.ts';
 
@@ -33,6 +35,8 @@ export interface User {
 
 export interface Me extends User {
   isInstanceAdmin: boolean;
+  /** The language the app, emails and notifications use for this person. */
+  locale: Locale;
   workspaces: { id: string; name: string; slug: string; role: MemberRole }[];
 }
 
@@ -650,6 +654,8 @@ export type EmailDigest = 'off' | 'instant' | 'hourly' | 'daily';
 
 /** Per-user preferences. Missing keys fall back to DEFAULT_PREFERENCES. */
 export interface UserPreferences {
+  /** Language for the app, emails and notifications. */
+  locale: Locale;
   /** IANA zone, e.g. "Europe/Stockholm"; null follows the browser. */
   timezone: string | null;
   /** 0 = Sunday, 1 = Monday. */
@@ -663,6 +669,7 @@ export interface UserPreferences {
 }
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
+  locale: DEFAULT_LOCALE,
   timezone: null,
   weekStartsOn: 1,
   notifications: {

@@ -1,4 +1,5 @@
 import type { Progress } from '@ordo/shared';
+import { t } from '../i18n/index.ts';
 
 export function ProgressBar({
   progress,
@@ -20,16 +21,16 @@ export function ProgressBar({
 
 export function ProgressStats({ progress }: { progress: Progress }) {
   const remaining = progress.total - progress.completed - progress.canceled;
-  const cells: [string, number, string][] = [
-    ['scope', progress.total, 'text-text'],
-    ['started', progress.started, 'text-warning'],
-    ['completed', progress.completed, 'text-success'],
-    ['remaining', remaining, 'text-muted'],
+  const cells: [string, string, number, string][] = [
+    ['scope', t('shell.progress.scope'), progress.total, 'text-text'],
+    ['started', t('shell.progress.started'), progress.started, 'text-warning'],
+    ['completed', t('shell.progress.completed'), progress.completed, 'text-success'],
+    ['remaining', t('shell.progress.remaining'), remaining, 'text-muted'],
   ];
   return (
     <div className="grid grid-cols-4 gap-px bg-border-soft">
-      {cells.map(([label, n, color]) => (
-        <div key={label} className="bg-bg px-3 py-2.5">
+      {cells.map(([id, label, n, color]) => (
+        <div key={id} className="bg-bg px-3 py-2.5">
           <div className="font-mono text-[10px] tracking-[0.16em] text-index uppercase">
             {label}
           </div>

@@ -2,6 +2,7 @@ import { Outlet, useNavigate } from '@tanstack/react-router';
 import { Menu } from 'lucide-react';
 import { useState } from 'react';
 import { useRealtime } from '../api/realtime.ts';
+import { t } from '../i18n/index.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
 import { ui } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
@@ -57,7 +58,7 @@ export function AppShell() {
           type="button"
           className="fixed bottom-4 left-4 z-30 flex h-10 w-10 items-center justify-center bg-raised text-text shadow-[inset_0_0_0_1px_var(--color-border)] md:hidden"
           onClick={() => setMobileNav(true)}
-          aria-label="Open navigation"
+          aria-label={t('shell.appShell.openNavigation')}
         >
           <Menu size={18} />
         </button>

@@ -27,6 +27,7 @@ import {
 import { useState } from 'react';
 import { api } from '../api/client.ts';
 import type { RealtimeStatus } from '../api/realtime.ts';
+import { t } from '../i18n/index.ts';
 import { readPref, ui, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { OrdoMark, ProjectIcon, TeamIcon } from './icons.tsx';
@@ -111,7 +112,7 @@ export function Sidebar({
   return (
     <nav
       className="flex h-full w-full flex-col bg-surface"
-      aria-label="Main"
+      aria-label={t('shell.sidebar.main')}
       onClick={(e) => (e.target as HTMLElement).closest('a') && onNavigate?.()}
     >
       <div className="flex h-12 flex-none items-center gap-1 px-3">
@@ -121,7 +122,7 @@ export function Sidebar({
             <button
               type="button"
               className="flex min-w-0 flex-1 items-center gap-2 py-1 pr-2 text-left hover:opacity-90"
-              aria-label="Workspace menu"
+              aria-label={t('shell.sidebar.workspaceMenu')}
             >
               <OrdoMark />
               {ws.workspace.logoUrl && (
@@ -154,7 +155,7 @@ export function Sidebar({
                 className="menu-item"
                 onClick={() => navigate({ to: '/onboarding' })}
               >
-                <Plus size={14} /> Create workspace
+                <Plus size={14} /> {t('shell.sidebar.createWorkspace')}
               </button>
               <div className="my-1 h-px bg-border-soft" />
               <Link
@@ -162,7 +163,7 @@ export function Sidebar({
                 params={{ ...p, section: 'account' }}
                 className="menu-item"
               >
-                <Settings size={14} /> Settings
+                <Settings size={14} /> {t('common.settings')}
               </Link>
               {isAdmin && (
                 <Link
@@ -170,16 +171,16 @@ export function Sidebar({
                   params={{ ...p, section: 'members' }}
                   className="menu-item"
                 >
-                  <UserPlus size={14} /> Invite members
+                  <UserPlus size={14} /> {t('shell.sidebar.inviteMembers')}
                 </Link>
               )}
               {ws.me.isInstanceAdmin && (
                 <Link to="/admin/$section" params={{ section: 'overview' }} className="menu-item">
-                  <Shield size={14} /> Instance admin
+                  <Shield size={14} /> {t('shell.sidebar.instanceAdmin')}
                 </Link>
               )}
               <button type="button" className="menu-item" onClick={logout}>
-                <LogOut size={14} /> Log out
+                <LogOut size={14} /> {t('common.logOut')}
               </button>
             </div>
           )}
@@ -188,7 +189,7 @@ export function Sidebar({
           to="/$slug/search"
           params={p}
           className="flex h-7 w-7 items-center justify-center text-muted hover:text-text"
-          aria-label="Search"
+          aria-label={t('common.search')}
         >
           <Search size={15} />
         </Link>
@@ -196,8 +197,8 @@ export function Sidebar({
           type="button"
           className="flex h-7 w-7 items-center justify-center bg-raised text-muted hover:text-primary"
           onClick={() => ui.openCreateIssue({ teamId: ws.myTeams[0]?.id })}
-          aria-label="New issue"
-          title="New issue (C)"
+          aria-label={t('shell.sidebar.newIssue')}
+          title={t('shell.sidebar.newIssueWithKey', { key: 'C' })}
         >
           <SquarePen size={15} />
         </button>
@@ -207,7 +208,7 @@ export function Sidebar({
         <div className="flex flex-col gap-px">
           <Link to="/$slug/inbox" params={p} className="nav-item">
             <Inbox size={15} />
-            Inbox
+            {t('shell.nav.inbox')}
             {ws.unreadCount > 0 && (
               <span className="ml-auto bg-primary px-1.5 font-mono text-[10.5px] font-semibold text-on-primary">
                 {ws.unreadCount}
@@ -221,46 +222,46 @@ export function Sidebar({
             activeOptions={{ includeSearch: false }}
           >
             <Target size={15} />
-            My issues
+            {t('shell.nav.myIssues')}
           </Link>
         </div>
 
         <div className="mt-5 mb-1 px-2 font-mono text-[10.5px] font-semibold tracking-[0.2em] text-index uppercase">
-          Workspace
+          {t('shell.sidebar.workspace')}
         </div>
         <div className="flex flex-col gap-px">
           <Link to="/$slug/initiatives" params={p} className="nav-item">
             <Goal size={15} />
-            Initiatives
+            {t('shell.nav.initiatives')}
           </Link>
           <Link to="/$slug/projects" params={p} className="nav-item">
             <Hexagon size={15} />
-            Projects
+            {t('common.projects')}
           </Link>
           <Link to="/$slug/roadmap" params={p} className="nav-item">
             <ChartGantt size={15} />
-            Roadmap
+            {t('shell.nav.roadmap')}
           </Link>
           {!ws.isGuest && (
             <Link to="/$slug/customers" params={p} className="nav-item">
               <Building2 size={15} />
-              Customers
+              {t('shell.nav.customers')}
             </Link>
           )}
           <Link to="/$slug/views" params={p} className="nav-item">
             <Layers size={15} />
-            Views
+            {t('shell.nav.views')}
           </Link>
           <Link to="/$slug/trash" params={p} className="nav-item">
             <Trash2 size={15} />
-            Trash
+            {t('shell.nav.trash')}
           </Link>
         </div>
 
         {ws.favorites.length > 0 && (
           <>
             <div className="mt-5 mb-1 flex items-center gap-1.5 px-2 font-mono text-[10.5px] font-semibold tracking-[0.2em] text-index uppercase">
-              <Star size={11} /> Favorites
+              <Star size={11} /> {t('shell.nav.favorites')}
             </div>
             <div className="flex flex-col gap-px">
               {ws.favorites.map((f) => (
@@ -271,22 +272,26 @@ export function Sidebar({
         )}
 
         <div className="mt-5 mb-1 px-2 font-mono text-[10.5px] font-semibold tracking-[0.2em] text-index uppercase">
-          Your teams
+          {t('shell.sidebar.yourTeams')}
         </div>
-        {ws.myTeams.map((t) => {
-          const open = !closedTeams.includes(t.id);
+        {ws.myTeams.map((team) => {
+          const open = !closedTeams.includes(team.id);
           return (
-            <div key={t.id} className="mb-1">
+            <div key={team.id} className="mb-1">
               <button
                 type="button"
                 className="nav-item w-full"
-                onClick={() => toggleTeam(t.id)}
+                onClick={() => toggleTeam(team.id)}
                 aria-expanded={open}
               >
-                <TeamIcon color={t.color} label={t.key} />
-                <span className="truncate">{t.name}</span>
-                {t.private && (
-                  <Lock size={11} className="flex-none text-index" aria-label="Private team" />
+                <TeamIcon color={team.color} label={team.key} />
+                <span className="truncate">{team.name}</span>
+                {team.private && (
+                  <Lock
+                    size={11}
+                    className="flex-none text-index"
+                    aria-label={t('shell.sidebar.privateTeam')}
+                  />
                 )}
                 <ChevronRight
                   size={12}
@@ -295,39 +300,39 @@ export function Sidebar({
               </button>
               {open && (
                 <div className="ml-3 flex flex-col gap-px border-l border-border-soft pl-2">
-                  {t.triageEnabled && (
+                  {team.triageEnabled && (
                     <Link
                       to="/$slug/team/$key/$tab"
-                      params={{ ...p, key: t.key, tab: 'triage' }}
+                      params={{ ...p, key: team.key, tab: 'triage' }}
                       className="nav-item"
                     >
-                      <CircleDot size={14} /> Triage
+                      <CircleDot size={14} /> {t('shell.nav.triage')}
                     </Link>
                   )}
                   <Link
                     to="/$slug/team/$key/$tab"
-                    params={{ ...p, key: t.key, tab: 'all' }}
+                    params={{ ...p, key: team.key, tab: 'all' }}
                     className="nav-item"
                   >
-                    <Layers size={14} /> Issues
+                    <Layers size={14} /> {t('common.issues')}
                   </Link>
-                  {t.cyclesEnabled && (
+                  {team.cyclesEnabled && (
                     <Link
                       to="/$slug/team/$key/cycles"
-                      params={{ ...p, key: t.key }}
+                      params={{ ...p, key: team.key }}
                       className="nav-item"
                     >
-                      <RefreshCcw size={14} /> Cycles
+                      <RefreshCcw size={14} /> {t('common.cycles')}
                     </Link>
                   )}
                   <Link
                     to="/$slug/projects"
                     params={p}
-                    search={{ team: t.key }}
+                    search={{ team: team.key }}
                     className="nav-item"
                     activeOptions={{ includeSearch: true }}
                   >
-                    <Hexagon size={14} /> Projects
+                    <Hexagon size={14} /> {t('common.projects')}
                   </Link>
                 </div>
               )}
@@ -341,14 +346,18 @@ export function Sidebar({
           className={`h-[7px] w-[7px] ${status === 'live' ? 'bg-success shadow-[0_0_10px_var(--color-success)]' : status === 'connecting' ? 'bg-warning' : 'bg-error'}`}
           aria-hidden
         />
-        {status === 'live' ? 'live' : status === 'connecting' ? 'connecting' : 'offline'}
+        {status === 'live'
+          ? t('shell.sidebar.live')
+          : status === 'connecting'
+            ? t('shell.sidebar.connecting')
+            : t('shell.sidebar.offline')}
         <button
           type="button"
           className="ml-auto hover:text-text"
           onClick={() => ui.set({ shortcuts: true })}
-          title="Keyboard shortcuts"
+          title={t('shell.shortcuts.title')}
         >
-          ? keys
+          ? {t('shell.sidebar.keys')}
         </button>
       </div>
     </nav>

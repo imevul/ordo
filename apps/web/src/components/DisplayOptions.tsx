@@ -1,25 +1,27 @@
 import { GROUP_BY_OPTIONS, type IssueDisplay, ORDER_BY_OPTIONS } from '@ordo/shared';
 import { Kanban, List, SlidersHorizontal } from 'lucide-react';
+import { t } from '../i18n/index.ts';
 import { Popover } from './ui/Popover.tsx';
 
-const GROUP_LABELS: Record<string, string> = {
-  state: 'Status',
-  priority: 'Priority',
-  assignee: 'Assignee',
-  project: 'Project',
-  milestone: 'Milestone',
-  cycle: 'Cycle',
-  label: 'Label',
-  none: 'No grouping',
-};
-const ORDER_LABELS: Record<string, string> = {
-  manual: 'Manual',
-  priority: 'Priority',
-  updatedAt: 'Last updated',
-  createdAt: 'Created',
-  dueDate: 'Due date',
-  title: 'Title',
-};
+// Labels are looked up at render time: the catalogue loads after this module.
+const groupLabels = (): Record<string, string> => ({
+  state: t('common.status'),
+  priority: t('common.priority'),
+  assignee: t('common.assignee'),
+  project: t('common.project'),
+  milestone: t('common.milestone'),
+  cycle: t('common.cycle'),
+  label: t('common.label'),
+  none: t('issues.display.noGrouping'),
+});
+const orderLabels = (): Record<string, string> => ({
+  manual: t('issues.display.manual'),
+  priority: t('common.priority'),
+  updatedAt: t('issues.display.lastUpdated'),
+  createdAt: t('common.created'),
+  dueDate: t('common.dueDate'),
+  title: t('issues.display.title'),
+});
 
 function Toggle({
   checked,
@@ -92,7 +94,7 @@ export function LayoutToggle({
         <button
           type="button"
           key={l}
-          aria-label={`${l} layout`}
+          aria-label={t(l === 'list' ? 'issues.display.listLayout' : 'issues.display.boardLayout')}
           aria-pressed={display.layout === l}
           onClick={() => onChange({ ...display, layout: l })}
           className={`flex w-8 items-center justify-center ${display.layout === l ? 'bg-raised text-primary' : 'text-index hover:text-text'}`}
@@ -116,41 +118,45 @@ export function DisplayOptions({
       width={280}
       placement="bottom-end"
       trigger={
-        <button type="button" className="btn btn-ghost btn-sm" aria-label="Display options">
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm"
+          aria-label={t('issues.display.options')}
+        >
           <SlidersHorizontal size={13} />
-          <span className="hidden sm:inline">Display</span>
+          <span className="hidden sm:inline">{t('issues.display.button')}</span>
         </button>
       }
     >
       <div className="p-3">
-        <div className="section-label mb-2">Display</div>
+        <div className="section-label mb-2">{t('issues.display.button')}</div>
         <Select
-          label="Grouping"
+          label={t('issues.display.grouping')}
           value={display.groupBy}
           options={GROUP_BY_OPTIONS}
-          labels={GROUP_LABELS}
+          labels={groupLabels()}
           onChange={(v) => onChange({ ...display, groupBy: v as IssueDisplay['groupBy'] })}
         />
         <Select
-          label="Ordering"
+          label={t('issues.display.ordering')}
           value={display.orderBy}
           options={ORDER_BY_OPTIONS}
-          labels={ORDER_LABELS}
+          labels={orderLabels()}
           onChange={(v) => onChange({ ...display, orderBy: v as IssueDisplay['orderBy'] })}
         />
         <div className="my-2 h-px bg-border-soft" />
         <Toggle
-          label="Show completed issues"
+          label={t('issues.display.showCompleted')}
           checked={display.showCompleted}
           onChange={(v) => onChange({ ...display, showCompleted: v })}
         />
         <Toggle
-          label="Show sub-issues"
+          label={t('issues.display.showSubIssues')}
           checked={display.showSubIssues}
           onChange={(v) => onChange({ ...display, showSubIssues: v })}
         />
         <Toggle
-          label="Show empty groups"
+          label={t('issues.display.showEmptyGroups')}
           checked={display.showEmptyGroups}
           onChange={(v) => onChange({ ...display, showEmptyGroups: v })}
         />

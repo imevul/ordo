@@ -12,6 +12,7 @@ import { StatusIcon, TeamIcon } from '../components/icons.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { confirmDialog } from '../components/ui/Modal.tsx';
+import { t } from '../i18n/index.ts';
 import { relativeTime, shortDate } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
@@ -22,14 +23,14 @@ function Tabs({
 }) {
   return (
     <div className="flex gap-1 px-4 pb-2">
-      {tabs.map((t) => (
+      {tabs.map((tab) => (
         <Link
-          key={t.label}
-          to={t.to}
-          params={t.params as never}
-          className={`h-6 px-2.5 font-mono text-[11px] leading-6 tracking-[0.1em] uppercase transition-colors ${t.active ? 'bg-raised text-primary' : 'text-index hover:text-text'}`}
+          key={tab.to + JSON.stringify(tab.params)}
+          to={tab.to}
+          params={tab.params as never}
+          className={`h-6 px-2.5 font-mono text-[11px] leading-6 tracking-[0.1em] uppercase transition-colors ${tab.active ? 'bg-raised text-primary' : 'text-index hover:text-text'}`}
         >
-          {t.label}
+          {tab.label}
         </Link>
       ))}
     </div>
@@ -48,11 +49,11 @@ export function MyIssuesPage() {
           : { assigneeIds: ['me'] },
     [tab],
   );
-  const tabs = ['assigned', 'created', 'subscribed'].map((t) => ({
+  const tabs = (['assigned', 'created', 'subscribed'] as const).map((name) => ({
     to: '/$slug/my-issues/$tab',
-    params: { slug: ws.slug, tab: t },
-    label: t,
-    active: t === tab,
+    params: { slug: ws.slug, tab: name },
+    label: t(`issues.myIssues.${name}`),
+    active: name === tab,
   }));
   return (
     <IssuesView
@@ -61,17 +62,17 @@ export function MyIssuesPage() {
         <>
           {ws.workspace.name}
           <Sep />
-          my issues
+          {t('issues.myIssues.title')}
         </>
       }
-      title="My issues"
+      title={t('issues.myIssues.title')}
       baseFilter={filter}
       storageKey={`my:${tab}`}
       defaultDisplay={{ groupBy: 'state', showCompleted: false }}
       createDefaults={tab === 'assigned' ? { assigneeId: ws.me.id } : {}}
       tabs={<Tabs tabs={tabs} />}
-      emptyTitle={tab === 'assigned' ? 'inbox zero, issue edition' : 'nothing here'}
-      emptyBody={tab === 'assigned' ? 'Nothing is assigned to you right now.' : undefined}
+      emptyTitle={tab === 'assigned' ? t('issues.myIssues.inboxZero') : t('issues.view.emptyTitle')}
+      emptyBody={tab === 'assigned' ? t('issues.myIssues.nothingAssigned') : undefined}
     />
   );
 }
@@ -88,17 +89,18 @@ export function TeamIssuesPage() {
     if (tab === 'archived') return { teamId: team.id, archived: 'only' };
     return { teamId: team.id };
   }, [team, tab]);
-  if (!team) return <EmptyState title="team not found" />;
-  const tabs = (
-    team.triageEnabled
-      ? ['triage', 'all', 'active', 'backlog', 'archived']
-      : ['all', 'active', 'backlog', 'archived']
-  ).map((t) => ({
-    to: '/$slug/team/$key/$tab',
-    params: { slug: ws.slug, key, tab: t },
-    label: t,
-    active: t === tab,
-  }));
+  if (!team) return <EmptyState title={t('issues.team.notFound')} />;
+  const teamTabs = ['triage', 'all', 'active', 'backlog', 'archived'] as const;
+  const isTeamTab = (v: string): v is (typeof teamTabs)[number] =>
+    (teamTabs as readonly string[]).includes(v);
+  const tabs = teamTabs
+    .filter((name) => name !== 'triage' || team.triageEnabled)
+    .map((name) => ({
+      to: '/$slug/team/$key/$tab',
+      params: { slug: ws.slug, key, tab: name },
+      label: t(`issues.team.${name}`),
+      active: name === tab,
+    }));
   const triage = team.states.find((s) => s.type === 'triage');
   return (
     <IssuesView
@@ -108,7 +110,7 @@ export function TeamIssuesPage() {
           <TeamIcon color={team.color} label={team.key} size={12} />
           {team.key}
           <Sep />
-          {tab}
+          {isTeamTab(tab) ? t(`issues.team.${tab}`) : tab}
         </span>
       }
       title={team.name}
@@ -128,7 +130,11 @@ export function TeamIssuesPage() {
       }}
       tabs={<Tabs tabs={tabs} />}
       emptyTitle={
-        tab === 'triage' ? 'triage is clear' : tab === 'archived' ? 'nothing archived' : undefined
+        tab === 'triage'
+          ? t('issues.team.triageClear')
+          : tab === 'archived'
+            ? t('issues.team.nothingArchived')
+            : undefined
       }
     />
   );
@@ -138,12 +144,12 @@ export function IssuePage() {
   const ws = useWorkspace();
   const { identifier } = useParams({ from: '/$slug/issue/$identifier' });
   const { data, error, isLoading } = useIssue(ws.slug, identifier);
-  if (isLoading) return <Spinner label={`loading ${identifier}`} />;
+  if (isLoading) return <Spinner label={t('issues.issuePage.loading', { id: identifier })} />;
   if (error || !data)
     return (
       <EmptyState
-        title="issue not found"
-        body={`${identifier} doesn't exist or was deleted for good.`}
+        title={t('issues.issuePage.notFound')}
+        body={t('issues.issuePage.notFoundBody', { id: identifier })}
       />
     );
   return <IssueDetailView key={data.id} issue={data} />;
@@ -166,7 +172,7 @@ function PlainIssueRow({ issue, right }: { issue: Issue; right?: React.ReactNode
       >
         {issue.title}
       </Link>
-      {issue.archivedAt && <span className="tag font-mono">archived</span>}
+      {issue.archivedAt && <span className="tag font-mono">{t('issues.searchPage.archived')}</span>}
       <span className="hidden font-mono text-[11px] text-index sm:block">
         {shortDate(issue.updatedAt)}
       </span>
@@ -187,10 +193,10 @@ export function SearchPage() {
           <>
             {ws.workspace.name}
             <Sep />
-            search
+            {t('issues.searchPage.title')}
           </>
         }
-        title="Search"
+        title={t('issues.searchPage.title')}
       >
         <div className="px-4 pb-3">
           <div className="flex items-center gap-2 border border-border bg-bg px-3 focus-within:border-primary">
@@ -199,7 +205,7 @@ export function SearchPage() {
               autoFocus
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search issues and comments, or an ID like ENG-42…"
+              placeholder={t('issues.searchPage.placeholder')}
               className="h-10 min-w-0 flex-1 bg-transparent outline-none placeholder:text-index"
             />
             {isFetching && <span className="cursor-blink" aria-hidden />}
@@ -209,7 +215,7 @@ export function SearchPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {data?.projects.length ? (
           <div className="border-b border-border-soft px-4 py-3">
-            <div className="section-label mb-2">Projects</div>
+            <div className="section-label mb-2">{t('common.projects')}</div>
             <div className="flex flex-wrap gap-2">
               {data.projects.map((p) => (
                 <Link
@@ -229,10 +235,16 @@ export function SearchPage() {
           <PlainIssueRow key={i.id} issue={i} />
         ))}
         {q && data && data.issues.length === 0 && data.projects.length === 0 && (
-          <EmptyState title="no matches" body={`Nothing matches "${q}".`} />
+          <EmptyState
+            title={t('issues.searchPage.noMatches')}
+            body={t('issues.searchPage.nothingMatches', { query: q })}
+          />
         )}
         {!q && (
-          <EmptyState title="search" body="Find issues by title, description or identifier." />
+          <EmptyState
+            title={t('issues.searchPage.emptyTitle')}
+            body={t('issues.searchPage.emptyBody')}
+          />
         )}
       </div>
     </div>
@@ -246,14 +258,14 @@ export function TrashPage() {
   const restore = async (issue: Issue) => {
     await api.post(wsPath(ws.slug, `/issues/${issue.id}/restore`));
     invalidateIssues(qc, ws.slug);
-    toast.success(`${issue.identifier} restored`);
+    toast.success(t('issues.trash.restored', { id: issue.identifier }));
   };
   const purge = async (issue: Issue) => {
     if (
       !(await confirmDialog({
-        title: `Permanently delete ${issue.identifier}?`,
-        body: 'This cannot be undone.',
-        confirmLabel: 'Delete forever',
+        title: t('issues.trash.confirmTitle', { id: issue.identifier }),
+        body: t('issues.trash.confirmBody'),
+        confirmLabel: t('issues.trash.deleteForever'),
         danger: true,
       }))
     )
@@ -268,18 +280,15 @@ export function TrashPage() {
           <>
             {ws.workspace.name}
             <Sep />
-            trash
+            {t('issues.trash.title')}
           </>
         }
-        title="Trash"
+        title={t('issues.trash.title')}
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading && <Spinner />}
         {data?.length === 0 && (
-          <EmptyState
-            title="trash is empty"
-            body="Deleted issues show up here and can be restored."
-          />
+          <EmptyState title={t('issues.trash.emptyTitle')} body={t('issues.trash.emptyBody')} />
         )}
         {data?.map((i) => (
           <PlainIssueRow
@@ -288,17 +297,17 @@ export function TrashPage() {
             right={
               <span className="flex items-center gap-1">
                 <span className="mr-2 hidden font-mono text-[11px] text-index md:block">
-                  deleted {i.deletedAt && relativeTime(i.deletedAt)}
+                  {i.deletedAt && t('issues.trash.deleted', { time: relativeTime(i.deletedAt) })}
                 </span>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => restore(i)}>
-                  <RotateCcw size={12} /> Restore
+                  <RotateCcw size={12} /> {t('common.restore')}
                 </button>
                 {ws.isAdmin && (
                   <button
                     type="button"
                     className="btn btn-danger btn-sm"
                     onClick={() => purge(i)}
-                    aria-label="Delete forever"
+                    aria-label={t('issues.trash.deleteForever')}
                   >
                     <Trash2 size={12} />
                   </button>

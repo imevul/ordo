@@ -3,6 +3,7 @@ import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Modal } from './ui/Modal.tsx';
 
@@ -26,7 +27,7 @@ export function SaveViewModal({
   const create = useWsMutation(
     ws.slug,
     (body: object) => api.post<View>(wsPath(ws.slug, '/views'), body),
-    { success: 'View created' },
+    { success: t('issues.saveView.created') },
   );
 
   const submit = (e: React.FormEvent) => {
@@ -45,17 +46,23 @@ export function SaveViewModal({
   };
 
   return (
-    <Modal open={open} onClose={onClose} width={460} label="Save view" align="center">
+    <Modal
+      open={open}
+      onClose={onClose}
+      width={460}
+      label={t('issues.saveView.submit')}
+      align="center"
+    >
       <form onSubmit={submit} className="p-6">
-        <div className="section-label mb-4">New view</div>
+        <div className="section-label mb-4">{t('issues.saveView.title')}</div>
         <label className="block text-[12px] text-muted">
-          Name
+          {t('issues.saveView.name')}
           <input
             className="input mt-1"
             autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Urgent bugs"
+            placeholder={t('issues.saveView.namePlaceholder')}
           />
         </label>
         <label className="mt-4 flex items-center gap-2 text-[13px] text-muted">
@@ -65,14 +72,14 @@ export function SaveViewModal({
             onChange={(e) => setShared(e.target.checked)}
             className="accent-primary"
           />
-          Share with the workspace
+          {t('issues.saveView.share')}
         </label>
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!name.trim() || create.isPending}>
-            Save view <span className="arrow">→</span>
+            {t('issues.saveView.submit')} <span className="arrow">→</span>
           </button>
         </div>
       </form>

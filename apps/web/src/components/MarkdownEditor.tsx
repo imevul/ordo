@@ -14,6 +14,7 @@ import {
 } from 'react';
 import { toast } from 'sonner';
 import { attachmentMarkdown } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
 import { richTextUnsafe } from '../lib/markdown.ts';
 import { readPref, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
@@ -63,7 +64,7 @@ export function MarkdownEditor(props: Props) {
   const switchMode = () => {
     const next = mode === 'rich' ? 'markdown' : 'rich';
     if (next === 'rich' && richTextUnsafe(value)) {
-      toast.error('This text uses HTML or footnotes, which only the Markdown editor keeps');
+      toast.error(t('issue.editor.richTextUnsafe'));
       return;
     }
     writePref('editorMode', next);
@@ -110,9 +111,9 @@ export function MarkdownEditor(props: Props) {
             type="button"
             className="font-mono text-[10.5px] tracking-[0.12em] text-index uppercase hover:text-muted"
             onClick={switchMode}
-            title={mode === 'rich' ? 'Edit the Markdown source' : 'Edit as formatted text'}
+            title={mode === 'rich' ? t('issue.editor.editSource') : t('issue.editor.editRich')}
           >
-            {mode === 'rich' ? '// markdown' : '// rich text'}
+            {mode === 'rich' ? '// markdown' : t('issue.editor.richText')}
           </button>
           {mode === 'markdown' && (
             <button
@@ -120,20 +121,20 @@ export function MarkdownEditor(props: Props) {
               className="font-mono text-[10.5px] tracking-[0.12em] text-index uppercase hover:text-muted"
               onClick={() => setPreview((p) => !p)}
             >
-              {preview ? '// write' : '// preview'}
+              {preview ? t('issue.editor.write') : t('issue.editor.preview')}
             </button>
           )}
         </span>
         <span className="flex items-center gap-2 font-mono text-[10.5px] text-index">
-          {mode === 'rich' ? 'markdown shortcuts · @mention' : 'markdown · @mention'}
+          {mode === 'rich' ? t('issue.editor.hintRich') : t('issue.editor.hintMarkdown')}
           {onUpload && (
             <>
               <button
                 type="button"
                 className="flex h-5 w-5 items-center justify-center hover:text-muted"
                 onClick={() => fileInput.current?.click()}
-                aria-label="Attach files"
-                title="Attach files (or paste / drop them)"
+                aria-label={t('issue.editor.attachFiles')}
+                title={t('issue.editor.attachFilesTitle')}
               >
                 <Paperclip size={12} />
               </button>
@@ -229,7 +230,7 @@ function MarkdownSource({
     if (!onUpload || list.length === 0) return;
     let caret = ref.current?.selectionStart ?? latest.current.value.length;
     for (const file of list) {
-      const token = `[Uploading ${file.name.replace(/[[\]\\]/g, '')}…]()`;
+      const token = `[${t('issue.editor.uploading', { name: file.name }).replace(/[[\]\\]/g, '')}]()`;
       const text = latest.current.value;
       const insert = `${caret > 0 && text[caret - 1] !== '\n' ? '\n' : ''}${token}\n`;
       setText(text.slice(0, caret) + insert + text.slice(caret));
@@ -241,7 +242,9 @@ function MarkdownSource({
         (att) => replace(token, attachmentMarkdown(att)),
         (err) => {
           replace(`${token}\n`, '');
-          toast.error(err instanceof Error ? err.message : `Could not upload ${file.name}`);
+          toast.error(
+            err instanceof Error ? err.message : t('issue.uploadFailed', { name: file.name }),
+          );
         },
       );
     }
@@ -283,7 +286,7 @@ function MarkdownSource({
           {value.trim() ? (
             <Markdown source={value} />
           ) : (
-            <span className="text-index">Nothing to preview</span>
+            <span className="text-index">{t('issue.editor.nothingToPreview')}</span>
           )}
         </div>
       ) : (
