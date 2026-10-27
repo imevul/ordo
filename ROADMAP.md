@@ -120,7 +120,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [x] ✅ Full-text search; pagination for very large teams
 - [x] ✅ Cycle automation; auto-archive
 - [x] ✅ Project milestones; initiatives and roadmap timeline; insights and charts
-- ⬜ SLAs, recurring issues, triage rules; customer requests and intake by email
+- [x] ✅ SLAs, recurring issues, triage rules; customer requests and intake by email
 - ⬜ Project documents; notification snooze
 - ⬜ PWA and push; light theme; i18n
 - ✅ MCP server for AI agents (Streamable HTTP, per workspace, personal API keys; search, read, create, update and
