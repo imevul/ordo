@@ -1,39 +1,24 @@
 import type { LinkedIdentity, SsoDiscovery } from '@ordo/shared';
 import { and, count, eq, isNotNull } from 'drizzle-orm';
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
   authProviders,
   userIdentities,
   users,
   workspaceDomains,
-  workspaceMembers,
   workspaces,
 } from '../db/schema.ts';
-import { authInfo, authorizeWorkspace, createSession, requireUser } from '../lib/auth.ts';
+import { authInfo, authorizeWorkspace, requireUser } from '../lib/auth.ts';
 import { badRequest, HttpError, notFound } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from '../services/audit.ts';
-import {
-  beginLogin,
-  CALLBACK_PATH,
-  completeLogin,
-  linkIdentity,
-  resolveSsoUser,
-  SsoError,
-} from '../services/sso.ts';
-import { workspaceSettings } from '../services/workspaces.ts';
+import { beginLogin, CALLBACK_PATH, completeLogin } from '../services/oidc.ts';
+import { finishSso, LAST_SSO_COOKIE, loginError } from '../services/sso.ts';
 
 const STATE_COOKIE = 'ordo_oidc';
-const LAST_SSO_COOKIE = 'ordo_last_sso';
-
-const esc = (s: string) =>
-  s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 export async function ssoRoutes(app: FastifyInstance) {
   const { db } = app;
-  const loginError = (reply: FastifyReply, message: string) =>
-    reply.redirect(`/login?error=${encodeURIComponent(message)}`);
-
   /**
    * Sign-in options for an email address: providers of workspaces that verified its domain.
    * Answers per domain, never per person, so it can't be used to find out who has an account.
@@ -81,7 +66,11 @@ export async function ssoRoutes(app: FastifyInstance) {
     };
   });
 
-  app.get('/auth/oidc/:providerId/start', async (req, reply) => {
+  /**
+   * Starts a sign-in (or a link, or an admin's test) with a provider, whatever its protocol. The
+   * older /auth/oidc/:providerId/start stays for bookmarks and IdP-side app tiles.
+   */
+  const start = async (req: FastifyRequest, reply: FastifyReply) => {
     const { providerId } = req.params as { providerId: string };
     const { redirect, mode = 'login' } = req.query as {
       redirect?: string;
@@ -133,7 +122,9 @@ export async function ssoRoutes(app: FastifyInstance) {
       maxAge: 600,
     });
     return reply.redirect(url);
-  });
+  };
+  app.get('/auth/sso/:providerId/start', start);
+  app.get('/auth/oidc/:providerId/start', start);
 
   app.get(CALLBACK_PATH.replace('/api', ''), async (req, reply) => {
     const url = new URL(req.url, app.env.publicUrl);
@@ -156,79 +147,10 @@ export async function ssoRoutes(app: FastifyInstance) {
         `Sign-in failed (${err instanceof Error ? err.message : String(err)})`,
       );
     }
-    const { provider, state, claims } = result;
-
-    if (state.mode === 'test') {
-      // Shows an admin exactly what the provider sends, without signing anyone in.
-      reply
-        .header('content-type', 'text/html; charset=utf-8')
-        .header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'");
-      return reply.send(`<!doctype html><body style="background:#09090b;color:#fff4fa;font:14px ui-monospace,monospace;padding:32px">
-        <p style="color:#ff1493">// ${esc(provider.name)} works</p>
-        <p style="color:#b8aab2">These are the claims Ordo received. Ordo needs <b>sub</b>, a verified <b>email</b>${provider.groupClaim ? ` and <b>${esc(provider.groupClaim)}</b>` : ''}.</p>
-        <pre style="background:#121214;border:1px solid #49313e;padding:16px;white-space:pre-wrap">${esc(JSON.stringify(claims, null, 2))}</pre>
-        <p><a style="color:#ff5cb8" href="${esc(state.redirect ?? '/')}">Back to Ordo</a></p></body>`);
-    }
-
-    if (state.mode === 'link') {
-      try {
-        await linkIdentity(app, provider, claims, state.userId!);
-      } catch (err) {
-        return reply.redirect(
-          `${state.redirect ?? '/'}?error=${encodeURIComponent(err instanceof Error ? err.message : 'Linking failed')}`,
-        );
-      }
-      return reply.redirect(state.redirect ?? '/');
-    }
-
-    try {
-      const user = await resolveSsoUser(app, provider, claims, req.ip ?? null);
-      const [ws] = await db
-        .select()
-        .from(workspaces)
-        .where(eq(workspaces.id, provider.workspaceId));
-      const maxAge = ws ? workspaceSettings(ws).ssoSessionMaxAgeHours : null;
-      await createSession(app, reply, user.id, req, {
-        authProviderId: provider.id,
-        ssoExpiresAt: maxAge ? new Date(Date.now() + maxAge * 3_600_000).toISOString() : null,
-      });
-      // Lets the sign-in page offer this provider first next time, on this device only. Readable
-      // by the page on purpose; it holds nothing that isn't on the login screen anyway.
-      reply.setCookie(
-        LAST_SSO_COOKIE,
-        Buffer.from(
-          JSON.stringify({
-            providerId: provider.id,
-            name: provider.name,
-            workspace: ws?.name ?? '',
-          }),
-        ).toString('base64url'),
-        { path: '/', sameSite: 'lax', secure: app.env.secureCookies, maxAge: 365 * 86_400 },
-      );
-      await audit(
-        db,
-        {
-          action: 'auth.login',
-          actorId: user.id,
-          workspaceId: provider.workspaceId,
-          data: { method: 'sso', provider: provider.name },
-        },
-        requestMeta(req),
-      );
-      const [member] = await db
-        .select({ id: workspaceMembers.userId })
-        .from(workspaceMembers)
-        .where(
-          and(
-            eq(workspaceMembers.workspaceId, provider.workspaceId),
-            eq(workspaceMembers.userId, user.id),
-          ),
-        );
-      return reply.redirect(state.redirect ?? (member && ws ? `/${ws.slug}` : '/'));
-    } catch (err) {
-      if (err instanceof SsoError) return loginError(reply, err.message);
-      throw err;
-    }
+    return finishSso(app, req, reply, {
+      ...result,
+      emailTrusted: result.claims.email_verified === true,
+    });
   });
 
   // ─── connected identities ─────────────────────────────────────────────

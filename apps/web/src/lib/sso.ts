@@ -1,4 +1,4 @@
-/** Full-page navigation into an OIDC flow; the API redirects to the IdP and back. */
+/** Full-page navigation into a sign-in flow; the API redirects to the IdP and back. */
 export function ssoStartUrl(
   providerId: string,
   opts: { mode?: 'login' | 'link' | 'test'; redirect?: string } = {},
@@ -7,7 +7,7 @@ export function ssoStartUrl(
   if (opts.mode && opts.mode !== 'login') q.set('mode', opts.mode);
   if (opts.redirect) q.set('redirect', opts.redirect);
   const qs = q.toString();
-  return `/api/auth/oidc/${encodeURIComponent(providerId)}/start${qs ? `?${qs}` : ''}`;
+  return `/api/auth/sso/${encodeURIComponent(providerId)}/start${qs ? `?${qs}` : ''}`;
 }
 
 const LAST_SSO_COOKIE = 'ordo_last_sso';

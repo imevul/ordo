@@ -28,8 +28,9 @@ The browser uses an `ordo_session` cookie instead (`POST /auth/login`, or single
 SSO refuse API keys unless their admins allow them.
 
 Single sign-on is a browser flow: `GET /auth/discover?email=` and `GET /auth/providers?workspace=<slug>` return
-`{ options: [{ providerId, name, workspace }], ssoRequired }`; `GET /auth/oidc/:providerId/start?redirect=` sends the browser to
-the provider, which returns to `GET /auth/oidc/callback`. Signed in, `GET /me/identities` lists linked identities and
+`{ options: [{ providerId, name, workspace }], ssoRequired }`; `GET /auth/sso/:providerId/start?redirect=` sends the
+browser to the provider, which returns to `GET /auth/oidc/callback` (the older `/auth/oidc/:providerId/start` still
+works). Signed in, `GET /me/identities` lists linked identities and
 `DELETE /me/identities/:id` unlinks one.
 
 ## Access

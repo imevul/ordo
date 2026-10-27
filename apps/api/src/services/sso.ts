@@ -1,8 +1,6 @@
-import { randomBytes } from 'node:crypto';
 import { AVATAR_COLORS, type MemberRole } from '@ordo/shared';
 import { and, eq, isNotNull, lt, sql } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
-import * as oidc from 'openid-client';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Tx } from '../db/client.ts';
 import {
   authProviders,
@@ -11,14 +9,17 @@ import {
   users,
   workspaceDomains,
   workspaceMembers,
+  workspaces,
 } from '../db/schema.ts';
+import { createSession } from '../lib/auth.ts';
 import { badRequest } from '../lib/errors.ts';
-import { safeFetch } from '../lib/safeFetch.ts';
+import { requestMeta } from '../lib/mutate.ts';
 import { audit } from './audit.ts';
-import { joinWorkspace } from './workspaces.ts';
+import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 
 /**
- * OpenID Connect sign-in, configured per workspace.
+ * Single sign-on, configured per workspace. The protocol (oidc.ts) proves who someone is at their
+ * identity provider; this file decides which Ordo account that is.
  *
  * Users are instance-global, but each workspace brings its own identity provider. A provider is
  * trusted only for its own workspace's *verified* domains: an Ordo account is created or matched
@@ -27,126 +28,22 @@ import { joinWorkspace } from './workspaces.ts';
  * misconfigured IdP from asserting someone else's address and taking over their account.
  */
 
-type Provider = typeof authProviders.$inferSelect;
-export const CALLBACK_PATH = '/api/auth/oidc/callback';
-const STATE_TTL_MS = 10 * 60_000;
-export const secretAad = (id: string) => `auth_providers:${id}:client_secret`;
+export type Provider = typeof authProviders.$inferSelect;
+export const STATE_TTL_MS = 10 * 60_000;
 
-const configs = new Map<string, { config: oidc.Configuration; at: number }>();
+/** Where to go after signing in: only paths on this site. */
+export const safeRedirect = (redirect: string | null | undefined) =>
+  redirect?.startsWith('/') && !redirect.startsWith('//') ? redirect : null;
 
-/** Discovers (and caches for 10 minutes) the provider's configuration, fetched through safeFetch. */
-export async function providerConfig(
+/**
+ * Takes the sign-in attempt that a callback belongs to. Each is good once, for ten minutes, and
+ * only in the browser that started it (the cookie).
+ */
+export async function takeState(
   app: FastifyInstance,
-  provider: Provider,
-): Promise<oidc.Configuration> {
-  const key = `${provider.id}:${provider.updatedAt}`;
-  const cached = configs.get(key);
-  if (cached && Date.now() - cached.at < 600_000) return cached.config;
-  const allowPrivate = app.settings.get('allowPrivateNetworkTargets');
-  const customFetch: oidc.CustomFetch = async (url, init) => {
-    const body =
-      init.body instanceof URLSearchParams
-        ? init.body.toString()
-        : (init.body as string | undefined);
-    const res = await safeFetch(url, {
-      method: init.method,
-      headers: Object.fromEntries(
-        new Headers(init.headers as ConstructorParameters<typeof Headers>[0]).entries(),
-      ),
-      body,
-      allowPrivate,
-    });
-    return new Response(res.status === 204 ? null : res.body, {
-      status: res.status,
-      headers: res.headers,
-    });
-  };
-  const discover = (issuer: string) =>
-    oidc.discovery(
-      new URL(issuer),
-      provider.clientId,
-      app.keyring.decrypt(provider.clientSecret, secretAad(provider.id)),
-      undefined,
-      {
-        [oidc.customFetch]: customFetch,
-        // Plain-http issuers are only reachable on private networks (e.g. a LAN Keycloak), which the
-        // admin has to allow explicitly anyway.
-        execute: issuer.startsWith('http://') && allowPrivate ? [oidc.allowInsecureRequests] : [],
-      },
-    );
-  let config: oidc.Configuration;
-  try {
-    config = await discover(provider.issuer);
-  } catch (err) {
-    // Issuers must match to the character, and some end in "/" (Authentik) while others don't
-    // (Keycloak). Admins paste either, so try the other spelling before giving up, and keep it.
-    const other = provider.issuer.endsWith('/')
-      ? provider.issuer.replace(/\/+$/, '')
-      : `${provider.issuer}/`;
-    try {
-      config = await discover(other);
-    } catch {
-      throw err;
-    }
-    await app.db
-      .update(authProviders)
-      .set({ issuer: other })
-      .where(eq(authProviders.id, provider.id));
-    provider.issuer = other;
-  }
-  configs.set(key, { config, at: Date.now() });
-  return config;
-}
-
-export async function beginLogin(
-  app: FastifyInstance,
-  provider: Provider,
-  opts: { mode: 'login' | 'link' | 'test'; userId?: string | null; redirect?: string | null },
-) {
-  const config = await providerConfig(app, provider);
-  const state = randomBytes(24).toString('base64url');
-  const nonce = oidc.randomNonce();
-  const codeVerifier = oidc.randomPKCECodeVerifier();
-  await app.db.insert(authStates).values({
-    id: state,
-    providerId: provider.id,
-    nonce,
-    codeVerifier,
-    mode: opts.mode,
-    userId: opts.userId ?? null,
-    redirect:
-      opts.redirect?.startsWith('/') && !opts.redirect.startsWith('//') ? opts.redirect : null,
-    expiresAt: new Date(Date.now() + STATE_TTL_MS).toISOString(),
-  });
-  const url = oidc.buildAuthorizationUrl(config, {
-    redirect_uri: `${app.env.publicUrl}${CALLBACK_PATH}`,
-    scope: provider.scopes || 'openid email profile',
-    code_challenge: await oidc.calculatePKCECodeChallenge(codeVerifier),
-    code_challenge_method: 'S256',
-    // Only the query response mode: a cross-site POST callback wouldn't carry our SameSite=Lax cookie.
-    response_mode: 'query',
-    state,
-    nonce,
-  });
-  return { url: url.toString(), state };
-}
-
-export interface SsoClaims {
-  sub: string;
-  email?: string;
-  email_verified?: boolean;
-  name?: string;
-  preferred_username?: string;
-  [claim: string]: unknown;
-}
-
-/** Exchanges the code. The state row binds the callback to its provider, so `iss` is checked against it. */
-export async function completeLogin(
-  app: FastifyInstance,
-  callbackUrl: URL,
+  state: string | null | undefined,
   cookieState: string | undefined,
 ) {
-  const state = callbackUrl.searchParams.get('state');
   if (!state || state !== cookieState)
     throw badRequest('This sign-in attempt expired or came from another browser. Try again.').as(
       'sign_in_expired_browser',
@@ -160,32 +57,17 @@ export async function completeLogin(
     .where(eq(authProviders.id, row.providerId));
   if (!provider || (!provider.enabled && row.mode !== 'test'))
     throw badRequest('This sign-in method is no longer available').as('sign_in_method_gone');
-  const config = await providerConfig(app, provider);
-  const tokens = await oidc.authorizationCodeGrant(config, callbackUrl, {
-    pkceCodeVerifier: row.codeVerifier,
-    expectedState: row.id,
-    expectedNonce: row.nonce,
-    idTokenExpected: true,
-  });
-  let claims = (tokens.claims() ?? {}) as SsoClaims;
-  // Some IdPs only put email and groups in the userinfo response.
-  if (
-    (!claims.email || (provider.groupClaim && !(provider.groupClaim in claims))) &&
-    tokens.access_token
-  ) {
-    try {
-      const info = await oidc.fetchUserInfo(config, tokens.access_token, claims.sub);
-      claims = {
-        ...info,
-        ...claims,
-        email: claims.email ?? info.email,
-        email_verified: claims.email_verified ?? info.email_verified,
-      } as SsoClaims;
-    } catch {
-      // userinfo is optional
-    }
-  }
-  return { provider, state: row, claims };
+  return { state: row, provider };
+}
+
+/** What a protocol hands over about the person; OIDC claims by name, other protocols mapped to them. */
+export interface SsoClaims {
+  sub: string;
+  email?: string;
+  email_verified?: boolean;
+  name?: string;
+  preferred_username?: string;
+  [claim: string]: unknown;
 }
 
 /** The highest role any of the user's groups maps to, if the provider maps groups. */
@@ -249,6 +131,7 @@ export async function resolveSsoUser(
   provider: Provider,
   claims: SsoClaims,
   ip: string | null,
+  emailTrusted: boolean,
 ) {
   return app.db.transaction(async (tx) => {
     const now = new Date().toISOString();
@@ -261,9 +144,7 @@ export async function resolveSsoUser(
     let userId = identity?.userId ?? null;
     const email = claims.email?.toLowerCase();
     const trusted =
-      !!email &&
-      claims.email_verified === true &&
-      (await domainVerifiedFor(tx, provider.workspaceId, email));
+      !!email && emailTrusted && (await domainVerifiedFor(tx, provider.workspaceId, email));
 
     if (!userId) {
       if (!trusted) {
@@ -389,6 +270,106 @@ export async function linkIdentity(
       actorId: userId,
       data: { provider: provider.name },
     });
+  }
+}
+
+export const LAST_SSO_COOKIE = 'ordo_last_sso';
+
+const esc = (s: string) =>
+  s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+
+export const loginError = (reply: FastifyReply, message: string) =>
+  reply.redirect(`/login?error=${encodeURIComponent(message)}`);
+
+/**
+ * The end of every sign-in, whatever the protocol: show an admin's test, link the identity to the
+ * signed-in user, or sign in. `emailTrusted` is the protocol's word that the email is the person's.
+ */
+export async function finishSso(
+  app: FastifyInstance,
+  req: FastifyRequest,
+  reply: FastifyReply,
+  {
+    provider,
+    state,
+    claims,
+    emailTrusted,
+  }: {
+    provider: Provider;
+    state: typeof authStates.$inferSelect;
+    claims: SsoClaims;
+    emailTrusted: boolean;
+  },
+) {
+  const { db } = app;
+
+  if (state.mode === 'test') {
+    // Shows an admin exactly what the provider sends, without signing anyone in.
+    reply
+      .header('content-type', 'text/html; charset=utf-8')
+      .header('content-security-policy', "default-src 'none'; style-src 'unsafe-inline'");
+    return reply.send(`<!doctype html><body style="background:#09090b;color:#fff4fa;font:14px ui-monospace,monospace;padding:32px">
+      <p style="color:#ff1493">// ${esc(provider.name)} works</p>
+      <p style="color:#b8aab2">These are the claims Ordo received. Ordo needs <b>sub</b>, a verified <b>email</b>${provider.groupClaim ? ` and <b>${esc(provider.groupClaim)}</b>` : ''}.</p>
+      <pre style="background:#121214;border:1px solid #49313e;padding:16px;white-space:pre-wrap">${esc(JSON.stringify(claims, null, 2))}</pre>
+      <p><a style="color:#ff5cb8" href="${esc(state.redirect ?? '/')}">Back to Ordo</a></p></body>`);
+  }
+
+  if (state.mode === 'link') {
+    try {
+      await linkIdentity(app, provider, claims, state.userId!);
+    } catch (err) {
+      return reply.redirect(
+        `${state.redirect ?? '/'}?error=${encodeURIComponent(err instanceof Error ? err.message : 'Linking failed')}`,
+      );
+    }
+    return reply.redirect(state.redirect ?? '/');
+  }
+
+  try {
+    const user = await resolveSsoUser(app, provider, claims, req.ip ?? null, emailTrusted);
+    const [ws] = await db.select().from(workspaces).where(eq(workspaces.id, provider.workspaceId));
+    const maxAge = ws ? workspaceSettings(ws).ssoSessionMaxAgeHours : null;
+    await createSession(app, reply, user.id, req, {
+      authProviderId: provider.id,
+      ssoExpiresAt: maxAge ? new Date(Date.now() + maxAge * 3_600_000).toISOString() : null,
+    });
+    // Lets the sign-in page offer this provider first next time, on this device only. Readable
+    // by the page on purpose; it holds nothing that isn't on the login screen anyway.
+    reply.setCookie(
+      LAST_SSO_COOKIE,
+      Buffer.from(
+        JSON.stringify({
+          providerId: provider.id,
+          name: provider.name,
+          workspace: ws?.name ?? '',
+        }),
+      ).toString('base64url'),
+      { path: '/', sameSite: 'lax', secure: app.env.secureCookies, maxAge: 365 * 86_400 },
+    );
+    await audit(
+      db,
+      {
+        action: 'auth.login',
+        actorId: user.id,
+        workspaceId: provider.workspaceId,
+        data: { method: 'sso', provider: provider.name },
+      },
+      requestMeta(req),
+    );
+    const [member] = await db
+      .select({ id: workspaceMembers.userId })
+      .from(workspaceMembers)
+      .where(
+        and(
+          eq(workspaceMembers.workspaceId, provider.workspaceId),
+          eq(workspaceMembers.userId, user.id),
+        ),
+      );
+    return reply.redirect(state.redirect ?? (member && ws ? `/${ws.slug}` : '/'));
+  } catch (err) {
+    if (err instanceof SsoError) return loginError(reply, err.message);
+    throw err;
   }
 }
 
