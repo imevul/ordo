@@ -9,7 +9,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { Copy, Download, KeyRound, LogOut, ShieldCheck, Trash2, Upload } from 'lucide-react';
 import QRCode from 'qrcode';
-import { type FormEvent, useRef, useState } from 'react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api, upload } from '../../api/client.ts';
 import { keys, useAccount, useApiKeys, useConfig, useSessions } from '../../api/queries.ts';
@@ -17,6 +17,7 @@ import { Spinner } from '../../components/PageHeader.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime } from '../../lib/format.ts';
+import { disablePush, enablePush, type PushState, pushState } from '../../lib/push.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
@@ -678,6 +679,55 @@ const NOTIFICATION_LABELS: Record<NotificationType, string> = {
   comment_reaction: 'Reactions to my comments',
   issue_sla_breached: 'Issues I follow that miss their SLA',
 };
+
+/** Push notifications on this device (each browser or installed app subscribes on its own). */
+export function PushCard() {
+  const [state, setState] = useState<PushState | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    pushState().then(setState, () => setState('unsupported'));
+  }, []);
+  const toggle = async () => {
+    setBusy(true);
+    try {
+      setState(await (state === 'on' ? disablePush() : enablePush()));
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <SettingsCard
+      title="Push notifications"
+      description="Get your notifications on this device even when Ordo isn't open — on desktop, or on your phone after adding Ordo to the home screen. Reactions aren't pushed."
+    >
+      <div className="flex items-center gap-3">
+        <span className="flex-1 text-[13px] text-muted">
+          {state === null
+            ? 'Checking…'
+            : state === 'unsupported'
+              ? 'This browser can’t receive push notifications.'
+              : state === 'denied'
+                ? 'Notifications are blocked for Ordo in this browser’s site settings.'
+                : state === 'on'
+                  ? 'On for this device.'
+                  : 'Off for this device.'}
+        </span>
+        {(state === 'on' || state === 'off') && (
+          <button
+            type="button"
+            className={state === 'on' ? 'btn btn-ghost btn-sm' : 'btn btn-primary btn-sm'}
+            disabled={busy}
+            onClick={toggle}
+          >
+            {state === 'on' ? 'Turn off' : 'Turn on'}
+          </button>
+        )}
+      </div>
+    </SettingsCard>
+  );
+}
 
 export function NotificationsSection() {
   const { data: account } = useAccount();

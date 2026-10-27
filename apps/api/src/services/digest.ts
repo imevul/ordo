@@ -34,7 +34,7 @@ const WAIT_MS: Record<EmailDigest, number> = {
   daily: 86_400_000,
 };
 
-const DESCRIBE: Record<NotificationType, string> = {
+export const DESCRIBE: Record<NotificationType, string> = {
   issue_assigned: 'assigned you',
   issue_unassigned: 'unassigned you',
   issue_comment: 'commented',

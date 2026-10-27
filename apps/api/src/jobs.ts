@@ -18,6 +18,7 @@ import {
 } from './services/integrations.ts';
 import type { Email } from './services/mail-templates.ts';
 import { wakeSnoozed } from './services/notifications.ts';
+import { runPush } from './services/push.ts';
 import { runRecurring } from './services/recurring.ts';
 import { announceSlaBreaches } from './services/sla.ts';
 import { purgeExpiredStates } from './services/sso.ts';
@@ -34,6 +35,7 @@ export function registerJobs(app: FastifyInstance) {
 
   jobs.define('notifications.email', () => sendNotificationEmails(app));
   jobs.define('notifications.wake', () => wakeSnoozed(app));
+  jobs.define<{ notificationId: string }>('push.notify', (p) => runPush(app, p));
   jobs.every('notifications.wake', 60);
   jobs.every('notifications.email', 60);
 

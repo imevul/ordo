@@ -44,6 +44,7 @@ import { memberRoutes } from './routes/members.ts';
 import { notificationRoutes } from './routes/notifications.ts';
 import { placeholderRoutes } from './routes/placeholders.ts';
 import { projectRoutes } from './routes/projects.ts';
+import { pushRoutes } from './routes/push.ts';
 import { realtimeRoutes } from './routes/realtime.ts';
 import { searchRoutes } from './routes/search.ts';
 import { ssoRoutes } from './routes/sso.ts';
@@ -184,6 +185,7 @@ export async function buildApp(
 
   await app.register(authRoutes, { prefix: '/api' });
   await app.register(accountRoutes, { prefix: '/api' });
+  await app.register(pushRoutes, { prefix: '/api' });
   await app.register(fileRoutes, { prefix: '/api' });
   await app.register(attachmentDownloadRoutes, { prefix: '/api' });
   await app.register(joiningRoutes, { prefix: '/api' });
@@ -231,7 +233,15 @@ export async function buildApp(
 
   // Serve the built web client as a single-page app.
   if (env.staticDir && existsSync(join(env.staticDir, 'index.html'))) {
-    await app.register(fastifyStatic, { root: env.staticDir, wildcard: false, maxAge: '1h' });
+    await app.register(fastifyStatic, {
+      root: env.staticDir,
+      wildcard: false,
+      maxAge: '1h',
+      // A new service worker should take over on the next visit, not an hour later.
+      setHeaders: (res, path) => {
+        if (path.endsWith('sw.js')) res.header('cache-control', 'no-cache');
+      },
+    });
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/') || req.method !== 'GET') {
         return reply.status(404).send({ error: 'not_found', message: 'Not found' });

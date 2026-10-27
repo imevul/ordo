@@ -81,7 +81,9 @@ the `backups/` directory off the machine. A simple cron entry:
 
 Run Ordo behind a TLS-terminating proxy and set `ORDO_PUBLIC_URL=https://ordo.example.com` in `.env` (then
 `make up` again). Bind the app to localhost with `ORDO_BIND=127.0.0.1` if the proxy runs on the same host. The
-proxy must forward WebSocket upgrades for `/api/ws`.
+proxy must forward WebSocket upgrades for `/api/ws`. HTTPS is also what lets browsers install Ordo as an app and receive
+push notifications (Ordo makes its own VAPID keys for push on first use; the push services it posts to —
+Google's, Mozilla's, Apple's — must be reachable from the server).
 
 **Caddy**
 

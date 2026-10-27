@@ -7,6 +7,7 @@ import {
   AccountSection,
   ApiKeysSection,
   NotificationsSection,
+  PushCard,
   SecuritySection,
 } from './account.tsx';
 import { ChatAccountsCard } from './chat.tsx';
@@ -126,7 +127,10 @@ export function SettingsPage() {
     ) : section === 'security' ? (
       <SecuritySection />
     ) : section === 'notifications' ? (
-      <NotificationsSection />
+      <>
+        <PushCard />
+        <NotificationsSection />
+      </>
     ) : section === 'workspace' ? (
       <WorkspaceSection />
     ) : section === 'members' ? (
