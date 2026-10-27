@@ -740,7 +740,7 @@ export const INSTANCE_SETTING_DEFAULTS: InstanceSettings = {
   maxAttachmentMb: 25,
   ai: null,
   workspaceAi: 'own',
-  offlineSync: 'off',
+  offlineSync: 'on',
 };
 
 export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof InstanceSettings> {

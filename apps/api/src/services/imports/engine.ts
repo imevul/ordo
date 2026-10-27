@@ -716,6 +716,9 @@ async function finish(ctx: Ctx, st: RunState) {
   }
   // Imports don't log their rows one by one (sync clients load the workspace again instead).
   await bumpEpoch(ctx.tx, row.workspaceId);
+  // Those clients reload straight away; with statistics from before thousands of new rows, the
+  // planner pages through them in seconds instead of milliseconds.
+  await ctx.tx.execute(sql`analyze issues`);
   await audit(ctx.tx, {
     workspaceId: row.workspaceId,
     actorId: row.createdById,

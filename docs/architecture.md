@@ -113,6 +113,12 @@ says it's offline, so they reach those fallbacks and the outbox. A banner says w
 attachments, AI assistance and settings say they need a connection. The copy asks for persistent storage, and if
 the device runs out of space it carries on in memory for the rest of the tab, with a notice.
 
+How it scales (`test/sync-load.test.ts`, run with `ORDO_BENCH=1`; one laptop, test database): a workspace of
+50,000 issues loads in about a second (snapshot and 50 pages of 1,000, 15–30 ms each), "my open issues" filters
+in 10 ms, catching up on 100 changes takes 20 ms, and a local change shows and is sent in 20 ms. The paging query
+needs current planner statistics: right after a bulk insert it took 750 ms a page, so imports `ANALYZE issues` when
+they finish, just before their new epoch sends clients to reload.
+
 ## Data model
 
 ```
