@@ -490,6 +490,15 @@ export const createCustomerRequestSchema = z.object({
   contact: z.string().trim().max(300).nullish(),
 });
 
+export const pushSubscriptionSchema = z.object({
+  endpoint: z.url({ protocol: /^https$/ }).max(2000),
+  keys: z.object({
+    // A P-256 point (65 bytes) and a 16-byte secret, base64url, as PushSubscription.toJSON() has them.
+    p256dh: z.string().regex(/^[A-Za-z0-9_-]{86,88}={0,2}$/),
+    auth: z.string().regex(/^[A-Za-z0-9_-]{21,24}={0,2}$/),
+  }),
+});
+
 export const snoozeSchema = z.object({
   ids: z.array(id).min(1).max(200),
   /** A future time, or null to wake them now. */
