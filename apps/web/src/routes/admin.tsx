@@ -635,20 +635,26 @@ function Settings() {
               {t('admin.settings.maxAttachmentHelp')}
             </span>
           </span>
-          <input
-            key={entry('maxAttachmentMb').value as number}
-            className="input w-24 text-right font-mono"
-            type="number"
-            min={1}
-            max={1024}
-            disabled={locked('maxAttachmentMb')}
-            defaultValue={entry('maxAttachmentMb').value as number}
-            onBlur={(e) => {
-              const mb = Number(e.target.value);
-              if (Number.isInteger(mb) && mb >= 1 && mb !== entry('maxAttachmentMb').value)
-                save({ maxAttachmentMb: mb });
-            }}
-          />
+          <span className="flex flex-none items-center gap-2">
+            <input
+              key={entry('maxAttachmentMb').value as number}
+              className="input w-24 text-right font-mono"
+              type="number"
+              min={1}
+              max={1024}
+              disabled={locked('maxAttachmentMb')}
+              defaultValue={entry('maxAttachmentMb').value as number}
+              onBlur={(e) => {
+                const mb = Number(e.target.value);
+                if (Number.isInteger(mb) && mb >= 1 && mb !== entry('maxAttachmentMb').value)
+                  save({ maxAttachmentMb: mb });
+              }}
+              aria-describedby="max-attachment-unit"
+            />
+            <span id="max-attachment-unit" className="font-mono text-[12px] text-index">
+              {t('admin.settings.megabytes')}
+            </span>
+          </span>
         </label>
       </Card>
 
