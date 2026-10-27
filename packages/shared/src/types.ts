@@ -93,6 +93,8 @@ export interface Team {
   /** Where linked pull requests move issues; missing events use `defaultGitAutomation`. */
   gitAutomation: GitAutomation;
   cycleAutomation: CycleAutomation;
+  /** Closed issues are archived this many months after they closed; null never. */
+  autoArchiveMonths: number | null;
   memberIds: string[];
   members: { userId: string; role: TeamRole }[];
   states: WorkflowState[];
@@ -229,6 +231,8 @@ export interface Issue {
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
+  /** Archived issues are out of lists and boards, but still open by link and in search. */
+  archivedAt: string | null;
 }
 
 /** A relation as seen from one issue; stored relations are mirrored for the other side. */

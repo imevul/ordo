@@ -291,6 +291,11 @@ export function CommandPalette() {
                           {i.identifier}
                         </span>
                         <span className="truncate">{i.title}</span>
+                        {i.archivedAt && (
+                          <span className="ml-auto font-mono text-[10.5px] text-index">
+                            archived
+                          </span>
+                        )}
                       </Command.Item>
                     );
                   })}

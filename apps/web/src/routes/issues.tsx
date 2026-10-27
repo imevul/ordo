@@ -85,11 +85,14 @@ export function TeamIssuesPage() {
     if (tab === 'active') return { teamId: team.id, stateTypes: ['unstarted', 'started'] };
     if (tab === 'backlog') return { teamId: team.id, stateTypes: ['backlog'] };
     if (tab === 'triage') return { teamId: team.id, stateTypes: ['triage'] };
+    if (tab === 'archived') return { teamId: team.id, archived: 'only' };
     return { teamId: team.id };
   }, [team, tab]);
   if (!team) return <EmptyState title="team not found" />;
   const tabs = (
-    team.triageEnabled ? ['triage', 'all', 'active', 'backlog'] : ['all', 'active', 'backlog']
+    team.triageEnabled
+      ? ['triage', 'all', 'active', 'backlog', 'archived']
+      : ['all', 'active', 'backlog', 'archived']
   ).map((t) => ({
     to: '/$slug/team/$key/$tab',
     params: { slug: ws.slug, key, tab: t },
@@ -113,14 +116,20 @@ export function TeamIssuesPage() {
       teamId={team.id}
       storageKey={`team:${team.id}:${tab}`}
       defaultDisplay={
-        tab === 'backlog' || tab === 'triage' ? { groupBy: 'none', orderBy: 'createdAt' } : {}
+        tab === 'backlog' || tab === 'triage'
+          ? { groupBy: 'none', orderBy: 'createdAt' }
+          : tab === 'archived'
+            ? { groupBy: 'none', orderBy: 'updatedAt', showCompleted: true }
+            : {}
       }
       createDefaults={{
         teamId: team.id,
         ...(tab === 'triage' && triage ? { stateId: triage.id } : {}),
       }}
       tabs={<Tabs tabs={tabs} />}
-      emptyTitle={tab === 'triage' ? 'triage is clear' : undefined}
+      emptyTitle={
+        tab === 'triage' ? 'triage is clear' : tab === 'archived' ? 'nothing archived' : undefined
+      }
     />
   );
 }
@@ -157,6 +166,7 @@ function PlainIssueRow({ issue, right }: { issue: Issue; right?: React.ReactNode
       >
         {issue.title}
       </Link>
+      {issue.archivedAt && <span className="tag font-mono">archived</span>}
       <span className="hidden font-mono text-[11px] text-index sm:block">
         {shortDate(issue.updatedAt)}
       </span>
@@ -189,7 +199,7 @@ export function SearchPage() {
               autoFocus
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search by title, description or ID (e.g. ENG-42)…"
+              placeholder="Search issues and comments, or an ID like ENG-42…"
               className="h-10 min-w-0 flex-1 bg-transparent outline-none placeholder:text-index"
             />
             {isFetching && <span className="cursor-blink" aria-hidden />}

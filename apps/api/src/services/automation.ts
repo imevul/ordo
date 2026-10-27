@@ -1,10 +1,11 @@
 import { AVATAR_COLORS } from '@ordo/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNotNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
-import { users } from '../db/schema.ts';
+import { teams, users } from '../db/schema.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import type { Ctx } from './context.ts';
+import { archiveClosedIssues } from './issues.ts';
 
 /**
  * The workspace's "Ordo" bot, created on first use. Automations (cycles, archiving) act as it, so
@@ -33,12 +34,28 @@ export async function automationBot(db: DbOrTx, workspaceId: string): Promise<st
   return bot?.id ?? automationBot(db, workspaceId);
 }
 
-/** Runs an automation in one workspace, as its bot, without notifying anyone. */
+/**
+ * Runs an automation in one workspace, as its bot. Not silent: webhooks and integrations hear
+ * about its changes. (Rolling issues over and archiving don't notify anyone in Ordo anyway.)
+ */
 export async function runAutomation<T>(
   app: FastifyInstance,
   workspaceId: string,
   fn: (ctx: Ctx) => Promise<T>,
 ): Promise<T> {
   const actorId = await automationBot(app.db, workspaceId);
-  return runInWorkspace(app, { workspaceId, actorId, source: 'system', silent: true }, fn);
+  return runInWorkspace(app, { workspaceId, actorId, source: 'system' }, fn);
+}
+
+/** Hourly: archives closed issues in teams that ask for it, after their chosen number of months. */
+export async function autoArchive(app: FastifyInstance) {
+  const rows = await app.db
+    .select({ id: teams.id, workspaceId: teams.workspaceId, months: teams.autoArchiveMonths })
+    .from(teams)
+    .where(isNotNull(teams.autoArchiveMonths));
+  for (const team of rows) {
+    await runAutomation(app, team.workspaceId, (ctx) =>
+      archiveClosedIssues(ctx, team.id, team.months!),
+    );
+  }
 }

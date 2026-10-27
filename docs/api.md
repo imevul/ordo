@@ -113,43 +113,44 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 
 ### Teams & workflow
 
-| Method | Path                           |                                                                                                                                                                                                                              |
-| ------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/teams`                       |                                                                                                                                                                                                                              |
-| POST   | `/teams`                       | `{ name, key, description?, color?, private? }` — creates the default workflow; you become its team admin                                                                                                                    |
-| PATCH  | `/teams/:id`                   | _Team admin._ `{ name?, key?, color?, private?, estimateScale?, triageEnabled?, cyclesEnabled?, defaultStateId?, cycleAutomation? }` (partial `{ enabled, weeks, cooldownWeeks, startDay, upcoming, rollOver, addStarted }`) |
-| DELETE | `/teams/:id`                   | _Admin._ Deletes the team **and its issues**                                                                                                                                                                                 |
-| POST   | `/teams/:id/members`           | `{ userId?, role? }` — join a public team yourself, or (team admin) add someone; `role` is `member` or `admin`                                                                                                               |
-| PATCH  | `/teams/:id/members/:userId`   | _Team admin._ `{ role }`                                                                                                                                                                                                     |
-| DELETE | `/teams/:id/members/:userId`   | Leave, or (team admin) remove someone                                                                                                                                                                                        |
-| POST   | `/teams/:id/states`            | `{ name, type, color, description? }`                                                                                                                                                                                        |
-| PATCH  | `/states/:id`                  | `{ name?, color?, description?, position? }`                                                                                                                                                                                 |
-| DELETE | `/states/:id?moveTo=<stateId>` | Issues move to `moveTo` or another status of the same type                                                                                                                                                                   |
+| Method | Path                           |                                                                                                                                                                                                                                                  |
+| ------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/teams`                       |                                                                                                                                                                                                                                                  |
+| POST   | `/teams`                       | `{ name, key, description?, color?, private? }` — creates the default workflow; you become its team admin                                                                                                                                        |
+| PATCH  | `/teams/:id`                   | _Team admin._ `{ name?, key?, color?, private?, estimateScale?, triageEnabled?, cyclesEnabled?, defaultStateId?, autoArchiveMonths?, cycleAutomation? }` (partial `{ enabled, weeks, cooldownWeeks, startDay, upcoming, rollOver, addStarted }`) |
+| DELETE | `/teams/:id`                   | _Admin._ Deletes the team **and its issues**                                                                                                                                                                                                     |
+| POST   | `/teams/:id/members`           | `{ userId?, role? }` — join a public team yourself, or (team admin) add someone; `role` is `member` or `admin`                                                                                                                                   |
+| PATCH  | `/teams/:id/members/:userId`   | _Team admin._ `{ role }`                                                                                                                                                                                                                         |
+| DELETE | `/teams/:id/members/:userId`   | Leave, or (team admin) remove someone                                                                                                                                                                                                            |
+| POST   | `/teams/:id/states`            | `{ name, type, color, description? }`                                                                                                                                                                                                            |
+| PATCH  | `/states/:id`                  | `{ name?, color?, description?, position? }`                                                                                                                                                                                                     |
+| DELETE | `/states/:id?moveTo=<stateId>` | Issues move to `moveTo` or another status of the same type                                                                                                                                                                                       |
 
 ### Issues
 
-| Method         | Path                             |                                                                                              |
-| -------------- | -------------------------------- | -------------------------------------------------------------------------------------------- |
-| POST           | `/issues/query`                  | `{ filter, limit?, after? }` → `Issue[]` (see below)                                         |
-| GET            | `/issues/:idOrIdentifier`        | Issue with parent, sub-issues, relations, subscribers, links, attachments                    |
-| POST           | `/issues`                        | Create (see example)                                                                         |
-| PATCH          | `/issues/:id`                    | Any of the create fields, plus `teamId` (move), `addLabelIds`, `removeLabelIds`, `sortOrder` |
-| POST           | `/issues/batch`                  | `{ ids, patch }` — same patch on up to 250 issues                                            |
-| DELETE         | `/issues/:id`                    | Move to trash                                                                                |
-| POST           | `/issues/batch-delete`           | `{ ids }`                                                                                    |
-| POST           | `/issues/:id/restore`            | Restore from trash                                                                           |
-| POST           | `/issues/:id/links`              | Attach a link `{ url, title? }`                                                              |
-| DELETE         | `/issue-links/:id`               | Remove a link (any kind)                                                                     |
-| POST           | `/attachments?issueId=`          | Upload one file (multipart field `file`) → `Attachment`; see below                           |
-| DELETE         | `/attachments/:id`               | Remove an attachment (uploader, team admin or admin)                                         |
-| DELETE         | `/issues/:id/purge`              | _Admin._ Permanently delete a trashed issue                                                  |
-| GET            | `/issues/:id/history`            | Change log                                                                                   |
-| POST / DELETE  | `/issues/:id/subscription`       | Subscribe / unsubscribe yourself                                                             |
-| POST           | `/issues/:id/relations`          | `{ type: "blocks" \| "blocked_by" \| "related" \| "duplicate_of", relatedIssueId }`          |
-| DELETE         | `/relations/:id`                 |                                                                                              |
-| GET / POST     | `/issues/:id/comments`           | List / create `{ body, parentId? }` (`@username` notifies)                                   |
-| PATCH / DELETE | `/comments/:id`                  | Edit (author) / delete (author or admin)                                                     |
-| PUT / DELETE   | `/comments/:id/reactions/:emoji` | Add / remove your reaction (one URL-encoded emoji); returns the comment's `reactions`        |
+| Method         | Path                                |                                                                                              |
+| -------------- | ----------------------------------- | -------------------------------------------------------------------------------------------- |
+| POST           | `/issues/query`                     | `{ filter, limit?, after? }` → `Issue[]` (see below)                                         |
+| GET            | `/issues/:idOrIdentifier`           | Issue with parent, sub-issues, relations, subscribers, links, attachments                    |
+| POST           | `/issues`                           | Create (see example)                                                                         |
+| PATCH          | `/issues/:id`                       | Any of the create fields, plus `teamId` (move), `addLabelIds`, `removeLabelIds`, `sortOrder` |
+| POST           | `/issues/batch`                     | `{ ids, patch }` — same patch on up to 250 issues                                            |
+| DELETE         | `/issues/:id`                       | Move to trash                                                                                |
+| POST           | `/issues/batch-delete`              | `{ ids }`                                                                                    |
+| POST           | `/issues/:id/restore`               | Restore from trash                                                                           |
+| POST           | `/issues/:id/archive`, `/unarchive` | Archive (out of lists, still readable) / bring back                                          |
+| POST           | `/issues/:id/links`                 | Attach a link `{ url, title? }`                                                              |
+| DELETE         | `/issue-links/:id`                  | Remove a link (any kind)                                                                     |
+| POST           | `/attachments?issueId=`             | Upload one file (multipart field `file`) → `Attachment`; see below                           |
+| DELETE         | `/attachments/:id`                  | Remove an attachment (uploader, team admin or admin)                                         |
+| DELETE         | `/issues/:id/purge`                 | _Admin._ Permanently delete a trashed issue                                                  |
+| GET            | `/issues/:id/history`               | Change log                                                                                   |
+| POST / DELETE  | `/issues/:id/subscription`          | Subscribe / unsubscribe yourself                                                             |
+| POST           | `/issues/:id/relations`             | `{ type: "blocks" \| "blocked_by" \| "related" \| "duplicate_of", relatedIssueId }`          |
+| DELETE         | `/relations/:id`                    |                                                                                              |
+| GET / POST     | `/issues/:id/comments`              | List / create `{ body, parentId? }` (`@username` notifies)                                   |
+| PATCH / DELETE | `/comments/:id`                     | Edit (author) / delete (author or admin)                                                     |
+| PUT / DELETE   | `/comments/:id/reactions/:emoji`    | Add / remove your reaction (one URL-encoded emoji); returns the comment's `reactions`        |
 
 Create an issue:
 
@@ -206,6 +207,7 @@ from the bytes — are served inline; everything else downloads as `application/
 | `subscribedBy`           | `"me"`                                                                   |                                                  |
 | `q`                      | string                                                                   | words (full text, as prefixes), or an identifier |
 | `trashed`                | boolean                                                                  | only trashed issues                              |
+| `archived`               | `"include"` \| `"only"`                                                  | archived issues are left out otherwise           |
 
 ```bash
 curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
@@ -287,6 +289,7 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | `issue.created` `issue.updated` `issue.trashed` `issue.restored` | The issue (as `GET /issues/:id` without the detail lists); `changes` on updates |
 | `issue.deleted`                                                  | `{ id }` (permanently deleted from the trash)                                   |
+| `issue.archived` `issue.unarchived`                              | `{ id, identifier, archivedAt }`                                                |
 | `comment.created` `comment.updated` `comment.deleted`            | `{ comment, issue? }`                                                           |
 | `reaction.created` `reaction.deleted`                            | `{ reaction: { commentId, issueId, userId, emoji } }`                           |
 | `relation.created` `relation.deleted`                            | `{ id, type, issueId, relatedIssueId }`                                         |

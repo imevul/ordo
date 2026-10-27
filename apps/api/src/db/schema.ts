@@ -195,6 +195,7 @@ export const teams = pgTable(
     cyclesEnabled: boolean('cycles_enabled').notNull().default(true),
     defaultStateId: uuid('default_state_id'),
     gitAutomation: jsonb('git_automation').$type<GitAutomation>().notNull().default({}),
+    autoArchiveMonths: integer('auto_archive_months'),
     /** Partial; missing settings use DEFAULT_CYCLE_AUTOMATION. */
     cycleAutomation: jsonb('cycle_automation')
       .$type<Partial<CycleAutomation>>()
@@ -399,6 +400,7 @@ export const issues = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: ts('deleted_at'),
+    archivedAt: ts('archived_at'),
   },
   (t) => [
     uniqueIndex('issues_team_number_idx').on(t.teamId, t.number),

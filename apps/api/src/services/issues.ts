@@ -104,6 +104,7 @@ export function toIssue(r: IssueRow): Issue {
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     deletedAt: r.deletedAt,
+    archivedAt: r.archivedAt,
   };
 }
 
@@ -119,6 +120,9 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
   const scope = teamScope(access, issues.teamId);
   if (scope) conds.push(scope);
   conds.push(f.trashed ? isNotNull(issues.deletedAt) : isNull(issues.deletedAt));
+  // The trash shows everything that's in it, archived or not.
+  if (f.archived === 'only') conds.push(isNotNull(issues.archivedAt));
+  else if (f.archived !== 'include' && !f.trashed) conds.push(isNull(issues.archivedAt));
   if (f.teamId) conds.push(eq(issues.teamId, f.teamId));
   if (f.stateIds?.length) conds.push(inArray(issues.stateId, f.stateIds));
   if (f.stateTypes?.length) {
@@ -693,6 +697,11 @@ export async function updateIssue(
     if (state.type === 'started' && cycleId === undefined && !current.cycleId) {
       cycleId = (await cycleForStartedIssue(ctx, teamId)) ?? undefined;
     }
+    // Reopening an archived issue brings it back.
+    if (current.archivedAt && state.type !== 'completed' && state.type !== 'canceled') {
+      set.archivedAt = null;
+      changes.push({ field: 'archived', from: true, to: false });
+    }
   }
 
   if (patch.title !== undefined) change('title', 'title', patch.title);
@@ -806,6 +815,59 @@ export async function setImportedParent(ctx: Ctx, issueId: string, parentId: str
 }
 
 /** Soft delete: the issue moves to the trash and can be restored. */
+/** Archives or unarchives one issue; archived issues leave lists but stay readable. */
+export async function setArchived(ctx: Ctx, issueId: string, archived: boolean): Promise<Issue> {
+  const issue = await getIssue(ctx.tx, ctx.access, issueId);
+  if (!!issue.archivedAt === archived) return issue;
+  const archivedAt = archived ? new Date().toISOString() : null;
+  await ctx.tx.update(issues).set({ archivedAt }).where(eq(issues.id, issue.id));
+  await recordHistory(ctx, issue.id, [{ field: 'archived', from: !archived, to: archived }]);
+  emit(ctx, { kind: 'issue', action: 'updated', id: issue.id, teamId: issue.teamId });
+  record(
+    ctx,
+    archived ? 'issue.archived' : 'issue.unarchived',
+    { id: issue.id, identifier: issue.identifier, archivedAt },
+    { teamIds: [issue.teamId] },
+  );
+  return { ...issue, archivedAt };
+}
+
+/**
+ * Archives a team's issues that closed (completed or canceled) more than `months` ago, in one
+ * statement. Returns how many.
+ */
+export async function archiveClosedIssues(ctx: Ctx, teamId: string, months: number) {
+  const rows = await ctx.tx.execute<{ id: string; number: number; archived_at: string }>(sql`
+    update issues set archived_at = now()
+    from workflow_states ws
+    where ws.id = issues.state_id and issues.team_id = ${teamId}
+      and issues.archived_at is null and issues.deleted_at is null
+      and ws.type in ('completed', 'canceled')
+      and coalesce(issues.completed_at, issues.canceled_at, issues.updated_at)
+        < now() - make_interval(months => ${months})
+    returning issues.id, issues.number, issues.archived_at`);
+  const archived = [...rows];
+  if (archived.length === 0) return 0;
+  const [team] = await ctx.tx.select({ key: teams.key }).from(teams).where(eq(teams.id, teamId));
+  await ctx.tx.insert(issueHistory).values(
+    archived.map((r) => ({
+      issueId: r.id,
+      actorId: ctx.userId,
+      changes: [{ field: 'archived', from: false, to: true }],
+    })),
+  );
+  for (const r of archived) {
+    emit(ctx, { kind: 'issue', action: 'updated', id: r.id, teamId });
+    record(
+      ctx,
+      'issue.archived',
+      { id: r.id, identifier: `${team!.key}-${r.number}`, archivedAt: r.archived_at },
+      { teamIds: [teamId] },
+    );
+  }
+  return archived.length;
+}
+
 export async function trashIssue(ctx: Ctx, issueId: string, restore = false) {
   const [row] = await ctx.tx
     .update(issues)

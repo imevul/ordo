@@ -461,6 +461,10 @@ describe('route inventory', () => {
     'DELETE /issues/:id/purge': 'admin only; purgeIssue is team-scoped',
     'DELETE /issues/:id/subscription': 'resolveIssue, like POST',
     'PATCH /comments/:id': 'loadComment checks the issue team',
+    'POST /issues/:id/archive':
+      "setArchived uses getIssue with the caller's access (archive.test.ts)",
+    'POST /issues/:id/unarchive':
+      "setArchived uses getIssue with the caller's access (archive.test.ts)",
     'GET /templates': 'listTemplates, same as bootstrap (templates.test.ts)',
     'POST /templates': 'assertLabelTeam, like labels (templates.test.ts)',
     'PATCH /templates/:id': 'loadTemplate checks the team (templates.test.ts)',

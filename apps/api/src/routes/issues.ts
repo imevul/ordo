@@ -33,6 +33,7 @@ import {
   purgeIssue,
   queryIssuePage,
   queryIssues,
+  setArchived,
   trashIssue,
   updateIssue,
 } from '../services/issues.ts';
@@ -191,6 +192,16 @@ export async function issueRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     await mutate(app, req, (ctx) => deleteComment(ctx, id));
     return { ok: true };
+  });
+
+  app.post('/issues/:id/archive', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => setArchived(ctx, id, true));
+  });
+
+  app.post('/issues/:id/unarchive', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => setArchived(ctx, id, false));
   });
 
   // The emoji is URL-encoded in the path; both calls return the comment's reactions.
