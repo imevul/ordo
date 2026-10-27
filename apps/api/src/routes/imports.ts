@@ -20,6 +20,7 @@ import {
 import { importSecretsAad } from '../services/imports/secrets.ts';
 import type { StartedImport } from '../services/imports/types.ts';
 import { startUndo } from '../services/imports/undo.ts';
+import { publishChanges } from '../services/sync.ts';
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 /** Sources that start from an uploaded file. */
@@ -127,7 +128,7 @@ export async function importRoutes(app: FastifyInstance) {
         );
       }
     });
-    app.realtime.publish([{ kind: 'import', action: 'updated', id, workspaceId: ws.id }]);
+    await publishChanges(app, [{ kind: 'import', action: 'updated', id, workspaceId: ws.id }]);
     return show(ws.id, id);
   });
 
@@ -140,7 +141,7 @@ export async function importRoutes(app: FastifyInstance) {
     await db.delete(importItems).where(eq(importItems.importId, id));
     await db.delete(imports).where(eq(imports.id, id));
     if (row.fileId) await deleteFile(app, row.fileId);
-    app.realtime.publish([{ kind: 'import', action: 'deleted', id, workspaceId: ws.id }]);
+    await publishChanges(app, [{ kind: 'import', action: 'deleted', id, workspaceId: ws.id }]);
     return { ok: true };
   });
 

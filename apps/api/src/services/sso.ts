@@ -15,6 +15,7 @@ import { createSession } from '../lib/auth.ts';
 import { badRequest } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from './audit.ts';
+import { publishChanges } from './sync.ts';
 import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 
 /**
@@ -133,7 +134,8 @@ export async function resolveSsoUser(
   ip: string | null,
   emailTrusted: boolean,
 ) {
-  return app.db.transaction(async (tx) => {
+  let membershipChanged = false;
+  const user = await app.db.transaction(async (tx) => {
     const now = new Date().toISOString();
     const [identity] = await tx
       .select()
@@ -210,14 +212,17 @@ export async function resolveSsoUser(
         ),
       );
     if (!membership) {
-      if (trusted)
+      if (trusted) {
         await joinWorkspace(
           tx,
           provider.workspaceId,
           user.id,
           (mapped ?? provider.defaultRole) as MemberRole,
         );
+        membershipChanged = true;
+      }
     } else if (mapped && membership.role !== 'owner' && membership.role !== mapped) {
+      membershipChanged = true;
       await tx
         .update(workspaceMembers)
         .set({ role: mapped })
@@ -242,6 +247,17 @@ export async function resolveSsoUser(
     }
     return user;
   });
+  if (membershipChanged)
+    await publishChanges(app, [
+      {
+        kind: 'member',
+        action: 'updated',
+        id: user.id,
+        workspaceId: provider.workspaceId,
+        actorId: user.id,
+      },
+    ]);
+  return user;
 }
 
 /** Links an identity to a signed-in user (explicit linking needs no domain trust). */

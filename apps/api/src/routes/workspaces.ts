@@ -35,6 +35,7 @@ import { workspacePlaceholders } from '../services/placeholders.ts';
 import { listProjects } from '../services/projects.ts';
 import { listRecurring } from '../services/recurring.ts';
 import { toView } from '../services/serialize.ts';
+import { publishChanges } from '../services/sync.ts';
 import { listTeams } from '../services/teams.ts';
 import { listTemplates } from '../services/templates.ts';
 import { listMembers, memberRole, toWorkspace, workspaceSettings } from '../services/workspaces.ts';
@@ -209,7 +210,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
         .where(eq(workspaces.id, ws.id));
       await db.update(workspaces).set({ logoFileId: saved.id }).where(eq(workspaces.id, ws.id));
       if (before?.logo) await deleteFile(app, before.logo);
-      app.realtime.publish([
+      await publishChanges(app, [
         { kind: 'workspace', action: 'updated', id: ws.id, workspaceId: ws.id },
       ]);
       return { logoUrl: signedFileUrl(app, saved.id) };
@@ -225,7 +226,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
     if (before?.logo) {
       await db.update(workspaces).set({ logoFileId: null }).where(eq(workspaces.id, ws.id));
       await deleteFile(app, before.logo);
-      app.realtime.publish([
+      await publishChanges(app, [
         { kind: 'workspace', action: 'updated', id: ws.id, workspaceId: ws.id },
       ]);
     }
@@ -282,7 +283,9 @@ export async function workspaceRoutes(app: FastifyInstance) {
       );
       await tx.delete(workspaces).where(eq(workspaces.id, ws.id));
     });
-    app.realtime.publish([{ kind: 'workspace', action: 'deleted', id: ws.id, workspaceId: ws.id }]);
+    await publishChanges(app, [
+      { kind: 'workspace', action: 'deleted', id: ws.id, workspaceId: ws.id },
+    ]);
     return { ok: true };
   });
 

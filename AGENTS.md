@@ -57,8 +57,10 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
 - **Mutations go through `mutate(app, req, async (ctx) => …)`**, or `runInWorkspace(app, opts, fn)` when there is
   no request (jobs, webhooks, imports). Both open a transaction and give you a `Ctx` (`tx`, `userId`,
   `workspaceId`, `events`, `source`, `silent`, `meta`), then publish realtime events after commit. Call
-  `emit(ctx, { kind, action, id, teamId? })` for anything clients should refetch. `source` says who caused the
-  change (`web`, `api`, `system`, `import`, `integration:<id>`); `silent` suppresses notifications.
+  `emit(ctx, { kind, action, id, teamId?, prevTeamId? })` for anything clients should refetch; it's also logged
+  for sync clients. Outside a transaction, use `publishChanges(app, events)`, never `app.realtime.publish` (a
+  test enforces it). `source` says who caused the change (`web`, `api`, `system`, `import`, `scim`,
+  `integration:<id>`); `silent` suppresses notifications.
 - **Audit security-relevant actions** with `audit(tx, entry, meta)` / `auditCtx(ctx, entry)`
   (`services/audit.ts`) in the same transaction as the change. Add new action names to `AUDIT_ACTIONS` in shared.
 - **Secrets at rest** (tokens, client secrets) are encrypted with `app.keyring.encrypt(value, 'table:id:column')`.

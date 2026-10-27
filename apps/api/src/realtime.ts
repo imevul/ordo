@@ -100,9 +100,19 @@ export class Realtime {
       if (e.userId && c.userId !== e.userId) continue;
       // Events about a team the client can't read are dropped. When someone gains access, the
       // accompanying `member` event (which has no team) tells their client to refetch.
-      if (e.teamId && !canReadTeam(c.access, e.teamId)) continue;
+      let out = data;
+      if (e.teamId && !canReadTeam(c.access, e.teamId)) {
+        // An issue that moved somewhere they can't follow is gone, as far as they're concerned.
+        if (!e.prevTeamId || !canReadTeam(c.access, e.prevTeamId)) continue;
+        out = JSON.stringify({
+          ...e,
+          action: 'deleted',
+          teamId: e.prevTeamId,
+          prevTeamId: undefined,
+        });
+      }
       try {
-        c.send(data);
+        c.send(out);
       } catch {
         // socket closing; its close handler removes it
       }

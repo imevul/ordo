@@ -7,6 +7,7 @@ import { runInWorkspace } from '../../lib/mutate.ts';
 import { audit } from '../audit.ts';
 import type { RequestMeta } from '../context.ts';
 import { trashIssue } from '../issues.ts';
+import { bumpEpoch, publishChanges } from '../sync.ts';
 import { importLimits } from './engine.ts';
 import type { ImportRow } from './types.ts';
 
@@ -21,7 +22,7 @@ const PAGE = 200;
 const UNDOABLE = ['completed', 'failed', 'canceled'];
 
 function publish(app: FastifyInstance, row: ImportRow) {
-  app.realtime.publish([
+  return publishChanges(app, [
     { kind: 'import', action: 'updated', id: row.id, workspaceId: row.workspaceId },
   ]);
 }
@@ -80,7 +81,7 @@ export async function startUndo(
       opts.meta,
     );
   });
-  publish(app, row);
+  await publish(app, row);
 }
 
 export async function runUndo(
@@ -101,6 +102,7 @@ export async function runUndo(
       { workspaceId: row.workspaceId, actorId, source: 'import', silent: true },
       async (ctx) => {
         for (const { id } of page) await trashIssue(ctx, id);
+        if (done) await bumpEpoch(ctx.tx, row.workspaceId);
         const progress = row.progress ?? { phase: 'undo', done: 0, total: page.length };
         await ctx.tx
           .update(imports)
@@ -112,7 +114,7 @@ export async function runUndo(
           .where(eq(imports.id, row.id));
       },
     );
-    publish(app, row);
+    await publish(app, row);
     if (done) return;
     if (Date.now() > deadline) {
       await enqueue(

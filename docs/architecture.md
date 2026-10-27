@@ -60,8 +60,25 @@ workspace (or a single user for notifications/favorites). Clients treat events a
 `useRealtime()` coalesces a burst into one round of React Query invalidations and refetches what's on screen.
 On reconnect it invalidates the whole workspace cache.
 
-This keeps the protocol tiny and the server stateless, at the cost of a refetch per change. A local-first sync
-engine is on the roadmap.
+This keeps the protocol tiny and the server stateless, at the cost of a refetch per change.
+
+### Change log
+
+Offline-capable clients need to catch up on what they missed, so every published change is also logged in
+`sync_changes` (`services/sync.ts`). At the end of each `runInWorkspace` transaction, its events are folded to one
+entry per entity and numbered from the workspace's `sync_cursors` row. That `INSERT … ON CONFLICT DO UPDATE` is the
+transaction's last statement and holds the row lock until commit, so numbers follow commit order with no gaps: once
+change #7 is visible, so is #6. Entries hold only what changed (kind, id, action, the teams involved, and a user for
+personal things like notifications), never data; clients load the current rows through the usual access checks.
+Realtime events carry their `seq` and `epoch`.
+
+- Everything clients hear about goes through `runInWorkspace` or `publishChanges()` (for changes made outside one);
+  a test fails on any other `realtime.publish` call.
+- An issue that moves team logs both teams (`prevTeamId`). Over the socket, people who could see only the old team
+  get it as a deletion.
+- Imports don't log their rows. When they finish (or fail, or are cancelled), and when a team is deleted, the
+  workspace starts a new **epoch**: clients load everything again instead of replaying.
+- The log keeps 30 days; `min_seq` says how far back it still goes.
 
 ## Data model
 
