@@ -1,6 +1,5 @@
 import multipart from '@fastify/multipart';
 import {
-  AUDIT_CATEGORIES,
   type AuditEntry,
   auditQuerySchema,
   type Bootstrap,
@@ -9,7 +8,7 @@ import {
   transferOwnershipSchema,
   updateWorkspaceSchema,
 } from '@ordo/shared';
-import { and, asc, count, desc, eq, gte, ilike, isNull, like, lt, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
   auditLog,
@@ -23,7 +22,7 @@ import {
 import { requireAdmin, requireOwner, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { badRequest, conflict, isUniqueViolation, notFound, parse } from '../lib/errors.ts';
 import { mutate, requestMeta } from '../lib/mutate.ts';
-import { audit, auditCtx } from '../services/audit.ts';
+import { audit, auditCtx, auditFilters } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { listCustomers } from '../services/customers.ts';
 import { listCycles } from '../services/cycles.ts';
@@ -282,34 +281,10 @@ export async function workspaceRoutes(app: FastifyInstance) {
   app.get('/audit-log', async (req): Promise<AuditEntry[]> => {
     const ws = requireAdmin(req);
     const q = parse(auditQuerySchema, req.query);
-    const prefixes = q.category ? AUDIT_CATEGORIES[q.category] : null;
-    const pattern = q.q ? `%${q.q.replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
     const rows = await db
       .select()
       .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.workspaceId, ws.id),
-          prefixes ? or(...prefixes.map((p) => like(auditLog.action, `${p}%`))) : undefined,
-          q.actorId ? eq(auditLog.actorId, q.actorId) : undefined,
-          q.from ? gte(auditLog.createdAt, q.from) : undefined,
-          q.to ? lt(auditLog.createdAt, q.to) : undefined,
-          pattern
-            ? or(
-                ilike(auditLog.action, pattern),
-                ilike(auditLog.targetId, pattern),
-                ilike(auditLog.ip, pattern),
-                sql`${auditLog.data}::text ilike ${pattern}`,
-              )
-            : undefined,
-          // Entries made in the same transaction share a timestamp; the id breaks the tie.
-          q.before
-            ? q.beforeId
-              ? sql`(${auditLog.createdAt}, ${auditLog.id}) < (${q.before}::timestamptz, ${q.beforeId}::uuid)`
-              : lt(auditLog.createdAt, q.before)
-            : undefined,
-        ),
-      )
+      .where(and(eq(auditLog.workspaceId, ws.id), ...auditFilters(q)))
       .orderBy(desc(auditLog.createdAt), desc(auditLog.id))
       .limit(q.limit);
     return rows.map(({ userAgent: _ua, ...r }) => r);

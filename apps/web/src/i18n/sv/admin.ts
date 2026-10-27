@@ -146,7 +146,8 @@ export default {
     empty: '// kön är tom',
   },
   audit: {
-    instance: 'inloggningar & instans',
-    all: 'allt',
+    where: 'Var',
+    instance: 'Inloggningar och instans',
+    all: 'Allt',
   },
 } satisfies Translation<Catalog['admin']>;

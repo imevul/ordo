@@ -274,6 +274,43 @@ describe('instance admin', () => {
     );
   });
 
+  it('filters the instance audit log and names who and what', async () => {
+    const { client: target } = await signup(app, 'Tara Target');
+    const targetId = (await me(target)).id;
+    await admin.patch(`/api/admin/users/${targetId}`, { disabled: true });
+    await admin.patch(`/api/admin/users/${targetId}`, { disabled: false });
+    type Entry = {
+      action: string;
+      actorName: string | null;
+      workspaceId: string | null;
+      workspaceName: string | null;
+      targetName: string | null;
+    };
+    const list = async (query = '') =>
+      (await admin.get(`/api/admin/audit-log?${query}`)).data as Entry[];
+
+    const instance = await list(`category=members&actorId=${(await me(admin)).id}`);
+    expect(instance.length).toBeGreaterThanOrEqual(2);
+    expect(instance[0]).toMatchObject({
+      action: 'admin.user_updated',
+      actorName: 'Ian Instance',
+      workspaceId: null,
+      targetName: 'Tara Target',
+    });
+    // Free text finds people by name or email.
+    expect((await list('q=Ian%20Instance')).every((e) => e.actorName === 'Ian Instance')).toBe(
+      true,
+    );
+    // One workspace, or everything.
+    const inOrg = await list(`workspaceId=${boot.workspace.id}`);
+    expect(inOrg.length).toBeGreaterThan(0);
+    expect(inOrg.every((e) => e.workspaceName === boot.workspace.name)).toBe(true);
+    const all = await list('scope=all&limit=500');
+    expect(all.some((e) => e.workspaceId === null)).toBe(true);
+    expect(all.some((e) => e.workspaceId !== null)).toBe(true);
+    expect((await owner.get('/api/admin/audit-log')).statusCode).toBe(403);
+  });
+
   it('manages settings: env-pinned ones are locked, SMTP is stored encrypted and shown masked', async () => {
     expect((await admin.patch('/api/admin/settings', { signupMode: 'invite' })).statusCode).toBe(
       400,

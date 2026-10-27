@@ -145,7 +145,8 @@ export default {
     empty: '// queue is empty',
   },
   audit: {
-    instance: 'sign-ins & instance',
-    all: 'everything',
+    where: 'Where',
+    instance: 'Sign-ins and instance',
+    all: 'Everything',
   },
 };
