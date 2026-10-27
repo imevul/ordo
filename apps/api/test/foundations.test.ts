@@ -204,6 +204,60 @@ describe('instance', () => {
     expect((await member.get('/api/w/audited/audit-log')).statusCode).toBe(403);
   });
 
+  it('filters the audit log and pages through it', async () => {
+    const owner = (await signup(app, 'Fern Filter')).client;
+    await owner.post('/api/workspaces', {
+      name: 'Filtered',
+      slug: 'filtered',
+      teamName: 'Core',
+      teamKey: 'FIL',
+    });
+    const ws = '/api/w/filtered';
+    const ownerId = (await owner.get('/api/auth/me')).data.id as string;
+    await owner.patch(`${ws}/`, { name: 'Filtered Inc' });
+    await owner.post(`${ws}/teams`, { name: 'Design', key: 'DES' });
+    const invite = await owner.post(`${ws}/invites`, {});
+    const joiner = await signup(app, 'Jo Joiner', { inviteToken: invite.data[0].token });
+    const joinerId = (await joiner.client.get('/api/auth/me')).data.id as string;
+    const list = async (query: string) =>
+      (await owner.get(`${ws}/audit-log?${query}`)).data as {
+        id: string;
+        action: string;
+        actorId: string;
+        createdAt: string;
+      }[];
+
+    expect((await list('category=teams')).map((e) => e.action)).toEqual(['team.created']);
+    expect((await list('category=members')).map((e) => e.action).sort()).toEqual([
+      'invite.accepted',
+      'invite.created',
+    ]);
+    expect((await list(`actorId=${joinerId}`)).every((e) => e.actorId === joinerId)).toBe(true);
+    expect((await list(`actorId=${ownerId}`)).some((e) => e.action === 'workspace.updated')).toBe(
+      true,
+    );
+    // Free text reaches the details too.
+    expect((await list('q=Filtered%20Inc')).map((e) => e.action)).toEqual(['workspace.updated']);
+    expect(
+      await list(`from=${encodeURIComponent(new Date(Date.now() + 60_000).toISOString())}`),
+    ).toEqual([]);
+    expect(
+      await list(`to=${encodeURIComponent(new Date(Date.now() - 3_600_000).toISOString())}`),
+    ).toEqual([]);
+
+    // Pages don't skip or repeat entries.
+    const all = await list('limit=500');
+    const seen: string[] = [];
+    let page = await list('limit=2');
+    while (page.length) {
+      seen.push(...page.map((e) => e.id));
+      const last = page.at(-1)!;
+      page = await list(`limit=2&before=${encodeURIComponent(last.createdAt)}&beforeId=${last.id}`);
+    }
+    expect(seen).toEqual(all.map((e) => e.id));
+    expect((await owner.get(`${ws}/audit-log?category=nope`)).statusCode).toBe(400);
+  });
+
   it('keeps issues when their creator is deleted', async () => {
     const { client, email } = await signup(app, 'Gone Soon');
     await client.post('/api/workspaces', {

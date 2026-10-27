@@ -185,6 +185,17 @@ export const AUDIT_ACTIONS = [
   'settings.updated',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+/** Groups of audit actions, by prefix, for filtering the audit log. */
+export const AUDIT_CATEGORIES = {
+  security: ['auth.', 'sso.', 'api_key.', 'oauth.', 'domain.'],
+  members: ['member.', 'invite.', 'placeholder.', 'admin.'],
+  teams: ['team.'],
+  workspace: ['workspace.', 'settings.'],
+  integrations: ['integration.', 'webhook.', 'chat_account.'],
+  imports: ['import.'],
+} as const satisfies Record<string, readonly string[]>;
+export type AuditCategory = keyof typeof AUDIT_CATEGORIES;
 export type MemberRole = (typeof MEMBER_ROLES)[number];
 
 export const NOTIFICATION_TYPES = [

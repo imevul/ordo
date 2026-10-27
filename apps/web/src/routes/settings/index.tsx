@@ -12,6 +12,7 @@ import {
   PushCard,
   SecuritySection,
 } from './account.tsx';
+import { AuditSection } from './audit.tsx';
 import { ChatAccountsCard } from './chat.tsx';
 import { ExportsCard, PlaceholdersCard } from './exports.tsx';
 import { ImportsSection } from './imports.tsx';
@@ -22,12 +23,7 @@ import { AuthenticationSection, ConnectedAccountsCard } from './sso.tsx';
 import { TeamSettings, TeamsSection } from './teams.tsx';
 import { TemplatesSection } from './templates.tsx';
 import { WebhooksSection } from './webhooks.tsx';
-import {
-  AuditSection,
-  MembersSection,
-  OrgSecuritySection,
-  WorkspaceSection,
-} from './workspace.tsx';
+import { MembersSection, OrgSecuritySection, WorkspaceSection } from './workspace.tsx';
 
 /** The sections in nav order. `label` is read when used, so it is in the current language. */
 const SECTIONS: {

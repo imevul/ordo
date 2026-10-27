@@ -1,6 +1,5 @@
 import {
   ACCENT_PRESETS,
-  type AuditEntry,
   accentVariables,
   branchName,
   contrast,
@@ -31,9 +30,7 @@ import { toast } from 'sonner';
 import { api, upload, wsPath } from '../../api/client.ts';
 import { keys, useConfig, useInvites, useWsMutation } from '../../api/queries.ts';
 import { TeamIcon } from '../../components/icons.tsx';
-import { Spinner } from '../../components/PageHeader.tsx';
 import { Picker } from '../../components/properties.tsx';
-import { ActorName } from '../../components/ui/ActorName.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { type Catalog, type Params, t, tx } from '../../i18n/index.ts';
@@ -1061,45 +1058,3 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
 }
 
 type AuditKey = keyof Catalog['workspaceSettings']['audit']['actions'];
-
-export function AuditSection() {
-  const ws = useWorkspace();
-  const { data, isLoading } = useQuery({
-    queryKey: ['ws', ws.slug, 'audit'],
-    queryFn: () => api.get<AuditEntry[]>(wsPath(ws.slug, '/audit-log?limit=200')),
-    enabled: ws.isAdmin,
-  });
-  if (!ws.isAdmin) return <p className="text-muted">{t('workspaceSettings.audit.adminsOnly')}</p>;
-  if (isLoading) return <Spinner />;
-  return (
-    <SettingsCard
-      title={t('workspaceSettings.audit.title')}
-      description={t('workspaceSettings.audit.description')}
-    >
-      {data?.map((e) => {
-        const actor = e.actorId ? ws.memberById.get(e.actorId) : null;
-        return (
-          <div
-            key={e.id}
-            className="flex items-start gap-3 border-b border-border-soft py-2.5 text-[13px]"
-          >
-            {actor ? (
-              <Avatar name={actor.name} color={actor.avatarColor} src={actor.avatarUrl} size={18} />
-            ) : (
-              <span className="h-[18px] w-[18px] flex-none bg-border" />
-            )}
-            <span className="min-w-0 flex-1">
-              <ActorName person={actor} /> <span className="text-muted">{describeAudit(e)}</span>
-            </span>
-            <span className="flex-none font-mono text-[11px] text-index" title={e.ip ?? undefined}>
-              {relativeTime(e.createdAt)}
-            </span>
-          </div>
-        );
-      })}
-      {data?.length === 0 && (
-        <p className="font-mono text-[12px] text-index">{t('workspaceSettings.audit.empty')}</p>
-      )}
-    </SettingsCard>
-  );
-}
