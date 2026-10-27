@@ -65,6 +65,12 @@ Statuses are grouped into six types that drive behavior:
 Rename, recolor, add and delete statuses freely; every type except triage keeps at least one. The **default**
 status is where new issues land.
 
+**Triage rules** (team settings, once triage is on; team admins) sort what lands in triage. A rule matches issues
+by where they came from (the app, the API, AI agents, integrations, email), text in their title or description, a
+label or a priority, and then sets a priority, adds labels, assigns someone — or several people in turn, for an
+on-call rotation — and can accept the issue straight into a status. Rules run in order and every matching one
+applies; the **Ordo** bot makes the changes, so the issue's history shows them.
+
 ## Issues
 
 Create an issue with `C` (or the pen icon). Type a title, optionally a description, then set

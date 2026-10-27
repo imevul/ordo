@@ -99,9 +99,46 @@ export interface Team {
   autoArchiveMonths: number | null;
   /** Hours to resolve an issue, by priority ("1" urgent … "4" low); missing means no SLA. */
   slaHours: SlaHours;
+  /** Applied in order to issues created in triage. */
+  triageRules: TriageRule[];
   memberIds: string[];
   members: { userId: string; role: TeamRole }[];
   states: WorkflowState[];
+}
+
+export const TRIAGE_SOURCES = ['web', 'api', 'mcp', 'integration', 'email'] as const;
+export type TriageSource = (typeof TRIAGE_SOURCES)[number];
+
+/** What an incoming triage issue must match; empty matches everything. All given parts must hold. */
+export interface TriageConditions {
+  /** Where it came from (any of). */
+  sources?: TriageSource[];
+  /** Text in its title or description (case-insensitive). */
+  text?: string;
+  labelIds?: string[];
+  priorities?: number[];
+}
+
+/** What a matching rule does. */
+export interface TriageActions {
+  priority?: number;
+  /** Added to the issue's labels. */
+  labelIds?: string[];
+  assigneeId?: string;
+  /** Assign in turn to these people, round-robin (instead of `assigneeId`). */
+  rotation?: string[];
+  /** Accept the issue into this (non-triage) status. */
+  stateId?: string;
+}
+
+export interface TriageRule {
+  id: string;
+  teamId: string;
+  name: string;
+  enabled: boolean;
+  position: number;
+  conditions: TriageConditions;
+  actions: TriageActions;
 }
 
 export type SlaHours = Partial<Record<'1' | '2' | '3' | '4', number>>;
