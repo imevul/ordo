@@ -235,6 +235,38 @@ export interface Project {
   initiativeId: string | null;
 }
 
+/** An organisation that asks for things; requests tie what they asked to issues. */
+export interface Customer {
+  id: string;
+  name: string;
+  /** Email domains that identify its people ("acme.com"), lower case. */
+  domains: string[];
+  ownerId: string | null;
+  notes: string | null;
+  /** Requests on issues the viewer can see, and how many of those issues are still open. */
+  requestCount: number;
+  openIssueCount: number;
+  createdAt: string;
+}
+
+export interface CustomerRequest {
+  id: string;
+  customerId: string;
+  issueId: string;
+  /** What they said, quoted. */
+  body: string;
+  /** Who asked: "Ada Lovelace <ada@acme.com>". */
+  contact: string | null;
+  source: 'manual' | 'email' | 'api';
+  createdById: string | null;
+  createdAt: string;
+}
+
+/** A request as listed on its customer: with the issue it's about. */
+export interface CustomerRequestWithIssue extends CustomerRequest {
+  issue: { id: string; identifier: string; title: string; stateId: string; teamId: string };
+}
+
 /** A workspace-level goal that groups projects. */
 export interface Initiative {
   id: string;
@@ -351,6 +383,8 @@ export interface IssueDetail extends Issue {
   subscriberIds: string[];
   links: IssueLink[];
   attachments: Attachment[];
+  /** Empty for guests. */
+  customerRequests: CustomerRequest[];
 }
 
 /** A file uploaded to an issue (or, until a description or comment uses it, to its uploader). */
@@ -466,6 +500,8 @@ export interface Bootstrap {
   labels: Label[];
   templates: IssueTemplate[];
   recurring: RecurringIssue[];
+  /** Empty for guests. */
+  customers: Customer[];
   initiatives: Initiative[];
   projects: Project[];
   cycles: Cycle[];

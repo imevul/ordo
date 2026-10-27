@@ -33,6 +33,7 @@ import { isDone } from '../lib/issues.ts';
 import { ui } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Activity } from './Activity.tsx';
+import { CustomerRequests } from './CustomerRequests.tsx';
 import { IssueAttachments } from './IssueAttachments.tsx';
 import { IssueLinks } from './IssueLinks.tsx';
 import { IssueSearchPicker } from './IssueSearchPicker.tsx';
@@ -505,6 +506,7 @@ export function IssueDetailView({
 
             <IssueAttachments issue={issue} onChange={done} />
             <IssueLinks issue={issue} onChange={done} />
+            <CustomerRequests issue={issue} onChange={done} />
 
             <Activity issue={issue} />
           </div>

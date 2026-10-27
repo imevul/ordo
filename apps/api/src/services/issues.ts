@@ -52,6 +52,7 @@ import {
 } from './access.ts';
 import { claimAttachments, listAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
+import { requestsOnIssue } from './customers.ts';
 import { cycleForStartedIssue } from './cycle-automation.ts';
 import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
@@ -388,6 +389,7 @@ export async function getIssueDetail(
     subscriberIds: subs.map((s) => s.userId),
     links: await listIssueLinks(db, issue.id),
     attachments: await listAttachments(db, issue.id),
+    customerRequests: await requestsOnIssue(db, access, issue.id),
   };
 }
 

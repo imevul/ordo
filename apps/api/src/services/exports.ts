@@ -12,6 +12,7 @@ import {
   attachments,
   commentReactions,
   comments,
+  customerRequests,
   files,
   issueHistory,
   issueLinks,
@@ -31,6 +32,7 @@ import { enqueue, type JobContext } from '../lib/jobs/index.ts';
 import { systemAccess } from './access.ts';
 import { audit } from './audit.ts';
 import type { RequestMeta } from './context.ts';
+import { listCustomers } from './customers.ts';
 import { listCycles } from './cycles.ts';
 import { deleteFile, saveFile, signedFileUrl } from './files.ts';
 import { listInitiatives } from './initiatives.ts';
@@ -255,6 +257,10 @@ async function jsonExport(
     labels: (await db.select().from(labels).where(eq(labels.workspaceId, ws.id))).map(toLabel),
     templates: await listTemplates(db, access),
     initiatives: await listInitiatives(db, access, projectList),
+    customers: await listCustomers(db, access),
+    customerRequests: await perIssue((ids) =>
+      db.select().from(customerRequests).where(inArray(customerRequests.issueId, ids)),
+    ),
     projects: projectList,
     projectUpdates: projectList.length
       ? await db

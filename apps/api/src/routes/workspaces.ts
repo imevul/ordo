@@ -23,6 +23,7 @@ import { badRequest, conflict, isUniqueViolation, notFound, parse } from '../lib
 import { mutate, requestMeta } from '../lib/mutate.ts';
 import { audit, auditCtx } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
+import { listCustomers } from '../services/customers.ts';
 import { listCycles } from '../services/cycles.ts';
 import { deleteFile, saveFile, signedFileUrl } from '../services/files.ts';
 import { listInitiatives } from '../services/initiatives.ts';
@@ -111,6 +112,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       labels: labelRows,
       templates,
       recurring: await listRecurring(db, access),
+      customers: await listCustomers(db, access),
       initiatives: await listInitiatives(db, access, projects),
       projects,
       cycles,
