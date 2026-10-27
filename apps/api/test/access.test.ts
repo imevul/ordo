@@ -589,6 +589,10 @@ describe('route inventory', () => {
     'POST /graphql': "resolvers call the REST services with the caller's access (graphql.test.ts)",
     'GET /graphql': 'always 405',
     'DELETE /mcp': 'always 405',
+    'POST /ai/issues/:id/summary': "readIssue with the caller's access (ai.test.ts)",
+    'POST /ai/issues/:id/triage':
+      "getIssue and similarIssues with the caller's access (ai.test.ts)",
+    'POST /ai/draft': 'assertTeamAccess write on the team (ai.test.ts)',
   };
 
   it('accounts for every workspace route', () => {

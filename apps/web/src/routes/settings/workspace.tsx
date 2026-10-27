@@ -171,6 +171,8 @@ export function WorkspaceSection() {
 
       <BranchFormatCard />
 
+      <AiCard />
+
       {ws.isOwner && <DangerZone />}
     </>
   );
@@ -323,6 +325,45 @@ function BranchFormatCard() {
         <button className="btn btn-primary">Save</button>
       </form>
       <p className="mt-2 font-mono text-[11.5px] text-index">→ {example}</p>
+    </SettingsCard>
+  );
+}
+
+/** Whether people here may use the instance's model, and where their issue text would go. */
+function AiCard() {
+  const ws = useWorkspace();
+  const qc = useQueryClient();
+  return (
+    <SettingsCard
+      title="AI assistance"
+      description={
+        ws.ai
+          ? ws.ai.provider === 'anthropic'
+            ? `Summaries, issue drafts and triage suggestions by Claude (${ws.ai.model}). When someone asks, the issue text they can see is sent to Anthropic's API. Ordo stores neither the request nor the answer.`
+            : `Summaries, issue drafts and triage suggestions by ${ws.ai.model}, a model your instance runs or reaches itself. When someone asks, the issue text they can see is sent to it.`
+          : 'An instance admin can set up a model (the Claude API or a local OpenAI-compatible one such as Ollama) for summaries, issue drafts and triage suggestions.'
+      }
+    >
+      {ws.ai && (
+        <label className="flex items-center justify-between py-2.5 text-[13.5px]">
+          Offer AI assistance in this workspace
+          <input
+            type="checkbox"
+            className="accent-primary"
+            checked={ws.workspace.settings.aiEnabled}
+            onChange={async (e) => {
+              try {
+                await api.patch(wsPath(ws.slug, '/'), {
+                  settings: { aiEnabled: e.target.checked },
+                });
+                qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
+              } catch (err) {
+                toast.error(errMsg(err));
+              }
+            }}
+          />
+        </label>
+      )}
     </SettingsCard>
   );
 }

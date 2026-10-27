@@ -8,6 +8,7 @@ import type {
   IssueLinkKind,
   MemberRole,
   NotificationType,
+  Priority,
   ProjectHealth,
   ProjectStatus,
   RecurrenceUnit,
@@ -548,6 +549,32 @@ export interface Bootstrap {
   views: View[];
   favorites: Favorite[];
   unreadCount: number;
+  /** The instance's model, or null when AI assistance isn't set up; `enabled` is this workspace's switch. */
+  ai: { provider: AiSettings['provider']; model: string; enabled: boolean } | null;
+}
+
+/** AI: a short summary of an issue and its discussion, in Markdown. */
+export interface AiSummary {
+  summary: string;
+}
+
+/** AI: an issue written from rough notes. Labels are ones the team can use. */
+export interface AiDraft {
+  title: string;
+  description: string;
+  priority: Priority;
+  labelIds: string[];
+}
+
+/** AI: suggested properties for an issue and open issues that may be the same thing. */
+export interface AiTriage {
+  /** Null when the model has no suggestion beyond what's set. */
+  priority: Priority | null;
+  /** Labels to add (the issue doesn't have them yet). */
+  labelIds: string[];
+  duplicates: { id: string; identifier: string; title: string; reason: string }[];
+  /** One or two sentences on why. */
+  reason: string;
 }
 
 export interface InstanceConfig {
@@ -588,6 +615,19 @@ export interface InstanceSettings {
   smtp: { url: string; from: string } | null;
   /** Largest file people may attach to issues, in megabytes. */
   maxAttachmentMb: number;
+  /** Optional AI assistance; null (the default) turns it off everywhere. */
+  ai: AiSettings | null;
+}
+
+/** The model behind AI assistance. Issue content the asking person can see is sent to it. */
+export interface AiSettings {
+  /** `anthropic`: the Claude API. `openai`: any OpenAI-compatible endpoint (Ollama, vLLM, LM Studio…). */
+  provider: 'anthropic' | 'openai';
+  model: string;
+  /** Claude: null is https://api.anthropic.com. OpenAI-compatible: the URL ending in /v1. */
+  baseUrl: string | null;
+  /** Stored encrypted; admins only ever see it masked. Optional for local endpoints. */
+  apiKey: string | null;
 }
 
 export const INSTANCE_SETTING_DEFAULTS: InstanceSettings = {
@@ -596,6 +636,7 @@ export const INSTANCE_SETTING_DEFAULTS: InstanceSettings = {
   allowPrivateNetworkTargets: false,
   smtp: null,
   maxAttachmentMb: 25,
+  ai: null,
 };
 
 export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof InstanceSettings> {
@@ -675,6 +716,8 @@ export interface WorkspaceSettings {
   gitBranchFormat: string;
   /** The workspace's accent colour (#rrggbb); null is Hotline Pink. */
   accentColor: string | null;
+  /** AI assistance, when the instance has a model set up. Admins can turn it off. */
+  aiEnabled: boolean;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -686,6 +729,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   allowApiKeysUnderSso: false,
   gitBranchFormat: DEFAULT_BRANCH_FORMAT,
   accentColor: null,
+  aiEnabled: true,
 };
 
 export interface WorkspaceDomain {

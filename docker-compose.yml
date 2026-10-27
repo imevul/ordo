@@ -22,6 +22,11 @@ services:
       # Outgoing mail; leave empty to configure it in Admin → Settings instead.
       ORDO_SMTP_URL: ${ORDO_SMTP_URL:-}
       ORDO_SMTP_FROM: ${ORDO_SMTP_FROM:-}
+      # AI assistance; leave empty to configure it in Admin → Settings (docs/ai.md).
+      ORDO_AI_PROVIDER: ${ORDO_AI_PROVIDER:-}
+      ORDO_AI_MODEL: ${ORDO_AI_MODEL:-}
+      ORDO_AI_BASE_URL: ${ORDO_AI_BASE_URL:-}
+      ORDO_AI_API_KEY: ${ORDO_AI_API_KEY:-}
       # Uploads: local (the ordo-data volume) or s3.
       ORDO_STORAGE: ${ORDO_STORAGE:-local}
       ORDO_S3_ENDPOINT: ${ORDO_S3_ENDPOINT:-}
@@ -33,6 +38,9 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-info}
     volumes:
       - ordo-data:/data
+    # Lets Ordo reach services on the host, such as a local Ollama for AI assistance.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${ORDO_BIND:-0.0.0.0}:${ORDO_PORT:-3000}:3000"
 

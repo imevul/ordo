@@ -41,6 +41,17 @@ Without SMTP everything else works; those features are simply unavailable (the U
 | `ORDO_SMTP_URL`  | empty                   | `smtp://user:pass@host:587` (STARTTLS) or `smtps://user:pass@host:465`. URL-encode special characters in the password. Leave empty to configure SMTP in the admin area instead (stored encrypted). |
 | `ORDO_SMTP_FROM` | `Ordo <ordo@localhost>` | Sender, e.g. `Ordo <ordo@example.com>`.                                                                                                                                                            |
 
+## AI assistance
+
+Off unless set here or in _Admin → Settings_. See [AI assistance](ai.md) for what is sent to the model and when.
+
+| Variable           | Default | Description                                                                                                                                    |
+| ------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ORDO_AI_PROVIDER` | empty   | `anthropic` (the Claude API), `openai` (any OpenAI-compatible endpoint: Ollama, vLLM, LM Studio…) or `off`. Empty leaves it to the admin area. |
+| `ORDO_AI_MODEL`    | empty   | Model name, e.g. `claude-opus-5-5` or `llama3.3`. Required with a provider.                                                                    |
+| `ORDO_AI_BASE_URL` | empty   | For `openai`, the URL ending in `/v1` (required). For `anthropic`, only to go through a gateway.                                               |
+| `ORDO_AI_API_KEY`  | empty   | Required for `anthropic`; optional for `openai`.                                                                                               |
+
 ## Uploads
 
 Profile pictures (and, later, attachments) are stored on local disk by default — the `ordo-data` Docker volume

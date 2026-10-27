@@ -14,10 +14,14 @@ import {
 import { requireUser } from '../lib/auth.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
+import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
 import { audit } from '../services/audit.ts';
 import { passwordResetEmail } from '../services/mail-templates.ts';
 import { encryptSmtpUrl, queueEmail } from '../services/mailer.ts';
 import { createToken } from '../services/tokens.ts';
+
+/** Enough of an API key to recognise it. */
+const maskKey = (key: string) => (key.length > 12 ? `${key.slice(0, 7)}…${key.slice(-4)}` : '••••');
 
 /** Masks the password in an SMTP URL for display. */
 function maskSmtpUrl(url: string) {
@@ -321,17 +325,18 @@ export async function adminRoutes(app: FastifyInstance) {
   // ─── settings ────────────────────────────────────────────────────────
 
   const describeSettings = () =>
-    app.settings.describe().map((e) =>
-      e.key === 'smtp' && e.value
-        ? {
-            ...e,
-            value: {
-              from: (e.value as InstanceSettings['smtp'])!.from,
-              url: maskSmtpUrl(decryptSmtp((e.value as InstanceSettings['smtp'])!.url)),
-            },
-          }
-        : e,
-    );
+    app.settings.describe().map((e) => {
+      if (e.key === 'smtp' && e.value) {
+        const smtp = e.value as NonNullable<InstanceSettings['smtp']>;
+        return { ...e, value: { from: smtp.from, url: maskSmtpUrl(decryptSmtp(smtp.url)) } };
+      }
+      if (e.key === 'ai' && e.value) {
+        const ai = e.value as NonNullable<InstanceSettings['ai']>;
+        const key = decryptAiKey(app, ai.apiKey);
+        return { ...e, value: { ...ai, apiKey: key ? maskKey(key) : null } };
+      }
+      return e;
+    });
   const decryptSmtp = (url: string) =>
     url.startsWith('v1.') ? app.keyring.decrypt(url, 'instance_settings:smtp:url') : url;
 
@@ -365,6 +370,32 @@ export async function adminRoutes(app: FastifyInstance) {
         await app.settings.set('smtp', { url, from: input.smtp.from }, me.id);
       }
     }
+    if (input.ai !== undefined) {
+      if (input.ai === null) await app.settings.set('ai', null, me.id);
+      else {
+        const current = app.settings.get('ai');
+        // An empty key keeps the stored one (the UI only ever sees it masked); null removes it.
+        const apiKey =
+          input.ai.apiKey === ''
+            ? (current?.apiKey ?? null)
+            : input.ai.apiKey &&
+              app.keyring.encrypt(input.ai.apiKey, 'instance_settings:ai:apiKey');
+        if (input.ai.provider === 'anthropic' && !apiKey)
+          throw badRequest('Enter an API key for the Claude API');
+        if (input.ai.provider === 'openai' && !input.ai.baseUrl)
+          throw badRequest('Enter the base URL of the OpenAI-compatible endpoint');
+        await app.settings.set(
+          'ai',
+          {
+            provider: input.ai.provider,
+            model: input.ai.model,
+            baseUrl: input.ai.baseUrl?.replace(/\/$/, '') ?? null,
+            apiKey,
+          },
+          me.id,
+        );
+      }
+    }
     await audit(
       db,
       {
@@ -375,6 +406,12 @@ export async function adminRoutes(app: FastifyInstance) {
           smtp: input.smtp
             ? { from: input.smtp.from, url: input.smtp.url ? 'changed' : 'kept' }
             : input.smtp,
+          ai: input.ai
+            ? {
+                ...input.ai,
+                apiKey: input.ai.apiKey === '' ? 'kept' : input.ai.apiKey ? 'changed' : null,
+              }
+            : input.ai,
         },
       },
       requestMeta(req),
@@ -397,6 +434,23 @@ export async function adminRoutes(app: FastifyInstance) {
     }
     return { ok: true };
   });
+
+  // A one-line request to the configured model, so admins see a bad key or URL right away.
+  app.post(
+    '/settings/test-ai',
+    { config: { rateLimit: { max: 10, timeWindow: '1 minute' } } },
+    async () => {
+      const model = instanceModel(app);
+      if (!model) throw badRequest('AI assistance is off');
+      const started = Date.now();
+      const reply = await model.complete({
+        system: 'You check that a connection works.',
+        prompt: 'Reply with the single word: ready',
+        maxTokens: 2000,
+      });
+      return { reply: reply.trim().slice(0, 200), ms: Date.now() - started };
+    },
+  );
 
   // ─── jobs and audit ──────────────────────────────────────────────────
 

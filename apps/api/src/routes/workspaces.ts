@@ -44,6 +44,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
     const user = requireUser(req);
     const ws = requireWorkspace(req);
     const access = ws.access;
+    const aiSettings = app.settings.get('ai');
     const [
       workspace,
       members,
@@ -122,6 +123,13 @@ export async function workspaceRoutes(app: FastifyInstance) {
         .filter((f) => visibleTarget(f.kind, f.targetId))
         .map((f) => ({ id: f.id, kind: f.kind, targetId: f.targetId, sortOrder: f.sortOrder })),
       unreadCount: unread[0]?.n ?? 0,
+      ai: aiSettings
+        ? {
+            provider: aiSettings.provider,
+            model: aiSettings.model,
+            enabled: workspaceSettings(workspace[0]!).aiEnabled,
+          }
+        : null,
     };
   });
 

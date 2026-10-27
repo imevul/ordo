@@ -3,6 +3,7 @@ import {
   type InstanceSettingEntry,
   type InstanceSettings,
 } from '@ordo/shared';
+import { eq } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Sql } from 'postgres';
 import { z } from 'zod';
@@ -23,6 +24,14 @@ const SCHEMAS: { [K in keyof InstanceSettings]: z.ZodType<InstanceSettings[K]> }
     })
     .nullable(),
   maxAttachmentMb: z.number().int().min(1).max(1024),
+  ai: z
+    .object({
+      provider: z.enum(['anthropic', 'openai']),
+      model: z.string().min(1),
+      baseUrl: z.string().nullable(),
+      apiKey: z.string().nullable(),
+    })
+    .nullable(),
 };
 
 export const SETTING_KEYS = Object.keys(SCHEMAS) as (keyof InstanceSettings)[];
@@ -92,13 +101,17 @@ export class Settings {
     actorId: string | null,
   ) {
     const parsed = SCHEMAS[key].parse(value);
-    await this.db
-      .insert(instanceSettings)
-      .values({ key, value: parsed, updatedBy: actorId })
-      .onConflictDoUpdate({
-        target: instanceSettings.key,
-        set: { value: parsed, updatedBy: actorId, updatedAt: new Date().toISOString() },
-      });
+    // Nullable settings (smtp, ai) default to null, so null is the default: no row at all.
+    if (parsed === null)
+      await this.db.delete(instanceSettings).where(eq(instanceSettings.key, key));
+    else
+      await this.db
+        .insert(instanceSettings)
+        .values({ key, value: parsed, updatedBy: actorId })
+        .onConflictDoUpdate({
+          target: instanceSettings.key,
+          set: { value: parsed, updatedBy: actorId, updatedAt: new Date().toISOString() },
+        });
     await this.reload();
     await this.sql.notify(CHANNEL, key).catch(() => {});
   }
