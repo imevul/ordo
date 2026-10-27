@@ -1,8 +1,18 @@
 import type { Bootstrap, Import, IssueDetail } from '@ordo/shared';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { auditLog, issues, labels, notifications, projects, teams } from '../src/db/schema.ts';
+import {
+  auditLog,
+  issues,
+  labels,
+  notifications,
+  projects,
+  syncChanges,
+  syncCursors,
+  teams,
+  workspaces,
+} from '../src/db/schema.ts';
 import { importLimits } from '../src/services/imports/engine.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
@@ -189,6 +199,31 @@ describe('CSV import', () => {
       .from(auditLog)
       .where(and(eq(auditLog.targetId, imp.id)));
     expect(audit.map((a) => a.action).sort()).toEqual(['import.completed', 'import.started']);
+  });
+
+  it('starts a new sync epoch rather than logging each imported row', async () => {
+    const [cursor] = await app.db
+      .select()
+      .from(syncCursors)
+      .innerJoin(workspaces, eq(workspaces.id, syncCursors.workspaceId))
+      .where(eq(workspaces.slug, slug));
+    expect(cursor!.sync_cursors.epoch).toBeGreaterThan(1);
+    const imported = await app.db
+      .select({ id: issues.id })
+      .from(issues)
+      .innerJoin(teams, eq(teams.id, issues.teamId))
+      // The one made by hand afterwards is logged like any other.
+      .where(and(eq(teams.key, 'WEB'), ne(issues.title, 'After the import')));
+    const logged = await app.db
+      .select()
+      .from(syncChanges)
+      .where(
+        inArray(
+          syncChanges.entityId,
+          imported.map((i) => i.id),
+        ),
+      );
+    expect(logged.map((l) => [l.kind, l.action])).toEqual([]);
   });
 
   it('skips what it already imported when run again', async () => {

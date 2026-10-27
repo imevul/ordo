@@ -56,6 +56,7 @@ import {
   relyingParty,
   verifyPasskey,
 } from '../services/passkeys.ts';
+import { publishChanges } from '../services/sync.ts';
 import { createTeam } from '../services/teams.ts';
 import { consumeToken, createToken } from '../services/tokens.ts';
 import { joinWorkspace } from '../services/workspaces.ts';
@@ -486,7 +487,8 @@ export async function authRoutes(app: FastifyInstance) {
       .select({ workspaceId: workspaceMembers.workspaceId })
       .from(workspaceMembers)
       .where(eq(workspaceMembers.userId, user.id));
-    app.realtime.publish(
+    await publishChanges(
+      app,
       memberships.map((m) => ({
         kind: 'member',
         action: 'updated',

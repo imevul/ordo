@@ -1148,6 +1148,48 @@ export const authStates = pgTable('auth_states', {
   expiresAt: ts('expires_at').notNull(),
 });
 
+// ─── Sync (offline-first clients) ──────────────────────────────────────
+
+/**
+ * Each workspace's position in its change log. `seq` counts changes, in commit order; a new
+ * `epoch` tells clients to load everything again (imports, deleted teams); changes up to
+ * `min_seq` have been pruned.
+ */
+export const syncCursors = pgTable('sync_cursors', {
+  workspaceId: uuid('workspace_id')
+    .primaryKey()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  seq: bigint('seq', { mode: 'number' }).notNull().default(0),
+  epoch: integer('epoch').notNull().default(1),
+  minSeq: bigint('min_seq', { mode: 'number' }).notNull().default(0),
+});
+
+/**
+ * What changed, not how: clients fetch the current rows through access-scoped loaders, so the log
+ * holds no data anyone could read without being allowed to.
+ */
+export const syncChanges = pgTable(
+  'sync_changes',
+  {
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    seq: bigint('seq', { mode: 'number' }).notNull(),
+    kind: text('kind').notNull(),
+    entityId: text('entity_id').notNull(),
+    action: text('action').$type<'created' | 'updated' | 'deleted'>().notNull(),
+    /** The teams the entity belongs (and belonged) to; empty for workspace-wide things. */
+    teamIds: uuid('team_ids').array().notNull().default([]),
+    /** Set for changes only one person may see (their notifications). */
+    userId: uuid('user_id'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.workspaceId, t.seq] }),
+    index('sync_changes_created_idx').on(t.createdAt),
+  ],
+);
+
 // ─── SCIM (directory sync) ──────────────────────────────────────────────
 
 /** Bearer tokens an identity provider uses to provision one workspace over SCIM. */

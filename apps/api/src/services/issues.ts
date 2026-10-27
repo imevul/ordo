@@ -902,7 +902,8 @@ export async function updateIssue(
   }
 
   if (touched) {
-    emit(ctx, { kind: 'issue', action: 'updated', id: issueId, teamId });
+    const prevTeamId = current.teamId !== teamId ? current.teamId : undefined;
+    emit(ctx, { kind: 'issue', action: 'updated', id: issueId, teamId, prevTeamId });
     for (const parent of new Set([current.parentId, set.parentId])) {
       if (parent) emit(ctx, { kind: 'issue', action: 'updated', id: parent, teamId });
     }

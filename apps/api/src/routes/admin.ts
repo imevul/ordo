@@ -25,6 +25,7 @@ import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
 import { audit, auditFilters } from '../services/audit.ts';
 import { passwordResetEmail } from '../services/mail-templates.ts';
 import { encryptSmtpUrl, queueEmail } from '../services/mailer.ts';
+import { publishChanges } from '../services/sync.ts';
 import { createToken } from '../services/tokens.ts';
 
 /** Enough of an API key to recognise it. */
@@ -156,7 +157,8 @@ export async function adminRoutes(app: FastifyInstance) {
         .select({ workspaceId: workspaceMembers.workspaceId })
         .from(workspaceMembers)
         .where(eq(workspaceMembers.userId, id));
-      app.realtime.publish(
+      await publishChanges(
+        app,
         memberships.map((m) => ({
           kind: 'member',
           action: 'updated',
@@ -276,7 +278,7 @@ export async function adminRoutes(app: FastifyInstance) {
       );
       await tx.delete(workspaces).where(eq(workspaces.id, id));
     });
-    app.realtime.publish([{ kind: 'workspace', action: 'deleted', id, workspaceId: id }]);
+    await publishChanges(app, [{ kind: 'workspace', action: 'deleted', id, workspaceId: id }]);
     return { ok: true };
   });
 

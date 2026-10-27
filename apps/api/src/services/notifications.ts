@@ -6,6 +6,7 @@ import { usersWithTeamAccess } from './access.ts';
 import { queueChatNotifications } from './chat.ts';
 import { type Ctx, emit } from './context.ts';
 import { queuePush } from './push.ts';
+import { publishChanges } from './sync.ts';
 
 export async function subscribe(ctx: Ctx, issueId: string, userIds: (string | null | undefined)[]) {
   const ids = [...new Set(userIds.filter((x): x is string => !!x))];
@@ -86,7 +87,8 @@ export async function wakeSnoozed(app: FastifyInstance) {
     update notifications set snoozed_until = null, woke_at = now(), read_at = null
     where snoozed_until <= now()
     returning id, user_id, workspace_id`);
-  app.realtime.publish(
+  await publishChanges(
+    app,
     [...woken].map((n) => ({
       kind: 'notification' as const,
       action: 'updated' as const,

@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { type Access, systemAccess } from '../services/access.ts';
 import type { ActorSource, Ctx, RequestMeta } from '../services/context.ts';
 import { writeOutbox } from '../services/events.ts';
+import { logChanges, stamp } from '../services/sync.ts';
 import { requireUser, requireWorkspace } from './auth.ts';
 
 export interface RunOptions {
@@ -25,6 +26,7 @@ export async function runInWorkspace<T>(
   fn: (ctx: Ctx) => Promise<T>,
 ): Promise<T> {
   const events: RealtimeEvent[] = [];
+  let cursor: Awaited<ReturnType<typeof logChanges>> = null;
   const access = opts.access ?? systemAccess(opts.workspaceId, opts.actorId);
   const result = await app.db.transaction(async (tx) => {
     const ctx: Ctx = {
@@ -41,9 +43,12 @@ export async function runInWorkspace<T>(
     const value = await fn(ctx);
     // Same transaction: a rollback leaves no events behind.
     await writeOutbox(ctx);
+    // Last, as it holds the workspace's log position until commit. Imports start a new epoch
+    // when they finish instead of logging every row.
+    cursor = opts.source === 'import' ? null : await logChanges(tx, opts.workspaceId, events);
     return value;
   });
-  app.realtime.publish(events);
+  app.realtime.publish(stamp(events, cursor));
   return result;
 }
 

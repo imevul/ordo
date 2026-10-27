@@ -6,6 +6,7 @@ import { requireAdmin, requireUser } from '../lib/auth.ts';
 import { badRequest, conflict, notFound, parse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { deleteExport, listExports, startExport } from '../services/exports.ts';
+import { publishChanges } from '../services/sync.ts';
 
 /** Workspace exports, made by admins. The file is written by a job (`services/exports.ts`). */
 export async function exportRoutes(app: FastifyInstance) {
@@ -21,7 +22,9 @@ export async function exportRoutes(app: FastifyInstance) {
       format,
       meta: requestMeta(req),
     });
-    app.realtime.publish([{ kind: 'export', action: 'created', id: row.id, workspaceId: ws.id }]);
+    await publishChanges(app, [
+      { kind: 'export', action: 'created', id: row.id, workspaceId: ws.id },
+    ]);
     return (await listExports(app, ws.id, row.id))[0];
   });
 
@@ -36,7 +39,7 @@ export async function exportRoutes(app: FastifyInstance) {
     if (row.status === 'running')
       throw conflict('The export is still being made').as('export_not_ready');
     await deleteExport(app, row);
-    app.realtime.publish([{ kind: 'export', action: 'deleted', id, workspaceId: ws.id }]);
+    await publishChanges(app, [{ kind: 'export', action: 'deleted', id, workspaceId: ws.id }]);
     return { ok: true };
   });
 }

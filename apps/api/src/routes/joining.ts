@@ -7,6 +7,7 @@ import { forbidden, notFound } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from '../services/audit.ts';
 import { signedFileUrl } from '../services/files.ts';
+import { publishChanges } from '../services/sync.ts';
 import { joinWorkspace, workspaceSettings } from '../services/workspaces.ts';
 
 /**
@@ -78,7 +79,7 @@ export async function joiningRoutes(app: FastifyInstance) {
         requestMeta(req),
       );
     });
-    app.realtime.publish([
+    await publishChanges(app, [
       { kind: 'member', action: 'created', id: user.id, workspaceId: ws.id, actorId: user.id },
     ]);
     return { workspaceSlug: ws.slug };

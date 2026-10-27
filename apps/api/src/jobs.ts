@@ -24,6 +24,7 @@ import { runPush } from './services/push.ts';
 import { runRecurring } from './services/recurring.ts';
 import { announceSlaBreaches } from './services/sla.ts';
 import { purgeExpiredStates } from './services/sso.ts';
+import { pruneChanges } from './services/sync.ts';
 import { purgeExpiredTokens } from './services/tokens.ts';
 import { deliverWebhook } from './services/webhooks.ts';
 
@@ -81,6 +82,7 @@ export function registerJobs(app: FastifyInstance) {
     await purgeExpiredChallenges(app.db);
     await pruneOAuth(app.db);
     await purgeExpiredStates(app);
+    await pruneChanges(app.db);
     await purgeOldExports(app);
     await sweepAttachments(app);
     await app.db.delete(sessions).where(lt(sessions.expiresAt, new Date().toISOString()));

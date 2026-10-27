@@ -34,6 +34,7 @@ import { mutate } from '../lib/mutate.ts';
 import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
 import { type Ctx, emit } from '../services/context.ts';
+import { bumpEpoch } from '../services/sync.ts';
 import {
   addTeamMember,
   assertNotManaged,
@@ -238,6 +239,8 @@ export async function teamRoutes(app: FastifyInstance) {
       // Issues reference workflow states without cascading, so remove them explicitly first.
       await ctx.tx.delete(issues).where(eq(issues.teamId, team.id));
       await ctx.tx.delete(teams).where(eq(teams.id, team.id));
+      // Its issues are gone for everyone: sync clients start over rather than replay each one.
+      await bumpEpoch(ctx.tx, ctx.workspaceId);
       emit(ctx, { kind: 'team', action: 'deleted', id: team.id, teamId: team.id });
       await auditCtx(ctx, {
         action: 'team.deleted',

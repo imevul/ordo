@@ -40,6 +40,7 @@ import { listInitiatives } from './initiatives.ts';
 import { workspaceIssuePage } from './issues.ts';
 import { listProjects } from './projects.ts';
 import { toLabel, toView } from './serialize.ts';
+import { publishChanges } from './sync.ts';
 import { listTeams } from './teams.ts';
 import { listTemplates } from './templates.ts';
 import { workspaceSettings } from './workspaces.ts';
@@ -127,7 +128,7 @@ export async function startExport(
 }
 
 function publish(app: FastifyInstance, row: ExportRow) {
-  app.realtime.publish([
+  return publishChanges(app, [
     { kind: 'export', action: 'updated', id: row.id, workspaceId: row.workspaceId },
   ]);
 }
@@ -177,7 +178,7 @@ export async function runExport(
       })
       .where(eq(workspaceExports.id, row.id));
   }
-  publish(app, row);
+  await publish(app, row);
 }
 
 /** Exports older than a week go, files and all. */

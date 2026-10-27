@@ -40,6 +40,7 @@ import { upsertIssueLink } from '../links.ts';
 import { createPlaceholder } from '../placeholders.ts';
 import { createProject } from '../projects.ts';
 import { createRelation } from '../relations.ts';
+import { bumpEpoch, publishChanges } from '../sync.ts';
 import { createTeam } from '../teams.ts';
 import { csvSource } from './csv.ts';
 import { gitlabSource } from './gitlab.ts';
@@ -403,7 +404,7 @@ export async function mappingErrors(db: DbOrTx, row: ImportRow, mapping: ImportM
 // ─── starting, cancelling ─────────────────────────────────────────────────
 
 function publish(app: FastifyInstance, row: { id: string; workspaceId: string }) {
-  app.realtime.publish([
+  return publishChanges(app, [
     { kind: 'import', action: 'updated', id: row.id, workspaceId: row.workspaceId },
   ]);
 }
@@ -419,7 +420,7 @@ export async function startAnalysis(app: FastifyInstance, row: ImportRow) {
     { importId: row.id },
     { orderingKey: `import:${row.id}` },
   );
-  publish(app, row);
+  await publish(app, row);
 }
 
 /** Starts a dry run or a run, after checking the mapping still fits the workspace. */
@@ -471,7 +472,7 @@ export async function startRun(
       );
     }
   });
-  publish(app, row);
+  await publish(app, row);
 }
 
 // ─── jobs ─────────────────────────────────────────────────────────────────
@@ -512,7 +513,7 @@ export async function runAnalyze(
       .set({ status: 'failed', error: message(err), updatedAt: new Date().toISOString() })
       .where(eq(imports.id, row.id));
   }
-  publish(app, row);
+  await publish(app, row);
 }
 
 export async function runImport(
@@ -527,7 +528,11 @@ export async function runImport(
     for (;;) {
       [row] = await app.db.select().from(imports).where(eq(imports.id, p.importId));
       // Cancelled, deleted, or restarted as the other kind of run.
-      if (!row || row.status !== busy) return;
+      if (!row || row.status !== busy) {
+        // What a cancelled import already brought in reaches sync clients as a fresh start.
+        if (row?.status === 'canceled' && !p.dryRun) await bumpEpoch(app.db, row.workspaceId);
+        return;
+      }
       if (!row.createdById) throw new ImportAbort('The person who started this import was deleted');
       const cursor = await step(app, row, p.dryRun, job);
       if (cursor.phase === 'done') return;
@@ -572,7 +577,7 @@ async function waitFor(
     runAt: err.at,
     maxAttempts: 4,
   });
-  publish(app, row);
+  await publish(app, row);
 }
 
 async function fail(app: FastifyInstance, row: ImportRow, dryRun: boolean, err: unknown) {
@@ -585,6 +590,7 @@ async function fail(app: FastifyInstance, row: ImportRow, dryRun: boolean, err: 
       .set({ status: 'failed', error: message(err), updatedAt: new Date().toISOString() })
       .where(eq(imports.id, row.id));
     if (!dryRun) {
+      await bumpEpoch(tx, row.workspaceId);
       await audit(tx, {
         workspaceId: row.workspaceId,
         actorId: row.createdById,
@@ -595,7 +601,7 @@ async function fail(app: FastifyInstance, row: ImportRow, dryRun: boolean, err: 
       });
     }
   });
-  publish(app, row);
+  await publish(app, row);
 }
 
 // ─── a step: one phase, or one page of one ────────────────────────────────
@@ -708,6 +714,8 @@ async function finish(ctx: Ctx, st: RunState) {
       .where(and(eq(importItems.importId, row.id), eq(importItems.entityId, PLANNED)));
     return;
   }
+  // Imports don't log their rows one by one (sync clients load the workspace again instead).
+  await bumpEpoch(ctx.tx, row.workspaceId);
   await audit(ctx.tx, {
     workspaceId: row.workspaceId,
     actorId: row.createdById,

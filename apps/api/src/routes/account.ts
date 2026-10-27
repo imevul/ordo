@@ -49,6 +49,7 @@ import {
   relyingParty,
   toPasskey,
 } from '../services/passkeys.ts';
+import { publishChanges } from '../services/sync.ts';
 import { createToken } from '../services/tokens.ts';
 
 /** Sessions are identified to the user by a prefix of their hash; never by the cookie token. */
@@ -170,7 +171,8 @@ export async function accountRoutes(app: FastifyInstance) {
       .select({ workspaceId: workspaceMembers.workspaceId })
       .from(workspaceMembers)
       .where(eq(workspaceMembers.userId, userId));
-    app.realtime.publish(
+    await publishChanges(
+      app,
       rows.map((r) => ({
         kind: 'member',
         action: 'updated',
