@@ -96,6 +96,10 @@ in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L
 - **Move to another team** from the _Team_ property — the issue gets a new identifier and the closest
   matching status.
 - **Delete** moves the issue to the **Trash**, where anyone can restore it and admins can delete it for good.
+- **Archive** (in the `…` menu) takes an issue out of lists and boards without deleting it: it still opens by link,
+  shows up in search (tagged _archived_) and under the team's **Archived** tab. _Unarchive_ brings it back, and so
+  does reopening it. Teams can archive closed issues automatically: team settings → _Auto-archive_, 1 to 12 months
+  after they were completed or canceled (off by default). The **Ordo** bot does the archiving.
 - **Copy git branch name** in the `…` menu gives you `eng-42-short-title`.
 
 ### Writing descriptions and comments

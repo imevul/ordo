@@ -79,6 +79,7 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     private: t.private,
     gitAutomation: t.gitAutomation,
     cycleAutomation: cycleAutomationOf(t.cycleAutomation),
+    autoArchiveMonths: t.autoArchiveMonths,
     memberIds: members.filter((m) => m.teamId === t.id).map((m) => m.userId),
     members: members
       .filter((m) => m.teamId === t.id)

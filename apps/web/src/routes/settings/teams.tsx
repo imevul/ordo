@@ -357,6 +357,29 @@ export function TeamSettings({ team }: { team: Team }) {
               onChange={(e) => save.mutate({ cyclesEnabled: e.target.checked })}
             />
           </label>
+          <label className="flex items-center justify-between border-b border-border-soft py-3 text-[13.5px]">
+            <span>
+              Auto-archive
+              <span className="block text-[12px] text-index">
+                Closed issues leave lists and boards this long after they close. They stay in
+                search, by link and under Archived.
+              </span>
+            </span>
+            <select
+              className="input w-40"
+              value={team.autoArchiveMonths ?? ''}
+              onChange={(e) =>
+                save.mutate({ autoArchiveMonths: e.target.value ? Number(e.target.value) : null })
+              }
+            >
+              <option value="">Never</option>
+              {[1, 3, 6, 9, 12].map((n) => (
+                <option key={n} value={n}>
+                  After {n} month{n === 1 ? '' : 's'}
+                </option>
+              ))}
+            </select>
+          </label>
           <label className="flex items-center justify-between py-3 text-[13.5px]">
             <span>
               Estimates

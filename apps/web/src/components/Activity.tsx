@@ -40,6 +40,8 @@ function ChangeText({
       return <>moved the issue to trash</>;
     case 'restored':
       return <>restored the issue</>;
+    case 'archived':
+      return c.to ? <>archived the issue</> : <>unarchived the issue</>;
     case 'state': {
       const s = ws.stateById.get(c.to as string);
       return (

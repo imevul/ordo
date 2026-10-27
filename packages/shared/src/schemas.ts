@@ -207,6 +207,9 @@ export const updateTeamSchema = z.object({
   private: z.boolean().optional(),
   defaultStateId: id.nullish(),
   gitAutomation: z.partialRecord(z.enum(GIT_EVENTS), z.union([id, z.literal('none')])).optional(),
+  autoArchiveMonths: z
+    .union([z.literal(1), z.literal(3), z.literal(6), z.literal(9), z.literal(12)])
+    .nullish(),
   cycleAutomation: z
     .object({
       enabled: z.boolean(),
@@ -338,6 +341,8 @@ export const issueFilterSchema = z.object({
   subscribedBy: z.literal('me').optional(),
   q: z.string().max(200).optional(),
   trashed: z.boolean().optional(),
+  /** Archived issues are left out unless included, or asked for alone. */
+  archived: z.enum(['include', 'only']).optional(),
 });
 export type IssueFilter = z.infer<typeof issueFilterSchema>;
 

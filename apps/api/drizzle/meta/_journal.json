@@ -148,6 +148,13 @@
       "when": 1793058840918,
       "tag": "0020_cycle_automation",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793059097103,
+      "tag": "0021_auto_archive",
+      "breakpoints": true
     }
   ]
 }

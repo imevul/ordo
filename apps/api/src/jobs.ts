@@ -2,6 +2,7 @@ import { lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { sessions } from './db/schema.ts';
 import { sweepAttachments } from './services/attachments.ts';
+import { autoArchive } from './services/automation.ts';
 import { runChatNotification, runChatPost } from './services/chat.ts';
 import { automateCycles } from './services/cycle-automation.ts';
 import { sendNotificationEmails } from './services/digest.ts';
@@ -58,6 +59,8 @@ export function registerJobs(app: FastifyInstance) {
   // Cycle dates are days, so hourly is plenty; a missed run catches up on the next.
   jobs.define('cycles.automate', () => automateCycles(app));
   jobs.every('cycles.automate', 3600);
+  jobs.define('issues.autoArchive', () => autoArchive(app));
+  jobs.every('issues.autoArchive', 3600);
 
   jobs.define('maintenance.cleanup', async () => {
     await pruneEvents(app);

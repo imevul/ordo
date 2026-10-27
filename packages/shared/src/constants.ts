@@ -239,6 +239,8 @@ export const DOMAIN_EVENT_TYPES = [
   'issue.trashed',
   'issue.restored',
   'issue.deleted',
+  'issue.archived',
+  'issue.unarchived',
   'comment.created',
   'comment.updated',
   'comment.deleted',

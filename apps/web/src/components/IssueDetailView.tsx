@@ -6,7 +6,18 @@ import {
 } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { Bell, BellOff, Copy, Link2, MoreHorizontal, Plus, Trash2, X } from 'lucide-react';
+import {
+  Archive,
+  ArchiveRestore,
+  Bell,
+  BellOff,
+  Copy,
+  Link2,
+  MoreHorizontal,
+  Plus,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
@@ -194,6 +205,17 @@ export function IssueDetailView({
       ? api.post(wsPath(ws.slug, `/issues/${issue.id}/subscription`))
       : api.del(wsPath(ws.slug, `/issues/${issue.id}/subscription`)),
   );
+  const archive = useWsMutation(
+    ws.slug,
+    (on: boolean) =>
+      api.post(wsPath(ws.slug, `/issues/${issue.id}/${on ? 'archive' : 'unarchive'}`)),
+    {
+      invalidate: [
+        ['ws', ws.slug, 'issues'],
+        ['ws', ws.slug, 'issue'],
+      ],
+    },
+  );
   const addRelation = useWsMutation(ws.slug, (v: { type: string; relatedIssueId: string }) =>
     api.post(wsPath(ws.slug, `/issues/${issue.id}/relations`), v),
   );
@@ -254,6 +276,9 @@ export function IssueDetailView({
             <Sep />
             {issue.identifier}
             {issue.deletedAt && <span className="text-error"> // in trash</span>}
+            {issue.archivedAt && !issue.deletedAt && (
+              <span className="text-index"> // archived</span>
+            )}
           </>
         }
         title={compact ? issue.title : <span className="text-muted">{issue.identifier}</span>}
@@ -299,6 +324,21 @@ export function IssueDetailView({
                   </button>
                   <button type="button" className="menu-item" onClick={copyBranch}>
                     <Copy size={14} /> Copy git branch name
+                  </button>
+                  <button
+                    type="button"
+                    className="menu-item"
+                    onClick={() => archive.mutate(!issue.archivedAt)}
+                  >
+                    {issue.archivedAt ? (
+                      <>
+                        <ArchiveRestore size={14} /> Unarchive
+                      </>
+                    ) : (
+                      <>
+                        <Archive size={14} /> Archive
+                      </>
+                    )}
                   </button>
                   <button
                     type="button"
