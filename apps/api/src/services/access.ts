@@ -100,7 +100,8 @@ export function assertTeamAccess(
   need: 'read' | 'write' | 'admin' = 'read',
 ) {
   if (!canReadTeam(a, teamId)) throw notFound('Team');
-  if (need === 'admin' && !canAdminTeam(a, teamId)) throw forbidden('Only team admins can do this');
+  if (need === 'admin' && !canAdminTeam(a, teamId))
+    throw forbidden('Only team admins can do this').as('team_admins_only');
 }
 
 /** SQL restricting `column` (a team id) to readable teams; undefined when everything is visible. */

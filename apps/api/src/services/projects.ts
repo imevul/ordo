@@ -22,7 +22,7 @@ export async function assertProjectTeams(ctx: Ctx, teamIds: string[]) {
     .from(teams)
     .where(and(eq(teams.workspaceId, ctx.workspaceId), inArray(teams.id, teamIds)));
   if (rows.length !== new Set(teamIds).size || teamIds.some((t) => !canReadTeam(ctx.access, t))) {
-    throw badRequest('Unknown team');
+    throw badRequest('Unknown team').as('unknown_team');
   }
 }
 

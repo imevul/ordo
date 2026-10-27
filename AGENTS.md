@@ -97,8 +97,9 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
   checks that every document round-trips and loads.
 - **Text:** every visible string goes through `t()` / `tx()` (`apps/web/src/i18n/`), English first; Swedish and
   Norwegian fall back to English when a message is missing. Whole sentences per message, `{placeholders}` and plural
-  objects, never `t()` at module scope. Fixed-value labels from `i18n/labels.ts`. See
-  [docs/development.md](docs/development.md#add-or-change-text-in-the-web-app).
+  objects, never `t()` at module scope. Fixed-value labels from `i18n/labels.ts`. Emails, push and chat DMs use
+  `serverT(locale)` (`apps/api/src/i18n/`) in the recipient's language; errors people commonly hit get
+  `.as('<key>')` from `API_MESSAGE_KEYS`. See [docs/development.md](docs/development.md#add-or-change-text).
 - **Keyboard:** register shortcuts with `useHotkey` (`src/lib/hotkeys.ts`). Modals push a scope via
   `useHotkeyScope` so page shortcuts don't fire underneath. Document new shortcuts in
   `components/ShortcutsHelp.tsx` and `docs/keyboard-shortcuts.md`.

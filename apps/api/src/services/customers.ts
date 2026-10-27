@@ -58,7 +58,7 @@ export const toRequest = (r: typeof customerRequests.$inferSelect): CustomerRequ
 
 /** Customers aren't for guests: they'd learn who else the workspace works with. */
 function assertNotGuest(access: Access) {
-  if (access.isGuest) throw forbidden('Guests cannot see customers');
+  if (access.isGuest) throw forbidden('Guests cannot see customers').as('guests_customers');
 }
 
 /**

@@ -72,7 +72,7 @@ export async function createRecurring(ctx: Ctx, input: CreateRecurringInput) {
       and(eq(issueTemplates.id, input.templateId), eq(issueTemplates.workspaceId, ctx.workspaceId)),
     );
   if (!template || (template.teamId && !canReadTeam(ctx.access, template.teamId)))
-    throw badRequest('Unknown template');
+    throw badRequest('Unknown template').as('unknown_template');
   if (template.teamId && template.teamId !== input.teamId)
     throw badRequest('A team template repeats in its own team');
   const [row] = await ctx.tx

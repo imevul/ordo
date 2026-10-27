@@ -46,7 +46,8 @@ export async function documentRoutes(app: FastifyInstance) {
     return doc;
   };
   const writable = (ctx: Ctx) => {
-    if (ctx.access.isGuest) throw forbidden('Guests cannot change documents');
+    if (ctx.access.isGuest)
+      throw forbidden('Guests cannot change documents').as('guests_documents');
   };
 
   app.get('/projects/:id/documents', async (req) => {
@@ -99,7 +100,9 @@ export async function documentRoutes(app: FastifyInstance) {
       writable(ctx);
       // Two people editing at once: the second save would silently undo the first.
       if (baseUpdatedAt && Date.parse(baseUpdatedAt) !== Date.parse(before.updatedAt))
-        throw conflict('Someone else saved this document while you were editing');
+        throw conflict('Someone else saved this document while you were editing').as(
+          'document_conflict',
+        );
       const [row] = await ctx.tx
         .update(projectDocuments)
         .set({ ...input, updatedById: ctx.userId, updatedAt: new Date().toISOString() })

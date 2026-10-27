@@ -97,10 +97,10 @@ export async function githubCallbackRoutes(app: FastifyInstance) {
     state: string | undefined,
     step: string,
   ) {
-    if (!req.user) throw badRequest('Sign in to Ordo first, then try again');
+    if (!req.user) throw badRequest('Sign in to Ordo first, then try again').as('sign_in_first');
     const token = await consumeToken(app.db, 'integration_setup', state ?? '');
     if (token.userId !== req.user.id || token.data.step !== step)
-      throw badRequest('This link belongs to someone else');
+      throw badRequest('This link belongs to someone else').as('link_other_person');
     return token.data as { appId: string; workspaceId: string };
   }
 

@@ -11,7 +11,7 @@ import { toCycle } from './serialize.ts';
 /** Cycles are planned by the team: anyone who can read the team, except guests. */
 export function assertCanPlan(ctx: Ctx, teamId: string) {
   assertTeamAccess(ctx.access, teamId);
-  if (ctx.access.isGuest) throw forbidden('Guests cannot manage cycles');
+  if (ctx.access.isGuest) throw forbidden('Guests cannot manage cycles').as('guests_cycles');
 }
 
 export async function createCycle(

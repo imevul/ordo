@@ -68,7 +68,7 @@ export async function assertInitiative(ctx: Ctx, id: string | null | undefined) 
     .select({ id: initiatives.id })
     .from(initiatives)
     .where(and(eq(initiatives.id, id), eq(initiatives.workspaceId, ctx.workspaceId)));
-  if (!row) throw badRequest('Unknown initiative');
+  if (!row) throw badRequest('Unknown initiative').as('unknown_initiative');
 }
 
 async function changed(ctx: Ctx, id: string, type: 'initiative.created' | 'initiative.updated') {

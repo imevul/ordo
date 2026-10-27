@@ -34,7 +34,7 @@ export async function assertLabelTeam(
     .select({ id: teams.id })
     .from(teams)
     .where(and(eq(teams.id, teamId), eq(teams.workspaceId, ctx.workspaceId)));
-  if (!t || !canReadTeam(ctx.access, t.id)) throw badRequest('Unknown team');
+  if (!t || !canReadTeam(ctx.access, t.id)) throw badRequest('Unknown team').as('unknown_team');
 }
 
 export async function createLabel(ctx: Ctx, input: CreateLabelInput): Promise<Label> {

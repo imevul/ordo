@@ -147,8 +147,9 @@ export async function workspaceRoutes(app: FastifyInstance) {
             .select({ id: teams.id, private: teams.private })
             .from(teams)
             .where(and(eq(teams.id, input.defaultTeamId), eq(teams.workspaceId, ctx.workspaceId)));
-          if (!team) throw badRequest('Unknown team');
-          if (team.private) throw badRequest('The default team must be public');
+          if (!team) throw badRequest('Unknown team').as('unknown_team');
+          if (team.private)
+            throw badRequest('The default team must be public').as('default_team_public');
         }
         const [row] = await ctx.tx
           .update(workspaces)
@@ -172,7 +173,8 @@ export async function workspaceRoutes(app: FastifyInstance) {
         return toWorkspace(app, row!);
       });
     } catch (err) {
-      if (isUniqueViolation(err)) throw conflict('That workspace URL is taken');
+      if (isUniqueViolation(err))
+        throw conflict('That workspace URL is taken').as('workspace_url_taken');
       throw err;
     }
   });
@@ -183,7 +185,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
     uploads.post('/logo', async (req) => {
       const ws = requireAdmin(req);
       const file = await req.file();
-      if (!file) throw badRequest('No file uploaded');
+      if (!file) throw badRequest('No file uploaded').as('no_file');
       const saved = await saveFile(app, {
         workspaceId: ws.id,
         ownerId: requireUser(req).id,
@@ -226,10 +228,11 @@ export async function workspaceRoutes(app: FastifyInstance) {
     requireOwner(req);
     const input = parse(transferOwnershipSchema, req.body);
     return mutate(app, req, async (ctx) => {
-      if (input.userId === ctx.userId) throw badRequest('You already own this workspace');
+      if (input.userId === ctx.userId)
+        throw badRequest('You already own this workspace').as('already_owner');
       const role = await memberRole(ctx.tx, ctx.workspaceId, input.userId);
       if (!role) throw notFound('Member');
-      if (role === 'guest') throw badRequest('Guests cannot own a workspace');
+      if (role === 'guest') throw badRequest('Guests cannot own a workspace').as('guests_own');
       const member = (userId: string) =>
         and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId));
       await ctx.tx
@@ -254,7 +257,8 @@ export async function workspaceRoutes(app: FastifyInstance) {
   app.delete('/', async (req) => {
     const ws = requireOwner(req);
     const { confirmSlug } = parse(deleteWorkspaceSchema, req.body ?? {});
-    if (confirmSlug !== ws.slug) throw badRequest('Type the workspace URL to confirm');
+    if (confirmSlug !== ws.slug)
+      throw badRequest('Type the workspace URL to confirm').as('type_url_to_confirm');
     await db.transaction(async (tx) => {
       await audit(
         tx,

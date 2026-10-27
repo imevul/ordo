@@ -147,4 +147,13 @@ describe('web push', () => {
       .where(eq(pushSubscriptions.userId, ids.member!));
     expect(left.map((s) => s.endpoint)).toEqual([`${base}/device`]);
   });
+
+  it("writes the push in its reader's language", async () => {
+    await member.patch('/api/me/preferences', { locale: 'nb' });
+    const before = received.length;
+    await owner.post(`${ws}/issues`, { teamId: ids.team, title: 'Norsk', assigneeId: ids.member });
+    await settle();
+    const push = received.slice(before).find((r) => r.path === '/device')!;
+    expect(open(push.body).body).toBe('Olga Owner gjorde deg ansvarlig');
+  });
 });

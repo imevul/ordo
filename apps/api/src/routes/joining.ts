@@ -60,7 +60,9 @@ export async function joiningRoutes(app: FastifyInstance) {
         .select({ id: workspaces.id })
         .from(workspaces)
         .where(eq(workspaces.id, id));
-      throw exists ? forbidden('You need an invite to join this workspace') : notFound('Workspace');
+      throw exists
+        ? forbidden('You need an invite to join this workspace').as('invite_needed')
+        : notFound('Workspace');
     }
     const role = workspaceSettings(ws).autoJoinRole;
     await app.db.transaction(async (tx) => {

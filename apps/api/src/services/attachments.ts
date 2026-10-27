@@ -120,7 +120,9 @@ export async function deleteAttachment(ctx: Ctx, id: string): Promise<string> {
   const teamAdmin =
     row.teamId && (ctx.access.isAdmin || ctx.access.adminTeamIds.includes(row.teamId));
   if (row.uploaderId !== ctx.userId && !teamAdmin)
-    throw forbidden('Only the uploader or an admin can remove this attachment');
+    throw forbidden('Only the uploader or an admin can remove this attachment').as(
+      'attachment_remove',
+    );
   await ctx.tx.delete(attachments).where(eq(attachments.id, id));
   if (row.issueId && row.teamId)
     emit(ctx, { kind: 'issue', action: 'updated', id: row.issueId, teamId: row.teamId });

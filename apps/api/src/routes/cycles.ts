@@ -36,7 +36,8 @@ export async function cycleRoutes(app: FastifyInstance) {
     return mutate(app, req, async (ctx) => {
       const cycle = await loadCycle(ctx, id);
       const next = { ...cycle, ...input };
-      if (next.endsAt <= next.startsAt) throw badRequest('End date must be after start date');
+      if (next.endsAt <= next.startsAt)
+        throw badRequest('End date must be after start date').as('end_after_start');
       const [row] = await ctx.tx.update(cycles).set(input).where(eq(cycles.id, id)).returning();
       emit(ctx, { kind: 'cycle', action: 'updated', id, teamId: cycle.teamId });
       record(ctx, 'cycle.updated', toCycle(row!), { teamIds: [cycle.teamId] });

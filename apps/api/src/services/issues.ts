@@ -427,7 +427,7 @@ async function teamOf(ctx: Ctx, teamId: string) {
     .select()
     .from(teams)
     .where(and(eq(teams.id, teamId), eq(teams.workspaceId, ctx.workspaceId)));
-  if (!team) throw badRequest('Unknown team');
+  if (!team) throw badRequest('Unknown team').as('unknown_team');
   assertTeamAccess(ctx.access, team.id);
   return team;
 }
@@ -479,7 +479,7 @@ async function milestoneOf(ctx: Ctx, milestoneId: string) {
     .from(projectMilestones)
     .innerJoin(projects, eq(projects.id, projectMilestones.projectId))
     .where(and(eq(projectMilestones.id, milestoneId), eq(projects.workspaceId, ctx.workspaceId)));
-  if (!m) throw badRequest('Unknown milestone');
+  if (!m) throw badRequest('Unknown milestone').as('unknown_milestone');
   return m;
 }
 
@@ -510,7 +510,7 @@ export async function assertProject(ctx: Ctx, projectId: string) {
     .select({ id: projects.id })
     .from(projects)
     .where(and(eq(projects.id, projectId), eq(projects.workspaceId, ctx.workspaceId)));
-  if (!p) throw badRequest('Unknown project');
+  if (!p) throw badRequest('Unknown project').as('unknown_project');
 }
 
 async function assertCycle(ctx: Ctx, teamId: string, cycleId: string) {
@@ -528,12 +528,12 @@ export async function assertLabels(ctx: Ctx, teamId: string | null, labelIds: st
     .from(labels)
     .where(and(eq(labels.workspaceId, ctx.workspaceId), inArray(labels.id, labelIds)));
   if (rows.length !== new Set(labelIds).size || rows.some((l) => l.teamId && l.teamId !== teamId)) {
-    throw badRequest('Unknown label for this team');
+    throw badRequest('Unknown label for this team').as('unknown_label');
   }
 }
 
 async function assertParent(ctx: Ctx, issueId: string | null, parentId: string) {
-  if (issueId === parentId) throw badRequest('An issue cannot be its own parent');
+  if (issueId === parentId) throw badRequest('An issue cannot be its own parent').as('own_parent');
   // Walk up from the proposed parent; hitting `issueId` would create a cycle.
   let cursor: string | null = parentId;
   for (let depth = 0; cursor && depth < 50; depth++) {
@@ -546,11 +546,13 @@ async function assertParent(ctx: Ctx, issueId: string | null, parentId: string) 
       })
       .from(issues)
       .where(eq(issues.id, cursor));
-    if (!row || row.workspaceId !== ctx.workspaceId) throw badRequest('Unknown parent issue');
+    if (!row || row.workspaceId !== ctx.workspaceId)
+      throw badRequest('Unknown parent issue').as('unknown_parent');
     // The parent itself must be visible; ancestors beyond it are only walked to detect loops.
     if (depth === 0 && !canReadTeam(ctx.access, row.teamId))
-      throw badRequest('Unknown parent issue');
-    if (issueId && row.parentId === issueId) throw badRequest('That would create a sub-issue loop');
+      throw badRequest('Unknown parent issue').as('unknown_parent');
+    if (issueId && row.parentId === issueId)
+      throw badRequest('That would create a sub-issue loop').as('sub_issue_loop');
     cursor = row.parentId;
   }
 }

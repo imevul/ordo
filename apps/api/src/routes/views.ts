@@ -17,7 +17,7 @@ async function loadEditableView(ctx: Ctx, id: string) {
     .where(and(eq(views.id, id), eq(views.workspaceId, ctx.workspaceId)));
   if (!view || (!view.shared && view.ownerId !== ctx.userId)) throw notFound('View');
   if (view.ownerId !== ctx.userId && !ctx.access.isAdmin)
-    throw forbidden('Only the owner or an admin can change this view');
+    throw forbidden('Only the owner or an admin can change this view').as('view_change');
   return view;
 }
 

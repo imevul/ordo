@@ -58,7 +58,7 @@ export async function consumeToken(db: DbOrTx, kind: TokenKind, token: string) {
       ),
     )
     .returning();
-  if (!row) throw badRequest('This link is invalid or has expired');
+  if (!row) throw badRequest('This link is invalid or has expired').as('link_invalid');
   return row;
 }
 

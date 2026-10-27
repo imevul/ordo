@@ -208,6 +208,37 @@ describe('language', () => {
     expect((await client.get('/api/me/account')).data.preferences.weekStartsOn).toBe(1);
     expect((await client.patch('/api/me/preferences', { locale: 'de' })).statusCode).toBe(400);
   });
+
+  it("signs up in the page's language and writes emails in the account's language", async () => {
+    const { client, email } = await signup(app, 'Siri Svensk', { locale: 'sv' });
+    expect((await client.get('/api/auth/me')).data.locale).toBe('sv');
+    await app.jobs.drain();
+    expect(lastMailTo(email)?.subject).toBe('Bekräfta din e-postadress');
+
+    await new Client(app).post('/api/auth/forgot', { email });
+    await app.jobs.drain();
+    const reset = lastMailTo(email, /lösenord/)!;
+    expect(reset.subject).toBe('Återställ ditt lösenord i Ordo');
+    expect(reset.text).toContain('Hej Siri Svensk,');
+
+    await client.patch('/api/me/preferences', { locale: 'nb' });
+    await new Client(app).post('/api/auth/forgot', { email });
+    await app.jobs.drain();
+    expect(lastMailTo(email, /passord/)?.subject).toBe('Tilbakestill passordet ditt i Ordo');
+  });
+
+  it('marks common errors so the web app can show them in its language', async () => {
+    const { email } = await signup(app, 'Ella Error');
+    const wrong = await new Client(app).post('/api/auth/login', { email, password: 'nope nope' });
+    expect(wrong.statusCode).toBe(401);
+    expect(wrong.data).toMatchObject({
+      error: 'unauthorized',
+      message: 'Wrong email or password',
+      messageKey: 'wrong_credentials',
+    });
+    const missing = await new Client(app).get('/api/me/account');
+    expect(missing.data.messageKey).toBe('not_signed_in');
+  });
 });
 
 describe('avatars', () => {

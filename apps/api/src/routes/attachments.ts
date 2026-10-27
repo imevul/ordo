@@ -25,7 +25,7 @@ export async function attachmentRoutes(app: FastifyInstance) {
       const issue = issueId ? await getIssue(app.db, access, issueId) : null;
       const maxMb = app.settings.get('maxAttachmentMb');
       const file = await req.file({ limits: { fileSize: maxMb * 1024 * 1024 } });
-      if (!file) throw badRequest('No file uploaded');
+      if (!file) throw badRequest('No file uploaded').as('no_file');
       let body: Buffer;
       try {
         body = await file.toBuffer();
@@ -33,8 +33,11 @@ export async function attachmentRoutes(app: FastifyInstance) {
         body = Buffer.alloc(0);
       }
       if (file.file.truncated || body.length > maxMb * 1024 * 1024)
-        throw new HttpError(413, `Attachments can be up to ${maxMb} MB`, 'too_large');
-      if (body.length === 0) throw badRequest('The file is empty');
+        throw new HttpError(413, `Attachments can be up to ${maxMb} MB`, 'too_large').as(
+          'attachment_too_large',
+          { maxMb },
+        );
+      if (body.length === 0) throw badRequest('The file is empty').as('file_empty');
       const saved = await saveFile(app, {
         workspaceId: access.workspaceId,
         ownerId: access.userId,

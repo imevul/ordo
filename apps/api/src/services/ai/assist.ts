@@ -37,13 +37,17 @@ export function instanceModel(app: FastifyInstance, settings?: AiSettings | null
 export async function workspaceModel(app: FastifyInstance, workspaceId: string): Promise<AiModel> {
   const model = instanceModel(app);
   if (!model)
-    throw new HttpError(403, 'AI assistance is not set up on this instance', 'ai_unavailable');
+    throw new HttpError(403, 'AI assistance is not set up on this instance', 'ai_unavailable').as(
+      'ai_not_set_up',
+    );
   const [row] = await app.db
     .select({ settings: workspaces.settings })
     .from(workspaces)
     .where(eq(workspaces.id, workspaceId));
   if (!(row?.settings?.aiEnabled ?? DEFAULT_WORKSPACE_SETTINGS.aiEnabled))
-    throw new HttpError(403, 'AI assistance is turned off in this workspace', 'ai_unavailable');
+    throw new HttpError(403, 'AI assistance is turned off in this workspace', 'ai_unavailable').as(
+      'ai_off_workspace',
+    );
   return model;
 }
 
@@ -87,7 +91,8 @@ export async function summarizeIssue(
     maxTokens: 4000,
   });
   const summary = text.trim();
-  if (!summary) throw new HttpError(502, 'The model sent an empty answer', 'ai_failed');
+  if (!summary)
+    throw new HttpError(502, 'The model sent an empty answer', 'ai_failed').as('ai_empty');
   return { summary };
 }
 

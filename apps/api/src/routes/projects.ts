@@ -25,7 +25,7 @@ import {
 async function loadProject(ctx: Ctx, id: string) {
   const [visible] = await listProjects(ctx.tx, ctx.access, id);
   if (!visible) throw notFound('Project');
-  if (ctx.access.isGuest) throw forbidden('Guests cannot change projects');
+  if (ctx.access.isGuest) throw forbidden('Guests cannot change projects').as('guests_projects');
   const [p] = await ctx.tx.select().from(projects).where(eq(projects.id, id));
   return p!;
 }

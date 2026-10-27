@@ -77,10 +77,11 @@ Add a route in `apps/web/src/router.tsx`, a component in `src/routes/`, read par
 `useParams({ from: '<route id>' })`, and link to it with typed `<Link to=… params=…>`. Most issue screens are a
 thin wrapper around `IssuesView` with a `baseFilter`.
 
-### Add or change text in the web app
+### Add or change text
 
-Every word a person reads comes from a catalogue in `apps/web/src/i18n/`: English in `en/`, Swedish in `sv/`,
-Norwegian Bokmål in `nb/`, one file per area (`issues.ts`, `shell.ts`, `settings.ts`…).
+Every word a person reads in the web app comes from a catalogue in `apps/web/src/i18n/`: English in `en/`, Swedish
+in `sv/`, Norwegian Bokmål in `nb/`, one file per area (`issues.ts`, `shell.ts`, `settings.ts`…). The message format,
+plural rules and the fallback to English live in `packages/shared/src/i18n.ts`, shared with the API.
 
 ```tsx
 import { t, tx } from '../i18n/index.ts';
@@ -105,8 +106,21 @@ toast.success(t('issues.moved', { count: ids.length }));          // { one: '…
   translated in the web app by its id, falling back to the English it came with (`providerText` in
   `routes/settings/integrations.tsx`).
 
-To add a language, add its code to `LOCALES` and `LOCALE_NAMES` in `packages/shared/src/constants.ts`, a folder
-like `sv/`, a loader in `LOADERS` and an `INTL_TAG` in `i18n/index.ts`, and a date-fns locale in `lib/format.ts`.
+**What the server writes to people** (emails, push notifications, chat direct messages) comes from
+`apps/api/src/i18n/{en,sv,nb}.ts`, in the recipient's language: `serverT(localeOf(user.preferences))`, or
+`userLocale(db, userId)` / `localeForEmail(db, email, fallbackUserId)` when you only have an id or an address. Keep
+the server's Swedish and Norwegian complete; `test/i18n.test.ts` fails if a message is missing. Channel posts in
+chat apps have no single reader and stay in English.
+
+**API errors** stay English in `message`. To have the web app show one in the reader's language, add a key to
+`API_MESSAGE_KEYS` in shared, mark the error with it (`throw forbidden('Only team admins can do this').as('team_admins_only')`,
+with params for values in the sentence) and add the message under `errors.api` in the web catalogues. The web client
+(`errorMessage` in `api/client.ts`) translates keyed errors and words network, rate-limit and server failures
+itself; in English it keeps the API's message, which can be more specific.
+
+To add a language, add its code to `LOCALES` and `LOCALE_NAMES` in `packages/shared/src/constants.ts` and an
+`INTL_TAG` in `packages/shared/src/i18n.ts`; then a folder like `sv/` and a loader in `LOADERS` (`i18n/index.ts`) and a
+date-fns locale (`lib/format.ts`) in the web app, and a file like `sv.ts` in `apps/api/src/i18n/`.
 
 ## Conventions
 

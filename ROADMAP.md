@@ -122,7 +122,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [x] ✅ Project milestones; initiatives and roadmap timeline; insights and charts
 - [x] ✅ SLAs, recurring issues, triage rules; customer requests and intake by email
 - [x] ✅ Project documents; notification snooze
-- [~] 🟡 PWA and push; light theme; i18n — PWA, push and the light theme shipped; i18n (English, Swedish, Norwegian Bokmål) covers every screen of the web app; emails, push notifications and server error messages to come
+- [x] ✅ PWA and push; light theme; i18n (English, Swedish, Norwegian Bokmål: the app, emails, push and chat notifications, common errors)
 - ✅ MCP server for AI agents (Streamable HTTP, per workspace, personal API keys; search, read, create, update and
   comment on issues) and Settings → AI agents with setup snippets and an agent prompt
 - [x] ✅ GraphQL API, TypeScript SDK, CLI; optional AI assistance (Claude API or a local OpenAI-compatible model: summaries, drafts, triage suggestions); OAuth sign-in for MCP (claude.ai connectors)

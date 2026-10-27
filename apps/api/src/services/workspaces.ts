@@ -70,7 +70,9 @@ export async function assertNotLastOwner(tx: DbOrTx, workspaceId: string, userId
     .from(workspaceMembers)
     .where(and(eq(workspaceMembers.workspaceId, workspaceId), eq(workspaceMembers.role, 'owner')));
   if (owners.length === 1 && owners[0]!.userId === userId) {
-    throw badRequest('A workspace needs at least one owner. Make someone else an owner first.');
+    throw badRequest('A workspace needs at least one owner. Make someone else an owner first.').as(
+      'needs_owner',
+    );
   }
 }
 

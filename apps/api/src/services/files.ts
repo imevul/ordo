@@ -37,7 +37,8 @@ export async function saveFile(
   },
 ) {
   const image = sniffImage(input.body);
-  if (input.imagesOnly && !image) throw badRequest('Upload a PNG, JPEG, GIF or WebP image');
+  if (input.imagesOnly && !image)
+    throw badRequest('Upload a PNG, JPEG, GIF or WebP image').as('image_type');
   const contentType = image ?? 'application/octet-stream';
   const id = randomUUID();
   const key = storageKey(input.kind, new Date().toISOString().slice(0, 7), id);

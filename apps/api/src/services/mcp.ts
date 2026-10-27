@@ -446,7 +446,7 @@ function handlers(c: McpCaller): Handlers {
     update_issue: async (a) => {
       const current = await getIssue(c.app.db, c.access, a.issue);
       const team = a.team ? await dir.team(a.team) : await dir.teamById(current.teamId);
-      if (!team) throw badRequest('Unknown team');
+      if (!team) throw badRequest('Unknown team').as('unknown_team');
       const patch = parse(updateIssueSchema, {
         ...(a.title !== undefined && { title: a.title }),
         ...(team.id !== current.teamId && { teamId: team.id }),

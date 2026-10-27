@@ -33,7 +33,8 @@ export async function exportRoutes(app: FastifyInstance) {
       .from(workspaceExports)
       .where(and(eq(workspaceExports.id, id), eq(workspaceExports.workspaceId, ws.id)));
     if (!row) throw notFound('Export');
-    if (row.status === 'running') throw conflict('The export is still being made');
+    if (row.status === 'running')
+      throw conflict('The export is still being made').as('export_not_ready');
     await deleteExport(app, row);
     app.realtime.publish([{ kind: 'export', action: 'deleted', id, workspaceId: ws.id }]);
     return { ok: true };
