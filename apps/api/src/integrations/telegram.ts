@@ -4,6 +4,7 @@ import {
   chatFeed,
   parseChannels,
   runChatCommand,
+  syncThreadReply,
   unfurl,
 } from '../services/chat.ts';
 import { sleep } from '../services/connectors.ts';
@@ -66,6 +67,7 @@ interface TgUser {
   id: number;
   username?: string;
   first_name?: string;
+  last_name?: string;
   is_bot?: boolean;
 }
 
@@ -125,6 +127,22 @@ async function handleMessage(ictx: IntegrationContext, m: TgMessage) {
     await reply(await runChatCommand(ictx, incoming));
     return;
   }
+  // Replying to an issue's message (or to a reply to it) in a group is a comment.
+  if (
+    m.reply_to_message &&
+    !direct &&
+    (await syncThreadReply(ictx, {
+      channel: String(m.chat.id),
+      parent: String(m.reply_to_message.message_id),
+      messageRef: String(m.message_id),
+      user: {
+        id: String(m.from.id),
+        name: [m.from.first_name, m.from.last_name].filter(Boolean).join(' ') || m.from.username,
+      },
+      text,
+    }))
+  )
+    return;
   for (const preview of await unfurl(ictx, String(m.from.id), text)) await reply(preview.message);
 }
 
@@ -210,8 +228,16 @@ export const telegramProvider: IntegrationProvider = {
   },
 
   chat: {
-    async post(ictx, channel, message) {
-      await tg(ictx, 'sendMessage', { chat_id: channel, ...telegramText(message) });
+    async post(ictx, channel, message, thread) {
+      const sent = await tg<{ message_id: number }>(ictx, 'sendMessage', {
+        chat_id: channel,
+        // Telegram's threads are reply chains.
+        ...(thread && {
+          reply_parameters: { message_id: Number(thread.root), allow_sending_without_reply: true },
+        }),
+        ...telegramText(message),
+      });
+      return sent?.message_id === undefined ? undefined : String(sent.message_id);
     },
     async direct(ictx, to, message) {
       // A private chat's id is the user's id.

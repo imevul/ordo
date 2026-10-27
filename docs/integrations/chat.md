@@ -1,6 +1,6 @@
 # Chat: Slack, Discord, Matrix, Telegram
 
-Chat integrations do four things, the same way on every service:
+Chat integrations do five things, the same way on every service:
 
 - **Channel feeds.** Each connected channel picks what it hears about (new issues, status changes, completed
   issues, comments, project updates) and from which teams. With no teams picked, a channel gets every _public_ team;
@@ -13,6 +13,28 @@ Chat integrations do four things, the same way on every service:
   Without a team key the issue goes to the channel's default team, then the workspace's default team.
 - **Link previews.** Links to issues get a preview, but only when the person who posted the link has linked their
   account and can read the issue.
+- **Threads.** An issue's first post in a channel starts its thread; comments (and the channel's other updates about
+  that issue) go into it, and replies there become comments. See [Threads](#threads).
+
+## Threads
+
+On by default for every channel (**Sync comments in threads** in the channel's settings):
+
+- The first post about an issue in a channel (usually _created_) starts the issue's thread there.
+- Comments on the issue go into that thread, even when the channel doesn't subscribe to comments. Other updates the
+  channel subscribes to (status changes, completed) go there too, instead of to the channel.
+- A reply in the thread becomes a comment. If the person linked their chat account, it's theirs (as long as they can
+  read the issue); otherwise it comes from the integration's bot as "**Name** via Slack: …".
+- Replies synced from chat aren't posted back. Edits and deletions don't sync.
+
+| Service  | What counts as the thread                                                                                               |
+| -------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Slack    | The message's thread (needs `channels:history` / `groups:history` and the `message.channels` / `message.groups` events) |
+| Discord  | A thread opened on the issue's message when the first comment arrives (replies need the gateway)                        |
+| Matrix   | An `m.thread` on the issue's message                                                                                    |
+| Telegram | Replies to the issue's message, or to replies to it                                                                     |
+
+With threads off, a channel gets top-level posts only for what it subscribes to, and replies stay in chat.
 
 ## Linking your account
 

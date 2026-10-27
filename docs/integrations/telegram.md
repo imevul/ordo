@@ -2,7 +2,8 @@
 
 1. Talk to [@BotFather](https://t.me/BotFather): `/newbot`, then copy the token (`123456:ABC…`).
 2. Optional: `/setcommands` with `new - Create an issue`, `link - Link your Ordo account`, `help - Commands`.
-3. To preview issue links in groups, `/setprivacy` → Disable (otherwise the bot only sees commands).
+3. To preview issue links in groups, `/setprivacy` → Disable (otherwise the bot only sees commands and replies to its
+   own messages, so only direct replies to the issue's message become comments).
 4. **Settings → Integrations → Telegram → Connect** in Ordo, and pick:
    - **Webhook**: Ordo registers its URL with Telegram, with a secret Telegram sends back on every update. Telegram
      needs to reach Ordo over HTTPS on port 443, 80, 88 or 8443.

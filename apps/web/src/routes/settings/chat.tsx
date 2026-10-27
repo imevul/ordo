@@ -252,6 +252,20 @@ function ChannelsEditor({
               </button>
             ))}
           </div>
+          <label className="mb-2 flex items-start gap-1.5 text-[12.5px]">
+            <input
+              type="checkbox"
+              className="mt-0.5 accent-primary"
+              checked={c.threads !== false}
+              onChange={(e) => set(i, { threads: e.target.checked })}
+            />
+            <span>
+              {t('integrations.chat.threads')}
+              <span className="block text-[11.5px] text-index">
+                {t('integrations.chat.threadsHint')}
+              </span>
+            </span>
+          </label>
           <label className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
             {tx('integrations.chat.newIssuesGoTo', {
               select: (

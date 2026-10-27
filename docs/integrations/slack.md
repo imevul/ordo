@@ -55,11 +55,22 @@ features:
     - ordo.example.com
 oauth_config:
   scopes:
-    bot: [app_mentions:read, chat:write, commands, im:history, links:read, links:write, users:read]
+    bot:
+      [
+        app_mentions:read,
+        channels:history,
+        chat:write,
+        commands,
+        groups:history,
+        im:history,
+        links:read,
+        links:write,
+        users:read,
+      ]
 settings:
   event_subscriptions:
     request_url: https://ordo.example.com/api/hooks/slack/KEY
-    bot_events: [app_mention, message.im, link_shared]
+    bot_events: [app_mention, link_shared, message.channels, message.groups, message.im]
   interactivity:
     is_enabled: true
     request_url: https://ordo.example.com/api/hooks/slack/KEY
@@ -67,3 +78,7 @@ settings:
 ```
 
 Requests are checked against the signing secret and rejected when older than five minutes.
+
+Apps made before thread sync lack `channels:history`, `groups:history` and the `message.channels` /
+`message.groups` events: add them under **OAuth & Permissions** and **Event Subscriptions**, then reinstall the app,
+or replies in threads won't reach Ordo.

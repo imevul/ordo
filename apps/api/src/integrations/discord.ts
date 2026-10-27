@@ -4,9 +4,10 @@ import {
   chatFeed,
   parseChannels,
   runChatCommand,
+  syncThreadReply,
   unfurl,
 } from '../services/chat.ts';
-import { callApi } from './http.ts';
+import { ApiCallError, callApi } from './http.ts';
 import { runSocket } from './socket.ts';
 import type {
   ChatMessage,
@@ -189,6 +190,17 @@ async function handleMessage(ictx: IntegrationContext, m: DiscordMessage) {
     await reply(answer);
     return;
   }
+  // In a thread Ordo started, a message is a comment (a thread's id is its first message's).
+  if (
+    m.guild_id &&
+    (await syncThreadReply(ictx, {
+      parent: m.channel_id,
+      messageRef: m.id,
+      user: { id: m.author.id, name: displayName(m.author) },
+      text: m.content,
+    }))
+  )
+    return;
   const previews = await unfurl(ictx, m.author.id, m.content);
   if (previews.length) {
     await reply({
@@ -337,11 +349,24 @@ export const discordProvider: IntegrationProvider = {
   },
 
   chat: {
-    async post(ictx, channel, message) {
-      await api(ictx, `/channels/${channel}/messages`, {
-        method: 'POST',
-        body: discordMessage(message),
-      });
+    async post(ictx, channel, message, thread) {
+      const send = (to: string) =>
+        api<{ id: string }>(ictx, `/channels/${to}/messages`, {
+          method: 'POST',
+          body: discordMessage(message),
+        });
+      if (!thread) return (await send(channel)).data.id;
+      // A thread started from a message has that message's id. Open it the first time.
+      try {
+        return (await send(thread.root)).data.id;
+      } catch (err) {
+        if (!(err instanceof ApiCallError) || err.status !== 404) throw err;
+        await api(ictx, `/channels/${channel}/messages/${thread.root}/threads`, {
+          method: 'POST',
+          body: { name: thread.name, auto_archive_duration: 10080 },
+        });
+        return (await send(thread.root)).data.id;
+      }
     },
     async direct(ictx, to, message) {
       let channel = to.dmChannel;

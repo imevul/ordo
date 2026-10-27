@@ -137,6 +137,9 @@ export default {
     private: 'privat',
     newIssuesGoTo: 'Nye saker herfra havner i {select}',
     defaultTeam: 'standardteamet i arbeidsområdet',
+    threads: 'Synkroniser kommentarer i tråder',
+    threadsHint:
+      'Senere aktivitet på en sak havner i tråden under det første innlegget her, og svar der blir kommentarer.',
     addChannel: 'Legg til kanal',
     events: {
       issueCreated: 'Nye saker',
