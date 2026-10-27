@@ -195,6 +195,12 @@ with a status (planned, active, completed), an owner, a target date and progress
 projects from the initiative's page, or pick the _Initiative_ on a project; a project belongs to one initiative at
 a time. Guests only see initiatives that contain one of their projects.
 
+The **Roadmap** (sidebar → _Roadmap_) puts projects on a timeline, grouped by initiative: each bar runs from the
+project's start to its target date and fills as its issues get done, diamonds mark milestones and initiative
+targets, and a pink line marks today. Drag a bar to move a project, or drag either end to change one date; click it
+to open the project. Zoom between weeks, months and quarters; projects without dates are listed below, and closed
+ones are hidden unless you tick _closed_.
+
 **Milestones** break a project into stages, each with an optional target date and its own progress. Add them under
 _Milestones_ on the project page, then put issues in one with the issue's _Milestone_ property (it appears once
 the issue's project has milestones). Choosing a milestone also sets the project, and moving an issue to another

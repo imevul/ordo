@@ -30,6 +30,7 @@ import {
   TrashPage,
 } from './routes/issues.tsx';
 import { ProjectDetailPage, ProjectsPage } from './routes/projects.tsx';
+import { RoadmapPage } from './routes/roadmap.tsx';
 import { SettingsPage, TeamSettingsPage } from './routes/settings/index.tsx';
 import { ViewPage, ViewsPage } from './routes/views.tsx';
 import { NotFound, WorkspaceIndex, WorkspaceLayout } from './routes/workspace.tsx';
@@ -183,6 +184,11 @@ const initiativeRoute = createRoute({
   path: '/initiative/$initiativeId',
   component: InitiativePage,
 });
+const roadmapRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/roadmap',
+  component: RoadmapPage,
+});
 const viewsRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/views',
@@ -242,6 +248,7 @@ const routeTree = rootRoute.addChildren([
     projectRoute,
     initiativesRoute,
     initiativeRoute,
+    roadmapRoute,
     viewsRoute,
     viewRoute,
     issueRoute,
