@@ -13,6 +13,7 @@ import { getLocale, INTL_TAG, t, tx } from '../i18n/index.ts';
 import { estimateLabel, priorityLabel } from '../i18n/labels.ts';
 import { longDate, relativeTime, shortDate } from '../lib/format.ts';
 import { cycleName, useWorkspace } from '../lib/workspace.tsx';
+import { useSyncEngine } from '../sync/context.tsx';
 import { PriorityIcon, StatusIcon } from './icons.tsx';
 import { Markdown } from './Markdown.tsx';
 import { MarkdownEditor } from './MarkdownEditor.tsx';
@@ -200,21 +201,37 @@ function CommentItem({
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');
   const inv = [keys.comments(ws.slug, issueId) as unknown as unknown[]];
+  // With a local copy, comments go through its outbox (and work offline).
+  const engine = useSyncEngine();
   const save = useWsMutation(
     ws.slug,
-    (b: string) => api.patch(wsPath(ws.slug, `/comments/${comment.id}`), { body: b }),
+    (b: string) =>
+      engine
+        ? engine.mutate({ kind: 'comment.update', id: comment.id, issueId, body: b })
+        : api.patch(wsPath(ws.slug, `/comments/${comment.id}`), { body: b }),
     { invalidate: inv },
   );
-  const remove = useWsMutation(ws.slug, () => api.del(wsPath(ws.slug, `/comments/${comment.id}`)), {
-    invalidate: inv,
-  });
+  const remove = useWsMutation(
+    ws.slug,
+    () =>
+      engine
+        ? engine.mutate({ kind: 'comment.delete', id: comment.id, issueId })
+        : api.del(wsPath(ws.slug, `/comments/${comment.id}`)),
+    { invalidate: inv },
+  );
   const sendReply = useWsMutation(
     ws.slug,
     (b: string) =>
-      api.post(wsPath(ws.slug, `/issues/${issueId}/comments`), { body: b, parentId: comment.id }),
-    {
-      invalidate: inv,
-    },
+      engine
+        ? engine.mutate({
+            kind: 'comment.create',
+            comment: { id: crypto.randomUUID(), issueId, body: b, parentId: comment.id },
+          })
+        : api.post(wsPath(ws.slug, `/issues/${issueId}/comments`), {
+            body: b,
+            parentId: comment.id,
+          }),
+    { invalidate: inv },
   );
   const mine = comment.authorId === ws.me.id;
 
@@ -376,9 +393,16 @@ export function Activity({ issue }: { issue: IssueDetail }) {
   const { data: comments = [] } = useComments(ws.slug, issue.id);
   const [draft, setDraft] = useState('');
   const upload = useAttachmentUpload(ws.slug, issue.id);
+  const engine = useSyncEngine();
   const send = useWsMutation(
     ws.slug,
-    (body: string) => api.post(wsPath(ws.slug, `/issues/${issue.id}/comments`), { body }),
+    (body: string) =>
+      engine
+        ? engine.mutate({
+            kind: 'comment.create',
+            comment: { id: crypto.randomUUID(), issueId: issue.id, body, parentId: null },
+          })
+        : api.post(wsPath(ws.slug, `/issues/${issue.id}/comments`), { body }),
     {
       invalidate: [keys.comments(ws.slug, issue.id) as unknown as unknown[]],
     },

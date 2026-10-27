@@ -1,5 +1,12 @@
 import type { Bootstrap, Comment, Issue, SyncChanges } from '@ordo/shared';
-import { OfflineError, ResyncError, type Transport } from './engine.ts';
+import {
+  OfflineError,
+  RejectedError,
+  ResyncError,
+  SignedOutError,
+  type Transport,
+} from './engine.ts';
+import type { Op } from './outbox.ts';
 
 /**
  * A pretend server for the package's tests: a workspace's issues and comments, a change log and
@@ -64,7 +71,13 @@ export class FakeServer {
   minSeq = 0;
   log: { seq: number; kind: string; id: string }[] = [];
   offline = false;
+  signedOut = false;
   calls: string[] = [];
+  /** Refuses operations this returns true for (validation, permissions). */
+  refuse: (op: Op) => boolean = () => false;
+  /** Fails operations with a server error this many more times. */
+  flaky = 0;
+  sent: Op[] = [];
 
   get seq() {
     return this.log.at(-1)?.seq ?? this.minSeq;
@@ -146,6 +159,51 @@ export class FakeServer {
         reachable();
         return [...this.comments.values()].filter((c) => c.issueId === issueId);
       },
+      send: async (op) => {
+        reachable();
+        if (this.signedOut) throw new SignedOutError('signed out');
+        if (this.flaky > 0) {
+          this.flaky--;
+          throw new Error('500');
+        }
+        if (this.refuse(op)) throw new RejectedError('refused');
+        this.sent.push(op);
+        return this.apply(op);
+      },
     };
+  }
+
+  /** What the real routes would do, roughly. */
+  private apply(op: Op): unknown {
+    switch (op.kind) {
+      case 'issue.create': {
+        const created = issue(op.issue.id, {
+          title: op.issue.title,
+          teamId: op.issue.teamId,
+          identifier: `T-${this.issues.size + 1}`,
+          number: this.issues.size + 1,
+        });
+        this.put(created);
+        return created;
+      }
+      case 'issue.update': {
+        const updated = op.ids.map((id) => {
+          const next = { ...this.issues.get(id)!, ...(op.patch as object) } as Issue;
+          this.put(next);
+          return next;
+        });
+        return op.ids.length === 1 ? updated[0] : updated;
+      }
+      case 'issue.trash':
+        for (const id of op.ids) this.remove(id);
+        return { ok: true };
+      case 'comment.create': {
+        const c = { ...comment(op.comment.id, op.comment.issueId, op.comment.body) };
+        this.putComment(c);
+        return c;
+      }
+      default:
+        return { ok: true };
+    }
   }
 }

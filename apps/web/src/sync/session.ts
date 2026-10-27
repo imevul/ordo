@@ -6,7 +6,10 @@ import {
   IdbStore,
   MemoryStore,
   OfflineError,
+  type Op,
+  RejectedError,
   ResyncError,
+  SignedOutError,
   type SyncStore,
   type Transport,
 } from '@ordo/sync';
@@ -22,6 +25,43 @@ import { ApiError, api, wsPath } from '../api/client.ts';
 const unreachable = (err: unknown) =>
   err instanceof ApiError &&
   (err.status === 0 || err.status === 502 || err.status === 503 || err.status === 504);
+
+/** Each queued change as the REST call it stands for. */
+function sendOp(slug: string, op: Op): Promise<unknown> {
+  const path = (p: string) => wsPath(slug, p);
+  switch (op.kind) {
+    case 'issue.create':
+      return api.post(path('/issues'), op.issue);
+    case 'issue.update':
+      return op.ids.length === 1
+        ? api.patch(path(`/issues/${op.ids[0]}`), op.patch)
+        : api.post(path('/issues/batch'), { ids: op.ids, patch: op.patch });
+    case 'issue.trash':
+      return api.post(path('/issues/batch-delete'), { ids: op.ids });
+    case 'comment.create':
+      return api.post(path(`/issues/${op.comment.issueId}/comments`), {
+        id: op.comment.id,
+        body: op.comment.body,
+        parentId: op.comment.parentId,
+      });
+    case 'comment.update':
+      return api.patch(path(`/comments/${op.id}`), { body: op.body });
+    case 'comment.delete':
+      return api.del(path(`/comments/${op.id}`));
+    case 'reaction': {
+      const p = path(`/comments/${op.commentId}/reactions/${encodeURIComponent(op.emoji)}`);
+      return op.on ? api.put(p) : api.del(p);
+    }
+    case 'relation.create':
+      return api.post(path(`/issues/${op.relation.issueId}/relations`), {
+        id: op.relation.id,
+        type: op.relation.type,
+        relatedIssueId: op.relation.relatedIssueId,
+      });
+    case 'relation.delete':
+      return api.del(path(`/relations/${op.id}`));
+  }
+}
 
 function transport(slug: string): Transport {
   const call = async <T>(fn: () => Promise<T>) => {
@@ -41,6 +81,21 @@ function transport(slug: string): Transport {
       call(() => api.get<SyncChanges>(wsPath(slug, `/sync/changes?since=${since}&epoch=${epoch}`))),
     comments: (issueId) =>
       call(() => api.get<Comment[]>(wsPath(slug, `/issues/${issueId}/comments`))),
+    send: async (op) => {
+      try {
+        return await sendOp(slug, op);
+      } catch (err) {
+        if (unreachable(err)) throw new OfflineError((err as Error).message);
+        if (!(err instanceof ApiError)) throw err;
+        if (err.status === 401) throw new SignedOutError(err.message);
+        // Deleting what's already gone is done.
+        if (err.status === 404 && /delete$/.test(op.kind)) return { ok: true };
+        // Refused for good (validation, permissions, gone); 5xx and 429 are worth another try.
+        if (err.status >= 400 && err.status < 500 && err.status !== 429)
+          throw new RejectedError(err.message);
+        throw err;
+      }
+    },
   };
 }
 
@@ -63,6 +118,7 @@ export async function startSync(slug: string, userId: string): Promise<SyncSessi
   const store = await openStore(name);
   const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(name) : null;
   const engine = new Engine({
+    userId,
     transport: transport(slug),
     store,
     onDelta: (delta) => channel?.postMessage(delta),

@@ -1,7 +1,8 @@
 import 'fake-indexeddb/auto';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { type Delta, Engine } from './engine.ts';
-import { dbName, IdbStore, MemoryStore, type SyncStore } from './store.ts';
+import { IdbStore } from './idb.ts';
+import { dbName, MemoryStore, type SyncStore } from './store.ts';
 import { comment, FakeServer, issue } from './testing.ts';
 
 const setup = (
@@ -12,6 +13,7 @@ const setup = (
   const deltas: Delta[] = [];
   const errors: unknown[] = [];
   const engine = new Engine({
+    userId: 'me',
     transport: server.transport(pageLimit),
     store,
     pageSize: 2,
@@ -110,13 +112,13 @@ describe('engine', () => {
     expect(engine.cursor!.epoch).toBe(2);
   });
 
-  it('runs one sync at a time, and once more for calls made meanwhile', async () => {
+  it('runs one sync at a time; calls made before it reads share its round', async () => {
     const { server, engine } = setup();
     await engine.sync();
     const before = server.calls.length;
     server.put(issue('a'));
     await Promise.all([engine.sync(), engine.sync(), engine.sync()]);
-    expect(server.calls.slice(before)).toHaveLength(2);
+    expect(server.calls.slice(before)).toHaveLength(1);
     expect(ids(engine)).toEqual(['a']);
   });
 
@@ -156,5 +158,144 @@ describe('engine', () => {
     await again.engine.open();
     expect(ids(again.engine)).toEqual(['a']);
     again.engine.close();
+  });
+});
+
+describe('outbox', () => {
+  const ready = async () => {
+    const t = setup();
+    t.server.put(issue('a'));
+    await t.engine.sync();
+    return t;
+  };
+
+  it('shows a change at once and sends it', async () => {
+    const { server, engine } = await ready();
+    const sent = engine.mutate({ kind: 'issue.update', ids: ['a'], patch: { title: 'Now' } });
+    expect(engine.issue('a')!.title).toBe('Now');
+    expect(engine.getState().waiting).toBe(1);
+    expect(await sent).toMatchObject({ id: 'a', title: 'Now' });
+    expect(engine.getState().waiting).toBe(0);
+    expect(server.issues.get('a')!.title).toBe('Now');
+  });
+
+  it('keeps changes made offline, in order, and sends them when back', async () => {
+    const { server, engine, store } = await ready();
+    server.offline = true;
+    expect(
+      await engine.mutate({
+        kind: 'issue.create',
+        issue: { id: 'n1', teamId: 'team-1', title: 'Offline' },
+      }),
+    ).toBeUndefined();
+    await engine.mutate({ kind: 'issue.update', ids: ['n1'], patch: { priority: 1 } });
+    await engine.mutate({
+      kind: 'comment.create',
+      comment: { id: 'c1', issueId: 'n1', body: 'note', parentId: null },
+    });
+    expect(engine.getState()).toMatchObject({ online: false, waiting: 3 });
+    expect(engine.issue('n1')).toMatchObject({
+      title: 'Offline',
+      priority: 1,
+      identifier: 'TEAM-1-…',
+    });
+    expect((await engine.commentsFor('n1')).map((c) => c.body)).toEqual(['note']);
+    expect(await store.outbox()).toHaveLength(3);
+
+    server.offline = false;
+    await engine.sync();
+    expect(server.sent.map((o) => o.kind)).toEqual([
+      'issue.create',
+      'issue.update',
+      'comment.create',
+    ]);
+    expect(engine.getState().waiting).toBe(0);
+    expect(engine.issue('n1')!.number).toBeGreaterThan(0);
+    expect(await store.outbox()).toEqual([]);
+  });
+
+  it('rebases incoming changes under what is waiting', async () => {
+    const { server, engine } = await ready();
+    server.offline = true;
+    await engine.mutate({ kind: 'issue.update', ids: ['a'], patch: { priority: 3 } });
+    // Someone else renames it meanwhile; the change arrives before this one is sent.
+    server.put(issue('a', { title: 'Renamed elsewhere' }));
+    server.offline = false;
+    const changes = await server.transport().changes(engine.cursor!.seq, 1);
+    engine.receive({ issues: changes.issues });
+    expect(engine.issue('a')).toMatchObject({ title: 'Renamed elsewhere', priority: 3 });
+  });
+
+  it('drops a refused change, and what depends on it, and keeps them to show', async () => {
+    const { server, engine } = await ready();
+    server.refuse = (op) => op.kind === 'issue.create';
+    server.offline = true;
+    await engine.mutate({
+      kind: 'issue.create',
+      issue: { id: 'bad', teamId: 'team-1', title: 'Nope' },
+    });
+    await engine.mutate({
+      kind: 'comment.create',
+      comment: { id: 'c9', issueId: 'bad', body: 'my long text', parentId: null },
+    });
+    await engine.mutate({ kind: 'issue.update', ids: ['a'], patch: { title: 'Fine' } });
+    server.offline = false;
+    await engine.sync();
+    const { failed, waiting } = engine.getState();
+    expect(waiting).toBe(0);
+    expect(failed.map((f) => f.op.kind)).toEqual(['issue.create', 'comment.create']);
+    expect(failed[1]!.op).toMatchObject({ comment: { body: 'my long text' } });
+    expect(engine.issue('bad')).toBeUndefined();
+    expect(server.issues.get('a')!.title).toBe('Fine');
+    await engine.dismiss(failed[0]!.key);
+    expect(engine.getState().failed).toHaveLength(1);
+  });
+
+  it('rejects the change someone waits on when the server refuses it', async () => {
+    const { server, engine } = await ready();
+    server.refuse = () => true;
+    await expect(engine.mutate({ kind: 'issue.trash', ids: ['a'] })).rejects.toThrow('refused');
+    expect(engine.issue('a')).toBeDefined();
+  });
+
+  it('tries again after server errors, and stops while signed out', async () => {
+    vi.useFakeTimers();
+    try {
+      const { server, engine } = await ready();
+      server.flaky = 1;
+      const sent = engine.mutate({ kind: 'issue.update', ids: ['a'], patch: { priority: 2 } });
+      expect(await sent).toBeUndefined();
+      expect(engine.getState().waiting).toBe(1);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(engine.getState().waiting).toBe(0);
+
+      server.signedOut = true;
+      await engine.mutate({ kind: 'issue.update', ids: ['a'], patch: { priority: 3 } });
+      expect(engine.getState()).toMatchObject({ signedOut: true, waiting: 1 });
+      server.signedOut = false;
+      await engine.sync();
+      expect(engine.getState()).toMatchObject({ signedOut: false, waiting: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets one tab send what another queued', async () => {
+    const leader = await ready();
+    const follower = setup(leader.server, leader.store);
+    follower.engine.leader = false;
+    await follower.engine.open();
+    expect(
+      await follower.engine.mutate({
+        kind: 'issue.update',
+        ids: ['a'],
+        patch: { title: 'From B' },
+      }),
+    ).toBeUndefined();
+    expect(follower.engine.issue('a')!.title).toBe('From B');
+    expect(leader.server.sent).toEqual([]);
+    for (const d of follower.deltas) leader.engine.receive(d);
+    await vi.waitFor(() => expect(leader.server.sent).toHaveLength(1));
+    expect(leader.server.issues.get('a')!.title).toBe('From B');
   });
 });

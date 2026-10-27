@@ -25,7 +25,7 @@ import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tansta
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { t } from '../i18n/index.ts';
-import { useLocalIssues, useSync, useSyncState } from '../sync/context.tsx';
+import { useLocalIssues, useSync, useSyncEngine, useSyncState } from '../sync/context.tsx';
 import { ApiError, api, upload, wsPath } from './client.ts';
 
 export const keys = {
@@ -172,11 +172,19 @@ export function useComments(slug: string, issueId: string | undefined) {
     enabled: !!issueId,
   });
   const [saved, setSaved] = useState<Comment[] | undefined>();
+  // Re-reads when the outbox changes, so queued comments show.
+  const version = useSyncState()?.version;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `version` marks a changed outbox
   useEffect(() => {
     setSaved(undefined);
     if (engine && issueId && !remote.data) void engine.commentsFor(issueId).then(setSaved);
-  }, [engine, issueId, remote.data]);
-  return { data: remote.data ?? saved, isLoading: remote.isLoading && !saved };
+  }, [engine, issueId, remote.data, version]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `version` marks a changed outbox
+  const data = useMemo(() => {
+    const base = remote.data ?? saved;
+    return engine && issueId && base ? engine.overlayComments(issueId, base) : base;
+  }, [engine, issueId, remote.data, saved, version]);
+  return { data, isLoading: remote.isLoading && !data };
 }
 
 export const useHistory = (slug: string, issueId: string | undefined) =>
@@ -266,9 +274,12 @@ const onError = (err: unknown) =>
 
 export function useUpdateIssue(slug: string) {
   const qc = useQueryClient();
+  const engine = useSyncEngine();
   return useMutation({
     mutationFn: ({ id, patch }: { id: string; patch: UpdateIssueInput }) =>
-      api.patch<Issue>(wsPath(slug, `/issues/${id}`), patch),
+      engine
+        ? engine.mutate({ kind: 'issue.update', ids: [id], patch })
+        : api.patch<Issue>(wsPath(slug, `/issues/${id}`), patch),
     onMutate: async ({ id, patch }) => {
       await qc.cancelQueries({ queryKey: ['ws', slug, 'issues'] });
       patchCaches(qc, slug, [id], patch);
@@ -283,9 +294,12 @@ export function useUpdateIssue(slug: string) {
 
 export function useBatchUpdateIssues(slug: string) {
   const qc = useQueryClient();
+  const engine = useSyncEngine();
   return useMutation({
     mutationFn: ({ ids, patch }: { ids: string[]; patch: UpdateIssueInput }) =>
-      api.post<Issue[]>(wsPath(slug, '/issues/batch'), { ids, patch }),
+      engine
+        ? engine.mutate({ kind: 'issue.update', ids, patch })
+        : api.post<Issue[]>(wsPath(slug, '/issues/batch'), { ids, patch }),
     onMutate: async ({ ids, patch }) => {
       await qc.cancelQueries({ queryKey: ['ws', slug, 'issues'] });
       patchCaches(qc, slug, ids, patch);
@@ -297,8 +311,15 @@ export function useBatchUpdateIssues(slug: string) {
 
 export function useCreateIssue(slug: string) {
   const qc = useQueryClient();
+  const engine = useSyncEngine();
   return useMutation({
-    mutationFn: (input: CreateIssueInput) => api.post<Issue>(wsPath(slug, '/issues'), input),
+    mutationFn: async (input: CreateIssueInput): Promise<Issue> => {
+      if (!engine) return api.post<Issue>(wsPath(slug, '/issues'), input);
+      // Its id is ours to choose, so it can be shown (and changed) before the server numbers it.
+      const id = crypto.randomUUID();
+      const sent = await engine.mutate({ kind: 'issue.create', issue: { ...input, id } });
+      return (sent as Issue | undefined) ?? engine.issue(id)!;
+    },
     onError,
     onSuccess: () => invalidateIssues(qc, slug),
   });
@@ -306,8 +327,12 @@ export function useCreateIssue(slug: string) {
 
 export function useTrashIssues(slug: string) {
   const qc = useQueryClient();
+  const engine = useSyncEngine();
   return useMutation({
-    mutationFn: (ids: string[]) => api.post(wsPath(slug, '/issues/batch-delete'), { ids }),
+    mutationFn: (ids: string[]) =>
+      engine
+        ? engine.mutate({ kind: 'issue.trash', ids })
+        : api.post(wsPath(slug, '/issues/batch-delete'), { ids }),
     onMutate: async (ids) => {
       const set = new Set(ids);
       qc.setQueriesData<Issue[]>({ queryKey: ['ws', slug, 'issues'] }, (list) =>
@@ -323,6 +348,7 @@ export function useTrashIssues(slug: string) {
 /** Adds or removes the signed-in user's reaction, showing it at once. */
 export function useToggleReaction(slug: string, issueId: string, userId: string) {
   const qc = useQueryClient();
+  const engine = useSyncEngine();
   const key = keys.comments(slug, issueId);
   const apply = (commentId: string, update: (r: CommentReaction[]) => CommentReaction[]) =>
     qc.setQueryData<Comment[]>(key, (list) =>
@@ -330,6 +356,10 @@ export function useToggleReaction(slug: string, issueId: string, userId: string)
     );
   return useMutation({
     mutationFn: ({ commentId, emoji, on }: { commentId: string; emoji: string; on: boolean }) => {
+      if (engine)
+        return engine.mutate({ kind: 'reaction', commentId, issueId, emoji, on }) as Promise<
+          CommentReaction[] | undefined
+        >;
       const path = wsPath(slug, `/comments/${commentId}/reactions/${encodeURIComponent(emoji)}`);
       return on ? api.put<CommentReaction[]>(path) : api.del<CommentReaction[]>(path);
     },
@@ -349,7 +379,10 @@ export function useToggleReaction(slug: string, issueId: string, userId: string)
       });
       return { before };
     },
-    onSuccess: (reactions, { commentId }) => apply(commentId, () => reactions),
+    // Queued (offline) leaves the optimistic version showing.
+    onSuccess: (reactions, { commentId }) => {
+      if (reactions) apply(commentId, () => reactions);
+    },
     onError: (err, _vars, saved) => {
       if (saved?.before) qc.setQueryData(key, saved.before);
       onError(err);

@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
-import { dbName, deleteLocalCopies, IdbStore, MemoryStore, type SyncStore } from './store.ts';
+import { deleteLocalCopies, IdbStore } from './idb.ts';
+import { dbName, MemoryStore, type SyncStore } from './store.ts';
 import { comment, issue } from './testing.ts';
 
 const meta = { workspaceId: 'ws', seq: 3, epoch: 1, savedAt: '2026-01-01T00:00:00.000Z' };

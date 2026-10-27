@@ -31,6 +31,7 @@ import { signOut } from '../lib/signOut.ts';
 import { readPref, ui, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { OrdoMark, ProjectIcon, TeamIcon } from './icons.tsx';
+import { SyncStatus } from './SyncStatus.tsx';
 import { Popover } from './ui/Popover.tsx';
 
 function FavoriteLink({ fav }: { fav: Favorite }) {
@@ -347,6 +348,7 @@ export function Sidebar({
           : status === 'connecting'
             ? t('shell.sidebar.connecting')
             : t('shell.sidebar.offline')}
+        <SyncStatus />
         <button
           type="button"
           className="ml-auto hover:text-text"

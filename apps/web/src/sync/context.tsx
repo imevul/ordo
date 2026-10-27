@@ -78,6 +78,12 @@ export function SyncProvider({
 
 export const useSync = () => useContext(Ctx);
 
+/** The engine when this workspace has a local copy: changes then go through its outbox. */
+export function useSyncEngine(): Engine | null {
+  const sync = useSync();
+  return sync.status === 'on' ? sync.engine : null;
+}
+
 const noSubscribe = () => () => {};
 
 /** The engine's state, re-rendering on every change (null without a copy). */

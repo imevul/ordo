@@ -137,4 +137,28 @@ export default {
     continueWith: 'Fortsett med {name}',
     pageNotFound: 'Det finnes ingenting på denne adressen.',
   },
+  sync: {
+    waiting: { one: '{count} venter', other: '{count} venter' },
+    unsaved: { one: '{count} ulagret', other: '{count} ulagrede' },
+    title: 'Endringer som ikke kunne lagres',
+    description:
+      'Serveren avviste dem, så de vises ikke lenger. Kopier det du vil beholde, og forkast dem så.',
+    none: '// ingenting igjen',
+    copy: 'Kopier',
+    discard: 'Forkast',
+    op: {
+      issueCreate: 'Ny sak «{title}»',
+      issueUpdate: { one: 'Endring av {id}', other: 'Endring av {count} saker' },
+      issueTrash: {
+        one: 'Flytting av {id} til papirkurven',
+        other: 'Flytting av {count} saker til papirkurven',
+      },
+      commentCreate: 'Kommentar på {id}',
+      commentUpdate: 'Redigering av en kommentar på {id}',
+      commentDelete: 'Sletting av en kommentar på {id}',
+      reaction: 'Reaksjon {emoji} på {id}',
+      relationCreate: 'Relasjon på {id}',
+      relationDelete: 'Fjerning av en relasjon',
+    },
+  },
 } satisfies Translation<Catalog['shell']>;
