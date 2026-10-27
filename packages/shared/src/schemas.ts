@@ -209,6 +209,16 @@ export const updateTeamSchema = z.object({
   private: z.boolean().optional(),
   defaultStateId: id.nullish(),
   gitAutomation: z.partialRecord(z.enum(GIT_EVENTS), z.union([id, z.literal('none')])).optional(),
+  slaHours: z
+    .partialRecord(
+      z.enum(['1', '2', '3', '4']),
+      z
+        .number()
+        .int()
+        .min(1)
+        .max(24 * 365),
+    )
+    .optional(),
   autoArchiveMonths: z
     .union([z.literal(1), z.literal(3), z.literal(6), z.literal(9), z.literal(12)])
     .nullish(),

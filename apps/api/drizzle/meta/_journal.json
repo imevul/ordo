@@ -176,6 +176,13 @@
       "when": 1793060649720,
       "tag": "0024_recurring_issues",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793060900655,
+      "tag": "0025_sla",
+      "breakpoints": true
     }
   ]
 }

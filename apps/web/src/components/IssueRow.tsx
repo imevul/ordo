@@ -2,7 +2,7 @@ import type { Issue, UpdateIssueInput } from '@ordo/shared';
 import { Link } from '@tanstack/react-router';
 import { GitBranch } from 'lucide-react';
 import { memo } from 'react';
-import { dueState, shortDate } from '../lib/format.ts';
+import { dueState, shortDate, slaState } from '../lib/format.ts';
 import { isDone } from '../lib/issues.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { ProjectIcon } from './icons.tsx';
@@ -31,6 +31,7 @@ export const IssueRow = memo(function IssueRow({
   const labels = issue.labelIds.map((id) => ws.labelById.get(id)).filter(Boolean);
   const project = issue.projectId ? ws.projectById.get(issue.projectId) : null;
   const due = dueState(issue.dueDate, isDone(ws, issue));
+  const sla = slaState(issue, isDone(ws, issue));
   const team = ws.teamById.get(issue.teamId);
 
   return (
@@ -87,6 +88,14 @@ export const IssueRow = memo(function IssueRow({
           <span className="tag max-w-40">
             <ProjectIcon color={project.color} size={11} />
             <span className="truncate">{project.name}</span>
+          </span>
+        )}
+        {sla && (
+          <span
+            className={`tag font-mono ${sla.state === 'breached' ? 'text-error' : sla.state === 'risk' ? 'text-warning' : ''}`}
+            title={`SLA ${sla.state === 'breached' ? 'ran out' : 'runs out'} ${new Date(issue.slaBreachesAt!).toLocaleString()}`}
+          >
+            {sla.label}
           </span>
         )}
         {issue.dueDate && (

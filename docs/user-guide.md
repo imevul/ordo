@@ -102,6 +102,10 @@ in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L
 - **Move to another team** from the _Team_ property — the issue gets a new identifier and the closest
   matching status.
 - **Delete** moves the issue to the **Trash**, where anyone can restore it and admins can delete it for good.
+- **SLAs** — a team can give each priority a number of hours to resolve (team settings → _SLAs_, e.g. urgent 24, high
+  168). New issues — and issues whose priority or team changes — get a deadline counted from when they were created.
+  Lists show the time left (amber in the last quarter, red once it ran out) and the issue page shows it under _SLA_;
+  when an SLA runs out, the assignee and subscribers are notified once. Done and canceled issues have met theirs.
 - **Archive** (in the `…` menu) takes an issue out of lists and boards without deleting it: it still opens by link,
   shows up in search (tagged _archived_) and under the team's **Archived** tab. _Unarchive_ brings it back, and so
   does reopening it. Teams can archive closed issues automatically: team settings → _Auto-archive_, 1 to 12 months

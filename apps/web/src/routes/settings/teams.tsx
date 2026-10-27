@@ -7,6 +7,8 @@ import {
   type GitAutomation,
   LABEL_COLORS,
   MEMBER_ROLE_LABELS,
+  priorityLabel,
+  type SlaHours,
   STATE_TYPE_LABELS,
   STATE_TYPES,
   type StateType,
@@ -20,7 +22,7 @@ import { type FormEvent, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
 import { useWsMutation } from '../../api/queries.ts';
-import { StatusIcon, TeamIcon } from '../../components/icons.tsx';
+import { PriorityIcon, StatusIcon, TeamIcon } from '../../components/icons.tsx';
 import { Picker } from '../../components/properties.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { ConfirmModal, confirmDialog } from '../../components/ui/Modal.tsx';
@@ -418,6 +420,7 @@ export function TeamSettings({ team }: { team: Team }) {
           ))}
         </SettingsCard>
 
+        <SlaCard team={team} onSave={(slaHours) => save.mutate({ slaHours })} />
         {team.cyclesEnabled && (
           <CycleAutomationCard
             team={team}
@@ -553,6 +556,51 @@ function TeamMembers({ team }: { team: Team }) {
 }
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** How long each priority may stay open before it misses its SLA. */
+function SlaCard({ team, onSave }: { team: Team; onSave: (slaHours: SlaHours) => void }) {
+  const [draft, setDraft] = useState<Record<string, string>>(() =>
+    Object.fromEntries(['1', '2', '3', '4'].map((p) => [p, String(team.slaHours[p as '1'] ?? '')])),
+  );
+  const commit = () => {
+    const next: SlaHours = {};
+    for (const [p, v] of Object.entries(draft)) {
+      const n = Number(v);
+      if (v.trim() && Number.isInteger(n) && n > 0) next[p as '1'] = n;
+    }
+    if (JSON.stringify(next) !== JSON.stringify(team.slaHours)) onSave(next);
+  };
+  return (
+    <SettingsCard
+      title="SLAs"
+      description="Hours an issue may stay open, counted from when it was created, by priority. Issues show the time left; assignees and subscribers hear when an SLA runs out. Applies to new issues and priority changes."
+    >
+      {(['1', '2', '3', '4'] as const).map((p) => (
+        <label
+          key={p}
+          className="flex items-center justify-between border-b border-border-soft py-2 text-[13.5px]"
+        >
+          <span className="inline-flex items-center gap-2">
+            <PriorityIcon priority={Number(p)} /> {priorityLabel(Number(p))}
+          </span>
+          <span className="flex items-center gap-2 font-mono text-[12px] text-index">
+            <input
+              type="number"
+              min={1}
+              className="input h-8 w-24 text-right font-mono"
+              placeholder="none"
+              value={draft[p]}
+              onChange={(e) => setDraft({ ...draft, [p]: e.target.value })}
+              onBlur={commit}
+              onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
+            />
+            hours
+          </span>
+        </label>
+      ))}
+    </SettingsCard>
+  );
+}
 
 /** Cycles that plan themselves and carry unfinished work over. */
 function CycleAutomationCard({

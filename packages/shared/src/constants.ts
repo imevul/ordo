@@ -193,6 +193,7 @@ export const NOTIFICATION_TYPES = [
   'issue_status_changed',
   'issue_priority_urgent',
   'comment_reaction',
+  'issue_sla_breached',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
