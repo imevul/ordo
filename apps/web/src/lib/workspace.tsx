@@ -2,6 +2,7 @@ import type { Bootstrap, Cycle, Label, Me, Project, Team, View, WorkflowState } 
 import { accentVariables, isAdminRole } from '@ordo/shared';
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react';
 import type { Person } from '../components/ui/ActorName.tsx';
+import { useTheme } from './theme.ts';
 
 export interface WorkspaceData extends Bootstrap {
   slug: string;
@@ -114,12 +115,13 @@ export const cycleName = (c: Cycle) => c.name || `Cycle ${c.number}`;
  * (sign-in pages don't know the workspace).
  */
 export function useAccent(color: string | null | undefined) {
+  const { mode } = useTheme();
   useEffect(() => {
     const root = document.documentElement.style;
-    const vars = accentVariables(color);
+    const vars = accentVariables(color, mode);
     for (const [name, value] of Object.entries(vars)) root.setProperty(name, value);
     return () => {
       for (const name of Object.keys(vars)) root.removeProperty(name);
     };
-  }, [color]);
+  }, [color, mode]);
 }

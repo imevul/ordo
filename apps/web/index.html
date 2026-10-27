@@ -3,8 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="dark light" />
     <meta name="theme-color" content="#09090b" />
+    <script>
+      // The light/dark choice (src/lib/theme.ts), applied before the first paint.
+      (function () {
+        var pref = 'system';
+        try {
+          pref = JSON.parse(localStorage.getItem('ordo:theme')) || 'system';
+        } catch (e) {}
+        var light =
+          pref === 'light' ||
+          (pref === 'system' && matchMedia('(prefers-color-scheme: light)').matches);
+        document.documentElement.dataset.theme = light ? 'light' : 'dark';
+        if (light) document.querySelector('meta[name="theme-color"]').content = '#fbf9fa';
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />

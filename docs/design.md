@@ -2,7 +2,8 @@
 
 Ordo's UI uses the **Hotline Pink** design system — a dark synthwave palette with a clean, digital HUD feel.
 Professional first; the neon is an accent, not the wallpaper. Tokens and component classes live in
-[`apps/web/src/styles/app.css`](../apps/web/src/styles/app.css).
+[`apps/web/src/styles/app.css`](../apps/web/src/styles/app.css). Ordo adds a [light theme](#light-theme) built from
+the same tokens.
 
 ## Balance
 
@@ -34,6 +35,35 @@ Hotline Pink is the default. A workspace can pick another accent (Settings → G
 `useAccent` sets them on the document root while the workspace is open; sign-in pages stay pink. So: never hard-code
 `#ff1493` or friends in components — use the tokens (`bg-primary`, `text-on-primary`, `accent-primary`,
 `var(--color-primary)`), or the accent won't follow. Team colours are data and keep their own colour.
+
+## Light theme
+
+Hotline Pink is a dark system; the light theme is Ordo's own translation of it, not part of the original. Same
+shapes, type and idioms; the balance becomes ~80% paper, and the pink gets deeper so it can carry small text.
+
+| Token                           | Light value                       | Why                                                                  |
+| ------------------------------- | --------------------------------- | -------------------------------------------------------------------- |
+| `bg` / `surface` / `raised`     | `#fbf9fa` / `#f5f0f2` / `#ffffff` | Faintly pink paper; popovers and modals are white                    |
+| `primary`                       | `#cc006f`                         | `#ff1493` is 3.2:1 on paper; this is 4.8:1 on `surface`, like labels |
+| `highlight` / `deep`            | `#a30059` / `#7a0043`             | Links go _darker_ than primary on paper (lighter on charcoal)        |
+| `on-primary`                    | `#ffffff`                         |                                                                      |
+| `cyan`                          | `#0b8a8f`                         | Focus rings need 3:1; `#2de2e6` is 1.4:1 on paper                    |
+| `text` / `muted` / `index`      | `#1d1117` / `#5d4c55` / `#6e5e67` | All ≥ 4.5:1 on `surface`                                             |
+| `border` / `border-soft`        | `#d9c9d2` / `#ede3e8`             |                                                                      |
+| `success` / `warning` / `error` | `#15803d` / `#c2610c` / `#dc2626` | Deeper, so status icons reach 3:1                                    |
+| `chart-2`                       | `#2563eb`                         | Re-checked for color-blind separation from `primary` on paper        |
+- The theme is a choice per browser — System (default), Light or Dark — stored as `ordo:theme` and applied by an
+  inline script in `index.html` before the first paint, so there's no flash. `src/lib/theme.ts` owns it at runtime;
+  the resolved theme is `data-theme="light|dark"` on `<html>`.
+- Components never branch on the theme: the light values are the same tokens, overridden under
+  `:root[data-theme="light"]`. Hover and selection washes are `--wash-1/2/3` (the text colour at a few percent) instead
+  of `white/5`, so use `bg-text/5` or the washes, never `bg-white/…`.
+- Glows are mostly put away in light (`--glow-chip: none`, softer brand and LED glows); glows on paper look like
+  smudges.
+- Workspace accents: `accentVariables(color, 'light')` deepens the accent until it reaches 4.5:1 on the surface and
+  tints the paper and neutrals with its hue.
+- User-chosen colours (statuses, projects) pass through `useThemedColor`, which darkens ones under 3:1 on paper —
+  a cyan or yellow label picked against charcoal would vanish otherwise. Label dots get a faint outline instead.
 
 ## Shape
 
@@ -74,6 +104,5 @@ series.
 ## Not adopted (yet)
 
 - The website's scanline overlay — too busy behind dense lists.
-- A light theme — Hotline Pink is dark-only.
 - User-chosen colors (labels, teams, projects, workflow statuses) are data and may fall outside the palette;
   the defaults are drawn from it.

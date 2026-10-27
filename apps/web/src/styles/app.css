@@ -2,6 +2,7 @@
  * Ordo — styled with the Hotline Pink design system.
  * ~80% charcoal, ~17% pink, ~3% cyan. If a screen looks pink, it is too pink.
  * No rounded corners anywhere; shape comes from chamfers (clip-path).
+ * The light theme (html[data-theme="light"]) swaps the tokens; components only use tokens.
  */
 @import "tailwindcss";
 @import "@fontsource-variable/space-grotesk";
@@ -47,6 +48,48 @@
   color-scheme: dark;
   --dur: 180ms;
   --glow-primary: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  /* Faint washes for hover and selection: the text colour over whatever is underneath. */
+  --wash-1: color-mix(in srgb, var(--color-text) 2%, transparent);
+  --wash-2: color-mix(in srgb, var(--color-text) 3%, transparent);
+  --wash-3: color-mix(in srgb, var(--color-text) 5%, transparent);
+  --grid-line: color-mix(in srgb, var(--color-text) 2.5%, transparent);
+  --glow-chip: 0 0 10px currentColor;
+}
+
+/*
+ * Light Hotline Pink: paper instead of charcoal, the same pink deepened so small text in it
+ * reads (4.5:1 on surface), cyan darkened for focus rings, glows mostly put away. Workspace
+ * accents get the same treatment from accentVariables(color, 'light').
+ */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-bg: #fbf9fa;
+  --color-surface: #f5f0f2;
+  --color-raised: #ffffff;
+  --color-primary: #cc006f;
+  --color-highlight: #a30059;
+  --color-magenta: #eb009f;
+  --color-deep: #7a0043;
+  --color-on-primary: #ffffff;
+  --color-cyan: #0b8a8f;
+  --color-text: #1d1117;
+  --color-muted: #5d4c55;
+  --color-index: #6e5e67;
+  --color-border: #d9c9d2;
+  --color-border-soft: #ede3e8;
+  --color-success: #15803d;
+  --color-warning: #c2610c;
+  --color-error: #dc2626;
+  --color-chart-2: #2563eb;
+  --shadow-glow-mark: 0 0 10px color-mix(in srgb, var(--color-primary) 30%, transparent);
+  --shadow-glow-nav: 0 0 8px color-mix(in srgb, var(--color-primary) 45%, transparent);
+  --shadow-glow-led: 0 0 4px color-mix(in srgb, var(--color-primary) 45%, transparent);
+  --glow-primary: color-mix(in srgb, var(--color-primary) 7%, transparent);
+  --wash-1: color-mix(in srgb, var(--color-text) 3%, transparent);
+  --wash-2: color-mix(in srgb, var(--color-text) 4%, transparent);
+  --wash-3: color-mix(in srgb, var(--color-text) 7%, transparent);
+  --grid-line: color-mix(in srgb, var(--color-text) 4%, transparent);
+  --glow-chip: none;
 }
 
 @layer base {
@@ -113,6 +156,9 @@
   input[type="date"]::-webkit-calendar-picker-indicator {
     filter: invert(0.8);
   }
+  [data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: none;
+  }
 }
 
 @layer components {
@@ -125,9 +171,13 @@
         color-mix(in srgb, var(--color-magenta) 10%, transparent),
         transparent 60%
       ),
-      radial-gradient(50rem 30rem at 0% 100%, rgb(45 226 230 / 0.04), transparent 60%),
-      linear-gradient(rgb(255 255 255 / 0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(255 255 255 / 0.025) 1px, transparent 1px);
+      radial-gradient(
+        50rem 30rem at 0% 100%,
+        color-mix(in srgb, var(--color-cyan) 4%, transparent),
+        transparent 60%
+      ),
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
     background-size:
       auto,
       auto,
@@ -255,7 +305,7 @@
   }
   .btn-danger:hover:not(:disabled) {
     box-shadow: inset 0 0 0 1px var(--color-error);
-    background: rgb(239 68 68 / 0.08);
+    background: color-mix(in srgb, var(--color-error) 8%, transparent);
   }
   .btn .arrow {
     transition: transform var(--dur) var(--ease-hud);
@@ -273,7 +323,7 @@
     padding: 0 0.5rem;
     font-size: 12px;
     color: var(--color-muted);
-    background: rgb(255 255 255 / 0.02);
+    background: var(--wash-1);
     box-shadow: inset 0 0 0 1px var(--color-border-soft);
     cursor: pointer;
     white-space: nowrap;
@@ -362,7 +412,7 @@
     width: 7px;
     height: 7px;
     background: currentColor;
-    box-shadow: 0 0 10px currentColor;
+    box-shadow: var(--glow-chip);
   }
 
   .tag {
@@ -374,7 +424,7 @@
     font-size: 11.5px;
     color: var(--color-muted);
     border: 1px solid var(--color-border-soft);
-    background: rgb(255 255 255 / 0.02);
+    background: var(--wash-1);
     white-space: nowrap;
   }
   .reaction {
@@ -385,7 +435,7 @@
     padding: 0 0.45rem;
     font-size: 13px;
     border: 1px solid var(--color-border-soft);
-    background: rgb(255 255 255 / 0.02);
+    background: var(--wash-1);
     transition: border-color 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
   }
   .reaction:hover {
@@ -407,6 +457,10 @@
     width: 7px;
     height: 7px;
     flex: none;
+  }
+  /* Label colours are picked against charcoal; an outline keeps pale ones visible on paper. */
+  [data-theme="light"] .tag-dot {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 18%, transparent);
   }
 
   .kbd {
@@ -436,7 +490,7 @@
       color var(--dur) var(--ease-hud);
   }
   .nav-item:hover {
-    background: rgb(255 255 255 / 0.03);
+    background: var(--wash-2);
     color: var(--color-text);
   }
   .nav-item[data-status="active"],
@@ -453,10 +507,10 @@
     transition: background-color 90ms linear;
   }
   .row:hover {
-    background: rgb(255 255 255 / 0.025);
+    background: var(--wash-2);
   }
   .row[data-focused="true"] {
-    background: rgb(255 255 255 / 0.045);
+    background: var(--wash-3);
   }
   .row[data-selected="true"] {
     background: var(--glow-primary);
@@ -480,7 +534,7 @@
   .menu-item[data-active="true"],
   .menu-item[data-selected="true"],
   .menu-item[aria-selected="true"] {
-    background: rgb(255 255 255 / 0.05);
+    background: var(--wash-3);
     color: var(--color-text);
   }
 
@@ -726,7 +780,7 @@
   font-size: 13.5px;
 }
 [cmdk-item][data-selected="true"] {
-  background: rgb(255 255 255 / 0.05);
+  background: var(--wash-3);
   color: var(--color-text);
 }
 [cmdk-item][data-selected="true"] svg {

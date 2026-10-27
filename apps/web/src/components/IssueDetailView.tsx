@@ -634,7 +634,7 @@ export function IssueDetailView({
               trigger={
                 <button
                   type="button"
-                  className="prop w-full justify-start bg-transparent shadow-none hover:bg-white/[0.03]"
+                  className="prop w-full justify-start bg-transparent shadow-none hover:bg-text/[0.03]"
                 >
                   <TeamIcon color={team.color} label={team.key} size={14} />
                   {team.name}
@@ -650,7 +650,7 @@ export function IssueDetailView({
                 trigger={
                   <button
                     type="button"
-                    className="prop min-w-0 flex-1 justify-start bg-transparent shadow-none hover:bg-white/[0.03]"
+                    className="prop min-w-0 flex-1 justify-start bg-transparent shadow-none hover:bg-text/[0.03]"
                   >
                     <span className="truncate">
                       {issue.parent ? issue.parent.identifier : 'Set parent'}

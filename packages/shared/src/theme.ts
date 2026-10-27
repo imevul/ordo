@@ -69,15 +69,46 @@ export function contrast(a: string, b: string) {
   return (x + 0.05) / (y + 0.05);
 }
 
+/** Light or dark: the resolved theme, after "follow the system" is applied. */
+export type ThemeMode = 'dark' | 'light';
+
 /** The background accents sit on. Accents below 3:1 against it are hard to see. */
 export const THEME_BACKGROUND = '#09090b';
+
+/** The light theme's panel fill: the darkest ground text sits on, so contrast is checked here. */
+export const LIGHT_SURFACE = '#f5f0f2';
+
+const LIGHT_TEXT = '#1c1118';
+
+/**
+ * `color`, or the same hue made darker until it reaches `min`:1 against `background`. For
+ * user-chosen colours (labels, statuses, projects) that were picked against the dark theme.
+ * Anything that isn't a hex colour (a CSS variable, say) is returned as it is.
+ */
+export function readableOn(color: string, background: string, min = 3): string {
+  if (!HEX_COLOR.test(color) || contrast(color, background) >= min) return color;
+  const [h, s, l] = toHsl(toRgb(color));
+  for (let next = l - 2; next > 0; next -= 2) {
+    const candidate = hsl(h, s, next);
+    if (contrast(candidate, background) >= min) return candidate;
+  }
+  return hsl(h, s, 0);
+}
+
+/** A data colour as it should be drawn in `mode`: the light theme deepens faint ones. */
+export const themedColor = (color: string, mode: ThemeMode) =>
+  mode === 'light' ? readableOn(color, LIGHT_SURFACE) : color;
 
 /**
  * CSS custom properties for an accent, or {} for Hotline Pink (app.css already has it). Keys are
  * the variable names set on the document root.
  */
-export function accentVariables(color: string | null | undefined): Record<string, string> {
+export function accentVariables(
+  color: string | null | undefined,
+  mode: ThemeMode = 'dark',
+): Record<string, string> {
   if (!color || !HEX_COLOR.test(color) || color.toLowerCase() === DEFAULT_ACCENT) return {};
+  if (mode === 'light') return lightAccentVariables(color.toLowerCase());
   const [h, s, l] = toHsl(toRgb(color));
   const onPrimary =
     contrast(color, THEME_BACKGROUND) >= contrast(color, '#ffffff') ? THEME_BACKGROUND : '#ffffff';
@@ -94,5 +125,32 @@ export function accentVariables(color: string | null | undefined): Record<string
     '--color-border': hsl(h, 20, 24),
     '--color-border-soft': hsl(h, 15, 14),
     '--color-raised': hsl(h, 6, 10),
+  };
+}
+
+/**
+ * The light theme's palette for an accent. Pink text on a pale ground needs a deeper pink than
+ * on charcoal, so the accent is darkened until small text in it reads (4.5:1); links go a step
+ * deeper, and the neutrals carry the hue as they do in the dark theme.
+ */
+function lightAccentVariables(color: string): Record<string, string> {
+  const [h] = toHsl(toRgb(color));
+  // The paper is tinted with the accent's hue, so check the accent against that paper.
+  const surface = hsl(h, 18, 95);
+  const primary = readableOn(color, surface, 4.5);
+  const [, s, l] = toHsl(toRgb(primary));
+  return {
+    '--color-primary': primary,
+    '--color-highlight': hsl(h, s, Math.max(l - 8, 15)),
+    '--color-magenta': hsl(h - 8, s, Math.max(Math.min(l + 6, 60), 40)),
+    '--color-deep': hsl(h, s, Math.max(l - 16, 12)),
+    '--color-on-primary': contrast(primary, '#ffffff') >= 4.5 ? '#ffffff' : LIGHT_TEXT,
+    '--color-bg': hsl(h, 25, 98),
+    '--color-surface': surface,
+    '--color-text': hsl(h, 25, 9),
+    '--color-muted': hsl(h, 10, 33),
+    '--color-index': hsl(h, 8, 40),
+    '--color-border': hsl(h, 18, 82),
+    '--color-border-soft': hsl(h, 20, 91),
   };
 }

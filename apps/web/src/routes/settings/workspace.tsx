@@ -38,6 +38,7 @@ import { ActorName } from '../../components/ui/ActorName.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime, shortDate } from '../../lib/format.ts';
+import { useTheme } from '../../lib/theme.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
@@ -178,9 +179,13 @@ export function WorkspaceSection() {
   );
 }
 
-/** The workspace's accent colour: presets, or any colour that reads on the dark background. */
+/**
+ * The workspace's accent colour: presets, or any colour that reads on the dark background. The
+ * light theme deepens it on its own (accentVariables), so only the dark background is checked.
+ */
 function AccentCard() {
   const ws = useWorkspace();
+  const { mode } = useTheme();
   const qc = useQueryClient();
   const saved = ws.workspace.settings.accentColor ?? DEFAULT_ACCENT;
   const [draft, setDraft] = useState(saved);
@@ -202,7 +207,7 @@ function AccentCard() {
   return (
     <SettingsCard
       title="Accent colour"
-      description="Buttons, highlights and glows across this workspace. Everyone in it sees the same colour; sign-in pages stay Hotline Pink."
+      description="Buttons, highlights and glows across this workspace. Everyone in it sees the same colour (a deeper shade of it in the light theme); sign-in pages stay Hotline Pink."
     >
       <div className="mb-4 flex flex-wrap gap-2">
         {ACCENT_PRESETS.map((p) => (
@@ -236,7 +241,7 @@ function AccentCard() {
       {/* The palette is a set of CSS variables, so this box previews it without touching the page. */}
       <div
         className="mb-4 border border-border-soft bg-bg p-4"
-        style={valid ? (accentVariables(draft) as React.CSSProperties) : undefined}
+        style={valid ? (accentVariables(draft, mode) as React.CSSProperties) : undefined}
       >
         <div className="kicker mb-2">
           <span className="text-muted">// </span>preview
