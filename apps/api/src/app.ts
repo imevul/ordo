@@ -32,6 +32,7 @@ import { documentRoutes } from './routes/documents.ts';
 import { exportRoutes } from './routes/exports.ts';
 import { fileRoutes } from './routes/files.ts';
 import { githubCallbackRoutes, githubWorkspaceRoutes } from './routes/github.ts';
+import { graphqlRoutes } from './routes/graphql.ts';
 import { hookRoutes } from './routes/hooks.ts';
 import { importRoutes } from './routes/imports.ts';
 import { initiativeRoutes } from './routes/initiatives.ts';
@@ -236,6 +237,7 @@ export async function buildApp(
       await w.register(githubWorkspaceRoutes);
       await w.register(externalAccountRoutes);
       await w.register(mcpRoutes);
+      await w.register(graphqlRoutes);
     },
     { prefix: '/api/w/:ws' },
   );
