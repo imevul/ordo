@@ -25,9 +25,9 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { useState } from 'react';
-import { api } from '../api/client.ts';
 import type { RealtimeStatus } from '../api/realtime.ts';
 import { t } from '../i18n/index.ts';
+import { signOut } from '../lib/signOut.ts';
 import { readPref, ui, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { OrdoMark, ProjectIcon, TeamIcon } from './icons.tsx';
@@ -103,11 +103,7 @@ export function Sidebar({
   const p = { slug: ws.slug };
   const isAdmin = ws.isAdmin;
 
-  const logout = async () => {
-    await api.post('/auth/logout');
-    qc.clear();
-    location.href = '/login';
-  };
+  const logout = () => signOut(qc);
 
   return (
     <nav

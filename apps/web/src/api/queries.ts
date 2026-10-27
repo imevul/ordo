@@ -20,10 +20,12 @@ import type {
   SessionInfo,
   UpdateIssueInput,
 } from '@ordo/shared';
+import type { Engine } from '@ordo/sync';
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { t } from '../i18n/index.ts';
+import { useLocalIssues, useSync, useSyncState } from '../sync/context.tsx';
 import { ApiError, api, upload, wsPath } from './client.ts';
 
 export const keys = {
@@ -74,13 +76,17 @@ export const useBootstrap = (slug: string) =>
 const ISSUE_PAGE = 1000;
 
 /**
- * Every issue matching `filter`, loaded a page at a time; what's loaded shows while the rest
- * arrives, so big teams see their list right away. Screens sort and group on their side.
+ * Every issue matching `filter`. With a local copy (sync), straight from it; otherwise loaded a
+ * page at a time, what's loaded showing while the rest arrives. Screens sort and group on their
+ * side.
  */
 export function useIssues(slug: string, filter: IssueFilter, enabled = true) {
   const qc = useQueryClient();
+  const me = useMe().data;
+  const local = useLocalIssues(filter, me?.id ?? '');
+  const fromCopy = !!local.issues || local.waiting;
   const queryKey = keys.issues(slug, filter);
-  return useQuery({
+  const remote = useQuery({
     queryKey,
     queryFn: async ({ signal }) => {
       const all: Issue[] = [];
@@ -99,24 +105,79 @@ export function useIssues(slug: string, filter: IssueFilter, enabled = true) {
         after = page.at(-1)!.id;
       }
     },
-    enabled,
+    enabled: enabled && !fromCopy,
     placeholderData: (prev) => prev,
   });
+  if (fromCopy) return { data: local.issues, isLoading: !local.issues, error: null };
+  return { data: remote.data, isLoading: remote.isLoading, error: remote.error };
 }
 
-export const useIssue = (slug: string, id: string | undefined) =>
-  useQuery({
+/** An issue's page from the local copy, while the server's is on its way (or offline). */
+function detailFromCopy(engine: Engine, idOrIdentifier: string): IssueDetail | undefined {
+  const issue = engine.issue(idOrIdentifier);
+  if (!issue) return undefined;
+  const all = engine.getState().issues;
+  const parent = issue.parentId ? all.get(issue.parentId) : undefined;
+  return {
+    ...issue,
+    parent: parent
+      ? {
+          id: parent.id,
+          identifier: parent.identifier,
+          title: parent.title,
+          stateId: parent.stateId,
+          teamId: parent.teamId,
+        }
+      : null,
+    subIssues: [...all.values()].filter((i) => i.parentId === issue.id),
+    // Not in the copy: these show once the server answers.
+    relations: [],
+    subscriberIds: [],
+    links: [],
+    attachments: [],
+    customerRequests: [],
+  };
+}
+
+export function useIssue(slug: string, id: string | undefined) {
+  const sync = useSync();
+  const state = useSyncState();
+  const remote = useQuery({
     queryKey: keys.issue(slug, id ?? ''),
     queryFn: () => api.get<IssueDetail>(wsPath(slug, `/issues/${id}`)),
     enabled: !!id,
   });
+  const copy = useMemo(
+    () =>
+      !remote.data && id && sync.status === 'on' && state?.ready
+        ? detailFromCopy(sync.engine, id)
+        : undefined,
+    [remote.data, id, sync, state],
+  );
+  const data = remote.data ?? copy;
+  return { data, isLoading: remote.isLoading && !data, error: data ? null : remote.error };
+}
 
-export const useComments = (slug: string, issueId: string | undefined) =>
-  useQuery({
+/** An issue's comments; kept in the local copy (when there is one) for reading offline. */
+export function useComments(slug: string, issueId: string | undefined) {
+  const sync = useSync();
+  const engine = sync.status === 'on' ? sync.engine : null;
+  const remote = useQuery({
     queryKey: keys.comments(slug, issueId ?? ''),
-    queryFn: () => api.get<Comment[]>(wsPath(slug, `/issues/${issueId}/comments`)),
+    queryFn: async () => {
+      const list = await api.get<Comment[]>(wsPath(slug, `/issues/${issueId}/comments`));
+      if (engine && issueId) void engine.saveComments(issueId, list);
+      return list;
+    },
     enabled: !!issueId,
   });
+  const [saved, setSaved] = useState<Comment[] | undefined>();
+  useEffect(() => {
+    setSaved(undefined);
+    if (engine && issueId && !remote.data) void engine.commentsFor(issueId).then(setSaved);
+  }, [engine, issueId, remote.data]);
+  return { data: remote.data ?? saved, isLoading: remote.isLoading && !saved };
+}
 
 export const useHistory = (slug: string, issueId: string | undefined) =>
   useQuery({

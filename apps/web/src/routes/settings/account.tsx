@@ -38,6 +38,7 @@ import { addPasskey, deviceName, passkeyCancelled, passkeysHere } from '../../li
 import { disablePush, enablePush, type PushState, pushState } from '../../lib/push.ts';
 import { setThemePref, THEME_PREFS, useTheme } from '../../lib/theme.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
+import { setKeepsCopy, useKeepsCopy } from '../../sync/device.ts';
 import { FormRow, SettingsCard } from './ui.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
@@ -90,7 +91,35 @@ export function AccountSection() {
       <EmailCard account={account} />
       <LanguageCard account={account} />
       <AppearanceCard />
+      <OfflineCard />
     </>
+  );
+}
+
+/** Whether this browser keeps a copy of workspaces (when the instance allows one). */
+function OfflineCard() {
+  const config = useConfig();
+  const mode = config.data?.offlineSync;
+  const keeps = useKeepsCopy(mode);
+  if (!mode || mode === 'off') return null;
+  return (
+    <SettingsCard
+      title={t('settings.offline.title')}
+      description={t('settings.offline.description')}
+    >
+      <label className="flex items-center justify-between gap-4 text-[13.5px]">
+        <span>
+          {t('settings.offline.keep')}
+          <span className="block text-[12px] text-index">{t('settings.offline.keepHint')}</span>
+        </span>
+        <input
+          type="checkbox"
+          className="accent-primary"
+          checked={keeps}
+          onChange={(e) => setKeepsCopy(e.target.checked)}
+        />
+      </label>
+    </SettingsCard>
   );
 }
 

@@ -27,6 +27,7 @@ import { api } from '../api/client.ts';
 import { useBatchUpdateIssues, useSearch, useTrashIssues } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
 import { useHotkeyScope } from '../lib/hotkeys.ts';
+import { signOut } from '../lib/signOut.ts';
 import { type PalettePage, ui, useUi } from '../lib/store.ts';
 import { setThemePref, THEME_PREFS, useTheme } from '../lib/theme.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
@@ -486,11 +487,7 @@ export function CommandPalette() {
                 </Command.Item>
                 <Command.Item
                   value={`log out sign out ${t('common.logOut')}`}
-                  onSelect={async () => {
-                    await api.post('/auth/logout');
-                    qc.clear();
-                    location.href = '/login';
-                  }}
+                  onSelect={() => signOut(qc)}
                 >
                   <LogOut size={15} /> {t('common.logOut')}
                 </Command.Item>

@@ -2,6 +2,7 @@ import {
   INSTANCE_SETTING_DEFAULTS,
   type InstanceSettingEntry,
   type InstanceSettings,
+  OFFLINE_SYNC_MODES,
   WORKSPACE_AI_POLICIES,
 } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
@@ -34,6 +35,7 @@ const SCHEMAS: { [K in keyof InstanceSettings]: z.ZodType<InstanceSettings[K]> }
     })
     .nullable(),
   workspaceAi: z.enum(WORKSPACE_AI_POLICIES),
+  offlineSync: z.enum(OFFLINE_SYNC_MODES),
 };
 
 export const SETTING_KEYS = Object.keys(SCHEMAS) as (keyof InstanceSettings)[];

@@ -16,11 +16,13 @@ apps/api/          Fastify API + realtime. Entry: src/index.ts, wiring: src/app.
   test/            Vitest integration tests against a real Postgres
 apps/web/          React SPA
   src/api/         fetch client, React Query hooks (queries.ts), realtime socket
+  src/sync/        the workspace's local copy: React bindings for packages/sync, device setting
   src/components/  shared UI (IssuesView, IssueList, IssueBoard, CommandPalette, properties.tsx pickers…)
   src/routes/      pages; router.tsx defines every route
   src/lib/         workspace context, hotkeys, UI store, issue grouping
   src/styles/      app.css — Hotline Pink tokens + component classes
 packages/shared/   Zod schemas, API types, constants — imported by both apps as TS source
+packages/sync/     @ordo/sync: offline sync engine (IndexedDB store, change feed, matchIssue) — no React
 packages/sdk/      @ordo/sdk: typed REST client + name resolution (Names) — used by the CLI
 packages/cli/      the `ordo` command; bundled to one file, served by instances at /cli/ordo.mjs
 docs/              user, operator and developer docs

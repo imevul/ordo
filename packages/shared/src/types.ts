@@ -634,6 +634,7 @@ export interface InstanceConfig {
    * passkeys can't be used. They're bound to that address, so other addresses can't offer them.
    */
   passkeyOrigin: string | null;
+  offlineSync: OfflineSyncMode;
 }
 
 /** One of the signed-in person's passkeys (Settings → Security). */
@@ -692,7 +693,16 @@ export interface InstanceSettings {
    * (only turn it off), `locked` (every workspace uses the instance's model).
    */
   workspaceAi: WorkspaceAiPolicy;
+  /**
+   * Whether browsers keep a copy of each workspace to show at once and work offline: `on` (every
+   * device unless someone turns it off there), `optin` (only devices where someone turns it on),
+   * or `off`.
+   */
+  offlineSync: OfflineSyncMode;
 }
+
+export const OFFLINE_SYNC_MODES = ['off', 'optin', 'on'] as const;
+export type OfflineSyncMode = (typeof OFFLINE_SYNC_MODES)[number];
 
 export const WORKSPACE_AI_POLICIES = ['own', 'instance', 'locked'] as const;
 export type WorkspaceAiPolicy = (typeof WORKSPACE_AI_POLICIES)[number];
@@ -730,6 +740,7 @@ export const INSTANCE_SETTING_DEFAULTS: InstanceSettings = {
   maxAttachmentMb: 25,
   ai: null,
   workspaceAi: 'own',
+  offlineSync: 'off',
 };
 
 export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof InstanceSettings> {

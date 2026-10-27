@@ -143,6 +143,7 @@ export async function authRoutes(app: FastifyInstance) {
       allowWorkspaceCreation: settings.get('allowWorkspaceCreation'),
       version: env.version,
       passkeyOrigin: relyingParty(app).usable ? relyingParty(app).origin : null,
+      offlineSync: settings.get('offlineSync'),
     };
   });
 

@@ -7,6 +7,13 @@ export default {
     light: 'Light',
     dark: 'Dark',
   },
+  offline: {
+    title: 'Offline copy',
+    description:
+      'With a copy, workspaces open at once and stay readable without a connection. It lives in this browser, unencrypted, until you sign out.',
+    keep: 'Keep a copy of my workspaces on this device',
+    keepHint: 'Turn this off on shared computers.',
+  },
   language: {
     title: 'Language',
     description:

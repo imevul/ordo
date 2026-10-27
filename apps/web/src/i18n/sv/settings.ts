@@ -9,6 +9,13 @@ export default {
     light: 'Ljust',
     dark: 'Mörkt',
   },
+  offline: {
+    title: 'Offlinekopia',
+    description:
+      'Med en kopia öppnas arbetsytor direkt och går att läsa utan anslutning. Den ligger okrypterad i den här webbläsaren tills du loggar ut.',
+    keep: 'Spara en kopia av mina arbetsytor på den här enheten',
+    keepHint: 'Stäng av det här på delade datorer.',
+  },
   language: {
     title: 'Språk',
     description: 'För appen, e-post och notiser. Det som inte är översatt än visas på engelska.',
