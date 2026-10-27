@@ -475,6 +475,13 @@ describe('route inventory', () => {
     'POST /teams/:teamId/triage-rules': 'loadTeam(admin), like workflow states (triage.test.ts)',
     'PATCH /triage-rules/:id': "loadTeam(admin) of the rule's team (triage.test.ts)",
     'DELETE /triage-rules/:id': "loadTeam(admin) of the rule's team (triage.test.ts)",
+    'GET /projects/:id/documents': 'the project must be visible (documents.test.ts)',
+    'POST /projects/:id/documents': 'the project must be visible; not guests (documents.test.ts)',
+    'GET /documents/:id': "the document's project must be visible (documents.test.ts)",
+    'PATCH /documents/:id':
+      "the document's project must be visible; not guests (documents.test.ts)",
+    'DELETE /documents/:id':
+      "the document's project must be visible; not guests (documents.test.ts)",
     'GET /customers': 'workspace-level; guests get none (customers.test.ts)',
     'POST /customers': 'non-guests (customers.test.ts)',
     'PATCH /customers/:id': 'loadCustomer: workspace-scoped, non-guests (customers.test.ts)',

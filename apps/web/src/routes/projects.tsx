@@ -20,6 +20,7 @@ import { Markdown } from '../components/Markdown.tsx';
 import { MarkdownEditor } from '../components/MarkdownEditor.tsx';
 import { EmptyState, PageHeader, Sep } from '../components/PageHeader.tsx';
 import { ProgressBar, ProgressStats } from '../components/Progress.tsx';
+import { ProjectDocs } from '../components/ProjectDocs.tsx';
 import { assigneeOptions, Picker } from '../components/properties.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { ConfirmModal, confirmDialog, Modal } from '../components/ui/Modal.tsx';
@@ -680,7 +681,7 @@ export function ProjectDetailPage() {
   const ws = useWorkspace();
   const navigate = useNavigate();
   const { projectId } = useParams({ from: '/$slug/project/$projectId' });
-  const { tab } = useSearch({ from: '/$slug/project/$projectId' });
+  const { tab, doc } = useSearch({ from: '/$slug/project/$projectId' });
   const project = ws.projectById.get(projectId);
   const [confirm, setConfirm] = useState(false);
   const fav = ws.favorites.find((f) => f.kind === 'project' && f.targetId === projectId);
@@ -696,12 +697,12 @@ export function ProjectDetailPage() {
 
   const tabs = (
     <div className="flex gap-1 px-4 pb-2">
-      {(['overview', 'issues'] as const).map((t) => (
+      {(['overview', 'issues', 'docs'] as const).map((t) => (
         <Link
           key={t}
           to="/$slug/project/$projectId"
           params={{ slug: ws.slug, projectId }}
-          search={t === 'issues' ? { tab: 'issues' } : {}}
+          search={t === 'overview' ? {} : { tab: t }}
           className={`h-6 px-2.5 font-mono text-[11px] leading-6 tracking-[0.1em] uppercase ${(tab ?? 'overview') === t ? 'bg-raised text-primary' : 'text-index hover:text-text'}`}
         >
           {t}
@@ -759,9 +760,15 @@ export function ProjectDetailPage() {
           <PageHeader kicker={kicker} title={project.name} actions={actions}>
             {tabs}
           </PageHeader>
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <ProjectOverview project={project} />
-          </div>
+          {tab === 'docs' ? (
+            <div className="min-h-0 flex-1">
+              <ProjectDocs project={project} docId={doc} />
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <ProjectOverview project={project} />
+            </div>
+          )}
         </div>
       )}
       <ConfirmModal
