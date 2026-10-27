@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
 import { relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -32,7 +33,7 @@ export function ProjectDocs({ project, docId }: { project: Project; docId?: stri
     ws.slug,
     () =>
       api.post<ProjectDocument>(wsPath(ws.slug, `/projects/${project.id}/documents`), {
-        title: 'Untitled',
+        title: t('projects.docs.untitled'),
       }),
     { invalidate: [['ws', ws.slug, 'documents']] },
   );
@@ -42,13 +43,13 @@ export function ProjectDocs({ project, docId }: { project: Project; docId?: stri
     <div className="flex h-full min-h-0">
       <aside className="flex w-60 flex-none flex-col border-r border-border-soft">
         <div className="flex items-center gap-2 px-3 py-2.5">
-          <span className="section-label flex-1">Documents</span>
+          <span className="section-label flex-1">{t('projects.docs.title')}</span>
           {!ws.isGuest && (
             <button
               type="button"
               className="flex h-6 w-6 items-center justify-center text-index hover:text-text"
               onClick={() => create.mutate(undefined, { onSuccess: (d) => open(d.id) })}
-              aria-label="New document"
+              aria-label={t('projects.docs.newDocument')}
             >
               <Plus size={14} />
             </button>
@@ -69,7 +70,7 @@ export function ProjectDocs({ project, docId }: { project: Project; docId?: stri
             </Link>
           ))}
           {docs.length === 0 && (
-            <p className="px-3 font-mono text-[12px] text-index">// no documents yet</p>
+            <p className="px-3 font-mono text-[12px] text-index">{t('projects.docs.empty')}</p>
           )}
         </div>
       </aside>
@@ -89,8 +90,7 @@ export function ProjectDocs({ project, docId }: { project: Project; docId?: stri
         ) : (
           <div className="mx-auto max-w-xl px-6 py-16 text-center">
             <p className="text-muted">
-              Specs, decisions and notes live with the project.{' '}
-              {ws.isGuest ? '' : 'Start one with +.'}
+              {t('projects.docs.intro')} {ws.isGuest ? '' : t('projects.docs.start')}
             </p>
           </div>
         )}
@@ -133,7 +133,7 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
     setState('saving');
     try {
       const saved = await api.patch<ProjectDocument>(wsPath(ws.slug, `/documents/${id}`), {
-        title: title.trim() || 'Untitled',
+        title: title.trim() || t('projects.docs.untitled'),
         content,
         ...(force ? {} : { baseUpdatedAt: base.current }),
       });
@@ -146,7 +146,7 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
       if ((err as { status?: number }).status === 409) setState('conflict');
       else {
         setState('dirty');
-        toast.error(err instanceof Error ? err.message : 'Could not save');
+        toast.error(err instanceof Error ? err.message : t('projects.docs.saveFailed'));
       }
     }
   };
@@ -154,8 +154,8 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
   // biome-ignore lint/correctness/useExhaustiveDependencies: save after each pause in typing
   useEffect(() => {
     if (state !== 'dirty') return;
-    const t = setTimeout(() => save(), SAVE_AFTER_MS);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => save(), SAVE_AFTER_MS);
+    return () => clearTimeout(timer);
   }, [state, title, content]);
 
   const change = (patch: { title?: string; content?: string }) => {
@@ -173,16 +173,18 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
   const editor = doc.updatedById ? ws.memberById.get(doc.updatedById) : null;
   const status =
     state === 'saving'
-      ? 'saving…'
+      ? t('projects.docs.saving')
       : state === 'dirty'
-        ? 'unsaved'
-        : `edited ${relativeTime(doc.updatedAt)}${editor ? ` by ${editor.name}` : ''}`;
+        ? t('projects.docs.unsaved')
+        : editor
+          ? t('projects.docs.editedBy', { time: relativeTime(doc.updatedAt), name: editor.name })
+          : t('projects.docs.edited', { time: relativeTime(doc.updatedAt) });
 
   return (
     <div className="mx-auto max-w-3xl px-6 py-8">
       {state === 'conflict' && (
         <div className="panel panel-sm mb-5 flex flex-wrap items-center gap-3 border-warning p-3 text-[13px]">
-          <span className="flex-1">Someone else saved a newer version while you were editing.</span>
+          <span className="flex-1">{t('projects.docs.conflict')}</span>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
@@ -191,10 +193,10 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
               qc.invalidateQueries({ queryKey: key });
             }}
           >
-            Load theirs
+            {t('projects.docs.loadTheirs')}
           </button>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => save(true)}>
-            Keep mine
+            {t('projects.docs.keepMine')}
           </button>
         </div>
       )}
@@ -204,15 +206,20 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
           disabled={readOnly}
           onChange={(e) => change({ title: e.target.value })}
           className="min-w-0 flex-1 bg-transparent text-[28px] font-bold tracking-[-0.02em] outline-none"
-          aria-label="Document title"
+          aria-label={t('projects.docs.titleLabel')}
         />
         {!readOnly && (
           <button
             type="button"
             className="btn btn-ghost btn-sm mt-2"
-            aria-label="Delete document"
+            aria-label={t('projects.docs.delete')}
             onClick={async () => {
-              if (await confirmDialog({ title: `Delete “${doc.title}”?`, danger: true }))
+              if (
+                await confirmDialog({
+                  title: t('projects.docs.confirmDeleteTitle', { title: doc.title }),
+                  danger: true,
+                })
+              )
                 remove.mutate(undefined, { onSuccess: onDeleted });
             }}
           >
@@ -228,7 +235,7 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
           bare
           value={content}
           onChange={(v) => change({ content: v })}
-          placeholder="Write…"
+          placeholder={t('projects.docs.placeholder')}
           minRows={18}
           className="-mx-3"
         />

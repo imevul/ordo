@@ -6,22 +6,23 @@ import { toast } from 'sonner';
 import { api } from '../../api/client.ts';
 import { keys, useOAuthGrants } from '../../api/queries.ts';
 import { confirmDialog } from '../../components/ui/Modal.tsx';
+import { t, tx } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 const PLACEHOLDER = 'YOUR_ORDO_API_KEY';
 
 function copy(text: string) {
   navigator.clipboard?.writeText(text);
-  toast.success('Copied');
+  toast.success(t('common.copied'));
 }
 
-function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
+function CopyButton({ text, label }: { text: string; label?: string }) {
   return (
     <button type="button" className="btn btn-ghost btn-sm flex-none" onClick={() => copy(text)}>
-      <Copy size={12} /> {label}
+      <Copy size={12} /> {label ?? t('common.copy')}
     </button>
   );
 }
@@ -57,18 +58,17 @@ interface Client {
 
 const json = (v: unknown) => JSON.stringify(v, null, 2);
 
-const CLIENTS: Client[] = [
+/** The MCP clients with setup help. A function: the instructions follow the language. */
+const clients = (): Client[] => [
   {
     key: 'claude',
     label: 'claude.ai',
     oauth: {
-      where:
-        'In claude.ai or Claude Desktop: Settings → Connectors → Add custom connector, and paste the URL. Claude then opens Ordo so you can allow it.',
+      where: t('mcp.setup.claudeOauth'),
       snippet: (url) => url,
     },
     apiKey: {
-      where:
-        'Claude Desktop only: Settings → Developer → Edit config (claude_desktop_config.json), then restart Claude. Uses the mcp-remote bridge, which needs Node.js.',
+      where: t('mcp.setup.claudeKey'),
       snippet: (url, name, key) =>
         json({
           mcpServers: {
@@ -86,12 +86,11 @@ const CLIENTS: Client[] = [
     key: 'claude-code',
     label: 'Claude Code',
     oauth: {
-      where:
-        'Run in a terminal, then type /mcp in Claude Code and pick the server to sign in. --scope user makes Ordo available in every project.',
+      where: t('mcp.setup.claudeCodeOauth'),
       snippet: (url, name) => `claude mcp add --transport http --scope user ${name} ${url}`,
     },
     apiKey: {
-      where: 'Run in a terminal. --scope user makes Ordo available in every project.',
+      where: t('mcp.setup.claudeCodeKey'),
       snippet: (url, name, key) =>
         `claude mcp add --transport http --scope user ${name} ${url} \\\n  --header "Authorization: Bearer ${key}"`,
     },
@@ -100,12 +99,11 @@ const CLIENTS: Client[] = [
     key: 'cursor',
     label: 'Cursor',
     oauth: {
-      where:
-        '~/.cursor/mcp.json (all projects) or .cursor/mcp.json in a project. Cursor asks you to sign in when it first connects.',
+      where: t('mcp.setup.cursorOauth'),
       snippet: (url, name) => json({ mcpServers: { [name]: { url } } }),
     },
     apiKey: {
-      where: '~/.cursor/mcp.json (all projects) or .cursor/mcp.json in a project.',
+      where: t('mcp.setup.cursorKey'),
       snippet: (url, name, key) =>
         json({ mcpServers: { [name]: { url, headers: { Authorization: `Bearer ${key}` } } } }),
     },
@@ -114,13 +112,11 @@ const CLIENTS: Client[] = [
     key: 'vscode',
     label: 'VS Code',
     oauth: {
-      where:
-        '.vscode/mcp.json, or "MCP: Open User Configuration". VS Code asks you to sign in when the server starts.',
+      where: t('mcp.setup.vscodeOauth'),
       snippet: (url, name) => json({ servers: { [name]: { type: 'http', url } } }),
     },
     apiKey: {
-      where:
-        '.vscode/mcp.json, or "MCP: Open User Configuration". VS Code asks for the key once and keeps it in its secret storage.',
+      where: t('mcp.setup.vscodeKey'),
       snippet: (url, name) =>
         json({
           inputs: [
@@ -144,15 +140,14 @@ const CLIENTS: Client[] = [
   },
   {
     key: 'other',
-    label: 'Other',
+    label: t('mcp.setup.otherClient'),
     oauth: {
-      where:
-        'Any MCP client that supports the Streamable HTTP transport and OAuth. It finds out how to sign in from the URL.',
+      where: t('mcp.setup.otherOauth'),
       snippet: (url) =>
         `URL:       ${url}\nTransport: Streamable HTTP\nAuth:      OAuth (discovered from the URL)`,
     },
     apiKey: {
-      where: 'Any MCP client that supports the Streamable HTTP transport and custom headers.',
+      where: t('mcp.setup.otherKey'),
       snippet: (url, _name, key) =>
         `URL:       ${url}\nTransport: Streamable HTTP\nHeader:    Authorization: Bearer ${key}`,
     },
@@ -167,43 +162,9 @@ function agentPrompt(opts: {
   key: string | null;
 }) {
   const { url, name, workspace, auth, key } = opts;
-  if (auth === 'oauth')
-    return `Please connect yourself to Ordo, our issue tracker, through its MCP server.
-
-- Server URL: ${url}
-- Transport: Streamable HTTP (workspace "${workspace}")
-- Auth: OAuth. The server tells your MCP client how to sign in; I'll approve it in my browser.
-
-Steps:
-1. Work out which MCP client you are running in and add the server to its user-level MCP configuration under the name "${name}", with no headers. In Claude Code that is:
-   claude mcp add --transport http --scope user ${name} ${url}
-   In Cursor or VS Code, edit their MCP config file instead (see Ordo → Settings → AI agents for the exact format).
-2. Tell me how to start the sign-in (in Claude Code: run /mcp and pick "${name}"), or reload the MCP servers if your client starts it on its own.
-3. Once I've approved it, verify the connection by calling the list_teams tool and show me the team keys you get back.
-   - 404 means the URL is wrong or I'm not a member of that workspace.
-
-The Ordo tools act as me, with my permissions. Ask me before creating or changing issues unless I asked you to.`;
-  const keyLine = key
-    ? `The key is ${key}. Store it in your client's MCP config or an environment variable, never in a file that is committed to git, and don't repeat it back to me.`
-    : "I'll give you the key when you ask for it (or it's in the ORDO_API_KEY environment variable). Never write it into a file that is committed to git, and don't repeat it back to me.";
-  return `Please connect yourself to Ordo, our issue tracker, through its MCP server.
-
-- Server URL: ${url}
-- Transport: Streamable HTTP (workspace "${workspace}")
-- Auth: my personal Ordo API key, sent as the HTTP header "Authorization: Bearer <key>".
-  ${keyLine}
-
-Steps:
-1. Work out which MCP client you are running in and add the server to its user-level MCP configuration under the name "${name}". In Claude Code that is:
-   claude mcp add --transport http --scope user ${name} ${url} --header "Authorization: Bearer $ORDO_API_KEY"
-   In Cursor, VS Code or Claude Desktop, edit their MCP config file instead (see Ordo → Settings → AI agents for the exact format).
-2. Reload the MCP servers or tell me if I need to restart you.
-3. Verify the connection by calling the list_teams tool and show me the team keys you get back.
-   - 401 means the key is wrong or was revoked.
-   - 403 means the workspace requires SSO and doesn't allow API keys.
-   - 404 means the URL is wrong or I'm not a member of that workspace.
-
-The Ordo tools act as me, with my permissions. Ask me before creating or changing issues unless I asked you to.`;
+  if (auth === 'oauth') return t('mcp.agent.promptOauth', { url, name, workspace });
+  const keyLine = key ? t('mcp.agent.promptKeyGiven', { key }) : t('mcp.agent.promptKeyLater');
+  return t('mcp.agent.promptKey', { url, name, workspace, keyLine });
 }
 
 /** Apps signed in with OAuth, in every workspace. */
@@ -213,9 +174,9 @@ function ConnectedAppsCard() {
   const disconnect = async (id: string, name: string) => {
     if (
       !(await confirmDialog({
-        title: `Disconnect ${name}?`,
-        body: 'It loses access right away and has to ask again to reconnect.',
-        confirmLabel: 'Disconnect',
+        title: t('mcp.apps.confirmDisconnectTitle', { name }),
+        body: t('mcp.apps.confirmDisconnectBody'),
+        confirmLabel: t('mcp.apps.disconnect'),
         danger: true,
       }))
     )
@@ -228,10 +189,7 @@ function ConnectedAppsCard() {
     }
   };
   return (
-    <SettingsCard
-      title="Connected apps"
-      description="Apps you allowed to use Ordo’s MCP server as you, in any workspace."
-    >
+    <SettingsCard title={t('mcp.apps.title')} description={t('mcp.apps.description')}>
       {grants.map((g) => (
         <div key={g.id} className="flex h-12 items-center gap-3 border-b border-border-soft">
           <Plug size={14} className="flex-none text-muted" />
@@ -239,7 +197,11 @@ function ConnectedAppsCard() {
             <div className="flex items-center gap-1.5 truncate text-[13.5px]">
               {g.client.name}
               {g.client.verified && (
-                <BadgeCheck size={12} className="flex-none text-muted" aria-label="Verified" />
+                <BadgeCheck
+                  size={12}
+                  className="flex-none text-muted"
+                  aria-label={t('mcp.apps.verified')}
+                />
               )}
             </div>
             <div className="truncate font-mono text-[11px] text-index">
@@ -248,21 +210,21 @@ function ConnectedAppsCard() {
           </div>
           <span className="hidden w-32 text-right font-mono text-[11px] text-index sm:block">
             {g.lastUsedAt
-              ? `used ${relativeTime(g.lastUsedAt)}`
-              : `added ${relativeTime(g.createdAt)}`}
+              ? t('mcp.apps.used', { time: relativeTime(g.lastUsedAt) })
+              : t('mcp.apps.added', { time: relativeTime(g.createdAt) })}
           </span>
           <button
             type="button"
             className="btn btn-danger btn-sm"
             onClick={() => disconnect(g.id, g.client.name)}
-            aria-label={`Disconnect ${g.client.name}`}
+            aria-label={t('mcp.apps.disconnectName', { name: g.client.name })}
           >
             <Trash2 size={12} />
           </button>
         </div>
       ))}
       {grants.length === 0 && (
-        <p className="font-mono text-[12px] text-index">// no apps connected</p>
+        <p className="font-mono text-[12px] text-index">{t('mcp.apps.empty')}</p>
       )}
     </SettingsCard>
   );
@@ -273,15 +235,16 @@ export function McpSection() {
   const qc = useQueryClient();
   const url = `${window.location.origin}/api/w/${ws.slug}/mcp`;
   const name = `ordo-${ws.slug}`;
-  const [client, setClient] = useState(CLIENTS[0]!.key);
+  const clientList = clients();
+  const [client, setClient] = useState(clientList[0]!.key);
   const [auth, setAuth] = useState<Auth>('oauth');
-  const [keyName, setKeyName] = useState('AI agent');
+  const [keyName, setKeyName] = useState(() => t('mcp.key.defaultName'));
   const [created, setCreated] = useState<string | null>(null);
   const [keyInSnippets, setKeyInSnippets] = useState(true);
   const [keyInPrompt, setKeyInPrompt] = useState(false);
   const { requireSso, allowApiKeysUnderSso } = ws.workspace.settings;
   const blocked = requireSso && !allowApiKeysUnderSso && !ws.isOwner;
-  const active = CLIENTS.find((c) => c.key === client)!;
+  const active = clientList.find((c) => c.key === client)!;
   const setup = auth === 'oauth' ? active.oauth : active.apiKey;
   const snippetKey = created && keyInSnippets ? created : PLACEHOLDER;
 
@@ -299,38 +262,32 @@ export function McpSection() {
   return (
     <>
       <SettingsCard
-        title="Connect an AI agent"
-        description={
-          <>
-            Ordo runs an MCP server for <span className="text-text">{ws.workspace.name}</span>.
-            Agents such as Claude, Claude Code, Cursor or VS Code connect to it and act as you: they
-            see the teams you can see, and what they change shows up under your name. Most sign in
-            with OAuth — you approve them in the browser and can disconnect them below. Others use
-            one of your API keys. See <span className="font-mono">docs/mcp.md</span>.
-          </>
-        }
+        title={t('mcp.connect.title')}
+        description={tx('mcp.connect.description', {
+          workspace: <span className="text-text">{ws.workspace.name}</span>,
+          doc: <span className="font-mono">docs/mcp.md</span>,
+        })}
       >
         {blocked && auth === 'key' && (
           <div className="panel panel-sm mb-5 p-4 [--panel-border:var(--color-warning)]">
-            <div className="kicker mb-1 text-warning">// api keys are blocked here</div>
+            <div className="kicker mb-1 text-warning">{t('mcp.connect.blockedKicker')}</div>
             <p className="text-[13px] text-muted">
-              {ws.workspace.name} requires SSO and doesn’t allow API keys. Sign agents in with OAuth
-              instead, or ask an admin to allow keys under Settings → Authentication.
+              {t('mcp.connect.blockedBody', { workspace: ws.workspace.name })}
             </p>
           </div>
         )}
-        <FormRow label="Server URL" hint="One URL per workspace. The transport is Streamable HTTP.">
+        <FormRow label={t('mcp.connect.serverUrl')} hint={t('mcp.connect.serverUrlHint')}>
           <div className="flex gap-2">
             <input className="input font-mono text-[12.5px]" value={url} readOnly />
             <CopyButton text={url} />
           </div>
         </FormRow>
-        <FormRow label="Sign in with" hint="OAuth needs no key; use a key for clients without it.">
-          <div role="radiogroup" aria-label="Sign in with" className="flex gap-1">
+        <FormRow label={t('mcp.connect.signInWith')} hint={t('mcp.connect.signInWithHint')}>
+          <div role="radiogroup" aria-label={t('mcp.connect.signInWith')} className="flex gap-1">
             {(
               [
                 ['oauth', 'OAuth'],
-                ['key', 'API key'],
+                ['key', t('mcp.connect.apiKey')],
               ] as const
             ).map(([value, label]) => (
               <button
@@ -349,25 +306,22 @@ export function McpSection() {
       </SettingsCard>
 
       {auth === 'key' && (
-        <SettingsCard
-          title="Create a key for the agent"
-          description="A personal API key, shown once. You can revoke it any time under API keys."
-        >
+        <SettingsCard title={t('mcp.key.title')} description={t('mcp.key.description')}>
           <form onSubmit={create} className="mb-4 flex gap-2">
             <input
               className="input"
-              aria-label="Key name"
+              aria-label={t('mcp.key.nameLabel')}
               value={keyName}
               onChange={(e) => setKeyName(e.target.value)}
               required
             />
             <button className="btn btn-primary flex-none" disabled={!!created}>
-              <KeyRound size={13} /> Create key
+              <KeyRound size={13} /> {t('mcp.key.create')}
             </button>
           </form>
           {created && (
             <div className="panel panel-sm p-4 [--panel-border:var(--color-primary)]">
-              <div className="kicker mb-2">// copy it now — it won't be shown again</div>
+              <div className="kicker mb-2">{t('mcp.key.copyNow')}</div>
               <div className="flex items-center gap-2">
                 <code className="min-w-0 flex-1 truncate font-mono text-[12.5px]">{created}</code>
                 <CopyButton text={created} />
@@ -379,7 +333,7 @@ export function McpSection() {
                   checked={keyInSnippets}
                   onChange={(e) => setKeyInSnippets(e.target.checked)}
                 />
-                Fill this key into the setup snippets below
+                {t('mcp.key.fillIntoSnippets')}
               </label>
             </div>
           )}
@@ -387,11 +341,15 @@ export function McpSection() {
       )}
 
       <SettingsCard
-        title="Set it up yourself"
-        description={setup?.where ?? `${active.label} can’t connect this way.`}
+        title={t('mcp.setup.title')}
+        description={setup?.where ?? t('mcp.setup.cantConnect', { client: active.label })}
       >
-        <div role="tablist" aria-label="MCP client" className="mb-3 flex flex-wrap gap-1">
-          {CLIENTS.map((c) => (
+        <div
+          role="tablist"
+          aria-label={t('mcp.setup.clientsLabel')}
+          className="mb-3 flex flex-wrap gap-1"
+        >
+          {clientList.map((c) => (
             <button
               key={c.key}
               type="button"
@@ -406,14 +364,13 @@ export function McpSection() {
         </div>
         {setup && <Snippet text={setup.snippet(url, name, snippetKey)} />}
         {setup && auth === 'key' && snippetKey === PLACEHOLDER && active.key !== 'vscode' && (
-          <p className="mt-2 text-[11.5px] text-index">Replace {PLACEHOLDER} with your key.</p>
+          <p className="mt-2 text-[11.5px] text-index">
+            {t('mcp.setup.replacePlaceholder', { placeholder: PLACEHOLDER })}
+          </p>
         )}
       </SettingsCard>
 
-      <SettingsCard
-        title="Or let your agent do it"
-        description="Paste this into your coding agent. It adds the server to its own MCP config and checks the connection with a test call."
-      >
+      <SettingsCard title={t('mcp.agent.title')} description={t('mcp.agent.description')}>
         {created && auth === 'key' && (
           <label className="mb-3 flex items-center gap-2 text-[12.5px] text-muted">
             <input
@@ -422,7 +379,7 @@ export function McpSection() {
               checked={keyInPrompt}
               onChange={(e) => setKeyInPrompt(e.target.checked)}
             />
-            Include the key I just created in the prompt
+            {t('mcp.agent.includeKey')}
           </label>
         )}
         <Snippet
@@ -436,18 +393,22 @@ export function McpSection() {
         />
       </SettingsCard>
 
-      <SettingsCard
-        title="What the agent can do"
-        description="Tools take team keys, issue identifiers, status and label names, and usernames."
-      >
-        {MCP_TOOLS.map((t) => (
-          <div key={t.name} className="flex items-start gap-3 border-b border-border-soft py-2.5">
+      <SettingsCard title={t('mcp.tools.title')} description={t('mcp.tools.description')}>
+        {MCP_TOOLS.map((tool) => (
+          <div
+            key={tool.name}
+            className="flex items-start gap-3 border-b border-border-soft py-2.5"
+          >
             <Bot size={14} className="mt-0.5 flex-none text-muted" />
             <div className="min-w-0 flex-1">
-              <div className="font-mono text-[12.5px]">{t.name}</div>
-              <div className="text-[12.5px] text-muted">{t.description}</div>
+              <div className="font-mono text-[12.5px]">{tool.name}</div>
+              <div className="text-[12.5px] text-muted">
+                {t(`mcp.tools.descriptions.${tool.name}`)}
+              </div>
             </div>
-            <span className="tag flex-none">{t.readOnly ? 'read' : 'write'}</span>
+            <span className="tag flex-none">
+              {tool.readOnly ? t('mcp.tools.read') : t('mcp.tools.write')}
+            </span>
           </div>
         ))}
       </SettingsCard>

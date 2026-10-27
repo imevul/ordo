@@ -1,10 +1,8 @@
 import {
-  INITIATIVE_STATUS_LABELS,
   INITIATIVE_STATUSES,
   type Initiative,
   type InitiativeStatus,
   LABEL_COLORS,
-  PROJECT_STATUS_LABELS,
 } from '@ordo/shared';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { Goal, Plus, Trash2, X } from 'lucide-react';
@@ -19,6 +17,8 @@ import { ProgressBar, ProgressStats } from '../components/Progress.tsx';
 import { assigneeOptions, Picker } from '../components/properties.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../components/ui/Modal.tsx';
+import { t } from '../i18n/index.ts';
+import { initiativeStatusLabel, projectStatusLabel } from '../i18n/labels.ts';
 import { shortDate } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
@@ -35,7 +35,7 @@ export function InitiativeIcon({ color, size = 14 }: { color: string; size?: num
 function StatusChip({ status }: { status: InitiativeStatus }) {
   return (
     <span className="chip" style={{ '--chip': STATUS_COLOR[status] } as React.CSSProperties}>
-      {INITIATIVE_STATUS_LABELS[status]}
+      {initiativeStatusLabel(status)}
     </span>
   );
 }
@@ -65,18 +65,18 @@ function NewInitiativeModal({ onClose }: { onClose: () => void }) {
     );
   };
   return (
-    <Modal open onClose={onClose} width={520} label="New initiative">
+    <Modal open onClose={onClose} width={520} label={t('initiatives.newInitiative')}>
       <form className="p-5" onSubmit={submit}>
-        <div className="section-label mb-4">New initiative</div>
+        <div className="section-label mb-4">{t('initiatives.newInitiative')}</div>
         <input
           autoFocus
           className="input"
-          placeholder="Initiative name, e.g. Launch in Europe"
+          placeholder={t('initiatives.create.namePlaceholder')}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <label className="mt-3 block text-[12.5px] text-index">
-          Target date
+          {t('initiatives.create.targetDate')}
           <input
             type="date"
             className="input mt-1 font-mono"
@@ -86,10 +86,10 @@ function NewInitiativeModal({ onClose }: { onClose: () => void }) {
         </label>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!name.trim() || create.isPending}>
-            Create initiative <span className="arrow">→</span>
+            {t('initiatives.create.submit')} <span className="arrow">→</span>
           </button>
         </div>
       </form>
@@ -115,14 +115,14 @@ export function InitiativesPage() {
           <>
             {ws.workspace.name}
             <Sep />
-            initiatives
+            {t('initiatives.title')}
           </>
         }
-        title="Initiatives"
+        title={t('initiatives.title')}
         actions={
           !ws.isGuest && (
             <button type="button" className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
-              <Plus size={13} /> New initiative
+              <Plus size={13} /> {t('initiatives.newInitiative')}
             </button>
           )
         }
@@ -130,12 +130,12 @@ export function InitiativesPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {list.length === 0 ? (
           <EmptyState
-            title="no initiatives yet"
-            body="Initiatives are bigger goals that group projects, across teams and quarters."
+            title={t('initiatives.list.emptyTitle')}
+            body={t('initiatives.list.emptyBody')}
             action={
               !ws.isGuest && (
                 <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>
-                  New initiative <span className="arrow">→</span>
+                  {t('initiatives.newInitiative')} <span className="arrow">→</span>
                 </button>
               )
             }
@@ -143,12 +143,12 @@ export function InitiativesPage() {
         ) : (
           <div className="min-w-[720px]">
             <div className="grid grid-cols-[minmax(0,1fr)_7rem_8rem_6rem_6rem_9rem] items-center gap-3 border-b border-border-soft px-4 py-2 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-              <span>Name</span>
-              <span>Status</span>
-              <span>Owner</span>
-              <span>Projects</span>
-              <span>Target</span>
-              <span>Progress</span>
+              <span>{t('initiatives.list.columns.name')}</span>
+              <span>{t('initiatives.list.columns.status')}</span>
+              <span>{t('initiatives.list.columns.owner')}</span>
+              <span>{t('initiatives.list.columns.projects')}</span>
+              <span>{t('initiatives.list.columns.target')}</span>
+              <span>{t('initiatives.list.columns.progress')}</span>
             </div>
             {list.map((i) => {
               const owner = i.ownerId ? ws.memberById.get(i.ownerId) : null;
@@ -209,7 +209,7 @@ export function InitiativePage() {
   const [editingDesc, setEditingDesc] = useState(false);
   const [desc, setDesc] = useState(initiative?.description ?? '');
   useEffect(() => setName(initiative?.name ?? ''), [initiative?.name]);
-  if (!initiative) return <EmptyState title="initiative not found" />;
+  if (!initiative) return <EmptyState title={t('initiatives.detail.notFound')} />;
 
   const readOnly = ws.isGuest;
   const projects = initiative.projectIds.map((id) => ws.projectById.get(id)).filter((p) => !!p);
@@ -226,10 +226,10 @@ export function InitiativePage() {
               params={{ slug: ws.slug }}
               className="hover:text-highlight"
             >
-              initiatives
+              {t('initiatives.title')}
             </Link>
             <Sep />
-            {INITIATIVE_STATUS_LABELS[initiative.status].toLowerCase()}
+            {initiativeStatusLabel(initiative.status).toLowerCase()}
           </>
         }
         title={initiative.name}
@@ -238,12 +238,12 @@ export function InitiativePage() {
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              aria-label="Delete initiative"
+              aria-label={t('initiatives.detail.delete')}
               onClick={async () => {
                 if (
                   await confirmDialog({
-                    title: `Delete initiative “${initiative.name}”?`,
-                    body: 'Its projects stay; they just leave the initiative.',
+                    title: t('initiatives.detail.confirmDeleteTitle', { name: initiative.name }),
+                    body: t('initiatives.detail.confirmDeleteBody'),
                     danger: true,
                   })
                 )
@@ -268,7 +268,7 @@ export function InitiativePage() {
               onBlur={() => name.trim() && name !== initiative.name && save.mutate({ name })}
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
               className="w-full bg-transparent text-[28px] font-bold tracking-[-0.02em] outline-none"
-              aria-label="Initiative name"
+              aria-label={t('initiatives.detail.nameLabel')}
             />
             <div className="mt-4">
               {editingDesc ? (
@@ -290,7 +290,7 @@ export function InitiativePage() {
                       className="btn btn-ghost btn-sm"
                       onClick={() => setEditingDesc(false)}
                     >
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                     <button
                       type="button"
@@ -300,7 +300,7 @@ export function InitiativePage() {
                         setEditingDesc(false);
                       }}
                     >
-                      Save
+                      {t('common.save')}
                     </button>
                   </div>
                 </>
@@ -312,20 +312,22 @@ export function InitiativePage() {
                   {initiative.description?.trim() ? (
                     <Markdown source={initiative.description} />
                   ) : (
-                    <p className="text-index">{readOnly ? '' : 'What is this initiative for?'}</p>
+                    <p className="text-index">
+                      {readOnly ? '' : t('initiatives.detail.descriptionPlaceholder')}
+                    </p>
                   )}
                 </div>
               )}
             </div>
 
             <div className="mt-8">
-              <div className="section-label mb-3">Progress</div>
+              <div className="section-label mb-3">{t('initiatives.detail.progress')}</div>
               <ProgressStats progress={initiative.progress} />
               <ProgressBar progress={initiative.progress} className="mt-3" />
             </div>
 
             <div className="mt-8">
-              <div className="section-label mb-2">Projects</div>
+              <div className="section-label mb-2">{t('initiatives.detail.projects')}</div>
               {projects.map((p) => (
                 <div
                   key={p.id}
@@ -341,7 +343,7 @@ export function InitiativePage() {
                     <span className="truncate text-[13.5px]">{p.name}</span>
                   </Link>
                   <span className="flex items-center gap-1.5 text-[12.5px] text-muted">
-                    <ProjectStatusIcon status={p.status} /> {PROJECT_STATUS_LABELS[p.status]}
+                    <ProjectStatusIcon status={p.status} /> {projectStatusLabel(p.status)}
                   </span>
                   <span className="font-mono text-[11.5px] text-muted">
                     {p.targetDate ? shortDate(p.targetDate) : '—'}
@@ -352,7 +354,7 @@ export function InitiativePage() {
                       type="button"
                       className="flex h-6 w-6 items-center justify-center text-index hover:text-text"
                       onClick={() => moveProject.mutate({ id: p.id, initiativeId: null })}
-                      aria-label={`Remove ${p.name} from the initiative`}
+                      aria-label={t('initiatives.detail.removeProject', { name: p.name })}
                     >
                       <X size={13} />
                     </button>
@@ -362,11 +364,13 @@ export function InitiativePage() {
                 </div>
               ))}
               {projects.length === 0 && (
-                <p className="py-2 font-mono text-[12px] text-index">// no projects yet</p>
+                <p className="py-2 font-mono text-[12px] text-index">
+                  {t('initiatives.detail.noProjects')}
+                </p>
               )}
               {!readOnly && others.length > 0 && (
                 <Picker
-                  placeholder="Add a project…"
+                  placeholder={t('initiatives.detail.addProjectPlaceholder')}
                   options={others.map((p) => ({
                     value: p.id,
                     label: p.name,
@@ -379,7 +383,7 @@ export function InitiativePage() {
                   onSelect={(id) => moveProject.mutate({ id, initiativeId: initiative.id })}
                   trigger={
                     <button type="button" className="btn btn-ghost btn-sm mt-2">
-                      <Plus size={13} /> Add project
+                      <Plus size={13} /> {t('initiatives.detail.addProject')}
                     </button>
                   }
                 />
@@ -388,10 +392,10 @@ export function InitiativePage() {
           </div>
 
           <aside>
-            <div className="section-label mb-3">Properties</div>
+            <div className="section-label mb-3">{t('initiatives.detail.properties')}</div>
             <fieldset disabled={readOnly} className="flex flex-col gap-3 text-[12.5px]">
               <label className="block text-index">
-                Status
+                {t('initiatives.detail.status')}
                 <select
                   className="input mt-1 h-8"
                   value={initiative.status}
@@ -399,16 +403,16 @@ export function InitiativePage() {
                 >
                   {INITIATIVE_STATUSES.map((s) => (
                     <option key={s} value={s}>
-                      {INITIATIVE_STATUS_LABELS[s]}
+                      {initiativeStatusLabel(s)}
                     </option>
                   ))}
                 </select>
               </label>
               <div className="text-index">
-                Owner
+                {t('initiatives.detail.owner')}
                 <div className="mt-1">
                   <Picker
-                    placeholder="Set owner…"
+                    placeholder={t('initiatives.detail.setOwner')}
                     options={assigneeOptions(ws)}
                     selected={[initiative.ownerId ?? 'none']}
                     onSelect={(v) => save.mutate({ ownerId: v === 'none' ? null : v })}
@@ -422,14 +426,14 @@ export function InitiativePage() {
                             size={16}
                           />
                         ) : null}
-                        {owner?.name ?? 'No owner'}
+                        {owner?.name ?? t('initiatives.detail.noOwner')}
                       </button>
                     }
                   />
                 </div>
               </div>
               <label className="block text-index">
-                Target date
+                {t('initiatives.detail.targetDate')}
                 <input
                   type="date"
                   className="input mt-1 h-8 font-mono"
@@ -438,7 +442,7 @@ export function InitiativePage() {
                 />
               </label>
               <div className="text-index">
-                Color
+                {t('initiatives.detail.color')}
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {LABEL_COLORS.map((c) => (
                     <button
@@ -447,7 +451,7 @@ export function InitiativePage() {
                       onClick={() => save.mutate({ color: c })}
                       className={`h-5 w-5 ${initiative.color === c ? 'outline-2 outline-offset-2 outline-text' : ''}`}
                       style={{ background: c }}
-                      aria-label={`Color ${c}`}
+                      aria-label={t('initiatives.detail.colorLabel', { color: c })}
                     />
                   ))}
                 </div>

@@ -1,7 +1,7 @@
 import type { Notification } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { AlarmClock, AlarmClockOff, CheckCheck, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys, useIssue, useNotifications } from '../api/queries.ts';
 import { IssueDetailView } from '../components/IssueDetailView.tsx';
@@ -10,30 +10,39 @@ import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.t
 import { ActorName } from '../components/ui/ActorName.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { Popover } from '../components/ui/Popover.tsx';
+import { getLocale, INTL_TAG, t, tx } from '../i18n/index.ts';
 import { relativeTime } from '../lib/format.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
-function describe(n: Notification, stateName: (id: string) => string) {
+/** The notification's line: `actor` (a name) and what they did, as one sentence. */
+function describe(n: Notification, actor: ReactNode, stateName: (id: string) => string) {
   switch (n.type) {
     case 'issue_assigned':
-      return 'assigned you';
+      return tx('inbox.describe.assigned', { actor });
     case 'issue_unassigned':
-      return 'unassigned you';
+      return tx('inbox.describe.unassigned', { actor });
     case 'issue_comment':
-      return 'commented';
+      return tx('inbox.describe.comment', { actor });
     case 'issue_mention':
-      return 'mentioned you';
+      return tx('inbox.describe.mention', { actor });
     case 'issue_status_changed':
-      return `changed status to ${stateName(String(n.data.to ?? ''))}`;
+      return tx('inbox.describe.statusChanged', {
+        actor,
+        status: stateName(String(n.data.to ?? '')),
+      });
     case 'issue_priority_urgent':
-      return 'marked as urgent';
+      return tx('inbox.describe.urgent', { actor });
     case 'issue_sla_breached':
-      return 'missed its SLA';
+      return tx('inbox.describe.slaBreached', { actor });
     case 'comment_reaction':
-      return `reacted ${String(n.data.emoji ?? '')} to your comment`;
+      return tx('inbox.describe.reaction', { actor, emoji: String(n.data.emoji ?? '') });
   }
 }
+
+/** "Mon 09:00": when a snooze ends, in the reader's language. */
+const snoozeTime = (d: Date) =>
+  d.toLocaleString(INTL_TAG[getLocale()], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
 
 /** When "snooze until …" ends, in the viewer's local time. */
 function snoozeChoices(now = new Date()) {
@@ -45,10 +54,10 @@ function snoozeChoices(now = new Date()) {
   };
   const toMonday = (8 - now.getDay()) % 7 || 7;
   return [
-    { label: 'In an hour', until: new Date(now.getTime() + 3_600_000) },
-    { label: 'Later today', until: new Date(now.getTime() + 3 * 3_600_000) },
-    { label: 'Tomorrow morning', until: at(1, 9) },
-    { label: 'Next week', until: at(toMonday, 9) },
+    { label: t('inbox.snooze.inAnHour'), until: new Date(now.getTime() + 3_600_000) },
+    { label: t('inbox.snooze.laterToday'), until: new Date(now.getTime() + 3 * 3_600_000) },
+    { label: t('inbox.snooze.tomorrowMorning'), until: at(1, 9) },
+    { label: t('inbox.snooze.nextWeek'), until: at(toMonday, 9) },
   ];
 }
 
@@ -112,10 +121,10 @@ export function InboxPage() {
             <>
               {ws.workspace.name}
               <Sep />
-              inbox
+              {t('inbox.kicker')}
             </>
           }
-          title={showSnoozed ? 'Snoozed' : 'Inbox'}
+          title={showSnoozed ? t('inbox.snoozedTitle') : t('inbox.title')}
           actions={
             <>
               {selected && !showSnoozed && (
@@ -128,8 +137,8 @@ export function InboxPage() {
                     <button
                       type="button"
                       className="btn btn-ghost btn-sm"
-                      title="Snooze (H)"
-                      aria-label="Snooze"
+                      title={t('inbox.snooze.buttonTitle')}
+                      aria-label={t('inbox.snooze.button')}
                     >
                       <AlarmClock size={13} />
                     </button>
@@ -146,11 +155,7 @@ export function InboxPage() {
                         >
                           {c.label}
                           <span className="ml-auto font-mono text-[10.5px] text-index">
-                            {c.until.toLocaleString(undefined, {
-                              weekday: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
+                            {snoozeTime(c.until)}
                           </span>
                         </button>
                       ))}
@@ -163,7 +168,7 @@ export function InboxPage() {
                   type="button"
                   className="btn btn-ghost btn-sm"
                   onClick={() => snooze([selected.id], null)}
-                  title="Unsnooze (H)"
+                  title={t('inbox.snooze.unsnoozeTitle')}
                 >
                   <AlarmClockOff size={13} />
                 </button>
@@ -176,17 +181,19 @@ export function InboxPage() {
                   setSelectedId(null);
                 }}
                 aria-pressed={showSnoozed}
-                title={showSnoozed ? 'Back to the inbox' : 'Show snoozed'}
+                title={showSnoozed ? t('inbox.backToInbox') : t('inbox.showSnoozed')}
               >
                 <AlarmClock size={13} />
-                <span className="hidden lg:inline">{showSnoozed ? 'Inbox' : 'Snoozed'}</span>
+                <span className="hidden lg:inline">
+                  {showSnoozed ? t('inbox.title') : t('inbox.snoozedTitle')}
+                </span>
               </button>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => markRead()}
-                title="Mark all as read"
-                aria-label="Mark all as read"
+                title={t('inbox.markAllRead')}
+                aria-label={t('inbox.markAllRead')}
               >
                 <CheckCheck size={13} />
               </button>
@@ -194,8 +201,8 @@ export function InboxPage() {
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => remove({ read: true })}
-                title="Delete read notifications"
-                aria-label="Delete read notifications"
+                title={t('inbox.deleteRead')}
+                aria-label={t('inbox.deleteRead')}
               >
                 <Trash2 size={13} />
               </button>
@@ -206,12 +213,8 @@ export function InboxPage() {
           {isLoading && <Spinner />}
           {!isLoading && list.length === 0 && (
             <EmptyState
-              title={showSnoozed ? 'nothing snoozed' : 'all caught up'}
-              body={
-                showSnoozed
-                  ? 'Snoozed notifications wait here and come back unread when it’s time.'
-                  : 'Assignments, mentions and comments on issues you follow land here.'
-              }
+              title={showSnoozed ? t('inbox.empty.snoozedTitle') : t('inbox.empty.title')}
+              body={showSnoozed ? t('inbox.empty.snoozedBody') : t('inbox.empty.body')}
             />
           )}
           {list.map((n) => {
@@ -243,26 +246,29 @@ export function InboxPage() {
                     <span className="font-mono text-[11px] text-index">{n.issue?.identifier}</span>
                     <span className="ml-auto flex-none font-mono text-[10.5px] text-index">
                       {n.snoozedUntil
-                        ? `until ${new Date(n.snoozedUntil).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' })}`
+                        ? t('inbox.snoozedUntil', { time: snoozeTime(new Date(n.snoozedUntil)) })
                         : relativeTime(n.createdAt)}
                     </span>
                   </span>
                   <span
                     className={`mt-0.5 block truncate text-[13.5px] ${n.readAt ? 'text-muted' : 'font-medium text-text'}`}
                   >
-                    {n.issue?.title ?? 'Deleted issue'}
+                    {n.issue?.title ?? t('inbox.deletedIssue')}
                   </span>
                   <span className="block truncate text-[12.5px] text-index">
-                    <ActorName person={actor} className="" />{' '}
-                    {describe(n, (id) => ws.stateById.get(id)?.name ?? 'a new status')}
+                    {describe(
+                      n,
+                      <ActorName person={actor} className="" />,
+                      (id) => ws.stateById.get(id)?.name ?? t('inbox.newStatus'),
+                    )}
                   </span>
                 </span>
                 {!n.readAt && (
                   <span
                     className="mt-2 h-[7px] w-[7px] flex-none bg-primary shadow-[0_0_10px_var(--color-primary)]"
-                    title="Unread"
+                    title={t('inbox.unread')}
                   >
-                    <span className="sr-only">Unread</span>
+                    <span className="sr-only">{t('inbox.unread')}</span>
                   </span>
                 )}
               </button>
@@ -278,7 +284,7 @@ export function InboxPage() {
               className="h-9 flex-none border-b border-border-soft px-4 text-left font-mono text-[11px] text-index md:hidden"
               onClick={() => setSelectedId(null)}
             >
-              ← back to inbox
+              {t('inbox.back')}
             </button>
             <div className="min-h-0 flex-1">
               <IssueDetailView key={issue.data.id} issue={issue.data} compact />
@@ -288,10 +294,7 @@ export function InboxPage() {
           <Spinner />
         ) : (
           <div className="hud-ground flex h-full">
-            <EmptyState
-              title="inbox"
-              body="Select a notification to see the issue. J/K to move, U to toggle read, H to snooze, ⌫ to delete."
-            />
+            <EmptyState title={t('inbox.select.title')} body={t('inbox.select.body')} />
           </div>
         )}
       </div>

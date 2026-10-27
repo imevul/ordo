@@ -1,5 +1,4 @@
 import {
-  priorityLabel,
   type Team,
   TRIAGE_SOURCES,
   type TriageActions,
@@ -17,16 +16,12 @@ import {
   priorityOptions,
 } from '../../components/properties.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
+import { t } from '../../i18n/index.ts';
+import { priorityLabel } from '../../i18n/labels.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { SettingsCard } from './ui.tsx';
 
-const SOURCE_LABELS: Record<(typeof TRIAGE_SOURCES)[number], string> = {
-  web: 'the app',
-  api: 'the API',
-  mcp: 'AI agents',
-  integration: 'integrations',
-  email: 'email',
-};
+const sourceLabel = (s: (typeof TRIAGE_SOURCES)[number]) => t(`triageRules.source.${s}`);
 
 type Draft = { name: string; conditions: TriageConditions; actions: TriageActions };
 
@@ -34,27 +29,46 @@ type Draft = { name: string; conditions: TriageConditions; actions: TriageAction
 function useSummary() {
   const ws = useWorkspace();
   const names = (ids?: string[]) =>
-    (ids ?? []).map((id) => ws.labelById.get(id)?.name ?? 'label').join(', ');
+    (ids ?? [])
+      .map((id) => ws.labelById.get(id)?.name ?? t('triageRules.summary.label'))
+      .join(', ');
   const people = (ids?: string[]) =>
-    (ids ?? []).map((id) => ws.memberById.get(id)?.name.split(' ')[0] ?? 'someone').join(', ');
+    (ids ?? [])
+      .map((id) => ws.memberById.get(id)?.name.split(' ')[0] ?? t('triageRules.summary.someone'))
+      .join(', ');
   return (r: Draft) => {
+    const or = t('triageRules.summary.or');
     const c = r.conditions;
     const when = [
-      c.sources?.length && `from ${c.sources.map((s) => SOURCE_LABELS[s]).join(' or ')}`,
-      c.text && `mentions “${c.text}”`,
-      c.labelIds?.length && `labeled ${names(c.labelIds)}`,
-      c.priorities?.length && `priority ${c.priorities.map(priorityLabel).join(' or ')}`,
+      c.sources?.length &&
+        t('triageRules.summary.from', { sources: c.sources.map(sourceLabel).join(or) }),
+      c.text && t('triageRules.summary.mentions', { text: c.text }),
+      c.labelIds?.length && t('triageRules.summary.labeled', { labels: names(c.labelIds) }),
+      c.priorities?.length &&
+        t('triageRules.summary.priorityIs', {
+          priorities: c.priorities.map((p) => priorityLabel(p)).join(or),
+        }),
     ].filter(Boolean);
     const a = r.actions;
     const then = [
-      a.priority !== undefined && `priority ${priorityLabel(a.priority)}`,
-      a.labelIds?.length && `add ${names(a.labelIds)}`,
+      a.priority !== undefined &&
+        t('triageRules.summary.setPriority', { priority: priorityLabel(a.priority) }),
+      a.labelIds?.length && t('triageRules.summary.addLabels', { labels: names(a.labelIds) }),
       a.rotation?.length
-        ? `assign in turn to ${people(a.rotation)}`
-        : a.assigneeId && `assign ${people([a.assigneeId])}`,
-      a.stateId && `accept into ${ws.stateById.get(a.stateId)?.name ?? 'a status'}`,
+        ? t('triageRules.summary.assignInTurn', { people: people(a.rotation) })
+        : a.assigneeId && t('triageRules.summary.assign', { person: people([a.assigneeId]) }),
+      a.stateId &&
+        t('triageRules.summary.acceptInto', {
+          status: ws.stateById.get(a.stateId)?.name ?? t('triageRules.summary.aStatus'),
+        }),
     ].filter(Boolean);
-    return `${when.length ? `When ${when.join(' and ')}` : 'Always'}: ${then.join(', ') || 'nothing yet'}`;
+    const actions = then.join(', ') || t('triageRules.summary.nothingYet');
+    return when.length
+      ? t('triageRules.summary.when', {
+          conditions: when.join(t('triageRules.summary.and')),
+          actions,
+        })
+      : t('triageRules.summary.always', { actions });
   };
 }
 
@@ -106,7 +120,12 @@ function RuleEditor({
   });
 
   return (
-    <Modal open onClose={onClose} width={600} label={rule ? 'Edit triage rule' : 'New triage rule'}>
+    <Modal
+      open
+      onClose={onClose}
+      width={600}
+      label={rule ? t('triageRules.editor.edit') : t('triageRules.editor.new')}
+    >
       <form
         className="p-5"
         onSubmit={(e) => {
@@ -115,19 +134,21 @@ function RuleEditor({
           save.mutate(clean(draft), { onSuccess: onClose });
         }}
       >
-        <div className="section-label mb-3">{rule ? 'Edit triage rule' : 'New triage rule'}</div>
+        <div className="section-label mb-3">
+          {rule ? t('triageRules.editor.edit') : t('triageRules.editor.new')}
+        </div>
         <input
           className="input"
-          placeholder="Rule name, e.g. Crashes are urgent"
+          placeholder={t('triageRules.editor.namePlaceholder')}
           value={draft.name}
           onChange={(e) => setDraft({ ...draft, name: e.target.value })}
         />
 
         <div className="kicker mt-5 mb-1 text-[11px] uppercase tracking-[0.14em]">
-          When an issue…
+          {t('triageRules.editor.when')}
         </div>
         <div className={row}>
-          <span className="text-index">comes from</span>
+          <span className="text-index">{t('triageRules.editor.comesFrom')}</span>
           <span className="flex flex-wrap gap-3">
             {TRIAGE_SOURCES.map((s) => (
               <label key={s} className="flex items-center gap-1.5 text-muted">
@@ -144,40 +165,40 @@ function RuleEditor({
                     })
                   }
                 />
-                {SOURCE_LABELS[s]}
+                {sourceLabel(s)}
               </label>
             ))}
           </span>
         </div>
         <div className={row}>
-          <span className="text-index">mentions</span>
+          <span className="text-index">{t('triageRules.editor.mentions')}</span>
           <input
             className="input h-8"
-            placeholder="text in title or description"
+            placeholder={t('triageRules.editor.mentionsPlaceholder')}
             value={draft.conditions.text ?? ''}
             onChange={(e) => cond({ text: e.target.value })}
           />
         </div>
         <div className={row}>
-          <span className="text-index">has a label</span>
+          <span className="text-index">{t('triageRules.editor.hasLabel')}</span>
           <Picker
             multi
-            placeholder="Labels…"
+            placeholder={t('triageRules.editor.labelsPlaceholder')}
             options={labelOptions(ws, team.id)}
             selected={draft.conditions.labelIds ?? []}
             onSelect={(v) => cond({ labelIds: multi(draft.conditions.labelIds, v) })}
             trigger={chip(
               draft.conditions.labelIds?.length
                 ? draft.conditions.labelIds.map((id) => ws.labelById.get(id)?.name).join(', ')
-                : 'Any',
+                : t('triageRules.editor.any'),
             )}
           />
         </div>
         <div className={row}>
-          <span className="text-index">has priority</span>
+          <span className="text-index">{t('triageRules.editor.hasPriority')}</span>
           <Picker
             multi
-            placeholder="Priorities…"
+            placeholder={t('triageRules.editor.prioritiesPlaceholder')}
             options={priorityOptions()}
             selected={(draft.conditions.priorities ?? []).map(String)}
             onSelect={(v) =>
@@ -185,15 +206,17 @@ function RuleEditor({
             }
             trigger={chip(
               draft.conditions.priorities?.length
-                ? draft.conditions.priorities.map(priorityLabel).join(', ')
-                : 'Any',
+                ? draft.conditions.priorities.map((p) => priorityLabel(p)).join(', ')
+                : t('triageRules.editor.any'),
             )}
           />
         </div>
 
-        <div className="kicker mt-5 mb-1 text-[11px] uppercase tracking-[0.14em]">…then</div>
+        <div className="kicker mt-5 mb-1 text-[11px] uppercase tracking-[0.14em]">
+          {t('triageRules.editor.thenHeading')}
+        </div>
         <div className={row}>
-          <span className="text-index">set priority</span>
+          <span className="text-index">{t('triageRules.editor.setPriority')}</span>
           <select
             className="input h-8"
             value={draft.actions.priority ?? ''}
@@ -201,7 +224,7 @@ function RuleEditor({
               act({ priority: e.target.value === '' ? undefined : Number(e.target.value) })
             }
           >
-            <option value="">Leave as is</option>
+            <option value="">{t('triageRules.editor.leaveAsIs')}</option>
             {[1, 2, 3, 4, 0].map((p) => (
               <option key={p} value={p}>
                 {priorityLabel(p)}
@@ -210,25 +233,25 @@ function RuleEditor({
           </select>
         </div>
         <div className={row}>
-          <span className="text-index">add labels</span>
+          <span className="text-index">{t('triageRules.editor.addLabels')}</span>
           <Picker
             multi
-            placeholder="Labels…"
+            placeholder={t('triageRules.editor.labelsPlaceholder')}
             options={labelOptions(ws, team.id)}
             selected={draft.actions.labelIds ?? []}
             onSelect={(v) => act({ labelIds: multi(draft.actions.labelIds, v) })}
             trigger={chip(
               draft.actions.labelIds?.length
                 ? draft.actions.labelIds.map((id) => ws.labelById.get(id)?.name).join(', ')
-                : 'None',
+                : t('common.none'),
             )}
           />
         </div>
         <div className={row}>
-          <span className="text-index">assign</span>
+          <span className="text-index">{t('triageRules.editor.assign')}</span>
           <Picker
             multi
-            placeholder="One person, or several to take turns…"
+            placeholder={t('triageRules.editor.assignPlaceholder')}
             options={assigneeOptions(ws).filter((o) => o.value !== 'none')}
             selected={
               draft.actions.rotation ?? (draft.actions.assigneeId ? [draft.actions.assigneeId] : [])
@@ -247,21 +270,26 @@ function RuleEditor({
             }}
             trigger={chip(
               draft.actions.rotation?.length
-                ? `In turn: ${draft.actions.rotation.map((id) => ws.memberById.get(id)?.name.split(' ')[0]).join(', ')}`
+                ? t('triageRules.editor.inTurn', {
+                    people: draft.actions.rotation
+                      .map((id) => ws.memberById.get(id)?.name.split(' ')[0])
+                      .join(', '),
+                  })
                 : draft.actions.assigneeId
-                  ? (ws.memberById.get(draft.actions.assigneeId)?.name ?? 'Someone')
-                  : 'Nobody',
+                  ? (ws.memberById.get(draft.actions.assigneeId)?.name ??
+                    t('triageRules.editor.someone'))
+                  : t('triageRules.editor.nobody'),
             )}
           />
         </div>
         <div className={row}>
-          <span className="text-index">accept into</span>
+          <span className="text-index">{t('triageRules.editor.acceptInto')}</span>
           <select
             className="input h-8"
             value={draft.actions.stateId ?? ''}
             onChange={(e) => act({ stateId: e.target.value || undefined })}
           >
-            <option value="">Keep in triage</option>
+            <option value="">{t('triageRules.editor.keepInTriage')}</option>
             {accept.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -273,10 +301,11 @@ function RuleEditor({
         <p className="mt-4 font-mono text-[11.5px] text-index">// {summary(draft)}</p>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!draft.name.trim() || save.isPending}>
-            {rule ? 'Save' : 'Create rule'} <span className="arrow">→</span>
+            {rule ? t('common.save') : t('triageRules.editor.create')}{' '}
+            <span className="arrow">→</span>
           </button>
         </div>
       </form>
@@ -296,10 +325,7 @@ export function TriageRulesCard({ team }: { team: Team }) {
     api.del(wsPath(ws.slug, `/triage-rules/${r.id}`)),
   );
   return (
-    <SettingsCard
-      title="Triage rules"
-      description="Applied in order to every issue that lands in triage; all matching rules apply. Changes are made by the Ordo bot, so each issue's history shows them."
-    >
+    <SettingsCard title={t('triageRules.title')} description={t('triageRules.description')}>
       {team.triageRules.map((r) => (
         <div key={r.id} className="flex items-center gap-3 border-b border-border-soft py-2">
           <input
@@ -307,7 +333,11 @@ export function TriageRulesCard({ team }: { team: Team }) {
             className="accent-primary"
             checked={r.enabled}
             onChange={() => toggle.mutate(r)}
-            aria-label={r.enabled ? `Disable ${r.name}` : `Enable ${r.name}`}
+            aria-label={
+              r.enabled
+                ? t('triageRules.disable', { name: r.name })
+                : t('triageRules.enable', { name: r.name })
+            }
           />
           <div className={`min-w-0 flex-1 ${r.enabled ? '' : 'opacity-50'}`}>
             <div className="text-[13.5px]">{r.name}</div>
@@ -317,7 +347,7 @@ export function TriageRulesCard({ team }: { team: Team }) {
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => setEditing(r)}
-            aria-label={`Edit ${r.name}`}
+            aria-label={t('triageRules.editLabel', { name: r.name })}
           >
             <Pencil size={12} />
           </button>
@@ -325,17 +355,22 @@ export function TriageRulesCard({ team }: { team: Team }) {
             type="button"
             className="btn btn-danger btn-sm"
             onClick={async () => {
-              if (await confirmDialog({ title: `Delete rule “${r.name}”?`, danger: true }))
+              if (
+                await confirmDialog({
+                  title: t('triageRules.confirmDelete', { name: r.name }),
+                  danger: true,
+                })
+              )
                 remove.mutate(r);
             }}
-            aria-label={`Delete ${r.name}`}
+            aria-label={t('triageRules.deleteLabel', { name: r.name })}
           >
             <Trash2 size={12} />
           </button>
         </div>
       ))}
       <button type="button" className="btn btn-ghost btn-sm mt-3" onClick={() => setEditing('new')}>
-        <Plus size={13} /> Add rule
+        <Plus size={13} /> {t('triageRules.addRule')}
       </button>
       {editing && (
         <RuleEditor

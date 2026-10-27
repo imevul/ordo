@@ -2,6 +2,7 @@ import type { Integration, IntegrationProviderInfo } from '@ordo/shared';
 import { type FormEvent, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
+import { t, tx } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow } from './ui.tsx';
 
@@ -63,11 +64,12 @@ export function EmailForm({
             config,
             secrets,
           });
-      if (res.status === 'error') toast.error(`Saved, but: ${res.lastError}`);
-      else toast.success(existing ? 'Saved' : 'Email intake connected');
+      if (res.status === 'error')
+        toast.error(t('integrations.form.savedButError', { error: res.lastError ?? '' }));
+      else toast.success(existing ? t('common.saved') : t('integrations.email.connected'));
       onDone();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Something went wrong');
+      toast.error(err instanceof Error ? err.message : t('common.error'));
     } finally {
       setBusy(false);
     }
@@ -75,26 +77,23 @@ export function EmailForm({
 
   return (
     <form onSubmit={submit}>
-      <p className="mb-4 text-[12.5px] text-muted">
-        Mail to this address becomes an issue in the team below — in triage, if the team has it —
-        filed under the sender’s customer. Replies in the same thread become comments. Auto-replies
-        and bounces are ignored.
-      </p>
-      <FormRow label="Team">
+      <p className="mb-4 text-[12.5px] text-muted">{t('integrations.email.intro')}</p>
+      <FormRow label={t('common.team')}>
         <select
           className="input"
           value={v.teamId}
           onChange={(e) => set({ teamId: e.target.value })}
         >
-          {ws.teams.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-              {t.triageEnabled ? '' : ' (no triage: new issues land in its default status)'}
+          {ws.teams.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.triageEnabled
+                ? team.name
+                : t('integrations.email.teamNoTriage', { team: team.name })}
             </option>
           ))}
         </select>
       </FormRow>
-      <FormRow label="Address" hint="The address people write to; shown in Ordo only.">
+      <FormRow label={t('integrations.email.address')} hint={t('integrations.email.addressHint')}>
         <input
           className="input font-mono"
           placeholder="support@example.com"
@@ -104,16 +103,8 @@ export function EmailForm({
       </FormRow>
       <div className="mt-4 mb-2 flex flex-col gap-2 text-[13px]">
         {[
-          [
-            'imap',
-            'Check a mailbox (IMAP)',
-            'Ordo reads new mail every minute and marks it read. Works behind NAT and firewalls.',
-          ],
-          [
-            'webhook',
-            'Receive by webhook',
-            'Something that gets your mail (an email worker, a mail server pipe) POSTs each raw message to Ordo.',
-          ],
+          ['imap', t('integrations.email.imap'), t('integrations.email.imapHint')],
+          ['webhook', t('integrations.email.webhook'), t('integrations.email.webhookHint')],
         ].map(([key, label, hint]) => (
           <label key={key} className="flex items-start gap-2">
             <input
@@ -132,7 +123,7 @@ export function EmailForm({
       {imap && (
         <>
           <div className="grid grid-cols-[1fr_6rem] gap-2">
-            <FormRow label="IMAP server">
+            <FormRow label={t('integrations.email.imapServer')}>
               <input
                 className="input font-mono"
                 required
@@ -141,7 +132,7 @@ export function EmailForm({
                 onChange={(e) => set({ host: e.target.value })}
               />
             </FormRow>
-            <FormRow label="Port">
+            <FormRow label={t('integrations.email.port')}>
               <input
                 className="input font-mono"
                 value={v.port}
@@ -156,9 +147,9 @@ export function EmailForm({
               checked={v.secure}
               onChange={(e) => set({ secure: e.target.checked })}
             />
-            TLS (port 993); untick for STARTTLS on 143
+            {t('integrations.email.tls')}
           </label>
-          <FormRow label="User name">
+          <FormRow label={t('integrations.email.username')}>
             <input
               className="input font-mono"
               required
@@ -168,11 +159,9 @@ export function EmailForm({
             />
           </FormRow>
           <FormRow
-            label="Password"
+            label={t('integrations.email.password')}
             hint={
-              existing
-                ? 'Leave empty to keep the current one.'
-                : 'An app password, where the provider has them.'
+              existing ? t('integrations.form.keepSecret') : t('integrations.email.passwordHint')
             }
           >
             <input
@@ -184,7 +173,7 @@ export function EmailForm({
               onChange={(e) => set({ password: e.target.value })}
             />
           </FormRow>
-          <FormRow label="Folder">
+          <FormRow label={t('integrations.email.folder')}>
             <input
               className="input font-mono"
               value={v.mailbox}
@@ -195,21 +184,23 @@ export function EmailForm({
       )}
       {!imap && existing?.inboundUrl && (
         <p className="mt-3 text-[12.5px] text-muted">
-          POST each message, raw (<code className="font-mono">message/rfc822</code>), to the webhook
-          URL above.
+          {tx('integrations.email.postRaw', {
+            type: <code className="font-mono">message/rfc822</code>,
+          })}
         </p>
       )}
       {!imap && !existing && (
         <p className="mt-3 text-[12.5px] text-muted">
-          The webhook URL appears once connected. {team ? `Issues go to ${team.name}.` : ''}
+          {t('integrations.email.webhookAfterConnect')}
+          {team && ` ${t('integrations.email.issuesGoTo', { team: team.name })}`}
         </p>
       )}
       <div className="mt-6 flex justify-end gap-2">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>
-          Cancel
+          {t('common.cancel')}
         </button>
         <button className="btn btn-primary" disabled={busy || !v.teamId}>
-          {existing ? 'Save' : 'Connect'}
+          {existing ? t('common.save') : t('integrations.form.connect')}
         </button>
       </div>
     </form>

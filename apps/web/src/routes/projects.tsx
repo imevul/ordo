@@ -2,8 +2,6 @@ import {
   LABEL_COLORS,
   type Milestone,
   PROJECT_HEALTH,
-  PROJECT_HEALTH_LABELS,
-  PROJECT_STATUS_LABELS,
   PROJECT_STATUSES,
   type Project,
   type ProjectHealth,
@@ -24,6 +22,8 @@ import { ProjectDocs } from '../components/ProjectDocs.tsx';
 import { assigneeOptions, Picker } from '../components/properties.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { ConfirmModal, confirmDialog, Modal } from '../components/ui/Modal.tsx';
+import { t } from '../i18n/index.ts';
+import { healthLabel, projectStatusLabel } from '../i18n/labels.ts';
 import { relativeTime, shortDate } from '../lib/format.ts';
 import { burnUp, isoDay } from '../lib/insights.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
@@ -35,10 +35,11 @@ const HEALTH_COLOR: Record<ProjectHealth, string> = {
 };
 
 export function HealthChip({ health }: { health: ProjectHealth | null }) {
-  if (!health) return <span className="chip [--chip:var(--color-index)]">no update</span>;
+  if (!health)
+    return <span className="chip [--chip:var(--color-index)]">{t('projects.noUpdate')}</span>;
   return (
     <span className="chip" style={{ ['--chip' as string]: HEALTH_COLOR[health] }}>
-      {PROJECT_HEALTH_LABELS[health]}
+      {healthLabel(health)}
     </span>
   );
 }
@@ -56,13 +57,13 @@ function ProjectModal({
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [teamIds, setTeamIds] = useState<string[]>(
-    defaultTeamId ? [defaultTeamId] : ws.myTeams.slice(0, 1).map((t) => t.id),
+    defaultTeamId ? [defaultTeamId] : ws.myTeams.slice(0, 1).map((team) => team.id),
   );
   const [targetDate, setTargetDate] = useState('');
   const create = useWsMutation(
     ws.slug,
     (body: object) => api.post<Project>(wsPath(ws.slug, '/projects'), body),
-    { success: 'Project created' },
+    { success: t('projects.create.created') },
   );
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -89,37 +90,43 @@ function ProjectModal({
     );
   };
   return (
-    <Modal open={open} onClose={onClose} width={520} label="New project" align="center">
+    <Modal
+      open={open}
+      onClose={onClose}
+      width={520}
+      label={t('projects.newProject')}
+      align="center"
+    >
       <form onSubmit={submit} className="p-6">
-        <div className="section-label mb-4">New project</div>
+        <div className="section-label mb-4">{t('projects.newProject')}</div>
         <input
           autoFocus
           className="w-full bg-transparent text-[20px] font-semibold outline-none placeholder:text-index"
-          placeholder="Project name"
+          placeholder={t('projects.create.namePlaceholder')}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <div className="mt-4 text-[12px] text-muted">Teams</div>
+        <div className="mt-4 text-[12px] text-muted">{t('projects.create.teams')}</div>
         <div className="mt-1 flex flex-wrap gap-1.5">
-          {ws.teams.map((t) => {
-            const on = teamIds.includes(t.id);
+          {ws.teams.map((team) => {
+            const on = teamIds.includes(team.id);
             return (
               <button
                 type="button"
-                key={t.id}
+                key={team.id}
                 onClick={() =>
-                  setTeamIds(on ? teamIds.filter((x) => x !== t.id) : [...teamIds, t.id])
+                  setTeamIds(on ? teamIds.filter((x) => x !== team.id) : [...teamIds, team.id])
                 }
                 className={`prop ${on ? 'text-text shadow-[inset_0_0_0_1px_var(--color-primary)]' : ''}`}
                 aria-pressed={on}
               >
-                <TeamIcon color={t.color} label={t.key} size={14} /> {t.name}
+                <TeamIcon color={team.color} label={team.key} size={14} /> {team.name}
               </button>
             );
           })}
         </div>
         <label className="mt-4 block text-[12px] text-muted">
-          Target date
+          {t('projects.create.targetDate')}
           <input
             type="date"
             className="input mt-1"
@@ -129,13 +136,13 @@ function ProjectModal({
         </label>
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
             className="btn btn-primary"
             disabled={!name.trim() || teamIds.length === 0 || create.isPending}
           >
-            Create project <span className="arrow">→</span>
+            {t('projects.create.submit')} <span className="arrow">→</span>
           </button>
         </div>
       </form>
@@ -173,14 +180,14 @@ export function ProjectsPage() {
           <>
             {team ? team.key : ws.workspace.name}
             <Sep />
-            projects
+            {t('common.projects')}
           </>
         }
-        title={team ? `${team.name} projects` : 'Projects'}
+        title={team ? t('projects.list.teamTitle', { team: team.name }) : t('common.projects')}
         actions={
           !ws.isGuest && (
             <button type="button" className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
-              <Plus size={13} /> New project
+              <Plus size={13} /> {t('projects.newProject')}
             </button>
           )
         }
@@ -188,25 +195,25 @@ export function ProjectsPage() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         {projects.length === 0 ? (
           <EmptyState
-            title="no projects yet"
-            body="Projects group issues toward a goal with a target date, across one or more teams."
+            title={t('projects.list.emptyTitle')}
+            body={t('projects.list.emptyBody')}
             action={
               !ws.isGuest && (
                 <button type="button" className="btn btn-primary" onClick={() => setOpen(true)}>
-                  New project <span className="arrow">→</span>
+                  {t('projects.newProject')} <span className="arrow">→</span>
                 </button>
               )
             }
           />
         ) : (
-          <div className="min-w-[720px]">
+          <div className="min-w-[900px]">
             <div className="grid grid-cols-[minmax(0,1fr)_8rem_7rem_6rem_10rem_9rem] items-center gap-3 border-b border-border-soft px-4 py-2 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-              <span>Name</span>
-              <span>Health</span>
-              <span>Lead</span>
-              <span>Target</span>
-              <span>Status</span>
-              <span>Progress</span>
+              <span>{t('projects.list.columns.name')}</span>
+              <span>{t('projects.list.columns.health')}</span>
+              <span>{t('projects.list.columns.lead')}</span>
+              <span>{t('projects.list.columns.target')}</span>
+              <span>{t('projects.list.columns.status')}</span>
+              <span>{t('projects.list.columns.progress')}</span>
             </div>
             {[...projects]
               .sort((a, b) => order(a) - order(b) || a.sortOrder - b.sortOrder)
@@ -240,7 +247,7 @@ export function ProjectsPage() {
                       {p.targetDate ? shortDate(p.targetDate) : '—'}
                     </span>
                     <span className="flex items-center gap-1.5 text-[12.5px] text-muted">
-                      <ProjectStatusIcon status={p.status} /> {PROJECT_STATUS_LABELS[p.status]}
+                      <ProjectStatusIcon status={p.status} /> {projectStatusLabel(p.status)}
                     </span>
                     <ProgressBar progress={p.progress} />
                   </Link>
@@ -275,7 +282,7 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
         onBlur={() => name.trim() && name !== milestone.name && save.mutate({ name })}
         onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
         className="min-w-0 bg-transparent text-[13.5px] outline-none focus:shadow-[inset_0_-1px_0_var(--color-primary)]"
-        aria-label="Milestone name"
+        aria-label={t('projects.milestones.nameLabel')}
       />
       <input
         type="date"
@@ -283,9 +290,12 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
         disabled={ws.isGuest}
         onChange={(e) => save.mutate({ targetDate: e.target.value || null })}
         className="input h-7 px-1.5 font-mono text-[11.5px]"
-        aria-label="Target date"
+        aria-label={t('projects.milestones.targetDate')}
       />
-      <span className="font-mono text-[11px] text-index" title="Completed of all issues">
+      <span
+        className="font-mono text-[11px] text-index"
+        title={t('projects.milestones.progressTitle')}
+      >
         {p.completed}/{p.total} · {p.total ? Math.round((p.completed / p.total) * 100) : 0}%
       </span>
       {!ws.isGuest ? (
@@ -295,14 +305,14 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
           onClick={async () => {
             if (
               await confirmDialog({
-                title: `Delete milestone “${milestone.name}”?`,
-                body: 'Its issues stay in the project.',
+                title: t('projects.milestones.confirmDeleteTitle', { name: milestone.name }),
+                body: t('projects.milestones.confirmDeleteBody'),
                 danger: true,
               })
             )
               remove.mutate(undefined);
           }}
-          aria-label={`Delete ${milestone.name}`}
+          aria-label={t('projects.milestones.deleteLabel', { name: milestone.name })}
         >
           <Trash2 size={13} />
         </button>
@@ -328,22 +338,22 @@ function ProjectProgressChart({ project }: { project: Project }) {
   if (points.length < 2) return null;
   return (
     <div className="mt-8">
-      <div className="section-label mb-3">Progress over time</div>
+      <div className="section-label mb-3">{t('projects.chart.title')}</div>
       <LineChart
-        label={`${project.name}: scope and completed issues per day`}
+        label={t('projects.chart.label', { name: project.name })}
         x={points.map((p) => p.day)}
         height={160}
         series={[
           {
             key: 'scope',
-            label: 'Scope',
+            label: t('projects.chart.scope'),
             color: 'var(--color-chart-2)',
             dashed: true,
             values: points.map((p) => p.scope),
           },
           {
             key: 'completed',
-            label: 'Completed',
+            label: t('projects.chart.completed'),
             color: 'var(--color-primary)',
             values: points.map((p) => p.completed),
           },
@@ -364,7 +374,7 @@ function ProjectMilestones({ project }: { project: Project }) {
   if (ws.isGuest && project.milestones.length === 0) return null;
   return (
     <div className="mt-8">
-      <div className="section-label mb-2">Milestones</div>
+      <div className="section-label mb-2">{t('projects.milestones.title')}</div>
       {project.milestones.map((m) => (
         <MilestoneRow key={m.id} milestone={m} />
       ))}
@@ -387,7 +397,7 @@ function ProjectMilestones({ project }: { project: Project }) {
         >
           <input
             className="input min-w-0 flex-1"
-            placeholder="New milestone, e.g. Beta"
+            placeholder={t('projects.milestones.newPlaceholder')}
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
@@ -396,10 +406,10 @@ function ProjectMilestones({ project }: { project: Project }) {
             className="input w-36 font-mono text-[12px]"
             value={targetDate}
             onChange={(e) => setTargetDate(e.target.value)}
-            aria-label="Target date"
+            aria-label={t('projects.milestones.targetDate')}
           />
           <button className="btn btn-ghost btn-sm" disabled={!name.trim()}>
-            <Plus size={13} /> Add
+            <Plus size={13} /> {t('common.add')}
           </button>
         </form>
       )}
@@ -437,7 +447,7 @@ function ProjectOverview({ project }: { project: Project }) {
           onBlur={() => name.trim() && name !== project.name && save.mutate({ name })}
           onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
           className="w-full bg-transparent text-[28px] font-bold tracking-[-0.02em] outline-none"
-          aria-label="Project name"
+          aria-label={t('projects.overview.nameLabel')}
         />
         <div className="mt-4">
           {editingDesc ? (
@@ -459,7 +469,7 @@ function ProjectOverview({ project }: { project: Project }) {
                   className="btn btn-ghost btn-sm"
                   onClick={() => setEditingDesc(false)}
                 >
-                  Cancel
+                  {t('common.cancel')}
                 </button>
                 <button
                   type="button"
@@ -469,7 +479,7 @@ function ProjectOverview({ project }: { project: Project }) {
                     setEditingDesc(false);
                   }}
                 >
-                  Save
+                  {t('common.save')}
                 </button>
               </div>
             </>
@@ -478,14 +488,14 @@ function ProjectOverview({ project }: { project: Project }) {
               {project.description?.trim() ? (
                 <Markdown source={project.description} />
               ) : (
-                <p className="text-index">Add a project brief…</p>
+                <p className="text-index">{t('projects.overview.addBrief')}</p>
               )}
             </div>
           )}
         </div>
 
         <div className="mt-8">
-          <div className="section-label mb-3">Progress</div>
+          <div className="section-label mb-3">{t('projects.overview.progress')}</div>
           <ProgressStats progress={project.progress} />
           <ProgressBar progress={project.progress} className="mt-3" />
         </div>
@@ -495,16 +505,16 @@ function ProjectOverview({ project }: { project: Project }) {
         <ProjectMilestones project={project} />
 
         <div className="mt-10">
-          <div className="section-label mb-3">Updates</div>
+          <div className="section-label mb-3">{t('projects.overview.updates')}</div>
           <div className="panel panel-sm p-3">
             <MarkdownEditor
               value={update}
               onChange={setUpdate}
-              placeholder="Write a project update…"
+              placeholder={t('projects.overview.updatePlaceholder')}
               minRows={2}
               bare
             />
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-2 flex flex-wrap items-center gap-2">
               {PROJECT_HEALTH.map((h) => (
                 <button
                   type="button"
@@ -514,7 +524,7 @@ function ProjectOverview({ project }: { project: Project }) {
                   aria-pressed={health === h}
                 >
                   <span className="h-[7px] w-[7px]" style={{ background: HEALTH_COLOR[h] }} />
-                  {PROJECT_HEALTH_LABELS[h]}
+                  {healthLabel(h)}
                 </button>
               ))}
               <button
@@ -526,7 +536,7 @@ function ProjectOverview({ project }: { project: Project }) {
                   setUpdate('');
                 }}
               >
-                Post update
+                {t('projects.overview.postUpdate')}
               </button>
             </div>
           </div>
@@ -543,7 +553,9 @@ function ProjectOverview({ project }: { project: Project }) {
                       size={18}
                     />
                   )}
-                  <span className="font-medium">{author?.name ?? 'Former member'}</span>
+                  <span className="font-medium">
+                    {author?.name ?? t('projects.overview.formerMember')}
+                  </span>
                   <HealthChip health={u.health} />
                   <span className="ml-auto font-mono text-[11px] text-index">
                     {relativeTime(u.createdAt)}
@@ -559,10 +571,10 @@ function ProjectOverview({ project }: { project: Project }) {
       </div>
 
       <aside>
-        <div className="section-label mb-3">Properties</div>
+        <div className="section-label mb-3">{t('projects.overview.properties')}</div>
         <div className="flex flex-col gap-3 text-[12.5px]">
           <label className="block text-index">
-            Status
+            {t('common.status')}
             <select
               className="input mt-1 h-8"
               value={project.status}
@@ -570,16 +582,16 @@ function ProjectOverview({ project }: { project: Project }) {
             >
               {PROJECT_STATUSES.map((s) => (
                 <option key={s} value={s}>
-                  {PROJECT_STATUS_LABELS[s]}
+                  {projectStatusLabel(s)}
                 </option>
               ))}
             </select>
           </label>
           <div className="text-index">
-            Lead
+            {t('projects.overview.lead')}
             <div className="mt-1">
               <Picker
-                placeholder="Set lead…"
+                placeholder={t('projects.overview.setLead')}
                 options={assigneeOptions(ws)}
                 selected={[project.leadId ?? 'none']}
                 onSelect={(v) => save.mutate({ leadId: v === 'none' ? null : v })}
@@ -593,14 +605,14 @@ function ProjectOverview({ project }: { project: Project }) {
                         size={16}
                       />
                     ) : null}
-                    {lead?.name ?? 'No lead'}
+                    {lead?.name ?? t('projects.overview.noLead')}
                   </button>
                 }
               />
             </div>
           </div>
           <label className="block text-index">
-            Start date
+            {t('projects.overview.startDate')}
             <input
               type="date"
               className="input mt-1 h-8"
@@ -609,7 +621,7 @@ function ProjectOverview({ project }: { project: Project }) {
             />
           </label>
           <label className="block text-index">
-            Target date
+            {t('projects.overview.targetDate')}
             <input
               type="date"
               className="input mt-1 h-8"
@@ -618,13 +630,13 @@ function ProjectOverview({ project }: { project: Project }) {
             />
           </label>
           <label className="block text-index">
-            Initiative
+            {t('projects.overview.initiative')}
             <select
               className="input mt-1 h-8"
               value={project.initiativeId ?? ''}
               onChange={(e) => save.mutate({ initiativeId: e.target.value || null })}
             >
-              <option value="">None</option>
+              <option value="">{t('common.none')}</option>
               {ws.initiatives.map((i) => (
                 <option key={i.id} value={i.id}>
                   {i.name}
@@ -633,31 +645,31 @@ function ProjectOverview({ project }: { project: Project }) {
             </select>
           </label>
           <div className="text-index">
-            Teams
+            {t('projects.overview.teams')}
             <div className="mt-1 flex flex-wrap gap-1.5">
-              {ws.teams.map((t) => {
-                const on = project.teamIds.includes(t.id);
+              {ws.teams.map((team) => {
+                const on = project.teamIds.includes(team.id);
                 return (
                   <button
                     type="button"
-                    key={t.id}
+                    key={team.id}
                     className={`prop ${on ? 'text-text shadow-[inset_0_0_0_1px_var(--color-primary)]' : ''}`}
                     onClick={() => {
                       const next = on
-                        ? project.teamIds.filter((x) => x !== t.id)
-                        : [...project.teamIds, t.id];
+                        ? project.teamIds.filter((x) => x !== team.id)
+                        : [...project.teamIds, team.id];
                       if (next.length) save.mutate({ teamIds: next });
                     }}
                     aria-pressed={on}
                   >
-                    <TeamIcon color={t.color} label={t.key} size={14} /> {t.key}
+                    <TeamIcon color={team.color} label={team.key} size={14} /> {team.key}
                   </button>
                 );
               })}
             </div>
           </div>
           <div className="text-index">
-            Color
+            {t('projects.overview.color')}
             <div className="mt-1 flex flex-wrap gap-1">
               {LABEL_COLORS.map((c) => (
                 <button
@@ -666,7 +678,7 @@ function ProjectOverview({ project }: { project: Project }) {
                   onClick={() => save.mutate({ color: c })}
                   className={`h-5 w-5 ${project.color === c ? 'outline-2 outline-offset-2 outline-text' : ''}`}
                   style={{ background: c }}
-                  aria-label={`Color ${c}`}
+                  aria-label={t('projects.overview.colorLabel', { color: c })}
                 />
               ))}
             </div>
@@ -691,21 +703,21 @@ export function ProjectDetailPage() {
       : api.post(wsPath(ws.slug, '/favorites'), { kind: 'project', targetId: projectId }),
   );
   const remove = useWsMutation(ws.slug, () => api.del(wsPath(ws.slug, `/projects/${projectId}`)), {
-    success: 'Project deleted',
+    success: t('projects.detail.deleted'),
   });
-  if (!project) return <EmptyState title="project not found" />;
+  if (!project) return <EmptyState title={t('projects.detail.notFound')} />;
 
   const tabs = (
     <div className="flex gap-1 px-4 pb-2">
-      {(['overview', 'issues', 'docs'] as const).map((t) => (
+      {(['overview', 'issues', 'docs'] as const).map((name) => (
         <Link
-          key={t}
+          key={name}
           to="/$slug/project/$projectId"
           params={{ slug: ws.slug, projectId }}
-          search={t === 'overview' ? {} : { tab: t }}
-          className={`h-6 px-2.5 font-mono text-[11px] leading-6 tracking-[0.1em] uppercase ${(tab ?? 'overview') === t ? 'bg-raised text-primary' : 'text-index hover:text-text'}`}
+          search={name === 'overview' ? {} : { tab: name }}
+          className={`h-6 px-2.5 font-mono text-[11px] leading-6 tracking-[0.1em] uppercase ${(tab ?? 'overview') === name ? 'bg-raised text-primary' : 'text-index hover:text-text'}`}
         >
-          {t}
+          {t(`projects.detail.tabs.${name}`)}
         </Link>
       ))}
     </div>
@@ -717,7 +729,7 @@ export function ProjectDetailPage() {
         className="btn btn-ghost btn-sm"
         onClick={() => toggleFav.mutate(undefined)}
         aria-pressed={!!fav}
-        aria-label="Favorite"
+        aria-label={t('projects.detail.favorite')}
       >
         <Star size={13} className={fav ? 'fill-primary text-primary' : ''} />
       </button>
@@ -725,7 +737,7 @@ export function ProjectDetailPage() {
         type="button"
         className="btn btn-danger btn-sm"
         onClick={() => setConfirm(true)}
-        aria-label="Delete project"
+        aria-label={t('projects.detail.delete')}
       >
         <Trash2 size={13} />
       </button>
@@ -733,11 +745,11 @@ export function ProjectDetailPage() {
   );
   const kicker = (
     <>
-      projects
+      {t('common.projects')}
       <Sep />
       <span className="inline-flex items-center gap-1.5 align-[-2px]">
         <ProjectStatusIcon status={project.status} size={11} />{' '}
-        {PROJECT_STATUS_LABELS[project.status].toLowerCase()}
+        {projectStatusLabel(project.status).toLowerCase()}
       </span>
     </>
   );
@@ -774,9 +786,9 @@ export function ProjectDetailPage() {
       <ConfirmModal
         open={confirm}
         onClose={() => setConfirm(false)}
-        title={`Delete ${project.name}?`}
-        body="Its issues stay, but are removed from the project."
-        confirmLabel="Delete project"
+        title={t('projects.detail.confirmDeleteTitle', { name: project.name })}
+        body={t('projects.detail.confirmDeleteBody')}
+        confirmLabel={t('projects.detail.delete')}
         danger
         onConfirm={() =>
           remove.mutate(undefined, {

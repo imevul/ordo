@@ -7,53 +7,53 @@ import { toast } from 'sonner';
 import { api, upload, wsPath } from '../../api/client.ts';
 import { Spinner } from '../../components/PageHeader.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
+import { t } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { CsvColumnsEditor, ImportReportView, MappingEditor } from './import-mapping.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 
-const SOURCES: { key: ImportSource; label: string }[] = [
-  { key: 'csv', label: 'CSV file' },
-  { key: 'linear', label: 'Linear' },
-  { key: 'github', label: 'GitHub' },
-  { key: 'gitlab', label: 'GitLab' },
-  { key: 'forgejo', label: 'Forgejo / Gitea' },
-  { key: 'jira', label: 'Jira' },
-];
-const sourceLabel = (s: ImportSource) => SOURCES.find((x) => x.key === s)?.label ?? s;
+const SOURCES: ImportSource[] = ['csv', 'linear', 'github', 'gitlab', 'forgejo', 'jira'];
+// Product names stay as they are; only the CSV choice is words.
+const sourceLabel = (s: ImportSource) =>
+  ({
+    csv: t('imports.sources.csv'),
+    linear: 'Linear',
+    github: 'GitHub',
+    gitlab: 'GitLab',
+    forgejo: 'Forgejo / Gitea',
+    jira: 'Jira',
+  })[s] ?? s;
 
-const STATUS: Record<ImportStatus, { label: string; color?: string }> = {
-  analyzing: { label: 'reading', color: 'var(--color-warning)' },
-  ready: { label: 'ready', color: 'var(--color-highlight)' },
-  dry_running: { label: 'dry run', color: 'var(--color-warning)' },
-  running: { label: 'importing', color: 'var(--color-warning)' },
-  completed: { label: 'imported', color: 'var(--color-success)' },
-  failed: { label: 'failed', color: 'var(--color-error)' },
-  canceled: { label: 'cancelled' },
-  undoing: { label: 'undoing', color: 'var(--color-warning)' },
-  undone: { label: 'undone' },
+const STATUS_COLOR: Record<ImportStatus, string | undefined> = {
+  analyzing: 'var(--color-warning)',
+  ready: 'var(--color-highlight)',
+  dry_running: 'var(--color-warning)',
+  running: 'var(--color-warning)',
+  completed: 'var(--color-success)',
+  failed: 'var(--color-error)',
+  canceled: undefined,
+  undoing: 'var(--color-warning)',
+  undone: undefined,
 };
 
-const PHASES: Record<string, string> = {
-  setup: 'Preparing',
-  issues: 'Issues',
-  parents: 'Sub-issues',
-  relations: 'Relations',
-  comments: 'Comments',
-  done: 'Finishing',
-  undo: 'Moving to the trash',
-};
+const PHASES = ['setup', 'issues', 'parents', 'relations', 'comments', 'done', 'undo'] as const;
+const phaseLabel = (phase: string | undefined) =>
+  (PHASES as readonly string[]).includes(phase ?? '')
+    ? t(`imports.phase.${phase as (typeof PHASES)[number]}`)
+    : t('imports.phase.working');
 
 function StatusChip({ status }: { status: ImportStatus }) {
-  const s = STATUS[status];
-  return s.color ? (
-    <span className="chip" style={{ '--chip': s.color } as React.CSSProperties}>
-      {s.label}
+  const color = STATUS_COLOR[status];
+  const label = t(`imports.status.${status}`);
+  return color ? (
+    <span className="chip" style={{ '--chip': color } as React.CSSProperties}>
+      {label}
     </span>
   ) : (
-    <span className="tag font-mono">{s.label}</span>
+    <span className="tag font-mono">{label}</span>
   );
 }
 
@@ -74,10 +74,7 @@ export function ImportsSection() {
 
   if (!list) return <Spinner />;
   return (
-    <SettingsCard
-      title="Import"
-      description="Bring issues in from a CSV file or another tracker. Ordo reads the source first, suggests where everything goes, and lets you dry-run before importing. Imports are silent: nobody is notified."
-    >
+    <SettingsCard title={t('imports.list.title')} description={t('imports.list.description')}>
       {list.map((imp) => (
         <button
           key={imp.id}
@@ -91,8 +88,8 @@ export function ImportsSection() {
           <span className="min-w-0 flex-1">
             <span className="block truncate text-[13.5px]">{imp.name}</span>
             <span className="block truncate text-[11.5px] text-index">
-              {imp.createdBy?.name ?? 'Someone'} · {relativeTime(imp.createdAt)}
-              {imp.summary && ` · ${imp.summary.counts.issues} issues`}
+              {imp.createdBy?.name ?? t('imports.list.someone')} · {relativeTime(imp.createdAt)}
+              {imp.summary && ` · ${t('common.issueCount', { count: imp.summary.counts.issues })}`}
               {imp.error && ` · ${imp.error}`}
             </span>
           </span>
@@ -104,9 +101,11 @@ export function ImportsSection() {
           <StatusChip status={imp.status} />
         </button>
       ))}
-      {list.length === 0 && <p className="font-mono text-[12px] text-index">// no imports yet</p>}
+      {list.length === 0 && (
+        <p className="font-mono text-[12px] text-index">{t('imports.list.empty')}</p>
+      )}
       <button type="button" className="btn btn-primary mt-4" onClick={() => setStarting(true)}>
-        <Plus size={13} /> New import
+        <Plus size={13} /> {t('imports.list.newImport')}
       </button>
       <StartImportModal
         open={starting}
@@ -159,7 +158,7 @@ function StartImportModal({
     try {
       let started: Import;
       if (source === 'csv') {
-        if (!file) throw new Error('Choose a file');
+        if (!file) throw new Error(t('imports.start.chooseFile'));
         started = await upload<Import>(wsPath(ws.slug, '/imports'), file, file.name);
       } else {
         const optional = (v: string | undefined) => (v?.trim() ? v.trim() : undefined);
@@ -215,29 +214,36 @@ function StartImportModal({
   );
 
   return (
-    <Modal open={open} onClose={onClose} width={560} label="New import" align="center">
+    <Modal
+      open={open}
+      onClose={onClose}
+      width={560}
+      label={t('imports.start.title')}
+      align="center"
+    >
       <form className="max-h-[82vh] overflow-y-auto p-6" onSubmit={submit}>
-        <div className="section-label mb-4">New import</div>
-        <div className="mb-5 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Source">
+        <div className="section-label mb-4">{t('imports.start.title')}</div>
+        <div
+          className="mb-5 flex flex-wrap gap-1.5"
+          role="radiogroup"
+          aria-label={t('imports.start.source')}
+        >
           {SOURCES.map((s) => (
             <button
-              key={s.key}
+              key={s}
               type="button"
               role="radio"
-              aria-checked={source === s.key}
-              className={`btn btn-sm ${source === s.key ? 'btn-primary' : 'btn-ghost'}`}
-              onClick={() => setSource(s.key)}
+              aria-checked={source === s}
+              className={`btn btn-sm ${source === s ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setSource(s)}
             >
-              {s.label}
+              {sourceLabel(s)}
             </button>
           ))}
         </div>
 
         {source === 'csv' && (
-          <FormRow
-            label="File"
-            hint="Up to 25 MB. Exports from Linear, Jira, GitHub, spreadsheets and Ordo itself all work; you can pick the columns next."
-          >
+          <FormRow label={t('imports.start.file')} hint={t('imports.start.fileHint')}>
             <input
               className="input py-1.5"
               type="file"
@@ -248,16 +254,21 @@ function StartImportModal({
           </FormRow>
         )}
         {source === 'linear' &&
-          token('Personal API key', 'Create one in your Linear account settings.')}
+          token(t('imports.start.personalApiKey'), t('imports.start.linearKeyHint'))}
         {source === 'github' && (
           <>
-            <FormRow label="Repositories" hint="owner/name, one per line or separated by commas.">
+            <FormRow
+              label={t('imports.start.repositories')}
+              hint={t('imports.start.repositoriesHint')}
+            >
               <textarea className="input min-h-20 font-mono" required {...field('repos')} />
             </FormRow>
-            {token('Token', 'A token that can read the repositories’ issues.')}
+            {token(t('imports.start.token'), t('imports.start.githubTokenHint'))}
             <FormRow
-              label="API URL"
-              hint="Only for GitHub Enterprise Server, e.g. https://github.example.com/api/v3"
+              label={t('imports.start.apiUrl')}
+              hint={t('imports.start.apiUrlHint', {
+                example: 'https://github.example.com/api/v3',
+              })}
             >
               <input
                 className="input font-mono"
@@ -270,7 +281,7 @@ function StartImportModal({
         )}
         {source === 'forgejo' && (
           <>
-            <FormRow label="Server">
+            <FormRow label={t('imports.start.server')}>
               <input
                 className="input font-mono"
                 type="url"
@@ -279,15 +290,18 @@ function StartImportModal({
                 {...field('baseUrl')}
               />
             </FormRow>
-            <FormRow label="Repositories" hint="owner/name, one per line or separated by commas.">
+            <FormRow
+              label={t('imports.start.repositories')}
+              hint={t('imports.start.repositoriesHint')}
+            >
               <textarea className="input min-h-20 font-mono" required {...field('repos')} />
             </FormRow>
-            {token('Access token')}
+            {token(t('imports.start.accessToken'))}
           </>
         )}
         {source === 'gitlab' && (
           <>
-            <FormRow label="Server">
+            <FormRow label={t('imports.start.server')}>
               <input
                 className="input font-mono"
                 type="url"
@@ -295,15 +309,21 @@ function StartImportModal({
                 {...field('baseUrl')}
               />
             </FormRow>
-            <FormRow label="Projects" hint="Full paths (group/subgroup/project), one per line.">
+            <FormRow
+              label={t('imports.start.projects')}
+              hint={t('imports.start.gitlabProjectsHint')}
+            >
               <textarea className="input min-h-20 font-mono" required {...field('projects')} />
             </FormRow>
-            {token('Access token', 'The read_api scope is enough.')}
+            {token(
+              t('imports.start.accessToken'),
+              t('imports.start.gitlabTokenHint', { scope: 'read_api' }),
+            )}
           </>
         )}
         {source === 'jira' && (
           <>
-            <FormRow label="Site">
+            <FormRow label={t('imports.start.site')}>
               <input
                 className="input font-mono"
                 type="url"
@@ -312,32 +332,27 @@ function StartImportModal({
                 {...field('siteUrl')}
               />
             </FormRow>
-            <FormRow
-              label="Email"
-              hint="Jira Cloud only. For Data Center, leave it empty and use a personal access token."
-            >
+            <FormRow label={t('imports.start.email')} hint={t('imports.start.jiraEmailHint')}>
               <input className="input" type="email" {...field('email')} />
             </FormRow>
-            {token('API token')}
+            {token(t('imports.start.apiToken'))}
             <FormRow
-              label="Projects"
-              hint="Keys like ENG. Leave empty for every project you can see."
+              label={t('imports.start.projects')}
+              hint={t('imports.start.jiraProjectsHint', { example: 'ENG' })}
             >
               <input className="input font-mono uppercase" {...field('projects')} />
             </FormRow>
           </>
         )}
         {source !== 'csv' && (
-          <p className="mb-2 text-[12px] text-muted">
-            Ordo checks the credentials now and keeps them encrypted until you delete the import.
-          </p>
+          <p className="mb-2 text-[12px] text-muted">{t('imports.start.credentialsNote')}</p>
         )}
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={busy}>
-            {busy ? 'Checking…' : 'Continue'}
+            {busy ? t('imports.start.checking') : t('common.continue')}
           </button>
         </div>
       </form>
@@ -398,7 +413,13 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
     });
 
   return (
-    <Modal open={!!id} onClose={onClose} width={860} label="Import" align="center">
+    <Modal
+      open={!!id}
+      onClose={onClose}
+      width={860}
+      label={t('imports.detail.label')}
+      align="center"
+    >
       {!imp ? (
         <Spinner />
       ) : (
@@ -409,17 +430,20 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              aria-label="Close"
+              aria-label={t('common.close')}
               onClick={onClose}
             >
               <X size={13} />
             </button>
           </div>
           <p className="mb-5 text-[12px] text-index">
-            {sourceLabel(imp.source)} · started by {imp.createdBy?.name ?? 'someone'}{' '}
-            {relativeTime(imp.createdAt)}
+            {sourceLabel(imp.source)} ·{' '}
+            {t('imports.detail.startedBy', {
+              name: imp.createdBy?.name ?? t('imports.detail.someone'),
+              time: relativeTime(imp.createdAt),
+            })}
             {imp.summary &&
-              ` · ${imp.summary.counts.issues} issues${imp.summary.counts.comments ? `, ${imp.summary.counts.comments} comments` : ''}`}
+              ` · ${t('common.issueCount', { count: imp.summary.counts.issues })}${imp.summary.counts.comments ? `, ${t('imports.detail.commentCount', { count: imp.summary.counts.comments })}` : ''}`}
           </p>
 
           {imp.error && (
@@ -435,8 +459,8 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
               <div className="mb-1 flex items-center gap-2 text-[12.5px]">
                 <span className="flex-1 text-muted">
                   {imp.status === 'analyzing'
-                    ? 'Reading the source…'
-                    : `${PHASES[imp.progress?.phase ?? ''] ?? 'Working'}…`}
+                    ? t('imports.phase.analyzing')
+                    : phaseLabel(imp.progress?.phase)}
                 </span>
                 {imp.progress && imp.status !== 'analyzing' && (
                   <span className="font-mono text-[11px] text-index">
@@ -460,7 +484,7 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
                   disabled={busy || imp.status === 'undoing'}
                   onClick={() => act(() => api.post(wsPath(ws.slug, `/imports/${imp.id}/cancel`)))}
                 >
-                  <X size={12} /> Cancel
+                  <X size={12} /> {t('common.cancel')}
                 </button>
               )}
             </div>
@@ -506,7 +530,7 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
                     disabled={busy}
                     onClick={() => act(saveMapping)}
                   >
-                    Save mapping
+                    {t('imports.detail.saveMapping')}
                   </button>
                 )}
                 <button
@@ -515,7 +539,7 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
                   disabled={busy}
                   onClick={() => start('dry-run')}
                 >
-                  <FlaskConical size={13} /> Dry run
+                  <FlaskConical size={13} /> {t('imports.detail.dryRun')}
                 </button>
                 <button
                   type="button"
@@ -524,16 +548,18 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
                   onClick={async () => {
                     if (
                       !(await confirmDialog({
-                        title: `Import ${imp.summary!.counts.issues} issues?`,
-                        body: 'This writes to the workspace. You can undo it afterwards: the issues move to the trash.',
-                        confirmLabel: 'Import',
+                        title: t('imports.detail.confirmImportTitle', {
+                          count: imp.summary!.counts.issues,
+                        }),
+                        body: t('imports.detail.confirmImportBody'),
+                        confirmLabel: t('imports.detail.import'),
                       }))
                     )
                       return;
                     await start('run');
                   }}
                 >
-                  <Play size={13} /> Import
+                  <Play size={13} /> {t('imports.detail.import')}
                 </button>
               </div>
             </>
@@ -551,9 +577,9 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
                     onClick={async () => {
                       if (
                         !(await confirmDialog({
-                          title: 'Undo this import?',
-                          body: 'The issues it created move to the trash, where you can still restore them. Teams, labels, projects and placeholders it made stay.',
-                          confirmLabel: 'Undo import',
+                          title: t('imports.detail.confirmUndoTitle'),
+                          body: t('imports.detail.confirmUndoBody'),
+                          confirmLabel: t('imports.detail.undoImport'),
                           danger: true,
                         }))
                       )
@@ -561,7 +587,7 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
                       await act(() => api.post(wsPath(ws.slug, `/imports/${imp.id}/undo`)));
                     }}
                   >
-                    <Undo2 size={12} /> Undo import
+                    <Undo2 size={12} /> {t('imports.detail.undoImport')}
                   </button>
                 )}
               <span className="flex-1" />
@@ -572,9 +598,9 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
                 onClick={async () => {
                   if (
                     !(await confirmDialog({
-                      title: 'Forget this import?',
-                      body: 'Its file and settings are deleted. What it imported stays.',
-                      confirmLabel: 'Forget it',
+                      title: t('imports.detail.confirmForgetTitle'),
+                      body: t('imports.detail.confirmForgetBody'),
+                      confirmLabel: t('imports.detail.confirmForget'),
                       danger: true,
                     }))
                   )
@@ -583,7 +609,7 @@ function ImportModal({ id, onClose }: { id: string | null; onClose: () => void }
                   onClose();
                 }}
               >
-                <Trash2 size={12} /> Forget
+                <Trash2 size={12} /> {t('imports.detail.forget')}
               </button>
             </div>
           )}

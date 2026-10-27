@@ -10,6 +10,7 @@ import { EmptyState, PageHeader, Sep } from '../components/PageHeader.tsx';
 import { assigneeOptions, Picker } from '../components/properties.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../components/ui/Modal.tsx';
+import { t } from '../i18n/index.ts';
 import { relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
@@ -44,30 +45,28 @@ function NewCustomerModal({ onClose }: { onClose: () => void }) {
     );
   };
   return (
-    <Modal open onClose={onClose} width={480} label="New customer">
+    <Modal open onClose={onClose} width={480} label={t('customers.create.title')}>
       <form className="p-5" onSubmit={submit}>
-        <div className="section-label mb-4">New customer</div>
+        <div className="section-label mb-4">{t('customers.create.title')}</div>
         <input
           className="input"
-          placeholder="Company name"
+          placeholder={t('customers.create.namePlaceholder')}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
         <input
           className="input mt-3 font-mono"
-          placeholder="Email domains, e.g. acme.com"
+          placeholder={t('customers.create.domainsPlaceholder', { example: 'acme.com' })}
           value={domains}
           onChange={(e) => setDomains(e.target.value)}
         />
-        <p className="mt-1.5 text-[12px] text-index">
-          Email from these domains is filed under this customer.
-        </p>
+        <p className="mt-1.5 text-[12px] text-index">{t('customers.create.domainsHint')}</p>
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={!name.trim() || create.isPending}>
-            Create customer <span className="arrow">→</span>
+            {t('customers.create.submit')} <span className="arrow">→</span>
           </button>
         </div>
       </form>
@@ -89,30 +88,27 @@ export function CustomersPage() {
           <>
             {ws.workspace.name}
             <Sep />
-            customers
+            {t('customers.list.kicker')}
           </>
         }
-        title="Customers"
+        title={t('customers.list.title')}
         actions={
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setOpen(true)}>
-            <Plus size={13} /> New customer
+            <Plus size={13} /> {t('customers.list.newCustomer')}
           </button>
         }
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {list.length === 0 ? (
-          <EmptyState
-            title="no customers yet"
-            body="Customers collect requests: what they asked for, tied to the issues that deliver it. Email intake adds them on its own."
-          />
+          <EmptyState title={t('customers.list.emptyTitle')} body={t('customers.list.emptyBody')} />
         ) : (
-          <div className="min-w-[640px]">
-            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,12rem)_8rem_6rem_6rem] items-center gap-3 border-b border-border-soft px-4 py-2 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-              <span>Name</span>
-              <span>Domains</span>
-              <span>Owner</span>
-              <span>Requests</span>
-              <span>Open</span>
+          <div className="min-w-[780px]">
+            <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,12rem)_8rem_7rem_6rem] items-center gap-3 border-b border-border-soft px-4 py-2 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
+              <span>{t('customers.list.name')}</span>
+              <span>{t('customers.list.domains')}</span>
+              <span>{t('customers.list.owner')}</span>
+              <span>{t('customers.list.requests')}</span>
+              <span>{t('customers.list.open')}</span>
             </div>
             {list.map((c) => {
               const owner = c.ownerId ? ws.memberById.get(c.ownerId) : null;
@@ -121,7 +117,7 @@ export function CustomersPage() {
                   key={c.id}
                   to="/$slug/customer/$customerId"
                   params={{ slug: ws.slug, customerId: c.id }}
-                  className="row grid h-11 grid-cols-[minmax(0,1fr)_minmax(0,12rem)_8rem_6rem_6rem] items-center gap-3 border-b border-border-soft/60 px-4"
+                  className="row grid h-11 grid-cols-[minmax(0,1fr)_minmax(0,12rem)_8rem_7rem_6rem] items-center gap-3 border-b border-border-soft/60 px-4"
                 >
                   <span className="flex min-w-0 items-center gap-2.5">
                     <Building2 size={14} className="flex-none text-index" />
@@ -168,7 +164,7 @@ export function CustomerPage() {
     setDomains(customer?.domains.join(', ') ?? '');
     setNotes(customer?.notes ?? '');
   }, [customer?.name, customer?.domains, customer?.notes]);
-  if (!customer) return <EmptyState title="customer not found" />;
+  if (!customer) return <EmptyState title={t('customers.detail.notFound')} />;
   const owner = customer.ownerId ? ws.memberById.get(customer.ownerId) : null;
 
   return (
@@ -177,10 +173,10 @@ export function CustomerPage() {
         kicker={
           <>
             <Link to="/$slug/customers" params={{ slug: ws.slug }} className="hover:text-highlight">
-              customers
+              {t('customers.detail.kicker')}
             </Link>
             <Sep />
-            {customer.domains[0] ?? 'customer'}
+            {customer.domains[0] ?? t('customers.detail.customer')}
           </>
         }
         title={customer.name}
@@ -188,12 +184,12 @@ export function CustomerPage() {
           <button
             type="button"
             className="btn btn-ghost btn-sm"
-            aria-label="Delete customer"
+            aria-label={t('customers.detail.delete')}
             onClick={async () => {
               if (
                 await confirmDialog({
-                  title: `Delete customer “${customer.name}”?`,
-                  body: 'Their requests go too; the issues stay.',
+                  title: t('customers.detail.confirmDeleteTitle', { name: customer.name }),
+                  body: t('customers.detail.confirmDeleteBody'),
                   danger: true,
                 })
               )
@@ -215,11 +211,13 @@ export function CustomerPage() {
               onBlur={() => name.trim() && name !== customer.name && save.mutate({ name })}
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
               className="w-full bg-transparent text-[28px] font-bold tracking-[-0.02em] outline-none"
-              aria-label="Customer name"
+              aria-label={t('customers.detail.nameLabel')}
             />
-            <div className="section-label mt-8 mb-2">Requests · {requests.length}</div>
+            <div className="section-label mt-8 mb-2">
+              {t('customers.detail.requests', { count: requests.length })}
+            </div>
             {requests.length === 0 && (
-              <p className="font-mono text-[12px] text-index">// no requests yet</p>
+              <p className="font-mono text-[12px] text-index">{t('customers.detail.noRequests')}</p>
             )}
             {requests.map((r) => {
               const state = ws.stateById.get(r.issue.stateId);
@@ -240,17 +238,18 @@ export function CustomerPage() {
                     </blockquote>
                   )}
                   <div className="mt-1 font-mono text-[11px] text-index">
-                    {r.contact ?? 'no contact'} · {r.source} · {relativeTime(r.createdAt)}
+                    {r.contact ?? t('customers.detail.noContact')} ·{' '}
+                    {t(`customers.detail.source.${r.source}`)} · {relativeTime(r.createdAt)}
                   </div>
                 </div>
               );
             })}
           </div>
           <aside>
-            <div className="section-label mb-3">Details</div>
+            <div className="section-label mb-3">{t('customers.detail.details')}</div>
             <div className="flex flex-col gap-3 text-[12.5px]">
               <label className="block text-index">
-                Domains
+                {t('customers.detail.domains')}
                 <input
                   className="input mt-1 h-8 font-mono"
                   value={domains}
@@ -260,10 +259,10 @@ export function CustomerPage() {
                 />
               </label>
               <div className="text-index">
-                Owner
+                {t('customers.detail.owner')}
                 <div className="mt-1">
                   <Picker
-                    placeholder="Set owner…"
+                    placeholder={t('customers.detail.setOwner')}
                     options={assigneeOptions(ws)}
                     selected={[customer.ownerId ?? 'none']}
                     onSelect={(v) => save.mutate({ ownerId: v === 'none' ? null : v })}
@@ -277,14 +276,14 @@ export function CustomerPage() {
                             size={16}
                           />
                         ) : null}
-                        {owner?.name ?? 'No owner'}
+                        {owner?.name ?? t('customers.detail.noOwner')}
                       </button>
                     }
                   />
                 </div>
               </div>
               <label className="block text-index">
-                Notes
+                {t('customers.detail.notes')}
                 <textarea
                   className="input mt-1 min-h-24 resize-y py-2"
                   value={notes}

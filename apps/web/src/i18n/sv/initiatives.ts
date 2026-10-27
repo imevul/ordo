@@ -1,0 +1,45 @@
+import type { Catalog, Translation } from '../index.ts';
+
+export default {
+  title: 'Initiativ',
+  newInitiative: 'Nytt initiativ',
+  create: {
+    namePlaceholder: 'Initiativets namn, t.ex. Lansering i Europa',
+    targetDate: 'Måldatum',
+    submit: 'Skapa initiativ',
+  },
+  list: {
+    emptyTitle: 'inga initiativ än',
+    emptyBody: 'Initiativ är större mål som samlar projekt, över team och kvartal.',
+    columns: {
+      name: 'Namn',
+      status: 'Status',
+      owner: 'Ägare',
+      projects: 'Projekt',
+      target: 'Måldatum',
+      progress: 'Framsteg',
+    },
+  },
+  detail: {
+    notFound: 'initiativet hittades inte',
+    delete: 'Radera initiativ',
+    confirmDeleteTitle: 'Radera initiativet ”{name}”?',
+    confirmDeleteBody: 'Projekten finns kvar; de lämnar bara initiativet.',
+    nameLabel: 'Initiativets namn',
+    descriptionPlaceholder: 'Vad är initiativet till för?',
+    progress: 'Framsteg',
+    projects: 'Projekt',
+    removeProject: 'Ta bort {name} från initiativet',
+    noProjects: '// inga projekt än',
+    addProjectPlaceholder: 'Lägg till ett projekt…',
+    addProject: 'Lägg till projekt',
+    properties: 'Egenskaper',
+    status: 'Status',
+    owner: 'Ägare',
+    setOwner: 'Välj ägare…',
+    noOwner: 'Ingen ägare',
+    targetDate: 'Måldatum',
+    color: 'Färg',
+    colorLabel: 'Färg {color}',
+  },
+} satisfies Translation<Catalog['initiatives']>;

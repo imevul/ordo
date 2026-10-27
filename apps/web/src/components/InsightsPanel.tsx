@@ -1,6 +1,7 @@
 import type { Issue } from '@ordo/shared';
 import { X } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { t } from '../i18n/index.ts';
 import {
   breakdown,
   burnUp,
@@ -14,16 +15,6 @@ import {
 import { readPref, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { BarList, LineChart } from './Charts.tsx';
-
-const SLICE_LABELS: Record<Slice, string> = {
-  state: 'Status',
-  assignee: 'Assignee',
-  priority: 'Priority',
-  label: 'Label',
-  project: 'Project',
-  team: 'Team',
-  cycle: 'Cycle',
-};
 
 const QUARTER = 90 * 86_400_000;
 
@@ -46,7 +37,6 @@ export function InsightsPanel({
   const [slice, setSlice] = useState<Slice>(() => readPref('insightsSlice', 'state'));
   const hasEstimates = issues.some((i) => i.estimate != null);
   const m: Measure = hasEstimates ? measure : 'count';
-  const unit = m === 'count' ? 'issues' : 'points';
 
   const bars = useMemo(() => breakdown(ws, issues, slice, m), [ws, issues, slice, m]);
   const flow = useMemo(() => (burn ? null : weeklyFlow(issues, m)), [issues, m, burn]);
@@ -60,10 +50,10 @@ export function InsightsPanel({
   return (
     <aside
       className="flex h-full w-[22rem] flex-none flex-col border-l border-border-soft bg-surface"
-      aria-label="Insights"
+      aria-label={t('insights.title')}
     >
       <div className="flex items-center gap-2 border-b border-border-soft px-4 py-2.5">
-        <span className="section-label flex-1">Insights</span>
+        <span className="section-label flex-1">{t('insights.title')}</span>
         {hasEstimates && (
           <select
             className={select}
@@ -72,17 +62,17 @@ export function InsightsPanel({
               setMeasure(e.target.value as Measure);
               writePref('insightsMeasure', e.target.value);
             }}
-            aria-label="Measure"
+            aria-label={t('insights.measure')}
           >
-            <option value="count">Issues</option>
-            <option value="estimate">Points</option>
+            <option value="count">{t('insights.issues')}</option>
+            <option value="estimate">{t('insights.points')}</option>
           </select>
         )}
         <button
           type="button"
           className="flex h-6 w-6 items-center justify-center text-index hover:text-text"
           onClick={onClose}
-          aria-label="Close insights"
+          aria-label={t('insights.close')}
         >
           <X size={14} />
         </button>
@@ -90,50 +80,60 @@ export function InsightsPanel({
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {burned ? (
           <section>
-            <h3 className="kicker mb-2 text-[11px] uppercase tracking-[0.14em]">Burn-up</h3>
+            <h3 className="kicker mb-2 text-[11px] uppercase tracking-[0.14em]">
+              {t('insights.burnUp.title')}
+            </h3>
             {burned.length > 0 ? (
               <LineChart
-                label={`Burn-up: scope and completed ${unit} per day`}
+                label={
+                  m === 'count'
+                    ? t('insights.burnUp.labelIssues')
+                    : t('insights.burnUp.labelPoints')
+                }
                 x={burned.map((p) => p.day)}
                 series={[
                   {
                     key: 'scope',
-                    label: 'Scope',
+                    label: t('insights.burnUp.scope'),
                     color: 'var(--color-chart-2)',
                     dashed: true,
                     values: burned.map((p) => p.scope),
                   },
                   {
                     key: 'completed',
-                    label: 'Completed',
+                    label: t('insights.burnUp.completed'),
                     color: 'var(--color-primary)',
                     values: burned.map((p) => p.completed),
                   },
                 ]}
               />
             ) : (
-              <p className="font-mono text-[12px] text-index">// starts {burn!.from}</p>
+              <p className="font-mono text-[12px] text-index">
+                {t('insights.burnUp.starts', { date: burn!.from })}
+              </p>
             )}
           </section>
         ) : (
           <section>
             <h3 className="kicker mb-2 text-[11px] uppercase tracking-[0.14em]">
-              Created vs completed · 12 weeks
+              {t('insights.flow.title')}
             </h3>
             <LineChart
-              label={`${unit} created and completed per week, last 12 weeks`}
+              label={
+                m === 'count' ? t('insights.flow.labelIssues') : t('insights.flow.labelPoints')
+              }
               x={flow!.map((p) => p.start)}
               series={[
                 {
                   key: 'created',
-                  label: 'Created',
+                  label: t('insights.flow.created'),
                   color: 'var(--color-chart-2)',
                   dashed: true,
                   values: flow!.map((p) => p.created),
                 },
                 {
                   key: 'completed',
-                  label: 'Completed',
+                  label: t('insights.flow.completed'),
                   color: 'var(--color-primary)',
                   values: flow!.map((p) => p.completed),
                 },
@@ -144,7 +144,9 @@ export function InsightsPanel({
 
         <section className="mt-7">
           <div className="mb-2 flex items-center gap-2">
-            <h3 className="kicker flex-1 text-[11px] uppercase tracking-[0.14em]">Breakdown</h3>
+            <h3 className="kicker flex-1 text-[11px] uppercase tracking-[0.14em]">
+              {t('insights.breakdown.title')}
+            </h3>
             <select
               className={select}
               value={slice}
@@ -152,11 +154,11 @@ export function InsightsPanel({
                 setSlice(e.target.value as Slice);
                 writePref('insightsSlice', e.target.value);
               }}
-              aria-label="Break down by"
+              aria-label={t('insights.breakdown.by')}
             >
               {SLICES.map((s) => (
                 <option key={s} value={s}>
-                  by {SLICE_LABELS[s].toLowerCase()}
+                  {t(`insights.breakdown.slice.${s}`)}
                 </option>
               ))}
             </select>
@@ -164,28 +166,40 @@ export function InsightsPanel({
           {bars.length ? (
             <BarList bars={bars.slice(0, 12)} />
           ) : (
-            <p className="font-mono text-[12px] text-index">// nothing to count</p>
+            <p className="font-mono text-[12px] text-index">{t('insights.breakdown.empty')}</p>
           )}
           {bars.length > 12 && (
-            <p className="mt-1 font-mono text-[11px] text-index">+ {bars.length - 12} more</p>
+            <p className="mt-1 font-mono text-[11px] text-index">
+              {t('insights.breakdown.more', { count: bars.length - 12 })}
+            </p>
           )}
         </section>
 
         <section className="mt-7">
           <h3 className="kicker mb-2 text-[11px] uppercase tracking-[0.14em]">
-            Time to complete · 90 days
+            {t('insights.durations.title')}
           </h3>
           {times.count === 0 ? (
-            <p className="font-mono text-[12px] text-index">// nothing completed lately</p>
+            <p className="font-mono text-[12px] text-index">{t('insights.durations.empty')}</p>
           ) : (
             <div className="grid grid-cols-2 gap-px bg-border-soft">
               {(
                 [
-                  ['cycle time', times.cycle, 'From started to done'],
-                  ['lead time', times.lead, 'From created to done'],
+                  [
+                    'cycle',
+                    t('insights.durations.cycleTime'),
+                    times.cycle,
+                    t('insights.durations.cycleTimeHint'),
+                  ],
+                  [
+                    'lead',
+                    t('insights.durations.leadTime'),
+                    times.lead,
+                    t('insights.durations.leadTimeHint'),
+                  ],
                 ] as const
-              ).map(([name, stat, hint]) => (
-                <div key={name} className="bg-surface px-3 py-2.5" title={hint}>
+              ).map(([id, name, stat, hint]) => (
+                <div key={id} className="bg-surface px-3 py-2.5" title={hint}>
                   <div className="font-mono text-[10px] tracking-[0.16em] text-index uppercase">
                     {name}
                   </div>
@@ -194,7 +208,7 @@ export function InsightsPanel({
                   </div>
                   {stat && (
                     <div className="font-mono text-[10.5px] text-index">
-                      median · p75 {formatDays(stat.p75)}
+                      {t('insights.durations.p75', { value: formatDays(stat.p75) })}
                     </div>
                   )}
                 </div>
@@ -202,7 +216,7 @@ export function InsightsPanel({
             </div>
           )}
           <p className="mt-1.5 font-mono text-[10.5px] text-index">
-            {times.count} issue{times.count === 1 ? '' : 's'} completed
+            {t('insights.durations.completed', { count: times.count })}
           </p>
         </section>
       </div>

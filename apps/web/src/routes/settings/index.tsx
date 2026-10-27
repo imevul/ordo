@@ -2,6 +2,7 @@ import { Link, useParams } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { TeamIcon } from '../../components/icons.tsx';
 import { PageHeader, Sep } from '../../components/PageHeader.tsx';
+import { type Catalog, t } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import {
   AccountSection,
@@ -28,26 +29,40 @@ import {
   WorkspaceSection,
 } from './workspace.tsx';
 
-const SECTIONS: { key: string; label: string; group: string; admin?: boolean }[] = [
-  { key: 'account', label: 'Profile', group: 'Account' },
-  { key: 'security', label: 'Security', group: 'Account' },
-  { key: 'connected', label: 'Connected accounts', group: 'Account' },
-  { key: 'notifications', label: 'Notifications', group: 'Account' },
-  { key: 'api', label: 'API keys', group: 'Account' },
-  { key: 'mcp', label: 'AI agents', group: 'Account' },
-  { key: 'workspace', label: 'General', group: 'Workspace', admin: true },
-  { key: 'members', label: 'Members', group: 'Workspace' },
-  { key: 'teams', label: 'Teams', group: 'Workspace' },
-  { key: 'labels', label: 'Labels', group: 'Workspace' },
-  { key: 'templates', label: 'Templates', group: 'Workspace' },
-  // Invitations, domains and joining: who gets in. (The key predates the name.)
-  { key: 'org-security', label: 'Access', group: 'Workspace', admin: true },
-  { key: 'authentication', label: 'Authentication', group: 'Workspace', admin: true },
-  { key: 'integrations', label: 'Integrations', group: 'Workspace', admin: true },
-  { key: 'webhooks', label: 'Webhooks', group: 'Workspace', admin: true },
-  { key: 'import', label: 'Import & export', group: 'Workspace', admin: true },
-  { key: 'audit', label: 'Audit log', group: 'Workspace', admin: true },
-];
+/** The sections in nav order. `label` is read when used, so it is in the current language. */
+const SECTIONS: {
+  key: string;
+  message: Exclude<keyof Catalog['settings']['nav'], 'groups'>;
+  group: 'account' | 'workspace';
+  admin?: boolean;
+  readonly label: string;
+}[] = (
+  [
+    { key: 'account', message: 'profile', group: 'account' },
+    { key: 'security', message: 'security', group: 'account' },
+    { key: 'connected', message: 'connected', group: 'account' },
+    { key: 'notifications', message: 'notifications', group: 'account' },
+    { key: 'api', message: 'apiKeys', group: 'account' },
+    { key: 'mcp', message: 'aiAgents', group: 'account' },
+    { key: 'workspace', message: 'general', group: 'workspace', admin: true },
+    { key: 'members', message: 'members', group: 'workspace' },
+    { key: 'teams', message: 'teams', group: 'workspace' },
+    { key: 'labels', message: 'labels', group: 'workspace' },
+    { key: 'templates', message: 'templates', group: 'workspace' },
+    // Invitations, domains and joining: who gets in. (The key predates the name.)
+    { key: 'org-security', message: 'access', group: 'workspace', admin: true },
+    { key: 'authentication', message: 'authentication', group: 'workspace', admin: true },
+    { key: 'integrations', message: 'integrations', group: 'workspace', admin: true },
+    { key: 'webhooks', message: 'webhooks', group: 'workspace', admin: true },
+    { key: 'import', message: 'importExport', group: 'workspace', admin: true },
+    { key: 'audit', message: 'auditLog', group: 'workspace', admin: true },
+  ] as const
+).map((s) => ({
+  ...s,
+  get label() {
+    return t(`settings.nav.${s.message}`);
+  },
+}));
 
 function SettingsShell({
   active,
@@ -65,9 +80,9 @@ function SettingsShell({
       <PageHeader
         kicker={
           <>
-            settings
+            {t('settings.nav.kicker')}
             <Sep />
-            {active.startsWith('team:') ? 'team' : title.toLowerCase()}
+            {active.startsWith('team:') ? t('settings.nav.kickerTeam') : title.toLowerCase()}
           </>
         }
         title={title}
@@ -75,12 +90,12 @@ function SettingsShell({
       <div className="flex min-h-0 flex-1">
         <nav
           className="hidden w-52 flex-none overflow-y-auto border-r border-border-soft p-3 md:block"
-          aria-label="Settings"
+          aria-label={t('common.settings')}
         >
           {groups.map((g) => (
             <div key={g} className="mb-4">
               <div className="mb-1 px-2 font-mono text-[10.5px] font-semibold tracking-[0.2em] text-index uppercase">
-                {g}
+                {t(`settings.nav.groups.${g}`)}
               </div>
               {SECTIONS.filter((s) => s.group === g && (!s.admin || ws.isAdmin)).map((s) => (
                 <Link
@@ -95,16 +110,16 @@ function SettingsShell({
             </div>
           ))}
           <div className="mb-1 px-2 font-mono text-[10.5px] font-semibold tracking-[0.2em] text-index uppercase">
-            Your teams
+            {t('settings.nav.yourTeams')}
           </div>
-          {ws.teams.map((t) => (
+          {ws.teams.map((team) => (
             <Link
-              key={t.id}
+              key={team.id}
               to="/$slug/settings/team/$key"
-              params={{ slug: ws.slug, key: t.key }}
-              className={`nav-item ${active === `team:${t.key}` ? 'active' : ''}`}
+              params={{ slug: ws.slug, key: team.key }}
+              className={`nav-item ${active === `team:${team.key}` ? 'active' : ''}`}
             >
-              <TeamIcon color={t.color} label={t.key} size={14} /> {t.name}
+              <TeamIcon color={team.color} label={team.key} size={14} /> {team.name}
             </Link>
           ))}
         </nav>
@@ -159,7 +174,7 @@ export function SettingsPage() {
           <ExportsCard />
         </>
       ) : (
-        <p className="text-muted">Only admins can import and export.</p>
+        <p className="text-muted">{t('settings.nav.adminsOnlyImport')}</p>
       )
     ) : section === 'authentication' ? (
       <AuthenticationSection />
@@ -186,8 +201,12 @@ export function TeamSettingsPage() {
   const ws = useWorkspace();
   const team = ws.teamByKey.get(key);
   return (
-    <SettingsShell active={`team:${key}`} title={team ? team.name : 'Team'}>
-      {team ? <TeamSettings team={team} /> : <p className="text-muted">Team not found.</p>}
+    <SettingsShell active={`team:${key}`} title={team ? team.name : t('common.team')}>
+      {team ? (
+        <TeamSettings team={team} />
+      ) : (
+        <p className="text-muted">{t('settings.nav.teamNotFound')}</p>
+      )}
     </SettingsShell>
   );
 }

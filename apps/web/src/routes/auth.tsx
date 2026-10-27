@@ -14,6 +14,7 @@ import { ApiError, api } from '../api/client.ts';
 import { keys, useConfig, useMe } from '../api/queries.ts';
 import { OrdoMark } from '../components/icons.tsx';
 import { Spinner } from '../components/PageHeader.tsx';
+import { t, tx } from '../i18n/index.ts';
 import { forgetLastSso, lastSso, ssoStartUrl } from '../lib/sso.ts';
 
 function AuthLayout({
@@ -43,7 +44,7 @@ function AuthLayout({
         </div>
         {footer && <div className="mt-6 text-center text-[13px] text-muted">{footer}</div>}
         <p className="mt-10 text-center font-mono text-[10.5px] tracking-[0.12em] text-index uppercase">
-          self-hosted · no trackers · your data stays here
+          {t('auth.tagline')}
         </p>
       </div>
     </div>
@@ -77,12 +78,12 @@ function ErrorLine({ error }: { error: string | null }) {
 }
 
 const message = (err: unknown) =>
-  err instanceof ApiError || err instanceof Error ? err.message : 'Something went wrong';
+  err instanceof ApiError || err instanceof Error ? err.message : t('common.error');
 
 export function IndexRedirect() {
   const me = useMe();
   const config = useConfig();
-  if (me.isLoading || config.isLoading) return <Spinner label="booting" />;
+  if (me.isLoading || config.isLoading) return <Spinner label={t('auth.booting')} />;
   if (!me.data)
     return (
       <Navigate to={config.data?.hasUsers === false ? '/signup' : '/login'} search={{} as never} />
@@ -165,15 +166,12 @@ export function LoginPage() {
 
   if (mfaToken) {
     return (
-      <AuthLayout kicker="two-factor" title="Enter your code.">
+      <AuthLayout kicker={t('auth.mfa.kicker')} title={t('auth.mfa.title')}>
         <form onSubmit={signIn}>
           <ErrorLine error={error} />
-          <p className="mb-5 text-[13px] text-muted">
-            Open your authenticator app and enter the 6-digit code for Ordo. Lost your device? Use
-            one of your recovery codes instead.
-          </p>
+          <p className="mb-5 text-[13px] text-muted">{t('auth.mfa.help')}</p>
           <TextField
-            label="Code"
+            label={t('auth.mfa.code')}
             autoComplete="one-time-code"
             inputMode="text"
             required
@@ -182,7 +180,7 @@ export function LoginPage() {
             onChange={(e) => setCode(e.target.value)}
           />
           <button className="btn btn-primary mt-2 w-full" disabled={busy}>
-            Verify <span className="arrow">→</span>
+            {t('auth.mfa.verify')} <span className="arrow">→</span>
           </button>
           <BackLink
             onClick={() => {
@@ -191,7 +189,7 @@ export function LoginPage() {
               setError(null);
             }}
           >
-            back
+            {t('auth.mfa.back')}
           </BackLink>
         </form>
       </AuthLayout>
@@ -199,20 +197,23 @@ export function LoginPage() {
   }
 
   const footer =
-    config.data?.signupMode === 'open' || config.data?.hasUsers === false ? (
-      <>
-        New here?{' '}
-        <Link to="/signup" search={{}} className="text-highlight hover:text-text">
-          Create an account
-        </Link>
-      </>
-    ) : (
-      <>Need an account? Ask a workspace admin for an invite link.</>
-    );
+    config.data?.signupMode === 'open' || config.data?.hasUsers === false
+      ? tx('auth.login.newHere', {
+          link: (c) => (
+            <Link to="/signup" search={{}} className="text-highlight hover:text-text">
+              {c}
+            </Link>
+          ),
+        })
+      : t('auth.login.needAccount');
 
   if (step === 'workspace') {
     return (
-      <AuthLayout kicker="single sign-on" title="Which workspace?" footer={footer}>
+      <AuthLayout
+        kicker={t('auth.workspaceSso.kicker')}
+        title={t('auth.workspaceSso.title')}
+        footer={footer}
+      >
         <ErrorLine error={error} />
         <WorkspaceSso
           initial={search.workspace ?? ''}
@@ -229,7 +230,7 @@ export function LoginPage() {
   if (step === 'password') {
     const sso = discovery.options;
     return (
-      <AuthLayout kicker="sign in" title="Welcome back." footer={footer}>
+      <AuthLayout kicker={t('auth.login.kicker')} title={t('auth.login.title')} footer={footer}>
         <ErrorLine error={error} />
         <div className="mb-5 flex items-center gap-2 border border-border-soft bg-bg px-3 py-2">
           <span className="min-w-0 flex-1 truncate text-[13.5px]">{email}</span>
@@ -242,16 +243,14 @@ export function LoginPage() {
               setError(null);
             }}
           >
-            change
+            {t('auth.login.change')}
           </button>
         </div>
         {sso.length > 0 && (
           <div className="mb-5">
             <SsoButtons options={sso} redirect={after} />
             {discovery.ssoRequired && (
-              <p className="mt-1 text-[12px] text-index">
-                Your organisation signs in with single sign-on.
-              </p>
+              <p className="mt-1 text-[12px] text-index">{t('auth.login.ssoRequired')}</p>
             )}
           </div>
         )}
@@ -260,7 +259,7 @@ export function LoginPage() {
             {/* Lets password managers pair the password with the address. */}
             <input type="email" autoComplete="username" value={email} readOnly hidden />
             <TextField
-              label="Password"
+              label={t('auth.password')}
               type="password"
               autoComplete="current-password"
               required
@@ -272,38 +271,38 @@ export function LoginPage() {
               className={`btn mt-2 w-full ${sso.length ? 'btn-ghost' : 'btn-primary'}`}
               disabled={busy}
             >
-              Sign in with password <span className="arrow">→</span>
+              {t('auth.login.signInWithPassword')} <span className="arrow">→</span>
             </button>
             <Link
               to="/forgot-password"
               className="mt-4 block text-center font-mono text-[11px] tracking-[0.1em] text-index uppercase hover:text-text"
             >
-              Forgot password?
+              {t('auth.login.forgotPassword')}
             </Link>
           </form>
         ) : (
-          <BackLink onClick={() => setShowPassword(true)}>use a password instead</BackLink>
+          <BackLink onClick={() => setShowPassword(true)}>{t('auth.login.usePassword')}</BackLink>
         )}
       </AuthLayout>
     );
   }
 
   return (
-    <AuthLayout kicker="sign in" title="Welcome back." footer={footer}>
+    <AuthLayout kicker={t('auth.login.kicker')} title={t('auth.login.title')} footer={footer}>
       {remembered && (
         <div className="mb-5">
           <a
             href={ssoStartUrl(remembered.providerId, { redirect: after })}
             className="btn btn-primary w-full"
           >
-            Continue with {remembered.name}
+            {t('auth.login.continueWith', { name: remembered.name })}
             {remembered.workspace && (
               <span className="text-[11px] opacity-70">· {remembered.workspace}</span>
             )}
             <span className="arrow">→</span>
           </a>
           <div className="mt-1.5 flex items-center justify-between font-mono text-[10.5px] tracking-[0.12em] text-index uppercase">
-            <span>last used on this device</span>
+            <span>{t('auth.login.lastUsed')}</span>
             <button
               type="button"
               className="uppercase hover:text-text"
@@ -312,12 +311,12 @@ export function LoginPage() {
                 setRemembered(null);
               }}
             >
-              forget
+              {t('auth.login.forget')}
             </button>
           </div>
           <div className="mt-5 flex items-center gap-3 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
             <span className="h-px flex-1 bg-border-soft" />
-            or
+            {t('auth.or')}
             <span className="h-px flex-1 bg-border-soft" />
           </div>
         </div>
@@ -325,7 +324,7 @@ export function LoginPage() {
       <form onSubmit={continueWithEmail}>
         <ErrorLine error={error} />
         <TextField
-          label="Email"
+          label={t('auth.email')}
           type="email"
           autoComplete="username"
           required
@@ -337,12 +336,12 @@ export function LoginPage() {
           className={`btn mt-2 w-full ${remembered ? 'btn-ghost' : 'btn-primary'}`}
           disabled={busy}
         >
-          Continue <span className="arrow">→</span>
+          {t('common.continue')} <span className="arrow">→</span>
         </button>
       </form>
       <div className="my-5 flex items-center gap-3 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
         <span className="h-px flex-1 bg-border-soft" />
-        or
+        {t('auth.or')}
         <span className="h-px flex-1 bg-border-soft" />
       </div>
       <button
@@ -353,7 +352,7 @@ export function LoginPage() {
           setStep('workspace');
         }}
       >
-        <KeyRound size={13} /> Sign in with SSO
+        <KeyRound size={13} /> {t('auth.login.signInWithSso')}
       </button>
     </AuthLayout>
   );
@@ -380,7 +379,7 @@ function SsoButtons({ options, redirect }: { options: SsoOption[]; redirect?: st
       href={ssoStartUrl(o.providerId, { redirect })}
       className="btn btn-primary mb-2 w-full"
     >
-      Continue with {o.name}
+      {t('auth.login.continueWith', { name: o.name })}
       {many && <span className="text-[11px] opacity-70">· {o.workspace}</span>}
       <span className="arrow">→</span>
     </a>
@@ -427,7 +426,7 @@ function WorkspaceSso({
       >
         <label className="mb-4 block">
           <span className="mb-1 block font-mono text-[10.5px] font-semibold tracking-[0.16em] text-muted uppercase">
-            Workspace URL
+            {t('auth.workspaceSso.workspaceUrl')}
           </span>
           <div className="input flex items-center gap-0 p-0">
             <span className="pl-3 font-mono text-[12.5px] text-index">{location.host}/</span>
@@ -441,26 +440,23 @@ function WorkspaceSso({
                 setSlug(e.target.value);
                 setFound(null);
               }}
-              aria-label="Workspace URL"
+              aria-label={t('auth.workspaceSso.workspaceUrl')}
             />
           </div>
         </label>
         {!found?.options.length && (
           <button className="btn btn-primary w-full" disabled={busy}>
-            Continue <span className="arrow">→</span>
+            {t('common.continue')} <span className="arrow">→</span>
           </button>
         )}
       </form>
       {found && found.options.length === 0 && (
-        <p className="mt-4 text-[13px] text-muted">
-          That workspace doesn't use single sign-on (or doesn't exist). Sign in with your email and
-          password instead.
-        </p>
+        <p className="mt-4 text-[13px] text-muted">{t('auth.workspaceSso.noSso')}</p>
       )}
       {found && found.options.length > 0 && (
         <SsoButtons options={found.options} redirect={redirect} />
       )}
-      <BackLink onClick={onBack}>sign in with email</BackLink>
+      <BackLink onClick={onBack}>{t('auth.workspaceSso.backToEmail')}</BackLink>
     </>
   );
 }
@@ -482,29 +478,28 @@ export function ForgotPasswordPage() {
   };
   return (
     <AuthLayout
-      kicker="password reset"
-      title="Forgot your password?"
+      kicker={t('auth.forgot.kicker')}
+      title={t('auth.forgot.title')}
       footer={
         <Link to="/login" search={{}} className="text-highlight hover:text-text">
-          Back to sign in
+          {t('auth.forgot.backToSignIn')}
         </Link>
       }
     >
       {config.data && !config.data.emailEnabled ? (
-        <p className="text-[13.5px] text-muted">
-          Email isn't set up on this instance, so reset links can't be sent. Ask an administrator to
-          reset your password.
-        </p>
+        <p className="text-[13.5px] text-muted">{t('auth.forgot.noEmail')}</p>
       ) : sent ? (
         <p className="text-[13.5px] text-muted">
-          If an account uses <span className="text-text">{email}</span>, a reset link is on its way.
-          It works for one hour.
+          {tx('auth.forgot.sent', {
+            email,
+            b: (c) => <span className="text-text">{c}</span>,
+          })}
         </p>
       ) : (
         <form onSubmit={submit}>
           <ErrorLine error={error} />
           <TextField
-            label="Email"
+            label={t('auth.email')}
             type="email"
             autoComplete="email"
             required
@@ -513,7 +508,7 @@ export function ForgotPasswordPage() {
             onChange={(e) => setEmail(e.target.value)}
           />
           <button className="btn btn-primary mt-2 w-full">
-            Send reset link <span className="arrow">→</span>
+            {t('auth.forgot.send')} <span className="arrow">→</span>
           </button>
         </form>
       )}
@@ -539,11 +534,11 @@ export function ResetPasswordPage() {
     }
   };
   return (
-    <AuthLayout kicker="password reset" title="Choose a new password.">
+    <AuthLayout kicker={t('auth.forgot.kicker')} title={t('auth.reset.title')}>
       <form onSubmit={submit}>
         <ErrorLine error={error} />
         <TextField
-          label="New password"
+          label={t('auth.reset.newPassword')}
           type="password"
           autoComplete="new-password"
           minLength={8}
@@ -552,9 +547,9 @@ export function ResetPasswordPage() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <p className="-mt-2 mb-4 text-[12px] text-index">This signs you out everywhere else.</p>
+        <p className="-mt-2 mb-4 text-[12px] text-index">{t('auth.reset.signsOut')}</p>
         <button className="btn btn-primary w-full">
-          Save password <span className="arrow">→</span>
+          {t('auth.reset.save')} <span className="arrow">→</span>
         </button>
       </form>
     </AuthLayout>
@@ -581,21 +576,25 @@ export function EmailLinkPage({ kind }: { kind: 'verify' | 'change' }) {
   }, [kind, token, qc]);
   return (
     <AuthLayout
-      kicker={kind === 'verify' ? 'verify email' : 'email change'}
+      kicker={
+        kind === 'verify' ? t('auth.emailLink.kickerVerify') : t('auth.emailLink.kickerChange')
+      }
       title={
-        state === 'done' ? 'Confirmed.' : state === 'failed' ? "That didn't work." : 'Confirming…'
+        state === 'done'
+          ? t('auth.emailLink.confirmed')
+          : state === 'failed'
+            ? t('auth.emailLink.failed')
+            : t('auth.emailLink.confirming')
       }
       footer={
         <Link to="/" className="text-highlight hover:text-text">
-          Continue to Ordo
+          {t('auth.emailLink.continue')}
         </Link>
       }
     >
       {state === 'done' && (
         <p className="text-[13.5px] text-muted">
-          {kind === 'verify'
-            ? 'Your email address is verified.'
-            : 'Your account now uses the new address.'}
+          {kind === 'verify' ? t('auth.emailLink.verified') : t('auth.emailLink.changed')}
         </p>
       )}
       <ErrorLine error={error} />
@@ -636,35 +635,34 @@ export function SignupPage() {
 
   return (
     <AuthLayout
-      kicker={first ? 'first boot' : invite ? 'you were invited' : 'sign up'}
-      title={first ? 'Set up Ordo.' : 'Create your account.'}
-      footer={
-        <>
-          Already have an account?{' '}
+      kicker={
+        first
+          ? t('auth.signup.kickerFirst')
+          : invite
+            ? t('auth.signup.kickerInvited')
+            : t('auth.signup.kicker')
+      }
+      title={first ? t('auth.signup.titleFirst') : t('auth.signup.title')}
+      footer={tx('auth.signup.haveAccount', {
+        link: (c) => (
           <Link
             to="/login"
             search={{ redirect: invite ? `/invite/${invite}` : undefined }}
             className="text-highlight hover:text-text"
           >
-            Sign in
+            {c}
           </Link>
-        </>
-      }
+        ),
+      })}
     >
-      {first && (
-        <p className="mb-5 text-[13px] text-muted">
-          You're the first user on this instance, so you'll be its admin.
-        </p>
-      )}
+      {first && <p className="mb-5 text-[13px] text-muted">{t('auth.signup.firstUser')}</p>}
       {closed ? (
-        <p className="text-[13.5px] text-muted">
-          Sign-ups on this instance are invite-only. Ask a workspace admin for an invite link.
-        </p>
+        <p className="text-[13.5px] text-muted">{t('auth.signup.closed')}</p>
       ) : (
         <form onSubmit={submit}>
           <ErrorLine error={error} />
           <TextField
-            label="Name"
+            label={t('auth.signup.name')}
             required
             autoFocus
             autoComplete="name"
@@ -672,7 +670,7 @@ export function SignupPage() {
             onChange={(e) => setForm({ ...form, name: e.target.value })}
           />
           <TextField
-            label="Email"
+            label={t('auth.email')}
             type="email"
             required
             autoComplete="email"
@@ -680,7 +678,7 @@ export function SignupPage() {
             onChange={(e) => setForm({ ...form, email: e.target.value })}
           />
           <TextField
-            label="Password"
+            label={t('auth.password')}
             type="password"
             required
             minLength={8}
@@ -689,7 +687,7 @@ export function SignupPage() {
             onChange={(e) => setForm({ ...form, password: e.target.value })}
           />
           <button className="btn btn-primary mt-2 w-full" disabled={busy}>
-            Create account <span className="arrow">→</span>
+            {t('auth.signup.submit')} <span className="arrow">→</span>
           </button>
         </form>
       )}
@@ -734,47 +732,60 @@ export function InvitePage() {
 
   if (me.isLoading) return <Spinner />;
   return (
-    <AuthLayout kicker="invite" title={info ? `Join ${info.workspace.name}.` : 'Invitation'}>
+    <AuthLayout
+      kicker={t('auth.invite.kicker')}
+      title={
+        info
+          ? t('auth.invite.title', { workspace: info.workspace.name })
+          : t('auth.invite.titleLoading')
+      }
+    >
       <ErrorLine error={error} />
       {info && (
         <p className="mb-4 text-[13px] text-muted">
-          You're invited as <span className="text-text">{info.role}</span>
-          {info.teams.length > 0 && (
-            <>
-              {' '}
-              to <span className="text-text">{info.teams.join(', ')}</span>
-            </>
-          )}
-          .
+          {tx(info.teams.length > 0 ? 'auth.invite.invitedAsTo' : 'auth.invite.invitedAs', {
+            role: inviteRole(info.role),
+            teams: info.teams.join(', '),
+            b: (c) => <span className="text-text">{c}</span>,
+          })}
         </p>
       )}
       {info && me.data && (
         <>
           <p className="mb-5 text-[13.5px] text-muted">
-            You're signed in as <span className="text-text">{me.data.email}</span>.
+            {tx('auth.invite.signedInAs', {
+              email: me.data.email,
+              b: (c) => <span className="text-text">{c}</span>,
+            })}
           </p>
           <button className="btn btn-primary w-full" onClick={accept}>
-            Join workspace <span className="arrow">→</span>
+            {t('auth.invite.join')} <span className="arrow">→</span>
           </button>
         </>
       )}
       {info && !me.data && (
         <div className="flex flex-col gap-2">
           <Link to="/signup" search={{ invite: token }} className="btn btn-primary w-full">
-            Create account <span className="arrow">→</span>
+            {t('auth.invite.createAccount')} <span className="arrow">→</span>
           </Link>
           <Link
             to="/login"
             search={{ redirect: `/invite/${token}` }}
             className="btn btn-ghost w-full"
           >
-            I already have an account
+            {t('auth.invite.haveAccount')}
           </Link>
         </div>
       )}
     </AuthLayout>
   );
 }
+
+const INVITE_ROLES = ['owner', 'admin', 'member', 'guest'] as const;
+const inviteRole = (role: string) =>
+  (INVITE_ROLES as readonly string[]).includes(role)
+    ? t(`auth.invite.role.${role as (typeof INVITE_ROLES)[number]}`)
+    : role;
 
 const slugify = (s: string) =>
   s
@@ -799,8 +810,8 @@ export function OnboardingPage() {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [slugTouched, setSlugTouched] = useState(false);
-  const [teamName, setTeamName] = useState('Engineering');
-  const [teamKey, setTeamKey] = useState('ENG');
+  const [teamName, setTeamName] = useState(() => t('auth.onboarding.defaultTeam'));
+  const [teamKey, setTeamKey] = useState(() => keyify(t('auth.onboarding.defaultTeam')) || 'ENG');
   const [keyTouched, setKeyTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Workspaces this person may join through their verified email domain.
@@ -826,10 +837,8 @@ export function OnboardingPage() {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!SLUG_PATTERN.test(slug))
-      return setError('The URL may only contain lowercase letters, digits and dashes.');
-    if (!TEAM_KEY_PATTERN.test(teamKey))
-      return setError('Team key: 1–7 uppercase letters or digits, starting with a letter.');
+    if (!SLUG_PATTERN.test(slug)) return setError(t('auth.onboarding.slugInvalid'));
+    if (!TEAM_KEY_PATTERN.test(teamKey)) return setError(t('auth.onboarding.teamKeyInvalid'));
     try {
       const res = await api.post<{ slug: string }>('/workspaces', {
         name,
@@ -845,11 +854,11 @@ export function OnboardingPage() {
   };
 
   return (
-    <AuthLayout kicker="new workspace" title="Create a workspace.">
+    <AuthLayout kicker={t('auth.onboarding.kicker')} title={t('auth.onboarding.title')}>
       {joinable.data && joinable.data.length > 0 && (
         <div className="mb-6">
           <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.16em] text-muted uppercase">
-            Or join your team
+            {t('auth.onboarding.orJoin')}
           </div>
           {joinable.data.map((w) => (
             <button
@@ -859,8 +868,10 @@ export function OnboardingPage() {
               className="panel panel-sm panel-interactive mb-2 flex w-full items-center gap-3 p-3 text-left"
             >
               {w.logoUrl && <img src={w.logoUrl} alt="" className="h-6 w-6 object-cover" />}
-              <span className="flex-1">{w.name}</span>
-              <span className="font-mono text-[11px] text-index">{w.memberCount} members</span>
+              <span className="min-w-0 flex-1 truncate">{w.name}</span>
+              <span className="font-mono text-[11px] whitespace-nowrap text-index">
+                {t('auth.onboarding.members', { count: w.memberCount })}
+              </span>
               <span className="arrow text-primary">→</span>
             </button>
           ))}
@@ -869,7 +880,7 @@ export function OnboardingPage() {
       <form onSubmit={submit}>
         <ErrorLine error={error} />
         <TextField
-          label="Workspace name"
+          label={t('auth.onboarding.workspaceName')}
           required
           autoFocus
           value={name}
@@ -881,7 +892,7 @@ export function OnboardingPage() {
         />
         <label className="mb-4 block">
           <span className="mb-1 block font-mono text-[10.5px] font-semibold tracking-[0.16em] text-muted uppercase">
-            Workspace URL
+            {t('auth.onboarding.workspaceUrl')}
           </span>
           <div className="flex items-center border border-border bg-bg focus-within:border-primary">
             <span className="pl-3 font-mono text-[12px] text-index">{location.host}/</span>
@@ -898,7 +909,7 @@ export function OnboardingPage() {
         </label>
         <div className="grid grid-cols-[1fr_6rem] gap-3">
           <TextField
-            label="First team"
+            label={t('auth.onboarding.firstTeam')}
             required
             value={teamName}
             onChange={(e) => {
@@ -907,7 +918,7 @@ export function OnboardingPage() {
             }}
           />
           <TextField
-            label="Key"
+            label={t('auth.onboarding.key')}
             required
             value={teamKey}
             maxLength={7}
@@ -918,11 +929,13 @@ export function OnboardingPage() {
           />
         </div>
         <p className="-mt-2 mb-5 text-[12px] text-index">
-          Issues get identifiers like{' '}
-          <span className="font-mono text-muted">{teamKey || 'KEY'}-1</span>.
+          {tx('auth.onboarding.identifiers', {
+            id: `${teamKey || 'KEY'}-1`,
+            code: (c) => <span className="font-mono text-muted">{c}</span>,
+          })}
         </p>
         <button className="btn btn-primary w-full">
-          Create workspace <span className="arrow">→</span>
+          {t('auth.onboarding.submit')} <span className="arrow">→</span>
         </button>
       </form>
     </AuthLayout>
@@ -956,10 +969,10 @@ export function OAuthAuthorizePage() {
   if (!me.data) return <Navigate to="/login" search={{ redirect: `/oauth/authorize${query}` }} />;
   if (info.error || !info.data)
     return (
-      <AuthLayout kicker="authorize" title="Can't connect this app.">
+      <AuthLayout kicker={t('auth.oauth.kicker')} title={t('auth.oauth.cantConnect')}>
         <ErrorLine error={message(info.error)} />
         <Link to="/" className="btn btn-ghost w-full">
-          Go to Ordo
+          {t('auth.oauth.goToOrdo')}
         </Link>
       </AuthLayout>
     );
@@ -981,47 +994,53 @@ export function OAuthAuthorizePage() {
 
   if (sent)
     return (
-      <AuthLayout kicker="authorize" title="Done.">
+      <AuthLayout kicker={t('auth.oauth.kicker')} title={t('auth.oauth.done')}>
         <p className="text-[13.5px] text-muted">
-          You're being sent back to <span className="text-text">{client.name}</span>. If nothing
-          happens, switch to it yourself; you can close this tab.
+          {tx('auth.oauth.sentBack', {
+            app: client.name,
+            b: (c) => <span className="text-text">{c}</span>,
+          })}
         </p>
       </AuthLayout>
     );
 
   return (
     <AuthLayout
-      kicker="authorize"
-      title={`Connect ${client.name}?`}
-      footer={
-        <>Signed in as {me.data.email}. Disconnect apps any time under Settings → AI agents.</>
-      }
+      kicker={t('auth.oauth.kicker')}
+      title={t('auth.oauth.title', { app: client.name })}
+      footer={t('auth.oauth.footer', { email: me.data.email })}
     >
       <ErrorLine error={error} />
       <p className="text-[13.5px] text-muted">
-        <span className="text-text">{client.name}</span> wants to use Ordo in{' '}
-        <span className="text-text">{workspace.name}</span> as you. It will be able to:
+        {tx('auth.oauth.wants', {
+          app: client.name,
+          workspace: workspace.name,
+          b: (c) => <span className="text-text">{c}</span>,
+        })}
       </p>
       <ul className="mt-3 flex flex-col gap-1.5 text-[13px]">
-        <li>— read the issues, projects and teams you can see</li>
-        <li>— create and change issues and comment, under your name</li>
+        <li>— {t('auth.oauth.canRead')}</li>
+        <li>— {t('auth.oauth.canWrite')}</li>
       </ul>
       <div className="mt-5 border-t border-border-soft pt-4 text-[12.5px]">
         {client.verified ? (
           <div className="flex items-center gap-1.5 text-muted">
-            <BadgeCheck size={13} className="flex-none" /> Published by{' '}
-            <span className="font-mono text-text">{client.host}</span>
+            <BadgeCheck size={13} className="flex-none" />
+            <span>
+              {tx('auth.oauth.publishedBy', {
+                host: client.host,
+                code: (c) => <span className="font-mono text-text">{c}</span>,
+              })}
+            </span>
           </div>
         ) : (
           <div className="flex items-start gap-1.5 text-warning">
             <TriangleAlert size={13} className="mt-0.5 flex-none" />
-            <span>
-              The app gave itself this name. Only continue if you just started connecting it.
-            </span>
+            <span>{t('auth.oauth.selfNamed')}</span>
           </div>
         )}
         <div className="mt-2 font-mono text-[11px] break-all text-index">
-          returns to {redirectUri.split('?')[0]}
+          {t('auth.oauth.returnsTo', { url: redirectUri.split('?')[0]! })}
         </div>
       </div>
       <div className="mt-6 flex gap-2">
@@ -1031,7 +1050,7 @@ export function OAuthAuthorizePage() {
           disabled={busy}
           onClick={() => answer(false)}
         >
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           type="button"
@@ -1039,7 +1058,7 @@ export function OAuthAuthorizePage() {
           disabled={busy}
           onClick={() => answer(true)}
         >
-          Allow <span className="arrow">→</span>
+          {t('auth.oauth.allow')} <span className="arrow">→</span>
         </button>
       </div>
     </AuthLayout>

@@ -7,12 +7,14 @@ import { api, wsPath } from '../../api/client.ts';
 import { keys } from '../../api/queries.ts';
 import { Spinner } from '../../components/PageHeader.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
+import { t } from '../../i18n/index.ts';
+import { roleLabel } from '../../i18n/labels.ts';
 import { relativeTime } from '../../lib/format.ts';
 import { ssoStartUrl } from '../../lib/sso.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 const here = () => window.location.pathname;
 
 /** `?error=` left by an OIDC redirect (link or test mode) is shown once, then dropped. */
@@ -56,19 +58,16 @@ export function AuthenticationSection() {
     }
   };
 
-  if (!ws.isAdmin) return <p className="text-muted">Only admins can change sign-in settings.</p>;
+  if (!ws.isAdmin) return <p className="text-muted">{t('sso.adminsOnly')}</p>;
   if (!data) return <Spinner />;
   const anyEnabled = data.providers.some((p) => p.enabled);
 
   return (
     <>
-      <SettingsCard
-        title="Single sign-on"
-        description="Let people sign in with your identity provider (Keycloak, Authentik, Entra ID, Google, Okta… anything that speaks OpenID Connect). New accounts are only created for verified addresses at your verified domains."
-      >
+      <SettingsCard title={t('sso.title')} description={t('sso.description')}>
         <div className="mb-5 border border-border-soft bg-bg p-3">
           <div className="mb-1 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-            Redirect URI — register this with your provider
+            {t('sso.redirectUri')}
           </div>
           <div className="flex items-center gap-2">
             <code className="flex-1 truncate font-mono text-[12.5px] text-text">
@@ -79,10 +78,10 @@ export function AuthenticationSection() {
               className="btn btn-ghost btn-sm"
               onClick={() => {
                 navigator.clipboard.writeText(data.redirectUri);
-                toast.success('Copied');
+                toast.success(t('common.copied'));
               }}
             >
-              <Copy size={12} /> Copy
+              <Copy size={12} /> {t('common.copy')}
             </button>
           </div>
         </div>
@@ -93,9 +92,11 @@ export function AuthenticationSection() {
               <div className="text-[13.5px]">
                 {p.name}
                 {p.enabled ? (
-                  <span className="chip ml-3 [--chip:var(--color-success)]">enabled</span>
+                  <span className="chip ml-3 [--chip:var(--color-success)]">
+                    {t('sso.enabled')}
+                  </span>
                 ) : (
-                  <span className="tag ml-3 font-mono">disabled</span>
+                  <span className="tag ml-3 font-mono">{t('sso.disabled')}</span>
                 )}
               </div>
               <div className="truncate font-mono text-[11px] text-index">{p.issuer}</div>
@@ -103,27 +104,27 @@ export function AuthenticationSection() {
             <a
               className="btn btn-ghost btn-sm"
               href={ssoStartUrl(p.id, { mode: 'test', redirect: here() })}
-              title="Sign in with this provider and see the claims it sends"
+              title={t('sso.testTitle')}
             >
-              <FlaskConical size={12} /> Test
+              <FlaskConical size={12} /> {t('sso.test')}
             </a>
             <button
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => setEditing(p)}
-              aria-label={`Edit ${p.name}`}
+              aria-label={t('sso.editLabel', { name: p.name })}
             >
               <Pencil size={12} />
             </button>
             <button
               type="button"
               className="btn btn-danger btn-sm"
-              aria-label={`Delete ${p.name}`}
+              aria-label={t('sso.deleteLabel', { name: p.name })}
               onClick={async () => {
                 if (
                   !(await confirmDialog({
-                    title: `Delete ${p.name}?`,
-                    body: 'People who only sign in with it lose access.',
+                    title: t('sso.confirmDelete', { name: p.name }),
+                    body: t('sso.confirmDeleteBody'),
                     danger: true,
                   }))
                 )
@@ -137,21 +138,19 @@ export function AuthenticationSection() {
           </div>
         ))}
         {data.providers.length === 0 && (
-          <p className="font-mono text-[12px] text-index">// no providers yet</p>
+          <p className="font-mono text-[12px] text-index">{t('sso.empty')}</p>
         )}
         <button type="button" className="btn btn-primary mt-4" onClick={() => setEditing('new')}>
-          <Plus size={13} /> Add provider
+          <Plus size={13} /> {t('sso.addProvider')}
         </button>
       </SettingsCard>
 
-      <SettingsCard title="Enforcement">
+      <SettingsCard title={t('sso.enforcement.title')}>
         <label className="flex items-center justify-between border-b border-border-soft py-2.5 text-[13.5px]">
           <span>
-            Require SSO
+            {t('sso.enforcement.requireSso')}
             <span className="block text-[12px] text-index">
-              {anyEnabled
-                ? 'Password sessions can no longer open this workspace. Owners keep their password as a fallback; each use is audited.'
-                : 'Add and enable a provider first.'}
+              {anyEnabled ? t('sso.enforcement.requireSsoHint') : t('sso.enforcement.enableFirst')}
             </span>
           </span>
           <input
@@ -164,9 +163,9 @@ export function AuthenticationSection() {
         </label>
         <label className="flex items-center justify-between border-b border-border-soft py-2.5 text-[13.5px]">
           <span>
-            SSO session length
+            {t('sso.enforcement.sessionLength')}
             <span className="block text-[12px] text-index">
-              How long before people go back through your provider.
+              {t('sso.enforcement.sessionLengthHint')}
             </span>
           </span>
           <select
@@ -176,18 +175,18 @@ export function AuthenticationSection() {
               save({ ssoSessionMaxAgeHours: e.target.value ? Number(e.target.value) : null })
             }
           >
-            <option value="">Like any session</option>
-            <option value="8">8 hours</option>
-            <option value="24">1 day</option>
-            <option value="168">7 days</option>
-            <option value="720">30 days</option>
+            <option value="">{t('sso.enforcement.likeAnySession')}</option>
+            <option value="8">{t('sso.enforcement.hours', { count: 8 })}</option>
+            <option value="24">{t('sso.enforcement.days', { count: 1 })}</option>
+            <option value="168">{t('sso.enforcement.days', { count: 7 })}</option>
+            <option value="720">{t('sso.enforcement.days', { count: 30 })}</option>
           </select>
         </label>
         <label className="flex items-center justify-between py-2.5 text-[13.5px]">
           <span>
-            Allow API keys
+            {t('sso.enforcement.allowApiKeys')}
             <span className="block text-[12px] text-index">
-              When SSO is required, API keys bypass your provider. Off by default.
+              {t('sso.enforcement.allowApiKeysHint')}
             </span>
           </span>
           <input
@@ -276,7 +275,7 @@ function ProviderModal({
     try {
       if (existing) await api.patch(wsPath(ws.slug, `/auth-providers/${existing.id}`), body);
       else await api.post(wsPath(ws.slug, '/auth-providers'), body);
-      toast.success(existing ? 'Provider saved' : 'Provider added. Try "Test" next.');
+      toast.success(existing ? t('sso.provider.saved') : t('sso.provider.added'));
       onSaved();
     } catch (err) {
       toast.error(errMsg(err));
@@ -286,10 +285,18 @@ function ProviderModal({
   };
 
   return (
-    <Modal open={!!provider} onClose={onClose} width={560} label="Sign-in provider" align="center">
+    <Modal
+      open={!!provider}
+      onClose={onClose}
+      width={560}
+      label={t('sso.provider.label')}
+      align="center"
+    >
       <form className="max-h-[80vh] overflow-y-auto p-6" onSubmit={submit}>
-        <div className="section-label mb-4">{existing ? 'Edit provider' : 'New provider'}</div>
-        <FormRow label="Name" hint='Shown on the button: "Continue with …"'>
+        <div className="section-label mb-4">
+          {existing ? t('sso.provider.edit') : t('sso.provider.new')}
+        </div>
+        <FormRow label={t('sso.provider.name')} hint={t('sso.provider.nameHint')}>
           <input
             className="input"
             required
@@ -299,7 +306,10 @@ function ProviderModal({
             autoFocus
           />
         </FormRow>
-        <FormRow label="Issuer URL" hint="Ordo reads <issuer>/.well-known/openid-configuration.">
+        <FormRow
+          label={t('sso.provider.issuer')}
+          hint={t('sso.provider.issuerHint', { path: '<issuer>/.well-known/openid-configuration' })}
+        >
           <input
             className="input font-mono"
             required
@@ -310,7 +320,7 @@ function ProviderModal({
           />
         </FormRow>
         <div className="grid grid-cols-2 gap-3">
-          <FormRow label="Client ID">
+          <FormRow label={t('sso.provider.clientId')}>
             <input
               className="input font-mono"
               required
@@ -319,8 +329,8 @@ function ProviderModal({
             />
           </FormRow>
           <FormRow
-            label="Client secret"
-            hint={existing ? 'Leave empty to keep the current one.' : undefined}
+            label={t('sso.provider.clientSecret')}
+            hint={existing ? t('sso.provider.keepSecret') : undefined}
           >
             <input
               className="input font-mono"
@@ -333,28 +343,25 @@ function ProviderModal({
           </FormRow>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <FormRow label="Scopes">
+          <FormRow label={t('sso.provider.scopes')}>
             <input
               className="input font-mono"
               value={form.scopes}
               onChange={(e) => set('scopes', e.target.value)}
             />
           </FormRow>
-          <FormRow label="New people join as">
+          <FormRow label={t('sso.provider.joinAs')}>
             <select
               className="input"
               value={form.defaultRole}
               onChange={(e) => set('defaultRole', e.target.value as 'member' | 'guest')}
             >
-              <option value="member">Member</option>
-              <option value="guest">Guest</option>
+              <option value="member">{roleLabel('member')}</option>
+              <option value="guest">{roleLabel('guest')}</option>
             </select>
           </FormRow>
         </div>
-        <FormRow
-          label="Group claim"
-          hint="Optional. A claim listing the user's groups, e.g. groups."
-        >
+        <FormRow label={t('sso.provider.groupClaim')} hint={t('sso.provider.groupClaimHint')}>
           <input
             className="input font-mono"
             value={form.groupClaim}
@@ -363,10 +370,7 @@ function ProviderModal({
           />
         </FormRow>
         {form.groupClaim.trim() && (
-          <FormRow
-            label="Group → role"
-            hint="One per line: group = admin | member | guest. Applied at every sign-in; owners are never changed."
-          >
+          <FormRow label={t('sso.provider.groupRoles')} hint={t('sso.provider.groupRolesHint')}>
             <textarea
               className="input min-h-20 font-mono"
               value={form.groupRoles}
@@ -382,14 +386,14 @@ function ProviderModal({
             checked={form.enabled}
             onChange={(e) => set('enabled', e.target.checked)}
           />
-          Enabled
+          {t('sso.provider.enabled')}
         </label>
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={busy}>
-            {existing ? 'Save' : 'Add provider'}
+            {existing ? t('common.save') : t('sso.addProvider')}
           </button>
         </div>
       </form>
@@ -420,10 +424,7 @@ export function ConnectedAccountsCard() {
     (o) => !linked.has(`${ws.workspace.name}:${o.name}`),
   );
   return (
-    <SettingsCard
-      title="Connected accounts"
-      description="Sign-in identities linked to your Ordo account."
-    >
+    <SettingsCard title={t('sso.connected.title')} description={t('sso.connected.description')}>
       {identities.map((i) => (
         <div key={i.id} className="flex h-12 items-center gap-3 border-b border-border-soft">
           <KeyRound size={14} className="flex-none text-highlight" />
@@ -432,8 +433,9 @@ export function ConnectedAccountsCard() {
               {i.provider} <span className="text-index">· {i.workspace}</span>
             </div>
             <div className="truncate font-mono text-[11px] text-index">
-              {i.email ?? 'no email'}
-              {i.lastLoginAt && ` · last used ${relativeTime(i.lastLoginAt)}`}
+              {i.email ?? t('sso.connected.noEmail')}
+              {i.lastLoginAt &&
+                ` · ${t('sso.connected.lastUsed', { time: relativeTime(i.lastLoginAt) })}`}
             </div>
           </div>
           <button
@@ -448,12 +450,12 @@ export function ConnectedAccountsCard() {
               }
             }}
           >
-            <Unlink size={12} /> Unlink
+            <Unlink size={12} /> {t('sso.connected.unlink')}
           </button>
         </div>
       ))}
       {identities.length === 0 && (
-        <p className="font-mono text-[12px] text-index">// nothing linked</p>
+        <p className="font-mono text-[12px] text-index">{t('sso.connected.empty')}</p>
       )}
       {linkable.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
@@ -463,7 +465,7 @@ export function ConnectedAccountsCard() {
               className="btn btn-ghost btn-sm"
               href={ssoStartUrl(o.providerId, { mode: 'link', redirect: here() })}
             >
-              <Link2 size={12} /> Connect {o.name}
+              <Link2 size={12} /> {t('sso.connected.connect', { name: o.name })}
             </a>
           ))}
         </div>
