@@ -30,6 +30,7 @@ import { workspaceBots } from '../services/integrations.ts';
 import { listLabels } from '../services/labels.ts';
 import { workspacePlaceholders } from '../services/placeholders.ts';
 import { listProjects } from '../services/projects.ts';
+import { listRecurring } from '../services/recurring.ts';
 import { toView } from '../services/serialize.ts';
 import { listTeams } from '../services/teams.ts';
 import { listTemplates } from '../services/templates.ts';
@@ -109,6 +110,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
       teams: teamList,
       labels: labelRows,
       templates,
+      recurring: await listRecurring(db, access),
       initiatives: await listInitiatives(db, access, projects),
       projects,
       cycles,

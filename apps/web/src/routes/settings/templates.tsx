@@ -1,5 +1,11 @@
-import { type IssueTemplate, priorityLabel } from '@ordo/shared';
-import { Hexagon, Pencil, Plus, Tag, Trash2, User } from 'lucide-react';
+import {
+  type IssueTemplate,
+  priorityLabel,
+  RECURRENCE_UNITS,
+  type RecurrenceUnit,
+  type RecurringIssue,
+} from '@ordo/shared';
+import { Hexagon, Pencil, Plus, Repeat, Tag, Trash2, User, X } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { api, wsPath } from '../../api/client.ts';
 import { useWsMutation } from '../../api/queries.ts';
@@ -210,14 +216,171 @@ function TemplateEditor({ template, onClose }: { template?: IssueTemplate; onClo
   );
 }
 
+const UNIT_LABEL: Record<RecurrenceUnit, [string, string]> = {
+  day: ['day', 'days'],
+  week: ['week', 'weeks'],
+  month: ['month', 'months'],
+};
+const cadence = (every: number, unit: RecurrenceUnit) =>
+  every === 1 ? `every ${UNIT_LABEL[unit][0]}` : `every ${every} ${UNIT_LABEL[unit][1]}`;
+
+/** Turns a template into an issue every so often, in one team. */
+function RepeatModal({ template, onClose }: { template: IssueTemplate; onClose: () => void }) {
+  const ws = useWorkspace();
+  const [teamId, setTeamId] = useState(template.teamId ?? ws.myTeams[0]?.id ?? '');
+  const [every, setEvery] = useState(1);
+  const [unit, setUnit] = useState<RecurrenceUnit>('week');
+  const [nextOn, setNextOn] = useState(new Date().toISOString().slice(0, 10));
+  const create = useWsMutation(ws.slug, () =>
+    api.post(wsPath(ws.slug, '/recurring'), {
+      templateId: template.id,
+      teamId,
+      every,
+      unit,
+      nextOn,
+    }),
+  );
+  return (
+    <Modal open onClose={onClose} width={480} label="Repeat template">
+      <form
+        className="p-5"
+        onSubmit={(e) => {
+          e.preventDefault();
+          create.mutate(undefined, { onSuccess: onClose });
+        }}
+      >
+        <div className="section-label mb-1">Repeat “{template.name}”</div>
+        <p className="mb-4 text-[12.5px] text-muted">
+          A new issue from this template is created on the first date, then on every repeat — by the
+          Ordo bot, notifying its assignee as usual.
+        </p>
+        <div className="grid grid-cols-[6rem_1fr] items-center gap-x-3 gap-y-3 text-[13px]">
+          <span className="text-index">Team</span>
+          <select
+            className="input"
+            value={teamId}
+            disabled={!!template.teamId}
+            onChange={(e) => setTeamId(e.target.value)}
+          >
+            {ws.teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <span className="text-index">Every</span>
+          <span className="flex gap-2">
+            <input
+              type="number"
+              min={1}
+              max={52}
+              className="input w-20 font-mono"
+              value={every}
+              onChange={(e) => setEvery(Math.max(1, Math.min(52, Number(e.target.value) || 1)))}
+            />
+            <select
+              className="input flex-1"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value as RecurrenceUnit)}
+            >
+              {RECURRENCE_UNITS.map((u) => (
+                <option key={u} value={u}>
+                  {UNIT_LABEL[u][every === 1 ? 0 : 1]}
+                </option>
+              ))}
+            </select>
+          </span>
+          <span className="text-index">First on</span>
+          <input
+            type="date"
+            className="input font-mono"
+            value={nextOn}
+            onChange={(e) => setNextOn(e.target.value)}
+          />
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" disabled={!teamId || !nextOn || create.isPending}>
+            Repeat <span className="arrow">→</span>
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ScheduleRow({ schedule }: { schedule: RecurringIssue }) {
+  const ws = useWorkspace();
+  const team = ws.teamById.get(schedule.teamId);
+  const save = useWsMutation(ws.slug, (body: object) =>
+    api.patch(wsPath(ws.slug, `/recurring/${schedule.id}`), body),
+  );
+  const remove = useWsMutation(ws.slug, () =>
+    api.del(wsPath(ws.slug, `/recurring/${schedule.id}`)),
+  );
+  return (
+    <div className="flex h-8 items-center gap-2 pl-7 font-mono text-[11.5px] text-muted">
+      <Repeat size={12} className={schedule.paused ? 'text-index' : 'text-primary'} />
+      <span>
+        {cadence(schedule.every, schedule.unit)} in {team?.key ?? '?'}
+        {schedule.paused ? ' · paused' : ` · next ${schedule.nextOn}`}
+      </span>
+      {!ws.isGuest && (
+        <span className="ml-auto flex gap-1">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => save.mutate({ paused: !schedule.paused })}
+          >
+            {schedule.paused ? 'Resume' : 'Pause'}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => remove.mutate(undefined)}
+            aria-label="Stop repeating"
+          >
+            <X size={12} />
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 function TemplateRow({ template, onEdit }: { template: IssueTemplate; onEdit: () => void }) {
+  const ws = useWorkspace();
+  const [repeat, setRepeat] = useState(false);
+  const schedules = ws.recurring.filter((r) => r.templateId === template.id);
+  return (
+    <div className="border-b border-border-soft">
+      <TemplateLine template={template} onEdit={onEdit} onRepeat={() => setRepeat(true)} />
+      {schedules.map((s) => (
+        <ScheduleRow key={s.id} schedule={s} />
+      ))}
+      {repeat && <RepeatModal template={template} onClose={() => setRepeat(false)} />}
+    </div>
+  );
+}
+
+function TemplateLine({
+  template,
+  onEdit,
+  onRepeat,
+}: {
+  template: IssueTemplate;
+  onEdit: () => void;
+  onRepeat: () => void;
+}) {
   const ws = useWorkspace();
   const remove = useWsMutation(ws.slug, () =>
     api.del(wsPath(ws.slug, `/templates/${template.id}`)),
   );
   const team = template.teamId ? ws.teamById.get(template.teamId) : null;
   return (
-    <div className="flex h-11 items-center gap-3 border-b border-border-soft">
+    <div className="flex h-11 items-center gap-3">
       {team ? <TeamIcon color={team.color} label={team.key} size={16} /> : <span className="w-4" />}
       <button
         type="button"
@@ -232,6 +395,15 @@ function TemplateRow({ template, onEdit }: { template: IssueTemplate; onEdit: ()
       <span className="tag font-mono">{team ? team.key : 'all teams'}</span>
       {!ws.isGuest && (
         <>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={onRepeat}
+            aria-label={`Repeat ${template.name}`}
+            title="Create an issue from this template on a schedule"
+          >
+            <Repeat size={12} />
+          </button>
           <button
             type="button"
             className="btn btn-ghost btn-sm"

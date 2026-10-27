@@ -77,6 +77,12 @@ in its title and description — keeping what you already typed, with the templa
 Manage templates under **Settings → Templates**; anyone but guests can. Templates for all teams appear everywhere,
 team templates only in that team (and only a team template can set a status).
 
+**Recurring issues** come from templates too: the ↻ button next to a template under **Settings → Templates** makes
+it repeat every so many days, weeks or months in a team, starting on a date you pick. On each date the **Ordo** bot
+creates the issue (its assignee is notified as usual); if Ordo was down for a while, it creates one issue and moves
+on rather than catching up. Pause, resume or stop a schedule from the same list. If something the template sets no
+longer fits the team (say, its assignee left), the issue is still created, without the template's properties.
+
 Properties: **status, priority** (urgent, high, medium, low, none), **assignee, labels, project, cycle,
 estimate, due date**, and a **parent** issue. Change any of them from the issue page's sidebar, from the icons
 in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L`, …).

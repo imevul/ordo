@@ -81,6 +81,9 @@ export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
   canceled: 'Canceled',
 };
 
+export const RECURRENCE_UNITS = ['day', 'week', 'month'] as const;
+export type RecurrenceUnit = (typeof RECURRENCE_UNITS)[number];
+
 export const INITIATIVE_STATUSES = ['planned', 'active', 'completed'] as const;
 export type InitiativeStatus = (typeof INITIATIVE_STATUSES)[number];
 export const INITIATIVE_STATUS_LABELS: Record<InitiativeStatus, string> = {

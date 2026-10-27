@@ -10,6 +10,7 @@ import type {
   NotificationType,
   ProjectHealth,
   ProjectStatus,
+  RecurrenceUnit,
   StateType,
   TeamRole,
   UserKind,
@@ -157,6 +158,20 @@ export interface IssueTemplate {
   labelIds: string[];
   createdById: string | null;
   updatedAt: string;
+}
+
+/** A template that becomes a new issue on a schedule. */
+export interface RecurringIssue {
+  id: string;
+  templateId: string;
+  teamId: string;
+  every: number;
+  unit: RecurrenceUnit;
+  /** The next day an issue is created (UTC). */
+  nextOn: string;
+  paused: boolean;
+  lastIssueId: string | null;
+  createdById: string | null;
 }
 
 export interface Project {
@@ -407,6 +422,7 @@ export interface Bootstrap {
   teams: Team[];
   labels: Label[];
   templates: IssueTemplate[];
+  recurring: RecurringIssue[];
   initiatives: Initiative[];
   projects: Project[];
   cycles: Cycle[];
