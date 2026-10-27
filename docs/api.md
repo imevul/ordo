@@ -87,6 +87,9 @@ Joining by domain (no workspace prefix):
 
 Account endpoints (no workspace prefix): `GET /me/account`, `PATCH /me/preferences`, `POST|DELETE /me/avatar`,
 `POST /me/email`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/2fa/setup|enable|disable|recovery-codes`,
+`GET /me/passkeys`, `POST /me/passkeys/options` (`{ password? }` → `{ challengeId, options }`), `POST /me/passkeys`
+(`{ challengeId, response, name? }`), `PATCH|DELETE /me/passkeys/:id`, `POST /auth/passkey/options` and
+`POST /auth/passkey` (`{ challengeId, response }`: sign in without a password),
 `POST /auth/forgot`, `POST /auth/reset`, `POST /auth/mfa`, `POST /auth/verify-email`. Instance administration lives
 under `/api/admin/*` (instance admins only; see [admin.md](admin.md)).
 

@@ -150,6 +150,8 @@ export const UNMERGED_COLUMNS: Record<string, string> = {
   'oauth_codes.user_id': 'placeholders never sign in',
   'oauth_grants.user_id': 'placeholders never sign in',
   'mfa_recovery_codes.user_id': 'placeholders never sign in',
+  'passkeys.user_id': 'placeholders never sign in',
+  'webauthn_challenges.user_id': 'placeholders never sign in',
   'user_identities.user_id': 'placeholders never sign in',
   'external_accounts.user_id': 'claimed or linked by people themselves',
   'favorites.user_id': 'personal to members',

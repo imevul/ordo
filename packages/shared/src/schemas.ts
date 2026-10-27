@@ -842,3 +842,26 @@ export const workspaceAiProviderSchema = z.object({
     .nullable(),
   apiKey: z.string().trim().max(500).nullable(),
 });
+
+/** A WebAuthn response from the browser, passed through to the server library as is. */
+const webauthnResponse = z.object({ id: z.string().min(1).max(1500) }).passthrough();
+
+export const passkeyOptionsSchema = z.object({
+  /** Required when the account has a password: adding a passkey is a security change. */
+  password: z.string().max(200).optional(),
+});
+
+export const addPasskeySchema = z.object({
+  challengeId: z.string().min(10).max(100),
+  response: webauthnResponse,
+  name: z.string().trim().max(100).optional(),
+});
+
+export const passkeyLoginSchema = z.object({
+  challengeId: z.string().min(10).max(100),
+  response: webauthnResponse,
+});
+
+export const renamePasskeySchema = z.object({ name: z.string().trim().min(1).max(100) });
+
+export const removePasskeySchema = z.object({ password: z.string().max(200).optional() });

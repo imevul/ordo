@@ -24,6 +24,7 @@
     "@fastify/websocket": "11.3.4",
     "@matrix-org/matrix-sdk-crypto-wasm": "18.9.0",
     "@ordo/shared": "workspace:*",
+    "@simplewebauthn/server": "14.0.3",
     "drizzle-orm": "0.45.4",
     "fake-indexeddb": "6.2.5",
     "fastify": "5.12.7",

@@ -87,6 +87,29 @@ export default {
     newHint: 'Minst 8 tecken. När du byter loggas dina andra sessioner ut.',
     change: 'Byt lösenord',
   },
+  passkeys: {
+    title: 'Lösennycklar',
+    description:
+      'Logga in med fingeravtryck, ansikte eller enhetens PIN-kod i stället för ett lösenord. Lösennycklar kan inte nätfiskas, och din lösenordshanterare kan ta dem till dina andra enheter.',
+    needsHttps: 'Lösennycklar kräver att Ordo nås via en https-adress. Fråga din administratör.',
+    otherOrigin:
+      'Lösennycklar hör till instansens egen adress. Öppna den på {origin} för att lägga till eller använda dem.',
+    unsupported: 'Den här webbläsaren har inte stöd för lösennycklar.',
+    empty: '// inga lösennycklar än',
+    add: 'Lägg till en lösennyckel',
+    name: 'Namn',
+    rename: 'Byt namn',
+    confirmPassword: 'Bekräfta med ditt lösenord',
+    synced: 'synkad',
+    used: 'använd {time}',
+    addedAgo: 'tillagd {time}',
+    added: 'Lösennyckeln har lagts till',
+    removed: 'Lösennyckeln har tagits bort',
+    removeNamed: 'Ta bort {name}',
+    removeTitle: 'Ta bort ”{name}”?',
+    removeBody:
+      'Den kan inte längre logga in i Ordo. Du kan också radera den från enheten eller lösenordshanteraren.',
+  },
   twoFactor: {
     title: 'Tvåstegsverifiering',
     description:

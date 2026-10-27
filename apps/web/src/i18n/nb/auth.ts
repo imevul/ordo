@@ -19,6 +19,7 @@ export default {
     continueWith: 'Fortsett med {name}',
     lastUsed: 'sist brukt på denne enheten',
     forget: 'glem',
+    signInWithPasskey: 'Logg inn med tilgangsnøkkel',
     signInWithSso: 'Logg inn med SSO',
   },
   mfa: {

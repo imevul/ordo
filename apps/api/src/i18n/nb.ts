@@ -52,6 +52,14 @@ export default {
         title: 'Tofaktorautentisering er av',
         body: 'For å logge inn i Ordo trengs det nå bare passordet ditt.',
       },
+      passkeyAdded: {
+        title: 'En tilgangsnøkkel er lagt til på Ordo-kontoen din',
+        body: 'Tilgangsnøkkelen «{name}» kan nå logge inn på kontoen din.',
+      },
+      passkeyRemoved: {
+        title: 'En tilgangsnøkkel er fjernet fra Ordo-kontoen din',
+        body: 'Tilgangsnøkkelen «{name}» kan ikke lenger logge inn på kontoen din.',
+      },
       emailChanged: {
         title: 'E-postadressen din i Ordo er endret',
         body: 'Kontoen din bruker nå {email}.',

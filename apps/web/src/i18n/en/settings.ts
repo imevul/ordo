@@ -89,6 +89,29 @@ export default {
     newHint: 'At least 8 characters. Changing it signs out your other sessions.',
     change: 'Change password',
   },
+  passkeys: {
+    title: 'Passkeys',
+    description:
+      'Sign in with your fingerprint, face or device PIN instead of a password. Passkeys can’t be phished, and your password manager can carry them to your other devices.',
+    needsHttps: 'Passkeys need Ordo on an https address. Ask your administrator.',
+    otherOrigin:
+      'Passkeys belong to this instance’s own address. Open it at {origin} to add or use them.',
+    unsupported: 'This browser doesn’t support passkeys.',
+    empty: '// no passkeys yet',
+    add: 'Add a passkey',
+    name: 'Name',
+    rename: 'Rename',
+    confirmPassword: 'Confirm with your password',
+    synced: 'synced',
+    used: 'used {time}',
+    addedAgo: 'added {time}',
+    added: 'Passkey added',
+    removed: 'Passkey removed',
+    removeNamed: 'Remove {name}',
+    removeTitle: 'Remove “{name}”?',
+    removeBody:
+      'It won’t sign in to Ordo any more. You can delete it from your device or password manager too.',
+  },
   twoFactor: {
     title: 'Two-factor authentication',
     description:

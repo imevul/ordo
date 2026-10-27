@@ -74,6 +74,8 @@ export default {
     ai_not_set_up_workspace: 'Arbeidsområdets egen KI-modell er ikke satt opp',
     ai_own_not_allowed: 'Denne instansen lar ikke arbeidsområder bruke en egen KI-modell',
     ai_locked: 'Instansens KI-innstillinger gjelder for alle arbeidsområder',
+    passkey_failed: 'Tilgangsnøkkelen kunne ikke bekreftes',
+    reauth_needed: 'Logg inn på nytt for å endre tilgangsnøklene dine',
     ai_off_workspace: 'KI-hjelp er slått av i dette arbeidsområdet',
     ai_off: 'KI-hjelp er slått av',
     ai_empty: 'Modellen sendte et tomt svar',

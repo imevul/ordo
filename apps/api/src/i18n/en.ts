@@ -53,6 +53,14 @@ export default {
         title: 'Two-factor authentication is off',
         body: 'Signing in to Ordo now only needs your password.',
       },
+      passkeyAdded: {
+        title: 'A passkey was added to your Ordo account',
+        body: 'The passkey "{name}" can now sign in to your account.',
+      },
+      passkeyRemoved: {
+        title: 'A passkey was removed from your Ordo account',
+        body: 'The passkey "{name}" can no longer sign in to your account.',
+      },
       emailChanged: {
         title: 'Your Ordo email address changed',
         body: 'Your account now uses {email}.',

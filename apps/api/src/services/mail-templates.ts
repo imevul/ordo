@@ -115,7 +115,12 @@ export function inviteEmail(
   };
 }
 
-export type SecurityNotice = 'twoFactorOn' | 'twoFactorOff' | 'emailChanged';
+export type SecurityNotice =
+  | 'twoFactorOn'
+  | 'twoFactorOff'
+  | 'emailChanged'
+  | 'passkeyAdded'
+  | 'passkeyRemoved';
 
 export function securityEmail(
   locale: Locale,
