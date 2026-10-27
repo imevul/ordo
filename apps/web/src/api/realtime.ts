@@ -1,6 +1,8 @@
 import type { RealtimeEvent } from '@ordo/shared';
+import type { Engine } from '@ordo/sync';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSync } from '../sync/context.tsx';
 import { keys } from './queries.ts';
 
 export type RealtimeStatus = 'connecting' | 'live' | 'offline';
@@ -11,6 +13,10 @@ export type RealtimeStatus = 'connecting' | 'live' | 'offline';
  */
 export function useRealtime(slug: string): RealtimeStatus {
   const qc = useQueryClient();
+  const sync = useSync();
+  // A ref, not a dependency: the copy opening shouldn't reconnect the socket.
+  const engine = useRef<Engine | null>(null);
+  engine.current = sync.status === 'on' ? sync.engine : null;
   const [status, setStatus] = useState<RealtimeStatus>('connecting');
 
   useEffect(() => {
@@ -56,7 +62,10 @@ export function useRealtime(slug: string): RealtimeStatus {
       );
       setStatus('connecting');
       socket.onopen = () => {
-        if (attempt > 0) qc.invalidateQueries({ queryKey: keys.ws(slug) });
+        if (attempt > 0) {
+          qc.invalidateQueries({ queryKey: keys.ws(slug) });
+          void engine.current?.sync();
+        }
         attempt = 0;
         setStatus('live');
       };
@@ -67,6 +76,8 @@ export function useRealtime(slug: string): RealtimeStatus {
           location.assign('/');
           return;
         }
+        // The local copy catches up from the change log when the event is ahead of it.
+        engine.current?.notify(e);
         pending.add(e.kind);
         flushTimer ??= setTimeout(flush, 60);
       };

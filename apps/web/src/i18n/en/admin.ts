@@ -78,6 +78,15 @@ export default {
     empty: '// no domains claimed',
   },
   settings: {
+    offline: {
+      title: 'Offline copies',
+      description:
+        'Browsers can keep a copy of each workspace: it opens at once and stays readable offline. The copy is unencrypted in the browser’s storage and deleted at sign-out.',
+      label: 'Keep copies',
+      off: 'Never',
+      optin: 'Only where someone turns it on',
+      on: 'On every device, unless someone turns it off',
+    },
     setByEnv: 'set by env',
     signup: 'Sign-up',
     signupMode: 'Who can create an account',

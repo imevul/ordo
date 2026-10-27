@@ -1,13 +1,14 @@
-import type { SsoOption } from '@ordo/shared';
+import type { Me, SsoOption } from '@ordo/shared';
 import { Link, Navigate, useNavigate, useParams } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { ApiError } from '../api/client.ts';
-import { useBootstrap, useMe } from '../api/queries.ts';
+import { useBootstrap, useConfig, useMe } from '../api/queries.ts';
 import { AppShell } from '../components/AppShell.tsx';
 import { EmptyState, Spinner } from '../components/PageHeader.tsx';
 import { switchLocale, t } from '../i18n/index.ts';
 import { ssoStartUrl } from '../lib/sso.ts';
 import { WorkspaceProvider } from '../lib/workspace.tsx';
+import { SyncProvider, useSyncState } from '../sync/context.tsx';
 
 export function WorkspaceLayout() {
   const { slug } = useParams({ from: '/$slug' });
@@ -16,7 +17,7 @@ export function WorkspaceLayout() {
   // re-deriving the target from it would nest redirects forever and hang the tab.
   const [returnTo] = useState(() => window.location.pathname + window.location.search);
   const me = useMe();
-  const boot = useBootstrap(slug);
+  const config = useConfig();
   const signedOut = !me.isLoading && !me.data;
 
   useEffect(() => {
@@ -28,17 +29,36 @@ export function WorkspaceLayout() {
     if (locale) switchLocale(locale);
   }, [locale]);
 
+  if (!me.data) return <Spinner label={t('shell.workspace.booting')} />;
+  return (
+    <SyncProvider slug={slug} userId={me.data.id} mode={config.data?.offlineSync}>
+      <WorkspaceBody slug={slug} me={me.data} returnTo={returnTo} />
+    </SyncProvider>
+  );
+}
+
+/**
+ * The workspace's bootstrap: the server's, or (while it loads, or when it can't be reached) the
+ * one in the local copy.
+ */
+function WorkspaceBody({ slug, me, returnTo }: { slug: string; me: Me; returnTo: string }) {
+  const boot = useBootstrap(slug);
+  const local = useSyncState();
+  const unreachable =
+    !boot.error ||
+    (boot.error instanceof ApiError && (boot.error.status === 0 || boot.error.status >= 502));
+  const data = boot.data ?? (unreachable && local?.ready ? local.bootstrap : undefined);
+
   useEffect(() => {
     try {
-      if (boot.data) localStorage.setItem('ordo:lastWorkspace', slug);
+      if (data) localStorage.setItem('ordo:lastWorkspace', slug);
     } catch {}
-  }, [boot.data, slug]);
+  }, [data, slug]);
 
-  if (!me.data) return <Spinner label={t('shell.workspace.booting')} />;
-  if (boot.error instanceof ApiError && boot.error.code === 'sso_required') {
+  if (!data && boot.error instanceof ApiError && boot.error.code === 'sso_required') {
     return <SsoRequired error={boot.error} returnTo={returnTo} />;
   }
-  if (boot.error) {
+  if (!data && boot.error) {
     const notFound = boot.error instanceof ApiError && boot.error.status === 404;
     return (
       <div className="hud-ground flex h-full">
@@ -54,9 +74,9 @@ export function WorkspaceLayout() {
       </div>
     );
   }
-  if (!boot.data) return <Spinner label={t('shell.workspace.loading')} />;
+  if (!data) return <Spinner label={t('shell.workspace.loading')} />;
   return (
-    <WorkspaceProvider data={boot.data} me={me.data} slug={slug}>
+    <WorkspaceProvider data={data} me={me} slug={slug}>
       <AppShell />
     </WorkspaceProvider>
   );

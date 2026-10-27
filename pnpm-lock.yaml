@@ -296,6 +296,9 @@ importers:
       '@ordo/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
+      '@ordo/sync':
+        specifier: workspace:*
+        version: link:../../packages/sync
       '@types/mailparser':
         specifier: 3.9.0
         version: 3.9.0
@@ -353,6 +356,9 @@ importers:
       '@ordo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@ordo/sync':
+        specifier: workspace:*
+        version: link:../../packages/sync
       '@simplewebauthn/browser':
         specifier: 14.0.0
         version: 14.0.0
@@ -482,6 +488,22 @@ importers:
         specifier: 4.6.7
         version: 4.6.7
     devDependencies:
+      vitest:
+        specifier: 5.0.5
+        version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
+
+  packages/sync:
+    dependencies:
+      '@ordo/shared':
+        specifier: workspace:*
+        version: link:../shared
+      idb:
+        specifier: 8.0.4
+        version: 8.0.4
+    devDependencies:
+      fake-indexeddb:
+        specifier: 6.2.5
+        version: 6.2.5
       vitest:
         specifier: 5.0.5
         version: 5.0.5(@opentelemetry/api@1.10.0)(@types/node@26.6.5)(happy-dom@21.0.4)(vite@8.3.5(@types/node@26.6.5)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
@@ -2520,6 +2542,9 @@ packages:
   iconv-lite@0.7.3:
     resolution: {integrity: sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==}
     engines: {node: '>=0.10.0'}
+
+  idb@8.0.4:
+    resolution: {integrity: sha512-jd0ITCrN+Zah4J7R/Z2jnR3W7A4BXDAjmo62MwWuSjxCiueUAf7X5rbodEdidWzeknwXHmLpdZkoiiCppNi30Q==}
 
   imapflow@2.4.0:
     resolution: {integrity: sha512-42quCGcSiPFH2ho+/n89lXwR2JA0iuYcE+pe3BvezF24tXgSOrvB/KsJr0i45lCpLSAMZdE+iSFLCokXUGo2sA==}
@@ -5367,6 +5392,8 @@ snapshots:
   iconv-lite@0.7.3:
     dependencies:
       safer-buffer: 2.1.2
+
+  idb@8.0.4: {}
 
   imapflow@2.4.0:
     dependencies:

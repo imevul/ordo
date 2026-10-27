@@ -80,6 +80,22 @@ Realtime events carry their `seq` and `epoch`.
   workspace starts a new **epoch**: clients load everything again instead of replaying.
 - The log keeps 30 days; `min_seq` says how far back it still goes.
 
+### Sync clients
+
+`packages/sync` is the client half, without React so the Phase 12 apps can share it. An `Engine` keeps one
+workspace in memory and in a store (`IdbStore`: IndexedDB `ordo:<user>:<workspace>`, or `MemoryStore`). The first
+time it loads `/sync/snapshot` and pages through `/sync/issues`; after that it reads `/sync/changes` whenever a
+realtime event is ahead of it, the tab becomes visible or the browser comes back online, and starts over on `410
+resync`. A changed bootstrap is loaded again, and issues of teams no longer in it are dropped.
+
+In the web app (`src/sync/`), `SyncProvider` opens the engine when the instance's `offlineSync` setting and this
+device allow it. `useIssues` answers from the copy whenever `matchIssue` can (everything but full-text search,
+"subscribed by me", trash and archive, which stay online); a parity test in the API checks `matchIssue` against the
+SQL filter with random filters. `useIssue` and `useComments` still ask the server but show the copy meanwhile and
+offline, and the workspace's bootstrap falls back to the copy when the server can't be reached. Only one tab talks
+to the server: it holds a Web Lock and shares what it saves over a `BroadcastChannel`. Signing out deletes every
+copy on the device.
+
 ## Data model
 
 ```

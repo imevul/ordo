@@ -2,6 +2,8 @@ import {
   type AdminAuditEntry,
   type AiSettings,
   type InstanceSettingEntry,
+  OFFLINE_SYNC_MODES,
+  type OfflineSyncMode,
   WORKSPACE_AI_POLICIES,
   type WorkspaceAiPolicy,
 } from '@ordo/shared';
@@ -542,6 +544,30 @@ function Settings() {
             checked={entry('allowWorkspaceCreation').value as boolean}
             onChange={(e) => save({ allowWorkspaceCreation: e.target.checked })}
           />
+        </label>
+      </Card>
+
+      <Card
+        title={t('admin.settings.offline.title')}
+        description={t('admin.settings.offline.description')}
+      >
+        <label className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-1 text-[13.5px]">
+          <span className="min-w-0 flex-1">
+            {t('admin.settings.offline.label')}
+            {lockedTag('offlineSync')}
+          </span>
+          <select
+            className="input w-72 max-w-full"
+            disabled={locked('offlineSync')}
+            value={entry('offlineSync').value as OfflineSyncMode}
+            onChange={(e) => save({ offlineSync: e.target.value })}
+          >
+            {OFFLINE_SYNC_MODES.map((m) => (
+              <option key={m} value={m}>
+                {t(`admin.settings.offline.${m}`)}
+              </option>
+            ))}
+          </select>
         </label>
       </Card>
 

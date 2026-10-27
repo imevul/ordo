@@ -80,6 +80,15 @@ export default {
     empty: '// ingen domener',
   },
   settings: {
+    offline: {
+      title: 'Frakoblede kopier',
+      description:
+        'Nettlesere kan beholde en kopi av hvert arbeidsområde: det åpnes med en gang og kan leses frakoblet. Kopien ligger ukryptert i nettleserens lagring og slettes ved utlogging.',
+      label: 'Behold kopier',
+      off: 'Aldri',
+      optin: 'Bare der noen slår det på',
+      on: 'På alle enheter, med mindre noen slår det av',
+    },
     setByEnv: 'satt via env',
     signup: 'Registrering',
     signupMode: 'Hvem kan opprette en konto',

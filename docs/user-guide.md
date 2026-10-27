@@ -299,7 +299,9 @@ Open **Settings** (workspace menu, or `G` then `S`):
   they already have an account, otherwise in yours. Rare error messages, and posts in shared chat channels, stay in
   English. **Appearance**: dark, light, or
   **System** (the default), which follows your device and switches when it does. It's saved per browser; the command menu has _Switch to light theme_ and friends
-  too.
+  too. **Offline copy** (when your instance allows it): keep a copy of your workspaces in this browser, so they open
+  at once and lists stay readable without a connection. The copy is deleted when you sign out; turn it off on shared
+  computers.
 - **Security** — change your password (this signs out your other sessions); add **passkeys** to sign in with your
   fingerprint, face or device PIN instead of a password (_Sign in with a passkey_ on the sign-in page, or pick one in
   the email field's suggestions; they work at your instance's own address); turn on **two-factor authentication**

@@ -9,6 +9,13 @@ export default {
     light: 'Lyst',
     dark: 'Mørkt',
   },
+  offline: {
+    title: 'Frakoblet kopi',
+    description:
+      'Med en kopi åpnes arbeidsområder med en gang og kan leses uten tilkobling. Den ligger ukryptert i denne nettleseren til du logger ut.',
+    keep: 'Behold en kopi av arbeidsområdene mine på denne enheten',
+    keepHint: 'Slå av dette på delte datamaskiner.',
+  },
   language: {
     title: 'Språk',
     description: 'For appen, e-post og varsler. Det som ikke er oversatt ennå, vises på engelsk.',

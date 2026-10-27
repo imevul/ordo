@@ -43,6 +43,7 @@
   "devDependencies": {
     "@ordo/cli": "workspace:*",
     "@ordo/sdk": "workspace:*",
+    "@ordo/sync": "workspace:*",
     "@types/mailparser": "3.9.0",
     "@types/node": "26.6.5",
     "@types/nodemailer": "8.0.2",

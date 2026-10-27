@@ -80,6 +80,15 @@ export default {
     empty: '// inga domäner',
   },
   settings: {
+    offline: {
+      title: 'Offlinekopior',
+      description:
+        'Webbläsare kan spara en kopia av varje arbetsyta: den öppnas direkt och går att läsa offline. Kopian ligger okrypterad i webbläsarens lagring och raderas vid utloggning.',
+      label: 'Spara kopior',
+      off: 'Aldrig',
+      optin: 'Bara där någon slår på det',
+      on: 'På alla enheter, om ingen stänger av det',
+    },
     setByEnv: 'satt via env',
     signup: 'Registrering',
     signupMode: 'Vem kan skapa ett konto',
