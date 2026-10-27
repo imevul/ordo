@@ -155,7 +155,7 @@ type UserRow = {
 const domainOf = (email: string) => email.split('@')[1]?.toLowerCase() ?? '';
 
 /** Members the directory may see: provisioned by it, or at one of the verified domains. */
-function visible(ctx: Ctx) {
+export function visible(ctx: Ctx) {
   const verified = ctx.tx
     .select({ domain: workspaceDomains.domain })
     .from(workspaceDomains)
@@ -201,7 +201,7 @@ export function toScimUser(row: UserRow, baseUrl: string) {
   };
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * The filters identity providers send: `attribute eq "value"`, joined by `and`. Attribute names
@@ -553,6 +553,14 @@ export function resourceTypes(baseUrl: string) {
       schema: SCIM_SCHEMA.user,
       meta: { resourceType: 'ResourceType', location: `${baseUrl}/ResourceTypes/User` },
     },
+    {
+      schemas: ['urn:ietf:params:scim:schemas:core:2.0:ResourceType'],
+      id: 'Group',
+      name: 'Group',
+      endpoint: '/Groups',
+      schema: SCIM_SCHEMA.group,
+      meta: { resourceType: 'ResourceType', location: `${baseUrl}/ResourceTypes/Group` },
+    },
   ];
 }
 
@@ -605,6 +613,22 @@ export function schemas(baseUrl: string) {
         attribute('externalId'),
       ],
       meta: { resourceType: 'Schema', location: `${baseUrl}/Schemas/${SCIM_SCHEMA.user}` },
+    },
+    {
+      schemas: ['urn:ietf:params:scim:schemas:core:2.0:Schema'],
+      id: SCIM_SCHEMA.group,
+      name: 'Group',
+      description: 'A directory group; linked to a team, it decides who is on it',
+      attributes: [
+        attribute('displayName', { required: true }),
+        attribute('members', {
+          type: 'complex',
+          multiValued: true,
+          subAttributes: [attribute('value'), attribute('display')],
+        }),
+        attribute('externalId'),
+      ],
+      meta: { resourceType: 'Schema', location: `${baseUrl}/Schemas/${SCIM_SCHEMA.group}` },
     },
   ];
 }

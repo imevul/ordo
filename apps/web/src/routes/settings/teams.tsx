@@ -426,7 +426,7 @@ export function TeamSettings({ team }: { team: Team }) {
         <GitAutomationCard team={team} onSave={(gitAutomation) => save.mutate({ gitAutomation })} />
       </fieldset>
 
-      {(member || !ws.isGuest) && (
+      {(member || !ws.isGuest) && team.managedBy.length === 0 && (
         <div className="mb-10">
           <button type="button" className="btn btn-ghost" onClick={() => join.mutate(!member)}>
             {member ? t('teams.settings.leave') : t('teams.settings.join')}
@@ -479,6 +479,8 @@ function TeamMembers({ team }: { team: Team }) {
     api.del(wsPath(ws.slug, `/teams/${team.id}/members/${userId}`)),
   );
   const candidates = ws.members.filter((m) => !team.memberIds.includes(m.id));
+  // A directory group decides who is on the team; roles are still set here.
+  const managed = team.managedBy.length > 0;
   return (
     <SettingsCard
       title={t('teams.members.title', { count: team.members.length })}
@@ -486,7 +488,15 @@ function TeamMembers({ team }: { team: Team }) {
         team.private ? t('teams.members.privateDescription') : t('teams.members.publicDescription')
       }
     >
-      {canAdmin && candidates.length > 0 && (
+      {managed && (
+        <p className="mb-3 border border-border-soft px-3 py-2 text-[13px] text-muted">
+          {t('teams.members.managedBy', {
+            groups: team.managedBy.join(', '),
+            count: team.managedBy.length,
+          })}
+        </p>
+      )}
+      {canAdmin && !managed && candidates.length > 0 && (
         <div className="mb-3">
           <Picker
             placeholder={t('teams.members.addSomeone')}
@@ -534,7 +544,7 @@ function TeamMembers({ team }: { team: Team }) {
                 {role === 'admin' ? t('teams.members.teamAdminTag') : t('teams.members.memberTag')}
               </span>
             )}
-            {(canAdmin || userId === ws.me.id) && (
+            {(canAdmin || userId === ws.me.id) && !managed && (
               <button
                 type="button"
                 className="btn btn-danger btn-sm"

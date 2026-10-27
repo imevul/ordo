@@ -42,6 +42,23 @@ domains.
 
 Changes show in the audit log as made by **Directory sync**.
 
+## Groups and teams
+
+Push groups from your identity provider and they appear under **Settings → Authentication → Groups**. On their
+own they change nothing. **Link a group to a team** and the team's members become the group's members: Ordo shows
+who would join and who would leave before you confirm, then keeps the team in step as people join and leave the
+group in your directory.
+
+- Several groups can link to one team; its members are everyone in any of them.
+- On a linked team, people can't be added or removed by hand (Ordo says which group to change). Team roles are still
+  set in Ordo, and survive syncs.
+- **Link new groups to the team with the same name** links a group by itself when it's created or renamed, if a team
+  has that name (ignoring case). Linking by hand works either way.
+- Unlinking, or deleting the group in your directory, leaves the team's members as they were, and the team is managed
+  by hand again.
+- People only count once they're members of the workspace, so push users before (or with) their groups. If you set
+  a default team for new members, don't also link it to a group, or new people will join it and then leave it.
+
 ## Rules that keep accounts safe
 
 Accounts are shared between workspaces on an instance, so a directory gets limited powers:
@@ -54,8 +71,9 @@ Accounts are shared between workspaces on an instance, so a directory gets limit
 
 ## Endpoints
 
-The base URL serves `ServiceProviderConfig`, `ResourceTypes`, `Schemas` and `Users` (list with `filter`, `startIndex`
-and `count`; get, create, replace, patch and delete). Filters support `eq` on `userName`, `externalId`,
-`emails.value` and `id`, joined with `and`. PATCH accepts the dialects Okta and Entra ID send, including
+The base URL serves `ServiceProviderConfig`, `ResourceTypes`, `Schemas`, `Users` and `Groups` (each: list with
+`filter`, `startIndex` and `count`; get, create, replace, patch and delete). User filters support `eq` on `userName`,
+`externalId`, `emails.value` and `id`; group filters on `displayName`, `externalId` and `id`; both joined with `and`.
+Groups honour `excludedAttributes=members`, and members the directory can't see are ignored. PATCH accepts the dialects Okta and Entra ID send, including
 operation names in any case, values without a path, and `"True"`/`"False"` as booleans. Bulk operations, sorting
 and ETags aren't supported. Each token may make 1,200 requests a minute.

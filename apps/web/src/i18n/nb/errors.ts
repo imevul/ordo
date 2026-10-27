@@ -76,6 +76,7 @@ export default {
     ai_locked: 'Instansens KI-innstillinger gjelder for alle arbeidsområder',
     passkey_failed: 'Tilgangsnøkkelen kunne ikke bekreftes',
     invalid_certificate: 'Det er ikke et X.509-sertifikat',
+    team_managed: 'Teamets medlemmer kommer fra kataloggruppen «{group}». Endre dem der.',
     reauth_needed: 'Logg inn på nytt for å endre tilgangsnøklene dine',
     ai_off_workspace: 'KI-hjelp er slått av i dette arbeidsområdet',
     ai_off: 'KI-hjelp er slått av',

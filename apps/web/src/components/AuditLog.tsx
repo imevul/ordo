@@ -521,6 +521,10 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
       return a('scimTokenCreated');
     case 'scim.token_deleted':
       return a('scimTokenDeleted');
+    case 'scim.group_linked':
+      return a('scimGroupLinked', { group: str(d.group), team: str(d.team) });
+    case 'scim.group_unlinked':
+      return a('scimGroupUnlinked', { group: str(d.group) });
     case 'auth.passkey_added':
       return a('passkeyAdded');
     case 'auth.passkey_removed':

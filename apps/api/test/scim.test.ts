@@ -373,3 +373,154 @@ describe('lifecycle', () => {
     expect(row).toEqual({ actor: 'Directory sync', data: { via: 'scim' } });
   });
 });
+
+describe('groups', () => {
+  const team = async (name: string) => {
+    const key = name.slice(0, 3).toUpperCase() + String(++n).padStart(2, '0');
+    const res = await owner.post(`${ws}/teams`, { name, key });
+    expect(res.statusCode).toBe(200);
+    return res.data.id as string;
+  };
+  const teamMembersOf = async (id: string) =>
+    (
+      await app.db
+        .select({ id: teamMembers.userId })
+        .from(teamMembers)
+        .where(eq(teamMembers.teamId, id))
+    )
+      .map((r) => r.id)
+      .sort();
+  const group = async (displayName: string, members: string[] = []) => {
+    const res = await scim('POST', '/Groups', {
+      schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+      displayName,
+      members: members.map((value) => ({ value, display: value })),
+    });
+    expect(res.statusCode).toBe(201);
+    return json(res);
+  };
+  const patch = (id: string, Operations: unknown[]) =>
+    scim('PATCH', `/Groups/${id}`, { schemas: [PATCH], Operations });
+
+  it("mirror the directory's groups: create, filter, rename, members in each dialect", async () => {
+    const a = (await provision('ga')).user.id;
+    const b = (await provision('gb')).user.id;
+    const c = (await provision('gc')).user.id;
+    const g = await group(`Engineers ${n}`, [a, '00000000-0000-4000-8000-000000000000']);
+    // Unknown member ids are ignored.
+    expect(g.members.map((m: { value: string }) => m.value)).toEqual([a]);
+
+    const found = json(
+      await scim(
+        'GET',
+        `/Groups?filter=${encodeURIComponent(`displayName eq "${g.displayName}"`)}&excludedAttributes=members`,
+      ),
+    );
+    expect(found.Resources).toHaveLength(1);
+    expect(found.Resources[0].members).toBeUndefined();
+
+    // Entra: add and remove with lists, rename without a path.
+    await patch(g.id, [{ op: 'Add', path: 'members', value: [{ value: b }, { value: c }] }]);
+    await patch(g.id, [{ op: 'Remove', path: 'members', value: [{ value: a }] }]);
+    await patch(g.id, [{ op: 'Replace', value: { id: g.id, displayName: 'Engineering' } }]);
+    let now = json(await scim('GET', `/Groups/${g.id}`));
+    expect(now.displayName).toBe('Engineering');
+    expect(now.members.map((m: { value: string }) => m.value).sort()).toEqual([b, c].sort());
+
+    // Okta: remove by filter, replace the list.
+    await patch(g.id, [{ op: 'remove', path: `members[value eq "${b}"]` }]);
+    now = json(await scim('GET', `/Groups/${g.id}`));
+    expect(now.members.map((m: { value: string }) => m.value)).toEqual([c]);
+    await patch(g.id, [{ op: 'replace', path: 'members', value: [{ value: a }] }]);
+    now = json(await scim('GET', `/Groups/${g.id}`));
+    expect(now.members.map((m: { value: string }) => m.value)).toEqual([a]);
+
+    expect((await scim('DELETE', `/Groups/${g.id}`)).statusCode).toBe(204);
+    expect((await scim('GET', `/Groups/${g.id}`)).statusCode).toBe(404);
+  });
+
+  it('decide who is on a linked team, after the admin sees what changes', async () => {
+    const a = (await provision('la')).user.id;
+    const b = (await provision('lb')).user.id;
+    const teamId = await team(`Platform ${n}`);
+    const ownerId = (await owner.get('/api/auth/me')).data.id;
+    const g = await group(`platform-${n}`, [a, b]);
+
+    const preview = (await owner.post(`${ws}/scim/groups/${g.id}/preview`, { teamId })).data;
+    expect(preview.add.map((p: { id: string }) => p.id).sort()).toEqual([a, b].sort());
+    expect(preview.remove.map((p: { id: string }) => p.id)).toEqual([ownerId]);
+
+    expect((await owner.put(`${ws}/scim/groups/${g.id}/team`, { teamId })).statusCode).toBe(200);
+    expect(await teamMembersOf(teamId)).toEqual([a, b].sort());
+    const listed = (await owner.get(`${ws}/scim/groups`)).data;
+    expect(listed.find((x: { id: string }) => x.id === g.id)).toMatchObject({
+      teamId,
+      memberCount: 2,
+    });
+    const teams = (await owner.get(`${ws}/teams`)).data as { id: string; managedBy: string[] }[];
+    expect(teams.find((t) => t.id === teamId)!.managedBy).toEqual([g.displayName]);
+
+    // Directory changes follow.
+    await patch(g.id, [{ op: 'Remove', path: 'members', value: [{ value: b }] }]);
+    expect(await teamMembersOf(teamId)).toEqual([a]);
+
+    // By hand: membership is the directory's, roles are still ours.
+    const add = await owner.post(`${ws}/teams/${teamId}/members`, { userId: b, role: 'member' });
+    expect(add.statusCode).toBe(409);
+    expect(add.data.messageKey).toBe('team_managed');
+    expect((await owner.del(`${ws}/teams/${teamId}/members/${a}`)).statusCode).toBe(409);
+    expect(
+      (await owner.patch(`${ws}/teams/${teamId}/members/${a}`, { role: 'admin' })).statusCode,
+    ).toBe(200);
+
+    // A second group adds its people; unlinking leaves the team as it is.
+    const g2 = await group(`platform-extra-${n}`, [b]);
+    await owner.put(`${ws}/scim/groups/${g2.id}/team`, { teamId });
+    expect(await teamMembersOf(teamId)).toEqual([a, b].sort());
+    await owner.put(`${ws}/scim/groups/${g2.id}/team`, { teamId: null });
+    expect(await teamMembersOf(teamId)).toEqual([a]);
+    await owner.put(`${ws}/scim/groups/${g.id}/team`, { teamId: null });
+    expect(await teamMembersOf(teamId)).toEqual([a]);
+    expect(
+      (await owner.post(`${ws}/teams/${teamId}/members`, { userId: b, role: 'member' })).statusCode,
+    ).toBe(200);
+  });
+
+  it('link themselves to the team of the same name when asked to', async () => {
+    const a = (await provision('na')).user.id;
+    const name = `Design ${n}`;
+    const teamId = await team(name);
+    const unmatched = await group(name.toLowerCase(), [a]);
+    expect(
+      (await owner.get(`${ws}/scim/groups`)).data.find((x: { id: string }) => x.id === unmatched.id)
+        .teamId,
+    ).toBeNull();
+    await owner.patch(`${ws}/`, { settings: { scimMatchGroupsByName: true } });
+    const matched = await group(name.toUpperCase(), [a]);
+    expect(
+      (await owner.get(`${ws}/scim/groups`)).data.find((x: { id: string }) => x.id === matched.id)
+        .teamId,
+    ).toBe(teamId);
+    expect(await teamMembersOf(teamId)).toEqual([a]);
+    await owner.patch(`${ws}/`, { settings: { scimMatchGroupsByName: false } });
+  });
+
+  it('stay in their workspace', async () => {
+    const g = await group(`private-${n}`);
+    const rival = (await signup(app, 'Group Rival')).client;
+    const rivalSlug = `${slug}-groups`;
+    await rival.post('/api/workspaces', {
+      name: 'R',
+      slug: rivalSlug,
+      teamName: 'R',
+      teamKey: 'RGR',
+    });
+    const rivalToken = (await rival.post(`/api/w/${rivalSlug}/scim/tokens`, { name: 'x' })).data
+      .token;
+    expect((await scim('GET', `/Groups/${g.id}`, undefined, rivalToken)).statusCode).toBe(404);
+    expect(
+      (await rival.put(`/api/w/${rivalSlug}/scim/groups/${g.id}/team`, { teamId: null }))
+        .statusCode,
+    ).toBe(404);
+  });
+});

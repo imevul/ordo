@@ -8,13 +8,14 @@ import {
 import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import {
+  scimGroups,
   teamKeyAliases,
   teamMembers,
   teams,
   workflowStates,
   workspaceMembers,
 } from '../db/schema.ts';
-import { badRequest } from '../lib/errors.ts';
+import { badRequest, conflict } from '../lib/errors.ts';
 import { type Access, teamScope } from './access.ts';
 import { auditCtx } from './audit.ts';
 import { type Ctx, emit } from './context.ts';
@@ -73,7 +74,7 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     .orderBy(asc(teams.name));
   if (rows.length === 0) return [];
   const ids = rows.map((t) => t.id);
-  const [states, members, rules] = await Promise.all([
+  const [states, members, rules, groups] = await Promise.all([
     db
       .select()
       .from(workflowStates)
@@ -81,6 +82,11 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
       .orderBy(asc(workflowStates.position)),
     db.select().from(teamMembers).where(inArray(teamMembers.teamId, ids)),
     triageRulesOf(db, ids),
+    db
+      .select({ teamId: scimGroups.teamId, name: scimGroups.displayName })
+      .from(scimGroups)
+      .where(inArray(scimGroups.teamId, ids))
+      .orderBy(asc(scimGroups.displayName)),
   ]);
   return rows.map((t) => ({
     id: t.id,
@@ -102,6 +108,7 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     members: members
       .filter((m) => m.teamId === t.id)
       .map((m) => ({ userId: m.userId, role: m.role })),
+    managedBy: groups.filter((g) => g.teamId === t.id).map((g) => g.name),
     states: states
       .filter((s) => s.teamId === t.id)
       .map((s) => ({
@@ -158,4 +165,18 @@ export async function removeTeamMember(ctx: Ctx, teamId: string, userId: string)
     data: { userId, ...(ctx.source === 'scim' && { via: 'scim' }) },
   });
   return true;
+}
+
+/** Teams linked to directory groups take their members from those groups only. */
+export async function assertNotManaged(ctx: Ctx, teamId: string) {
+  if (ctx.source === 'scim') return;
+  const [group] = await ctx.tx
+    .select({ name: scimGroups.displayName })
+    .from(scimGroups)
+    .where(eq(scimGroups.teamId, teamId))
+    .limit(1);
+  if (group)
+    throw conflict(
+      `This team's members come from the directory group "${group.name}". Change them there.`,
+    ).as('team_managed', { group: group.name });
 }

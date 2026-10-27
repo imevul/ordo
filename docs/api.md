@@ -89,7 +89,10 @@ Joining by domain (no workspace prefix):
 
 Directory sync lives at `/api/scim/v2` (SCIM 2.0, authenticated with a workspace's SCIM token rather than a user):
 see [scim.md](scim.md#endpoints). Workspace admins manage tokens with `GET|POST /scim/tokens` (`{ name }` → the token,
-shown once) and `DELETE /scim/tokens/:id` under the workspace prefix.
+shown once) and `DELETE /scim/tokens/:id` under the workspace prefix; `GET /scim/groups` lists directory groups,
+`POST /scim/groups/:id/preview` (`{ teamId }` → `{ add, remove }`) shows what linking one to a team would change, and
+`PUT /scim/groups/:id/team` (`{ teamId | null }`) links or unlinks it. Teams list the groups that manage them in
+`managedBy`; on those, adding or removing members by hand returns `409 team_managed`.
 
 Account endpoints (no workspace prefix): `GET /me/account`, `PATCH /me/preferences`, `POST|DELETE /me/avatar`,
 `POST /me/email`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/2fa/setup|enable|disable|recovery-codes`,

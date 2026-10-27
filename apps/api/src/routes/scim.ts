@@ -1,4 +1,4 @@
-import { createScimTokenSchema } from '@ordo/shared';
+import { createScimTokenSchema, linkScimGroupSchema } from '@ordo/shared';
 import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { scimTokens, users } from '../db/schema.ts';
@@ -25,6 +25,16 @@ import {
   toScimToken,
   updateScimUser,
 } from '../services/scim.ts';
+import {
+  adminGroups,
+  createScimGroup,
+  deleteScimGroup,
+  getScimGroup,
+  linkGroup,
+  listScimGroups,
+  previewLink,
+  updateScimGroup,
+} from '../services/scimGroups.ts';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -157,6 +167,36 @@ export async function scimRoutes(app: FastifyInstance) {
     await run(req, (ctx) => deleteScimUser(ctx, id));
     return reply.status(204).send();
   });
+
+  app.get('/Groups', limit, async (req, reply) =>
+    send(reply, await run(req, (ctx) => listScimGroups(ctx, baseUrl, req.query as object))),
+  );
+  app.get('/Groups/:id', limit, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    return send(
+      reply,
+      await run(req, (ctx) => getScimGroup(ctx, baseUrl, id, req.query as object)),
+    );
+  });
+  app.post('/Groups', limit, async (req, reply) =>
+    send(reply, await run(req, (ctx) => createScimGroup(ctx, baseUrl, req.body)), 201),
+  );
+  app.put('/Groups/:id', limit, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    return send(reply, await run(req, (ctx) => updateScimGroup(ctx, baseUrl, id, req.body, 'put')));
+  });
+  app.patch('/Groups/:id', limit, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    return send(
+      reply,
+      await run(req, (ctx) => updateScimGroup(ctx, baseUrl, id, req.body, 'patch')),
+    );
+  });
+  app.delete('/Groups/:id', limit, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    await run(req, (ctx) => deleteScimGroup(ctx, id));
+    return reply.status(204).send();
+  });
 }
 
 /** Settings → Authentication → Directory sync: admins issue and revoke SCIM tokens. */
@@ -182,6 +222,30 @@ export async function scimAdminRoutes(app: FastifyInstance) {
     return mutate(app, req, async (ctx) => {
       const { token, row } = await createScimToken(ctx, name);
       return { ...toScimToken(row), token };
+    });
+  });
+
+  app.get('/scim/groups', async (req) => {
+    requireAdmin(req);
+    return mutate(app, req, (ctx) => adminGroups(ctx));
+  });
+
+  /** What linking would change, for the admin to confirm first. */
+  app.post('/scim/groups/:id/preview', async (req) => {
+    requireAdmin(req);
+    const { id } = req.params as { id: string };
+    const { teamId } = parse(linkScimGroupSchema, req.body);
+    if (!teamId) return { add: [], remove: [] };
+    return mutate(app, req, (ctx) => previewLink(ctx, id, teamId));
+  });
+
+  app.put('/scim/groups/:id/team', async (req) => {
+    requireAdmin(req);
+    const { id } = req.params as { id: string };
+    const { teamId } = parse(linkScimGroupSchema, req.body);
+    return mutate(app, req, async (ctx) => {
+      await linkGroup(ctx, id, teamId);
+      return { ok: true };
     });
   });
 

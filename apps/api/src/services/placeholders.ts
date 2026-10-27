@@ -161,6 +161,7 @@ export const UNMERGED_COLUMNS: Record<string, string> = {
   'team_members.user_id': "placeholders aren't members",
   'workspace_members.user_id': "placeholders aren't members",
   'scim_users.user_id': "placeholders aren't members",
+  'scim_group_members.user_id': "placeholders aren't members",
   'scim_tokens.created_by_id': 'made by admins',
   'invites.created_by': 'made by members',
   'issue_templates.created_by_id': 'made by members',

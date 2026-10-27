@@ -108,6 +108,8 @@ export interface Team {
   triageRules: TriageRule[];
   memberIds: string[];
   members: { userId: string; role: TeamRole }[];
+  /** Directory groups (SCIM) that decide who is on the team; empty when people join by hand. */
+  managedBy: string[];
   states: WorkflowState[];
 }
 
@@ -785,6 +787,8 @@ export interface WorkspaceSettings {
   aiSource: 'instance' | 'workspace';
   /** Role for people the directory (SCIM) adds. */
   scimDefaultRole: 'member' | 'guest';
+  /** A directory group links itself to the team with the same name. */
+  scimMatchGroupsByName: boolean;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -799,6 +803,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   aiEnabled: true,
   aiSource: 'instance',
   scimDefaultRole: 'member',
+  scimMatchGroupsByName: false,
 };
 
 export interface WorkspaceDomain {
@@ -868,6 +873,20 @@ export interface ScimToken {
   createdBy: string | null;
   lastUsedAt: string | null;
   createdAt: string;
+}
+
+/** A directory group, as Settings → Authentication → Directory sync lists it. */
+export interface ScimGroup {
+  id: string;
+  displayName: string;
+  memberCount: number;
+  teamId: string | null;
+}
+
+/** What linking a group to a team would change about the team. */
+export interface ScimLinkPreview {
+  add: { id: string; name: string }[];
+  remove: { id: string; name: string }[];
 }
 
 /** What the IdP needs to know about Ordo, for one SAML provider. */

@@ -2,6 +2,8 @@ import {
   type AuthProvider,
   type LinkedIdentity,
   type SamlSettings,
+  type ScimGroup,
+  type ScimLinkPreview,
   type ScimToken,
   samlServiceProvider,
   type WorkspaceSettings,
@@ -242,6 +244,10 @@ export function AuthenticationSection() {
         defaultRole={settings.scimDefaultRole}
         onDefaultRole={(scimDefaultRole) => save({ scimDefaultRole })}
       />
+      <DirectoryGroupsCard
+        matchByName={settings.scimMatchGroupsByName}
+        onMatchByName={(scimMatchGroupsByName) => save({ scimMatchGroupsByName })}
+      />
 
       <ProviderModal
         provider={editing}
@@ -377,6 +383,99 @@ function DirectorySyncCard({
           <option value="guest">{roleLabel('guest')}</option>
         </select>
       </label>
+    </SettingsCard>
+  );
+}
+
+/** Directory groups, and the teams they decide. Linking shows who'd join and leave first. */
+function DirectoryGroupsCard({
+  matchByName,
+  onMatchByName,
+}: {
+  matchByName: boolean;
+  onMatchByName: (on: boolean) => void;
+}) {
+  const ws = useWorkspace();
+  const qc = useQueryClient();
+  const key = ['ws', ws.slug, 'scim-groups'];
+  const { data: groups = [] } = useQuery({
+    queryKey: key,
+    queryFn: () => api.get<ScimGroup[]>(wsPath(ws.slug, '/scim/groups')),
+  });
+
+  const link = async (group: ScimGroup, teamId: string | null) => {
+    try {
+      if (teamId) {
+        const team = ws.teamById.get(teamId);
+        const preview = await api.post<ScimLinkPreview>(
+          wsPath(ws.slug, `/scim/groups/${group.id}/preview`),
+          { teamId },
+        );
+        const names = (people: { name: string }[]) => people.map((p) => p.name).join(', ');
+        const ok = await confirmDialog({
+          title: t('sso.scim.linkTitle', { group: group.displayName, team: team?.name ?? '' }),
+          body: (
+            <>
+              {preview.add.length > 0 && (
+                <p>{t('sso.scim.joins', { names: names(preview.add) })}</p>
+              )}
+              {preview.remove.length > 0 && (
+                <p className="mt-1">{t('sso.scim.leaves', { names: names(preview.remove) })}</p>
+              )}
+              {!preview.add.length && !preview.remove.length && <p>{t('sso.scim.noChange')}</p>}
+            </>
+          ),
+          confirmLabel: t('sso.scim.link'),
+          danger: preview.remove.length > 0,
+        });
+        if (!ok) return;
+      }
+      await api.put(wsPath(ws.slug, `/scim/groups/${group.id}/team`), { teamId });
+      qc.invalidateQueries({ queryKey: key });
+      qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
+  };
+
+  return (
+    <SettingsCard title={t('sso.scim.groups')} description={t('sso.scim.groupsHint')}>
+      <label className="mb-3 flex items-center justify-between gap-3 border-b border-border-soft pb-3 text-[13.5px]">
+        {t('sso.scim.matchByName')}
+        <input
+          type="checkbox"
+          className="accent-primary"
+          checked={matchByName}
+          onChange={(e) => onMatchByName(e.target.checked)}
+        />
+      </label>
+      {groups.map((g) => (
+        <div
+          key={g.id}
+          className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-border-soft py-2.5 text-[13px]"
+        >
+          <span className="min-w-24 flex-1 truncate">{g.displayName}</span>
+          <span className="font-mono text-[11px] text-index">
+            {t('sso.scim.memberCount', { count: g.memberCount })}
+          </span>
+          <select
+            className="input h-8 w-44 py-0 text-[12.5px]"
+            value={g.teamId ?? ''}
+            aria-label={t('sso.scim.teamOf', { group: g.displayName })}
+            onChange={(e) => link(g, e.target.value || null)}
+          >
+            <option value="">{t('sso.scim.notLinked')}</option>
+            {ws.teams.map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      ))}
+      {groups.length === 0 && (
+        <p className="font-mono text-[12px] text-index">{t('sso.scim.noGroups')}</p>
+      )}
     </SettingsCard>
   );
 }
