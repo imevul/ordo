@@ -679,6 +679,11 @@ export const chatChannelSchema = z.object({
   teamIds: z.array(z.uuid()).max(100).default([]),
   events: z.array(z.enum(CHAT_EVENT_KINDS)).max(CHAT_EVENT_KINDS.length).default([]),
   defaultTeamId: z.uuid().nullish(),
+  /**
+   * Sync comments in threads (on unless false): an issue's later activity goes into the thread
+   * of its first post here, and replies in that thread become comments.
+   */
+  threads: z.boolean().optional(),
 });
 export const chatChannelsSchema = z.array(chatChannelSchema).max(100);
 

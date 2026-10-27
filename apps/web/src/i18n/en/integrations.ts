@@ -142,6 +142,9 @@ export default {
     /** {select} is a team picker. */
     newIssuesGoTo: 'New issues from here go to {select}',
     defaultTeam: 'the workspace default team',
+    threads: 'Sync comments in threads',
+    threadsHint:
+      'Later activity on an issue goes into the thread of its first post here, and replies there become comments.',
     addChannel: 'Add channel',
     events: {
       issueCreated: 'New issues',

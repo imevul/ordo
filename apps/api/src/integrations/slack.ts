@@ -6,6 +6,7 @@ import {
   chatFeed,
   parseChannels,
   runChatCommand,
+  syncThreadReply,
   unfurl,
 } from '../services/chat.ts';
 import { allSecrets, queueInbound, readAppSecrets } from '../services/integrations.ts';
@@ -117,6 +118,20 @@ export function slackBlocks(m: ChatMessage) {
 
 const parseForm = (body: string) => Object.fromEntries(new URLSearchParams(body));
 
+/** Slack's mrkdwn as Markdown, for comments: links, channel names, bold and strikethrough. */
+export function slackToMarkdown(text: string) {
+  return text
+    .replace(/<((?:https?|mailto):[^|>]+)\|([^>]+)>/g, '[$2]($1)')
+    .replace(/<((?:https?|mailto):[^>]+)>/g, '$1')
+    .replace(/<#[A-Z0-9]+\|([^>]+)>/g, '#$1')
+    .replace(/<!(here|channel|everyone)>/g, '@$1')
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?:;]|$)/g, '$1**$2**')
+    .replace(/(^|[\s(])~([^~\n]+)~(?=[\s).,!?:;]|$)/g, '$1~~$2~~')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
 interface SlackEvent {
   type: string;
   user: string;
@@ -169,7 +184,34 @@ async function respond(ictx: IntegrationContext, responseUrl: string, m: ChatMes
 
 async function handleEvent(ictx: IntegrationContext, event: SlackEvent) {
   const botUserId = ictx.integration.state.botUserId as string | undefined;
-  if (event.bot_id || event.subtype || (botUserId && event.user === botUserId)) return;
+  // A reply also sent to the channel is still a reply.
+  const subtype = event.subtype === 'thread_broadcast' ? undefined : event.subtype;
+  if (event.bot_id || subtype || (botUserId && event.user === botUserId)) return;
+  const reply =
+    event.type === 'message' &&
+    event.channel_type !== 'im' &&
+    event.thread_ts &&
+    event.ts &&
+    event.thread_ts !== event.ts;
+  // Mentions in a thread are commands (app_mention), not comments.
+  if (reply && !(botUserId && event.text?.includes(`<@${botUserId}>`))) {
+    await syncThreadReply(ictx, {
+      channel: event.channel,
+      parent: event.thread_ts!,
+      messageRef: event.ts!,
+      user: { id: event.user },
+      displayName: async () => {
+        const info = await slack<{ user: { real_name?: string; name?: string } }>(
+          ictx,
+          'users.info',
+          { user: event.user },
+        );
+        return info.user.real_name || info.user.name;
+      },
+      text: slackToMarkdown(event.text ?? ''),
+    });
+    return;
+  }
   if (event.type === 'link_shared') {
     const previews = await unfurl(
       ictx,
@@ -382,12 +424,14 @@ export const slackProvider: IntegrationProvider = {
   },
 
   chat: {
-    async post(ictx, channel, message) {
-      await slack(ictx, 'chat.postMessage', {
+    async post(ictx, channel, message, thread) {
+      const { ts } = await slack<{ ts: string }>(ictx, 'chat.postMessage', {
         channel,
+        ...(thread && { thread_ts: thread.root }),
         unfurl_links: false,
         ...slackBlocks(message),
       });
+      return ts;
     },
     async direct(ictx, to, message) {
       // Posting to a user id lands in the app's direct messages with them.

@@ -1,12 +1,19 @@
 import { createHmac, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import type { Bootstrap, ChatService, Integration, IssueDetail } from '@ordo/shared';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { auditLog, externalAccounts, integrations, leases } from '../src/db/schema.ts';
+import {
+  auditLog,
+  chatMessages,
+  externalAccounts,
+  integrations,
+  leases,
+} from '../src/db/schema.ts';
 import { discordProvider } from '../src/integrations/discord.ts';
+import { matrixProvider } from '../src/integrations/matrix.ts';
 import { registerProvider, unregisterProvider } from '../src/integrations/registry.ts';
-import { telegramCommand } from '../src/integrations/telegram.ts';
+import { telegramCommand, telegramProvider } from '../src/integrations/telegram.ts';
 import type { IntegrationProvider } from '../src/integrations/types.ts';
 import { Leases } from '../src/lib/jobs/index.ts';
 import { createLinkCode } from '../src/services/chat.ts';
@@ -365,6 +372,88 @@ describe('Slack', () => {
     expect(JSON.stringify(reply)).toContain('new [TEAM] title');
   });
 
+  it("syncs comments with the issue's thread, both ways", async () => {
+    let n = 100;
+    mock.on('POST', '/chat.postMessage', () => ({ body: { ok: true, ts: `${++n}.0` } }));
+    try {
+      const issue = await newIssue('Thread me');
+      await settle(3);
+      const [root] = await app.db
+        .select()
+        .from(chatMessages)
+        .where(and(eq(chatMessages.issueId, issue.id), eq(chatMessages.root, true)));
+      expect(root).toMatchObject({ integrationId: slack.id, channel: 'C1' });
+      const inThread = () =>
+        mock
+          .calls('POST', '/chat.postMessage')
+          .map((c) => c.body as Record<string, unknown>)
+          .filter((b) => b.thread_ts === root!.messageRef);
+
+      await owner.post(`${ws}/issues/${issue.id}/comments`, { body: 'Looking into it' });
+      await settle(3);
+      expect(inThread()).toHaveLength(1);
+      expect(JSON.stringify(inThread()[0])).toContain('Looking into it');
+
+      const reply = (user: string, ts: string, text: string, thread = root!.messageRef) =>
+        deliver(
+          JSON.stringify({
+            type: 'event_callback',
+            event_id: `Ev-${ts}-${thread}`,
+            event: {
+              type: 'message',
+              channel: 'C1',
+              channel_type: 'channel',
+              user,
+              ts,
+              thread_ts: thread,
+              text,
+            },
+          }),
+        );
+      await reply('UBOB', '900.1', 'Fixed in <https://example.com/pr/1|the PR>');
+      await reply('UEVE', '900.2', '*Thanks!*');
+      await settle();
+      // Delivered again (Slack retries): still one comment.
+      await reply('UBOB', '900.1', 'Fixed in <https://example.com/pr/1|the PR>');
+      // Not a thread Ordo started.
+      await reply('UBOB', '901.1', 'Unrelated', '555.5');
+      await settle();
+
+      const list = (await owner.get(`${ws}/issues/${issue.id}/comments`)).data as {
+        body: string;
+        authorId: string | null;
+      }[];
+      expect(list.map((c) => c.body)).toEqual([
+        'Looking into it',
+        'Fixed in [the PR](https://example.com/pr/1)',
+        '**Carol Customer** via Slack:\n\n**Thanks!**',
+      ]);
+      // Bob's linked account writes as Bob; the stranger's reply comes from the integration.
+      expect(list[1]!.authorId).toBe(bobId);
+      expect(list[2]!.authorId).not.toBe(bobId);
+      // Synced replies aren't echoed back into the thread.
+      expect(inThread()).toHaveLength(1);
+
+      // With threads off, comments stay in Ordo unless the channel subscribes to them.
+      const config = (await owner.get(`${ws}/integrations`)).data.integrations.find(
+        (i: Integration) => i.id === slack.id,
+      ).config as { channels: { id: string }[] };
+      await owner.patch(`${ws}/integrations/${slack.id}`, {
+        config: {
+          channels: config.channels.map((c) =>
+            c.id === 'C1' ? { ...c, threads: false, events: ['issue.created'] } : c,
+          ),
+        },
+      });
+      await owner.post(`${ws}/issues/${issue.id}/comments`, { body: 'Off the record' });
+      await settle(3);
+      expect(inThread()).toHaveLength(1);
+      await owner.patch(`${ws}/integrations/${slack.id}`, { config });
+    } finally {
+      mock.on('POST', '/chat.postMessage', { ok: true, ts: '1.1' });
+    }
+  });
+
   it('unlinks from the account page', async () => {
     const account = ((await bob.get(`${ws}/me/chat-accounts`)).data.services as ChatService[]).find(
       (s) => s.integrationId === slack.id,
@@ -470,6 +559,49 @@ describe('Discord', () => {
     ).toEqual({ message_id: 'msg1', fail_if_not_exists: false });
   });
 
+  it('opens a thread on the first comment and reads replies from it', async () => {
+    await owner.patch(`${ws}/integrations/${discord.id}`, {
+      config: { channels: [{ id: 'CHT', events: ['issue.created'] }] },
+    });
+    let opened = false;
+    mock.on('POST', '/channels/CHT/messages', { id: 'root1' });
+    mock.on('POST', '/channels/CHT/messages/root1/threads', () => {
+      opened = true;
+      return { body: { id: 'root1' } };
+    });
+    mock.on('POST', '/channels/root1/messages', () =>
+      opened ? { body: { id: `c${Date.now()}` } } : { status: 404, body: { code: 10003 } },
+    );
+    const issue = await newIssue('Discord thread');
+    await settle(3);
+    await owner.post(`${ws}/issues/${issue.id}/comments`, { body: 'First words' });
+    await settle(3);
+    const [thread] = mock.calls('POST', '/channels/CHT/messages/root1/threads');
+    expect((thread!.body as { name: string }).name).toBe(`${issue.identifier} Discord thread`);
+    expect(JSON.stringify(mock.calls('POST', '/channels/root1/messages').at(-1)!.body)).toContain(
+      'First words',
+    );
+
+    const [row] = await app.db.select().from(integrations).where(eq(integrations.id, discord.id));
+    await queueInbound(app, discordProvider, row!, {
+      headers: {},
+      query: {},
+      body: JSON.stringify({
+        t: 'MESSAGE_CREATE',
+        d: {
+          id: 'reply1',
+          channel_id: 'root1',
+          guild_id: 'G1',
+          content: 'From Discord',
+          author: { id: 'DU1', username: 'dora', global_name: 'Dora' },
+        },
+      }),
+    });
+    await settle();
+    const list = (await owner.get(`${ws}/issues/${issue.id}/comments`)).data as { body: string }[];
+    expect(list.at(-1)!.body).toBe('**Dora** via Discord:\n\nFrom Discord');
+  });
+
   it('colours project updates with the workspace accent', async () => {
     await owner.patch(`${ws}/integrations/${discord.id}`, {
       config: { channels: [{ id: 'CHP', events: ['project_update.created'] }] },
@@ -547,6 +679,36 @@ describe('Telegram', () => {
     await settle();
     expect(String(sent().at(-1)!.text)).toContain('Linked to Bob Member');
     expect(sent().at(-1)!.parse_mode).toBe('HTML');
+  });
+
+  it("replies to the issue's messages become comments", async () => {
+    const issue = await newIssue('Telegram thread');
+    await settle(3);
+    await owner.post(`${ws}/issues/${issue.id}/comments`, { body: 'Over to you' });
+    await settle(3);
+    const threaded = sent().filter((m) => m.chat_id === '-100200' && m.reply_parameters);
+    expect(threaded.at(-1)!.reply_parameters).toEqual({
+      message_id: 1,
+      allow_sending_without_reply: true,
+    });
+    const [row] = await app.db.select().from(integrations).where(eq(integrations.id, telegram.id));
+    await queueInbound(app, telegramProvider, row!, {
+      headers: {},
+      query: {},
+      body: JSON.stringify({
+        update_id: 60,
+        message: {
+          message_id: 60,
+          chat: { id: -100200, type: 'supergroup' },
+          from: { id: 55, first_name: 'Tina', last_name: 'Tg' },
+          text: 'Done on my side',
+          reply_to_message: { message_id: 1, chat: { id: -100200, type: 'supergroup' } },
+        },
+      }),
+    });
+    await settle();
+    const list = (await owner.get(`${ws}/issues/${issue.id}/comments`)).data as { body: string }[];
+    expect(list.at(-1)!.body).toBe('**Tina Tg** via Telegram:\n\nDone on my side');
   });
 
   it('long-polls under a lease when switched to polling', async () => {
@@ -686,6 +848,41 @@ describe('Matrix', () => {
     await until(() =>
       sends().find((s) => JSON.stringify(s.body).includes(`created ${issue.identifier}`)),
     );
+
+    // Comments go into the issue's thread, and thread replies come back.
+    await owner.post(`${ws}/issues/${issue.id}/comments`, { body: 'Threaded in Matrix' });
+    const threaded = await until(() =>
+      sends().find((s) => JSON.stringify(s.body).includes('Threaded in Matrix')),
+    );
+    expect((threaded.body as { 'm.relates_to': unknown })['m.relates_to']).toEqual({
+      rel_type: 'm.thread',
+      event_id: '$sent',
+      is_falling_back: true,
+      'm.in_reply_to': { event_id: '$sent' },
+    });
+    mock.on('GET', `/_matrix/client/v3/profile/${encodeURIComponent('@eve:hs.test')}/displayname`, {
+      displayname: 'Eve',
+    });
+    await queueInbound(app, matrixProvider, row!, {
+      headers: {},
+      query: {},
+      body: JSON.stringify({
+        room,
+        event: {
+          event_id: '$r1',
+          type: 'm.room.message',
+          sender: '@eve:hs.test',
+          content: {
+            msgtype: 'm.text',
+            body: 'Replying in the thread',
+            'm.relates_to': { rel_type: 'm.thread', event_id: '$sent' },
+          },
+        },
+      }),
+    });
+    await settle();
+    const list = (await owner.get(`${ws}/issues/${issue.id}/comments`)).data as { body: string }[];
+    expect(list.at(-1)!.body).toBe('**Eve** via Matrix:\n\nReplying in the thread');
     await owner.del(`${ws}/integrations/${matrix.id}`);
     await app.connectors.tick();
     expect(app.connectors.active).not.toContain(matrix.id);

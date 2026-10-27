@@ -65,9 +65,22 @@ export interface ChatRecipient {
   dmChannel?: string;
 }
 
+/** A thread inside a channel: the one started by the message `root`. */
+export interface ChatThread {
+  root: string;
+  /** For services that name threads (Discord): "ENG-12 Fix the flux capacitor". */
+  name: string;
+}
+
 /** What chat providers add: posting to channels and to people. */
 export interface ChatAdapter {
-  post(ictx: IntegrationContext, channel: string, message: ChatMessage): Promise<void>;
+  /** Posts to a channel, or into a thread there; returns the posted message's id. */
+  post(
+    ictx: IntegrationContext,
+    channel: string,
+    message: ChatMessage,
+    thread?: ChatThread,
+  ): Promise<string | undefined>;
   /** Messages one person; returns the direct-message channel to remember, when it opened one. */
   direct(
     ictx: IntegrationContext,

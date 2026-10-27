@@ -136,6 +136,9 @@ export default {
     private: 'privat',
     newIssuesGoTo: 'Nya ärenden härifrån hamnar i {select}',
     defaultTeam: 'arbetsytans standardteam',
+    threads: 'Synka kommentarer i trådar',
+    threadsHint:
+      'Senare aktivitet på ett ärende hamnar i tråden under dess första inlägg här, och svar där blir kommentarer.',
     addChannel: 'Lägg till kanal',
     events: {
       issueCreated: 'Nya ärenden',

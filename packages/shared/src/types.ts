@@ -874,6 +874,8 @@ export interface ChatChannel {
   events: ChatEventKind[];
   /** Team for issues created from this channel with `new`, unless the message names one. */
   defaultTeamId?: string | null;
+  /** Sync comments in threads; on unless false. */
+  threads?: boolean;
 }
 
 /** One person's verified account on a chat integration. */

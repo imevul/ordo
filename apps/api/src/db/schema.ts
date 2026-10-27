@@ -1257,6 +1257,34 @@ export const issueLinks = pgTable(
   ],
 );
 
+/**
+ * Chat messages that belong to an issue's thread in a channel: the card that started it (`root`),
+ * what Ordo posted into it and the replies it turned into comments. Replies are matched to an
+ * issue through these, and nothing is synced twice.
+ */
+export const chatMessages = pgTable(
+  'chat_messages',
+  {
+    id: pk(),
+    integrationId: uuid('integration_id')
+      .notNull()
+      .references(() => integrations.id, { onDelete: 'cascade' }),
+    channel: text('channel').notNull(),
+    /** The service's id for the message: Slack ts, Discord or Telegram message id, Matrix event id. */
+    messageRef: text('message_ref').notNull(),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    commentId: uuid('comment_id').references(() => comments.id, { onDelete: 'set null' }),
+    root: boolean('root').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex('chat_messages_ref_idx').on(t.integrationId, t.channel, t.messageRef),
+    index('chat_messages_issue_idx').on(t.integrationId, t.channel, t.issueId),
+  ],
+);
+
 /** An account at an outside service (GitHub login, Slack user…) mapped to an Ordo user. */
 export const externalAccounts = pgTable(
   'external_accounts',

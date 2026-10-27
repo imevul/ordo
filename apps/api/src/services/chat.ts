@@ -10,6 +10,7 @@ import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import {
+  chatMessages,
   comments,
   externalAccounts,
   integrations,
@@ -34,6 +35,7 @@ import { enqueue, type JobContext } from '../lib/jobs/index.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import { type Access, canReadTeam, computeAccess, usersWithTeamAccess } from './access.ts';
 import { audit } from './audit.ts';
+import { createComment } from './comments.ts';
 import { activeIntegration, integrationContext, track } from './integrations.ts';
 import { createIssue } from './issues.ts';
 import { upsertIssueLink } from './links.ts';
@@ -65,6 +67,9 @@ export function parseChannels(value: unknown): ChatChannel[] {
 
 export const channelsOf = (row: IntegrationRow) =>
   ((row.config.channels as ChatChannel[] | undefined) ?? []).filter((c) => c.id);
+
+/** Threads are on unless a channel turns them off. */
+const threadsOn = (c: ChatChannel | undefined) => !!c && c.threads !== false;
 
 // ─── issues as chat cards ─────────────────────────────────────────────────
 
@@ -214,7 +219,7 @@ async function feedMessage(app: FastifyInstance, event: IntegrationEvent) {
   const data = event.data as {
     id?: string;
     issue?: { id: string };
-    comment?: { body?: string };
+    comment?: { id?: string; body?: string };
     update?: { body?: string; health?: string };
     project?: { id: string; name?: string };
   };
@@ -255,7 +260,20 @@ async function feedMessage(app: FastifyInstance, event: IntegrationEvent) {
             excerpt(data.comment?.body),
           )
         : issueMessage(card, `${actor} moved ${card.identifier} to ${card.state}`);
-  return { kinds, teamIds: [card.teamId], allPrivate: card.teamPrivate, message };
+  // Inside the issue's thread the card is already above: just what happened.
+  const thread: ChatMessage =
+    event.type === 'comment.created'
+      ? { headline: `${actor} commented`, body: excerpt(data.comment?.body, 2000), url: card.url }
+      : { headline: message.headline, url: card.url };
+  return {
+    kinds,
+    teamIds: [card.teamId],
+    allPrivate: card.teamPrivate,
+    message,
+    issueId: card.id,
+    commentId: event.type === 'comment.created' ? (data.comment?.id ?? null) : null,
+    thread,
+  };
 }
 
 /** Domain events → one post job per subscribed channel (so a failing channel retries alone). */
@@ -265,7 +283,11 @@ export async function chatFeed(ictx: IntegrationContext, event: IntegrationEvent
   const feed = await feedMessage(ictx.app, event);
   if (!feed) return;
   for (const channel of channels) {
-    if (!channel.events.some((k) => feed.kinds.includes(k))) continue;
+    const subscribed = channel.events.some((k) => feed.kinds.includes(k));
+    // Comments on an issue with a thread here always go to it: that's the sync.
+    const threaded =
+      'issueId' in feed && threadsOn(channel) && feed.kinds.includes('comment.created');
+    if (!subscribed && !threaded) continue;
     const allowed = channel.teamIds.length
       ? feed.teamIds.some((t) => channel.teamIds.includes(t))
       : // "Every public team": nothing from private teams unless a channel names them.
@@ -274,7 +296,17 @@ export async function chatFeed(ictx: IntegrationContext, event: IntegrationEvent
     await enqueue(
       ictx.app.db,
       'chat.post',
-      { integrationId: ictx.integration.id, channel: channel.id, message: feed.message },
+      {
+        integrationId: ictx.integration.id,
+        channel: channel.id,
+        message: feed.message,
+        subscribed,
+        ...('issueId' in feed && {
+          issueId: feed.issueId,
+          commentId: feed.commentId,
+          thread: feed.thread,
+        }),
+      } satisfies ChatPost,
       {
         dedupeKey: `cp:${ictx.integration.id}:${event.id}:${channel.id}`,
         orderingKey: `chat:${ictx.integration.id}:${channel.id}`,
@@ -283,15 +315,158 @@ export async function chatFeed(ictx: IntegrationContext, event: IntegrationEvent
   }
 }
 
-export async function runChatPost(
-  app: FastifyInstance,
-  p: { integrationId: string; channel: string; message: ChatMessage },
-  job: JobContext,
-) {
+interface ChatPost {
+  integrationId: string;
+  channel: string;
+  message: ChatMessage;
+  /** False when the channel only gets this because the issue has a thread there. */
+  subscribed?: boolean;
+  issueId?: string;
+  commentId?: string | null;
+  /** The same, as a reply in the issue's thread. */
+  thread?: ChatMessage;
+}
+
+/**
+ * Posts one feed message. With threads on, the first post about an issue in a channel starts its
+ * thread, and later ones go into it; every post is remembered so replies find their issue.
+ */
+export async function runChatPost(app: FastifyInstance, p: ChatPost, job: JobContext) {
   const found = await activeIntegration(app, p.integrationId);
   if (!found?.provider.chat) return;
+  const chat = found.provider.chat;
   const ictx = integrationContext(app, found.row, job.log);
-  await track(app, found.row, () => found.provider.chat!.post(ictx, p.channel, p.message));
+  const channel = channelsOf(found.row).find((c) => c.id === p.channel);
+  const remember = async (messageRef: string | undefined, root: boolean) => {
+    if (!messageRef || !p.issueId) return;
+    await app.db
+      .insert(chatMessages)
+      .values({
+        integrationId: found.row.id,
+        channel: p.channel,
+        messageRef,
+        issueId: p.issueId,
+        commentId: p.commentId ?? null,
+        root,
+      })
+      .onConflictDoNothing();
+  };
+  await track(app, found.row, async () => {
+    const [root] =
+      p.issueId && threadsOn(channel)
+        ? await app.db
+            .select({ messageRef: chatMessages.messageRef })
+            .from(chatMessages)
+            .where(
+              and(
+                eq(chatMessages.integrationId, found.row.id),
+                eq(chatMessages.channel, p.channel),
+                eq(chatMessages.issueId, p.issueId),
+                eq(chatMessages.root, true),
+              ),
+            )
+            .limit(1)
+        : [];
+    if (root) {
+      const name = (p.message.title ?? p.message.headline).slice(0, 100);
+      const ref = await chat.post(ictx, p.channel, p.thread ?? p.message, {
+        root: root.messageRef,
+        name,
+      });
+      await remember(ref, false);
+      return;
+    }
+    if (p.subscribed === false) return;
+    await remember(await chat.post(ictx, p.channel, p.message), true);
+  });
+}
+
+// ─── thread replies ───────────────────────────────────────────────────────
+
+/** A reply in a chat thread, as providers hand it over. */
+export interface ChatThreadReply {
+  /** Channel, room or chat id; omitted where the service's message ids are unique on their own. */
+  channel?: string;
+  /** What it replies to: the thread's first message, or (Telegram) any message in the chain. */
+  parent: string;
+  /** The reply itself. */
+  messageRef: string;
+  user: { id: string; name?: string };
+  /** Looks up a display name, for replies by people without a linked account. */
+  displayName?: () => Promise<string | undefined>;
+  /** Markdown. */
+  text: string;
+}
+
+/**
+ * Turns a reply in an issue's thread into a comment, by the person's linked Ordo account (if it
+ * can see the issue) or by the integration's bot, naming who wrote it. Returns false when the
+ * reply isn't in a thread Ordo knows, so providers can treat it as an ordinary message.
+ */
+export async function syncThreadReply(ictx: IntegrationContext, reply: ChatThreadReply) {
+  const { app, integration } = ictx;
+  const [parent] = await app.db
+    .select()
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.integrationId, integration.id),
+        eq(chatMessages.messageRef, reply.parent),
+        reply.channel ? eq(chatMessages.channel, reply.channel) : undefined,
+      ),
+    )
+    .limit(1);
+  if (!parent) return false;
+  if (!threadsOn(channelsOf(integration).find((c) => c.id === parent.channel))) return false;
+  const [seen] = await app.db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.integrationId, integration.id),
+        eq(chatMessages.channel, parent.channel),
+        eq(chatMessages.messageRef, reply.messageRef),
+      ),
+    );
+  const text = reply.text.trim();
+  if (seen || !text) return true;
+  const [issue] = await app.db
+    .select({ teamId: issues.teamId, deletedAt: issues.deletedAt })
+    .from(issues)
+    .where(eq(issues.id, parent.issueId));
+  if (!issue || issue.deletedAt) return true;
+
+  const actor = await chatActor(ictx, reply.user.id);
+  // A linked account acts as its person, who may have lost access to the issue since.
+  if (actor && !canReadTeam(actor.access, issue.teamId)) return true;
+  const service = getProvider(integration.provider)?.name ?? integration.provider;
+  const name = actor
+    ? null
+    : ((await reply.displayName?.().catch(() => undefined)) ?? reply.user.name ?? reply.user.id);
+  const body = actor ? text : `**${name!.replace(/[*_`[\]]/g, '')}** via ${service}:\n\n${text}`;
+  const comment = actor
+    ? await runInWorkspace(
+        app,
+        {
+          workspaceId: integration.workspaceId,
+          actorId: actor.userId,
+          source: `integration:${integration.id}`,
+          access: actor.access,
+        },
+        (ctx) => createComment(ctx, parent.issueId, { body }),
+      )
+    : await ictx.run((ctx) => createComment(ctx, parent.issueId, { body }));
+  await app.db
+    .insert(chatMessages)
+    .values({
+      integrationId: integration.id,
+      channel: parent.channel,
+      messageRef: reply.messageRef,
+      issueId: parent.issueId,
+      commentId: comment.id,
+    })
+    .onConflictDoNothing();
+  return true;
 }
 
 // ─── accounts ─────────────────────────────────────────────────────────────

@@ -4,6 +4,7 @@ import {
   chatFeed,
   parseChannels,
   runChatCommand,
+  syncThreadReply,
   unfurl,
 } from '../services/chat.ts';
 import { sleep } from '../services/connectors.ts';
@@ -61,10 +62,21 @@ export function matrixContent(m: ChatMessage) {
 }
 
 const send = (ictx: IntegrationContext, room: string, content: Record<string, unknown>) =>
-  api(ictx, `/rooms/${encodeURIComponent(room)}/send/m.room.message/${randomUUID()}`, {
-    method: 'PUT',
-    body: content,
-  });
+  api<{ event_id: string }>(
+    ictx,
+    `/rooms/${encodeURIComponent(room)}/send/m.room.message/${randomUUID()}`,
+    { method: 'PUT', body: content },
+  );
+
+/** In a thread, with a reply to its first message for clients that don't show threads. */
+const inThread = (root: string) => ({
+  'm.relates_to': {
+    rel_type: 'm.thread',
+    event_id: root,
+    is_falling_back: true,
+    'm.in_reply_to': { event_id: root },
+  },
+});
 
 /** Replies quote their parent in a fallback ("> <@a:b> text" lines, then a blank line). */
 const stripFallback = (body: string) => body.replace(/^(> .*\n)+\n/, '');
@@ -76,7 +88,11 @@ interface MatrixEvent {
   content: {
     msgtype?: string;
     body?: string;
-    'm.relates_to'?: { 'm.in_reply_to'?: { event_id: string } };
+    'm.relates_to'?: {
+      rel_type?: string;
+      event_id?: string;
+      'm.in_reply_to'?: { event_id: string };
+    };
   };
 }
 
@@ -114,6 +130,26 @@ async function handleMessage(ictx: IntegrationContext, room: string, e: MatrixEv
   else if (await isDirect(ictx, room)) text = body;
 
   if (text === null) {
+    const relation = e.content['m.relates_to'];
+    if (
+      relation?.rel_type === 'm.thread' &&
+      relation.event_id &&
+      (await syncThreadReply(ictx, {
+        channel: room,
+        parent: relation.event_id,
+        messageRef: e.event_id,
+        user: { id: e.sender },
+        displayName: async () =>
+          (
+            await api<{ displayname?: string }>(
+              ictx,
+              `/profile/${encodeURIComponent(e.sender)}/displayname`,
+            )
+          ).displayname,
+        text: body,
+      }))
+    )
+      return;
     for (const preview of await unfurl(ictx, e.sender, body)) await reply(preview.message);
     return;
   }
@@ -233,8 +269,9 @@ export const matrixProvider: IntegrationProvider = {
   },
 
   chat: {
-    async post(ictx, channel, message) {
-      await send(ictx, channel, matrixContent(message));
+    async post(ictx, channel, message, thread) {
+      const content = { ...matrixContent(message), ...(thread && inThread(thread.root)) };
+      return (await send(ictx, channel, content)).event_id;
     },
     async direct(ictx, to, message) {
       let room = to.dmChannel;
