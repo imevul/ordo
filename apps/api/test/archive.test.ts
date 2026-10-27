@@ -1,5 +1,5 @@
 import type { Bootstrap, HistoryEntry, Issue, SearchResults, Team } from '@ordo/shared';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { domainEvents, issues } from '../src/db/schema.ts';
@@ -84,16 +84,22 @@ describe('auto-archive', () => {
       actorId: await automationBot(app.db, boot.workspace.id),
       changes: [{ field: 'archived', from: false, to: true }],
     });
-    const events = await app.db
-      .select()
-      .from(domainEvents)
-      .where(eq(domainEvents.type, 'issue.archived'));
+    // Other test files share the database and archive their own issues, so stay in this workspace.
+    const archivedEvents = () =>
+      app.db
+        .select()
+        .from(domainEvents)
+        .where(
+          and(
+            eq(domainEvents.workspaceId, boot.workspace.id),
+            eq(domainEvents.type, 'issue.archived'),
+          ),
+        );
+    const events = await archivedEvents();
     expect(events.map((e) => e.data.identifier).sort()).toEqual(['ENG-1', 'ENG-2']);
     // Running again changes nothing.
     await autoArchive(app);
-    expect(
-      await app.db.select().from(domainEvents).where(eq(domainEvents.type, 'issue.archived')),
-    ).toHaveLength(2);
+    expect(await archivedEvents()).toHaveLength(2);
   });
 
   it('keeps archived issues out of lists but findable', async () => {

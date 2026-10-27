@@ -108,9 +108,13 @@ export async function signup(
   return { client: c, email, data: res.data };
 }
 
-/** Creates (or recreates) an empty database next to the test database and returns its URL. */
-export async function freshDatabase(name: string) {
+/**
+ * Creates (or recreates) an empty database next to the test database, named after it with `_<suffix>`
+ * so that it belongs to this run, and returns its URL.
+ */
+export async function freshDatabase(suffix: string) {
   const base = new URL(process.env.TEST_DATABASE_URL!);
+  const name = `${base.pathname.slice(1)}_${suffix}`;
   const admin = postgres(base.toString(), { max: 1, onnotice: () => {} });
   await admin.unsafe(`drop database if exists ${name} with (force)`);
   await admin.unsafe(`create database ${name}`);

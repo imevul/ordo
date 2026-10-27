@@ -32,7 +32,7 @@ docs/              user, operator and developer docs
 make dev-db                 # Postgres for dev/tests on localhost:5433 (docker-compose.dev.yml)
 pnpm dev                    # API :3001 (tsx watch) + web :5173 (Vite, proxies /api and /api/ws)
 pnpm typecheck              # tsc (TypeScript 7) in every package
-pnpm test                   # Vitest; API tests recreate an `ordo_test` database
+pnpm test                   # Vitest; API tests use a per-run `ordo_test_<pid>` database
 pnpm lint / pnpm format     # Biome
 pnpm db:generate            # after editing apps/api/src/db/schema.ts → new file in apps/api/drizzle/
 pnpm db:seed                # demo workspace "demo", login demo@ordo.test / ordo-demo-password
