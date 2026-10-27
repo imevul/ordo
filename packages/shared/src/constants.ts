@@ -157,6 +157,8 @@ export const AUDIT_ACTIONS = [
   'placeholder.merged',
   'api_key.created',
   'api_key.revoked',
+  'oauth.authorized',
+  'oauth.revoked',
   'workspace.created',
   'workspace.updated',
   'workspace.deleted',

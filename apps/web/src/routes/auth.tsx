@@ -1,5 +1,6 @@
 import {
   type JoinableWorkspace,
+  type OAuthAuthorizeInfo,
   SLUG_PATTERN,
   type SsoDiscovery,
   type SsoOption,
@@ -7,7 +8,7 @@ import {
 } from '@ordo/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useNavigate, useParams, useSearch } from '@tanstack/react-router';
-import { KeyRound } from 'lucide-react';
+import { BadgeCheck, KeyRound, TriangleAlert } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { ApiError, api } from '../api/client.ts';
 import { keys, useConfig, useMe } from '../api/queries.ts';
@@ -125,7 +126,8 @@ export function LoginPage() {
 
   const done = () => {
     qc.removeQueries({ queryKey: keys.me });
-    navigate({ to: after ?? '/' });
+    // href, not to: the way back may carry a query string (the OAuth consent screen's).
+    navigate({ href: after ?? '/' });
   };
 
   const run = (fn: () => Promise<void>) => async (e: FormEvent) => {
@@ -923,6 +925,123 @@ export function OnboardingPage() {
           Create workspace <span className="arrow">→</span>
         </button>
       </form>
+    </AuthLayout>
+  );
+}
+
+/**
+ * The OAuth consent screen: an app (an MCP client) asks to use a workspace's MCP server as the
+ * signed-in person. The request's parameters are passed to the API untouched.
+ */
+export function OAuthAuthorizePage() {
+  const me = useMe();
+  const query = window.location.search;
+  const info = useQuery({
+    queryKey: ['oauthAuthorize', query],
+    queryFn: () => api.get<OAuthAuthorizeInfo>(`/oauth/authorize${query}`),
+    enabled: !!me.data,
+    retry: false,
+  });
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const back = (info.error as ApiError | null)?.details as { redirect?: string } | undefined;
+
+  // Errors the app should hear about go straight back to it.
+  useEffect(() => {
+    if (back?.redirect) window.location.replace(back.redirect);
+  }, [back?.redirect]);
+
+  if (me.isLoading || (me.data && info.isLoading) || back?.redirect) return <Spinner />;
+  if (!me.data) return <Navigate to="/login" search={{ redirect: `/oauth/authorize${query}` }} />;
+  if (info.error || !info.data)
+    return (
+      <AuthLayout kicker="authorize" title="Can't connect this app.">
+        <ErrorLine error={message(info.error)} />
+        <Link to="/" className="btn btn-ghost w-full">
+          Go to Ordo
+        </Link>
+      </AuthLayout>
+    );
+
+  const { client, workspace, redirectUri } = info.data;
+  const answer = async (approve: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const params = Object.fromEntries(new URLSearchParams(query));
+      const res = await api.post<{ redirect: string }>('/oauth/authorize', { ...params, approve });
+      setSent(true);
+      window.location.assign(res.redirect);
+    } catch (err) {
+      setError(message(err));
+      setBusy(false);
+    }
+  };
+
+  if (sent)
+    return (
+      <AuthLayout kicker="authorize" title="Done.">
+        <p className="text-[13.5px] text-muted">
+          You're being sent back to <span className="text-text">{client.name}</span>. If nothing
+          happens, switch to it yourself; you can close this tab.
+        </p>
+      </AuthLayout>
+    );
+
+  return (
+    <AuthLayout
+      kicker="authorize"
+      title={`Connect ${client.name}?`}
+      footer={
+        <>Signed in as {me.data.email}. Disconnect apps any time under Settings → AI agents.</>
+      }
+    >
+      <ErrorLine error={error} />
+      <p className="text-[13.5px] text-muted">
+        <span className="text-text">{client.name}</span> wants to use Ordo in{' '}
+        <span className="text-text">{workspace.name}</span> as you. It will be able to:
+      </p>
+      <ul className="mt-3 flex flex-col gap-1.5 text-[13px]">
+        <li>— read the issues, projects and teams you can see</li>
+        <li>— create and change issues and comment, under your name</li>
+      </ul>
+      <div className="mt-5 border-t border-border-soft pt-4 text-[12.5px]">
+        {client.verified ? (
+          <div className="flex items-center gap-1.5 text-muted">
+            <BadgeCheck size={13} className="flex-none" /> Published by{' '}
+            <span className="font-mono text-text">{client.host}</span>
+          </div>
+        ) : (
+          <div className="flex items-start gap-1.5 text-warning">
+            <TriangleAlert size={13} className="mt-0.5 flex-none" />
+            <span>
+              The app gave itself this name. Only continue if you just started connecting it.
+            </span>
+          </div>
+        )}
+        <div className="mt-2 font-mono text-[11px] break-all text-index">
+          returns to {redirectUri.split('?')[0]}
+        </div>
+      </div>
+      <div className="mt-6 flex gap-2">
+        <button
+          type="button"
+          className="btn btn-ghost flex-1"
+          disabled={busy}
+          onClick={() => answer(false)}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary flex-1"
+          disabled={busy}
+          onClick={() => answer(true)}
+        >
+          Allow <span className="arrow">→</span>
+        </button>
+      </div>
     </AuthLayout>
   );
 }

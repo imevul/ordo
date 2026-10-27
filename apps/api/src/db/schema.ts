@@ -803,6 +803,87 @@ export const pushSubscriptions = pgTable(
   (t) => [index('push_subscriptions_user_idx').on(t.userId)],
 );
 
+/**
+ * Apps that sign in to the MCP server with OAuth. Registered on the fly (RFC 7591), or known by
+ * the metadata document their client_id points at, kept here as a cache.
+ */
+export const oauthClients = pgTable('oauth_clients', {
+  id: pk(),
+  /** What the app sends as client_id: a random id, or its metadata document's URL. */
+  clientId: text('client_id').notNull().unique(),
+  secretHash: text('secret_hash'),
+  authMethod: text('auth_method')
+    .$type<'none' | 'client_secret_post' | 'client_secret_basic'>()
+    .notNull(),
+  name: text('name').notNull(),
+  uri: text('uri'),
+  redirectUris: text('redirect_uris').array().notNull(),
+  /** When the metadata document was last read; null for registered clients. */
+  fetchedAt: ts('fetched_at'),
+  /** Last time someone connected it; registrations nobody ever finished are pruned. */
+  lastUsedAt: ts('last_used_at'),
+  createdAt: createdAt(),
+});
+
+/** Authorization codes waiting to be exchanged; single use, minutes long. */
+export const oauthCodes = pgTable('oauth_codes', {
+  codeHash: text('code_hash').primaryKey(),
+  clientId: uuid('client_id')
+    .notNull()
+    .references(() => oauthClients.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  workspaceId: uuid('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  redirectUri: text('redirect_uri').notNull(),
+  codeChallenge: text('code_challenge').notNull(),
+  /** The SSO login the consent was given in, carried into the grant for require-SSO. */
+  ssoProviderId: uuid('sso_provider_id'),
+  ssoExpiresAt: ts('sso_expires_at'),
+  expiresAt: ts('expires_at').notNull(),
+});
+
+/** One person's permission for one app to use one workspace's MCP server. */
+export const oauthGrants = pgTable(
+  'oauth_grants',
+  {
+    id: pk(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => oauthClients.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    ssoProviderId: uuid('sso_provider_id'),
+    ssoExpiresAt: ts('sso_expires_at'),
+    lastUsedAt: ts('last_used_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('oauth_grants_user_idx').on(t.userId)],
+);
+
+export const oauthTokens = pgTable(
+  'oauth_tokens',
+  {
+    id: pk(),
+    grantId: uuid('grant_id')
+      .notNull()
+      .references(() => oauthGrants.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'access' | 'refresh'>().notNull(),
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: ts('expires_at').notNull(),
+    /** Refresh tokens work once; one coming back after that has leaked, and ends the grant. */
+    usedAt: ts('used_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [index('oauth_tokens_grant_idx').on(t.grantId)],
+);
+
 /** One-time tokens sent by email (password reset, email verification/change) or used between login steps (MFA). */
 export const authTokens = pgTable(
   'auth_tokens',

@@ -15,6 +15,7 @@ import {
   IndexRedirect,
   InvitePage,
   LoginPage,
+  OAuthAuthorizePage,
   OnboardingPage,
   ResetPasswordPage,
   SignupPage,
@@ -117,6 +118,11 @@ const adminIndexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/admin',
   component: () => <Navigate to="/admin/$section" params={{ section: 'overview' }} replace />,
+});
+const oauthAuthorizeRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/oauth/authorize',
+  component: OAuthAuthorizePage,
 });
 const onboardingRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -241,6 +247,7 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  oauthAuthorizeRoute,
   signupRoute,
   inviteRoute,
   forgotRoute,

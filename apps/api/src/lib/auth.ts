@@ -5,6 +5,8 @@ import type { Db } from '../db/client.ts';
 import {
   apiKeys,
   authProviders,
+  oauthGrants,
+  oauthTokens,
   sessions,
   users,
   workspaceMembers,
@@ -12,6 +14,7 @@ import {
 } from '../db/schema.ts';
 import { type Access, computeAccess } from '../services/access.ts';
 import { audit } from '../services/audit.ts';
+import { ACCESS_PREFIX } from '../services/oauth.ts';
 import { randomToken, sha256 } from './crypto.ts';
 import { forbidden, HttpError, notFound, unauthorized } from './errors.ts';
 
@@ -45,8 +48,16 @@ export interface SsoSession {
 }
 
 /** How the caller authenticated; require-SSO decides from this. */
+export type AuthMethod = 'session' | 'api_key' | 'oauth';
+
+/** An OAuth access token: good for one workspace's MCP endpoint only. */
+export interface OAuthAuth {
+  workspaceId: string;
+  grantId: string;
+}
+
 export interface AuthInfo {
-  method: 'session' | 'api_key';
+  method: AuthMethod;
   sso: SsoSession | null;
   /** Skips the require-SSO check (used to let admins test a provider before switching it on). */
   ignoreSso?: boolean;
@@ -56,8 +67,9 @@ declare module 'fastify' {
   interface FastifyRequest {
     user: AuthUser | null;
     sessionId: string | null;
-    authMethod: 'session' | 'api_key' | null;
+    authMethod: AuthMethod | null;
     sso: SsoSession | null;
+    oauth: OAuthAuth | null;
     workspace: WorkspaceCtx | null;
   }
 }
@@ -142,19 +154,24 @@ export function clearSessionCookie(reply: FastifyReply) {
   reply.clearCookie(SESSION_COOKIE, { path: '/' });
 }
 
-/** Resolves the caller from a session cookie or an `Authorization: Bearer ordo_…` API key. */
+/**
+ * Resolves the caller from a session cookie, an `Authorization: Bearer ordo_…` API key or an
+ * OAuth access token (which the caller has to confine to the MCP endpoint).
+ */
 export async function resolveUser(
   db: Db,
   req: FastifyRequest,
 ): Promise<{
   user: AuthUser;
   sessionId: string | null;
-  method: 'session' | 'api_key';
+  method: AuthMethod;
   sso: SsoSession | null;
+  oauth?: OAuthAuth;
 } | null> {
   const header = req.headers.authorization;
   if (header?.startsWith('Bearer ')) {
     const token = header.slice(7).trim();
+    if (token.startsWith(ACCESS_PREFIX)) return resolveAccessToken(db, token);
     if (!token.startsWith(API_KEY_PREFIX)) return null;
     const [row] = await db
       .select({ user: userColumns, keyId: apiKeys.id })
@@ -209,6 +226,46 @@ export async function resolveUser(
   }
   const sso = row.providerId ? { providerId: row.providerId, expiresAt: row.ssoExpiresAt } : null;
   return { user: row.user, sessionId: id, method: 'session', sso };
+}
+
+async function resolveAccessToken(db: Db, token: string) {
+  const now = new Date().toISOString();
+  const [row] = await db
+    .select({
+      user: userColumns,
+      grantId: oauthGrants.id,
+      workspaceId: oauthGrants.workspaceId,
+      providerId: oauthGrants.ssoProviderId,
+      ssoExpiresAt: oauthGrants.ssoExpiresAt,
+      lastUsedAt: oauthGrants.lastUsedAt,
+    })
+    .from(oauthTokens)
+    .innerJoin(oauthGrants, eq(oauthGrants.id, oauthTokens.grantId))
+    .innerJoin(users, eq(users.id, oauthGrants.userId))
+    .where(
+      and(
+        eq(oauthTokens.tokenHash, sha256(token)),
+        eq(oauthTokens.kind, 'access'),
+        gt(oauthTokens.expiresAt, now),
+        canSignIn,
+      ),
+    );
+  if (!row) return null;
+  // Granted from an SSO login: it ends with that login's maximum age.
+  if (row.ssoExpiresAt && new Date(row.ssoExpiresAt).getTime() < Date.now()) return null;
+  if (!row.lastUsedAt || Date.now() - new Date(row.lastUsedAt).getTime() > LAST_SEEN_RESOLUTION) {
+    db.update(oauthGrants)
+      .set({ lastUsedAt: now })
+      .where(eq(oauthGrants.id, row.grantId))
+      .catch(() => {});
+  }
+  return {
+    user: row.user,
+    sessionId: null,
+    method: 'oauth' as const,
+    sso: row.providerId ? { providerId: row.providerId, expiresAt: row.ssoExpiresAt } : null,
+    oauth: { workspaceId: row.workspaceId, grantId: row.grantId },
+  };
 }
 
 export function requireUser(req: FastifyRequest): AuthUser {

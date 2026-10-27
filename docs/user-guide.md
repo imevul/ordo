@@ -297,8 +297,10 @@ Open **Settings** (workspace menu, or `G` then `S`):
 - **Notifications** — everything lands in your Inbox; choose which kinds are also emailed and how often (within a few
   minutes, hourly, daily, or never). Anything you read in the app first isn't emailed.
 - **API keys** — personal keys for scripts and integrations ([API docs](api.md)).
-- **AI agents** — connect Claude Code, Claude Desktop, Cursor or VS Code to Ordo's MCP server: the URL, a key,
-  setup snippets and a prompt that lets your agent set itself up ([MCP docs](mcp.md)).
+- **AI agents** — connect Claude, Claude Code, Cursor or VS Code to Ordo's MCP server: the URL, setup snippets for
+  OAuth sign-in or an API key, a prompt that lets your agent set itself up, and the apps you've connected, which you
+  can disconnect ([MCP docs](mcp.md)). When an app signs in with OAuth, Ordo shows which app is asking and for
+  which workspace; it acts as you only after you choose **Allow**.
 
 If your workspace uses single sign-on, enter your work email on the sign-in page and pick **Continue with …**, or
 use **Sign in with SSO** and type your workspace's URL name.

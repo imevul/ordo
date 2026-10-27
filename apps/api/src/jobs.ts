@@ -18,6 +18,7 @@ import {
 } from './services/integrations.ts';
 import type { Email } from './services/mail-templates.ts';
 import { wakeSnoozed } from './services/notifications.ts';
+import { pruneOAuth } from './services/oauth.ts';
 import { runPush } from './services/push.ts';
 import { runRecurring } from './services/recurring.ts';
 import { announceSlaBreaches } from './services/sla.ts';
@@ -76,6 +77,7 @@ export function registerJobs(app: FastifyInstance) {
   jobs.define('maintenance.cleanup', async () => {
     await pruneEvents(app);
     await purgeExpiredTokens(app.db);
+    await pruneOAuth(app.db);
     await purgeExpiredStates(app);
     await purgeOldExports(app);
     await sweepAttachments(app);
