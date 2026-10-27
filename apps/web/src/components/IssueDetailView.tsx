@@ -34,6 +34,7 @@ import { useHotkey } from '../lib/hotkeys.ts';
 import { isDone } from '../lib/issues.ts';
 import { ui } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
+import { useSyncEngine } from '../sync/context.tsx';
 import { Activity } from './Activity.tsx';
 import { type AiPanelKind, IssueAiPanel, useAiEnabled } from './AiAssist.tsx';
 import { CustomerRequests } from './CustomerRequests.tsx';
@@ -231,11 +232,19 @@ export function IssueDetailView({
       ],
     },
   );
+  const engine = useSyncEngine();
   const addRelation = useWsMutation(ws.slug, (v: { type: string; relatedIssueId: string }) =>
-    api.post(wsPath(ws.slug, `/issues/${issue.id}/relations`), v),
+    engine
+      ? engine.mutate({
+          kind: 'relation.create',
+          relation: { id: crypto.randomUUID(), issueId: issue.id, ...v },
+        })
+      : api.post(wsPath(ws.slug, `/issues/${issue.id}/relations`), v),
   );
   const removeRelation = useWsMutation(ws.slug, (id: string) =>
-    api.del(wsPath(ws.slug, `/relations/${id}`)),
+    engine
+      ? engine.mutate({ kind: 'relation.delete', id })
+      : api.del(wsPath(ws.slug, `/relations/${id}`)),
   );
   const done = () => invalidateIssues(qc, ws.slug);
 

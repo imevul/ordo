@@ -1,9 +1,9 @@
 import type { Bootstrap, Comment, Issue } from '@ordo/shared';
-import { type DBSchema, deleteDB, type IDBPDatabase, openDB } from 'idb';
+import type { PendingOp } from './outbox.ts';
 
 /**
- * Where a sync client keeps its copy: IndexedDB in browsers (`IdbStore`), memory where that isn't
- * available or allowed (`MemoryStore`). One store per person and workspace.
+ * Where a sync client keeps its copy: IndexedDB in browsers (`IdbStore`, idb.ts), memory where
+ * that isn't available or allowed (`MemoryStore`). One store per person and workspace.
  */
 
 export interface Meta {
@@ -29,6 +29,11 @@ export interface SyncStore {
   read(): Promise<{ meta: Meta | null; bootstrap: Bootstrap | null; issues: Issue[] }>;
   commentsFor(issueId: string): Promise<Comment[]>;
   write(w: StoreWrite): Promise<void>;
+  /** Changes waiting to be sent, oldest first; they survive full loads and new epochs. */
+  outbox(): Promise<PendingOp[]>;
+  enqueue(op: Omit<PendingOp, 'key'>): Promise<PendingOp>;
+  updateOp(op: PendingOp): Promise<void>;
+  removeOp(key: number): Promise<void>;
   clear(): Promise<void>;
   close(): void;
 }
@@ -37,83 +42,13 @@ export const DB_PREFIX = 'ordo:';
 /** The database for one person's copy of one workspace. */
 export const dbName = (userId: string, workspace: string) => `${DB_PREFIX}${userId}:${workspace}`;
 
-interface Schema extends DBSchema {
-  meta: { key: string; value: Meta };
-  bootstrap: { key: string; value: Bootstrap };
-  issues: { key: string; value: Issue };
-  comments: { key: string; value: Comment; indexes: { issueId: string } };
-  /** Offline changes waiting to be sent (see the outbox). */
-  outbox: { key: number; value: unknown };
-}
-
-export class IdbStore implements SyncStore {
-  private constructor(private db: IDBPDatabase<Schema>) {}
-
-  static async open(name: string) {
-    const db = await openDB<Schema>(name, 1, {
-      upgrade(db) {
-        db.createObjectStore('meta');
-        db.createObjectStore('bootstrap');
-        db.createObjectStore('issues', { keyPath: 'id' });
-        db.createObjectStore('comments', { keyPath: 'id' }).createIndex('issueId', 'issueId');
-        db.createObjectStore('outbox', { autoIncrement: true });
-      },
-      // Another tab is upgrading (or deleting) the database: let it.
-      blocking() {
-        db.close();
-      },
-    });
-    return new IdbStore(db);
-  }
-
-  async read() {
-    const tx = this.db.transaction(['meta', 'bootstrap', 'issues']);
-    const [meta, bootstrap, issues] = await Promise.all([
-      tx.objectStore('meta').get('meta'),
-      tx.objectStore('bootstrap').get('bootstrap'),
-      tx.objectStore('issues').getAll(),
-    ]);
-    return { meta: meta ?? null, bootstrap: bootstrap ?? null, issues };
-  }
-
-  commentsFor(issueId: string) {
-    return this.db.getAllFromIndex('comments', 'issueId', issueId);
-  }
-
-  async write(w: StoreWrite) {
-    const tx = this.db.transaction(['meta', 'bootstrap', 'issues', 'comments'], 'readwrite');
-    const issues = tx.objectStore('issues');
-    const comments = tx.objectStore('comments');
-    const ops: Promise<unknown>[] = [];
-    if (w.replaceAll) ops.push(issues.clear(), comments.clear());
-    for (const issue of w.issues ?? []) ops.push(issues.put(issue));
-    for (const id of w.deletedIssueIds ?? []) ops.push(issues.delete(id));
-    for (const c of w.comments ?? []) ops.push(comments.put(c));
-    for (const id of w.deletedCommentIds ?? []) ops.push(comments.delete(id));
-    if (w.bootstrap) ops.push(tx.objectStore('bootstrap').put(w.bootstrap, 'bootstrap'));
-    if (w.meta) ops.push(tx.objectStore('meta').put(w.meta, 'meta'));
-    await Promise.all([...ops, tx.done]);
-  }
-
-  async clear() {
-    const tx = this.db.transaction(
-      ['meta', 'bootstrap', 'issues', 'comments', 'outbox'],
-      'readwrite',
-    );
-    await Promise.all([...tx.objectStoreNames].map((n) => tx.objectStore(n).clear()));
-    await tx.done;
-  }
-
-  close() {
-    this.db.close();
-  }
-}
-
 export class MemoryStore implements SyncStore {
   private meta: Meta | null = null;
   private bootstrap: Bootstrap | null = null;
   private issues = new Map<string, Issue>();
   private comments = new Map<string, Comment>();
+  private ops: PendingOp[] = [];
+  private nextKey = 1;
 
   async read() {
     return { meta: this.meta, bootstrap: this.bootstrap, issues: [...this.issues.values()] };
@@ -136,23 +71,31 @@ export class MemoryStore implements SyncStore {
     if (w.meta) this.meta = w.meta;
   }
 
+  async outbox() {
+    return [...this.ops];
+  }
+
+  async enqueue(op: Omit<PendingOp, 'key'>) {
+    const entry = { ...op, key: this.nextKey++ };
+    this.ops.push(entry);
+    return entry;
+  }
+
+  async updateOp(op: PendingOp) {
+    this.ops = this.ops.map((o) => (o.key === op.key ? op : o));
+  }
+
+  async removeOp(key: number) {
+    this.ops = this.ops.filter((o) => o.key !== key);
+  }
+
   async clear() {
     this.meta = null;
     this.bootstrap = null;
     this.issues.clear();
     this.comments.clear();
+    this.ops = [];
   }
 
   close() {}
-}
-
-/**
- * Deletes local copies: all of them (signing out), or one person's. IndexedDB is plain text on
- * disk, so nothing should outlive the session that needed it.
- */
-export async function deleteLocalCopies(userId?: string) {
-  if (typeof indexedDB === 'undefined' || !indexedDB.databases) return;
-  const prefix = userId ? `${DB_PREFIX}${userId}:` : DB_PREFIX;
-  const all = await indexedDB.databases();
-  await Promise.all(all.filter((d) => d.name?.startsWith(prefix)).map((d) => deleteDB(d.name!)));
 }

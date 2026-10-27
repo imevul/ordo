@@ -96,6 +96,15 @@ offline, and the workspace's bootstrap falls back to the copy when the server ca
 to the server: it holds a Web Lock and shares what it saves over a `BroadcastChannel`. Signing out deletes every
 copy on the device.
 
+Changes go into an outbox (`outbox.ts`): typed operations for creating, editing and trashing issues, comments,
+reactions and relations, each one REST call, with ids chosen on the client so a retry can't duplicate anything.
+They show at once: the engine keeps the server's issues apart from the queue and shows the one on top of the
+other, so changes arriving from the server slide in underneath what's still waiting. The leading tab sends them
+in order as soon as it can; while the server can't be reached it backs off (1 s, 2 s, … a minute), and without a
+session it stops until someone signs in. A change the server refuses (4xx) is dropped from view along with
+anything that needed it (a comment on an issue that couldn't be created), and listed under the sidebar's
+"unsaved" with its text, to copy or discard. Settings, admin and everything else stay online-only.
+
 ## Data model
 
 ```

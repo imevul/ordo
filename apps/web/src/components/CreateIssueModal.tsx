@@ -200,7 +200,8 @@ export function CreateIssueModal() {
             onClick: () =>
               navigate({
                 to: '/$slug/issue/$identifier',
-                params: { slug: ws.slug, identifier: issue.identifier },
+                // Not numbered yet (made offline): its id finds it too.
+                params: { slug: ws.slug, identifier: issue.number ? issue.identifier : issue.id },
               }),
           },
         });

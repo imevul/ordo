@@ -136,4 +136,25 @@ export default {
     continueWith: 'Continue with {name}',
     pageNotFound: 'Nothing lives at this address.',
   },
+  sync: {
+    waiting: { one: '{count} waiting', other: '{count} waiting' },
+    unsaved: { one: '{count} unsaved', other: '{count} unsaved' },
+    title: 'Changes that couldn’t be saved',
+    description:
+      'The server refused these, so they’re no longer shown. Copy what you want to keep, then discard them.',
+    none: '// nothing left',
+    copy: 'Copy',
+    discard: 'Discard',
+    op: {
+      issueCreate: 'New issue “{title}”',
+      issueUpdate: { one: 'Change to {id}', other: 'Change to {count} issues' },
+      issueTrash: { one: 'Moving {id} to the trash', other: 'Moving {count} issues to the trash' },
+      commentCreate: 'Comment on {id}',
+      commentUpdate: 'Edit to a comment on {id}',
+      commentDelete: 'Deleting a comment on {id}',
+      reaction: 'Reaction {emoji} on {id}',
+      relationCreate: 'Relation on {id}',
+      relationDelete: 'Removing a relation',
+    },
+  },
 };

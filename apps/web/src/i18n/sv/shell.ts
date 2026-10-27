@@ -137,4 +137,28 @@ export default {
     continueWith: 'Fortsätt med {name}',
     pageNotFound: 'Det finns inget på den här adressen.',
   },
+  sync: {
+    waiting: { one: '{count} väntar', other: '{count} väntar' },
+    unsaved: { one: '{count} osparad', other: '{count} osparade' },
+    title: 'Ändringar som inte kunde sparas',
+    description:
+      'Servern vägrade ta emot dem, så de visas inte längre. Kopiera det du vill behålla och släng dem sedan.',
+    none: '// inget kvar',
+    copy: 'Kopiera',
+    discard: 'Släng',
+    op: {
+      issueCreate: 'Nytt ärende ”{title}”',
+      issueUpdate: { one: 'Ändring av {id}', other: 'Ändring av {count} ärenden' },
+      issueTrash: {
+        one: 'Flytt av {id} till papperskorgen',
+        other: 'Flytt av {count} ärenden till papperskorgen',
+      },
+      commentCreate: 'Kommentar på {id}',
+      commentUpdate: 'Redigering av en kommentar på {id}',
+      commentDelete: 'Borttagning av en kommentar på {id}',
+      reaction: 'Reaktion {emoji} på {id}',
+      relationCreate: 'Relation på {id}',
+      relationDelete: 'Borttagning av en relation',
+    },
+  },
 } satisfies Translation<Catalog['shell']>;

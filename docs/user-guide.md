@@ -300,8 +300,10 @@ Open **Settings** (workspace menu, or `G` then `S`):
   English. **Appearance**: dark, light, or
   **System** (the default), which follows your device and switches when it does. It's saved per browser; the command menu has _Switch to light theme_ and friends
   too. **Offline copy** (when your instance allows it): keep a copy of your workspaces in this browser, so they open
-  at once and lists stay readable without a connection. The copy is deleted when you sign out; turn it off on shared
-  computers.
+  at once and lists stay readable without a connection. Changes you make to issues and comments while offline show
+  straight away and are sent when you're back (the sidebar says how many are waiting); anything the server turns
+  down is listed there with its text, so nothing you wrote is lost. The copy is deleted when you sign out; turn it
+  off on shared computers.
 - **Security** — change your password (this signs out your other sessions); add **passkeys** to sign in with your
   fingerprint, face or device PIN instead of a password (_Sign in with a passkey_ on the sign-in page, or pick one in
   the email field's suggestions; they work at your instance's own address); turn on **two-factor authentication**
