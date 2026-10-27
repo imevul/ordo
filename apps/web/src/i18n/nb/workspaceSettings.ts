@@ -288,6 +288,8 @@ export default {
       apiKeyCreated: 'opprettet en API-nøkkel',
       scimTokenCreated: 'opprettet et token for katalogsynk',
       scimTokenDeleted: 'tilbakekalte et token for katalogsynk',
+      scimGroupLinked: 'koblet kataloggruppen {group} til {team}',
+      scimGroupUnlinked: 'koblet fra kataloggruppen {group}',
       memberJoinedByDirectory: 'ble lagt til av katalogsynk',
       passkeyAdded: 'la til en tilgangsnøkkel',
       passkeyRemoved: 'fjernet en tilgangsnøkkel',

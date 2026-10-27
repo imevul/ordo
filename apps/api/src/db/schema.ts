@@ -1168,6 +1168,39 @@ export const scimTokens = pgTable(
   (t) => [index('scim_tokens_workspace_idx').on(t.workspaceId)],
 );
 
+/** Groups the directory pushes; one linked to a team decides who is on it. */
+export const scimGroups = pgTable(
+  'scim_groups',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    displayName: text('display_name').notNull(),
+    externalId: text('external_id'),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('scim_groups_workspace_idx').on(t.workspaceId),
+    index('scim_groups_team_idx').on(t.teamId),
+  ],
+);
+
+export const scimGroupMembers = pgTable(
+  'scim_group_members',
+  {
+    groupId: uuid('group_id')
+      .notNull()
+      .references(() => scimGroups.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+  },
+  (t) => [primaryKey({ columns: [t.groupId, t.userId] })],
+);
+
 /** Members the workspace's directory manages, with the directory's own id for them. */
 export const scimUsers = pgTable(
   'scim_users',

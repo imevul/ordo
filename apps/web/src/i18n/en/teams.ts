@@ -92,6 +92,11 @@ export default {
     leave: 'Leave team',
     remove: 'Remove {name}',
     empty: '// nobody has joined yet',
+    managedBy: {
+      one: 'Members come from the directory group {groups}. Change them in your identity provider.',
+      other:
+        'Members come from the directory groups {groups}. Change them in your identity provider.',
+    },
   },
   sla: {
     title: 'SLAs',

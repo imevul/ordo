@@ -155,6 +155,7 @@ export const updateWorkspaceSchema = z.object({
       aiEnabled: z.boolean().optional(),
       aiSource: z.enum(['instance', 'workspace']).optional(),
       scimDefaultRole: z.enum(['member', 'guest']).optional(),
+      scimMatchGroupsByName: z.boolean().optional(),
     })
     .optional(),
 });
@@ -722,6 +723,9 @@ export const updateAuthProviderSchema = z
   });
 
 export const createScimTokenSchema = z.object({ name: z.string().trim().min(1).max(80) });
+
+/** Links a directory group to a team (or unlinks it, with null). */
+export const linkScimGroupSchema = z.object({ teamId: id.nullable() });
 
 /** IdP metadata to read SAML settings from: pasted XML, or a URL to fetch it from. */
 export const samlMetadataSchema = z

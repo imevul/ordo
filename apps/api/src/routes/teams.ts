@@ -34,7 +34,13 @@ import { mutate } from '../lib/mutate.ts';
 import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
 import { type Ctx, emit } from '../services/context.ts';
-import { addTeamMember, createTeam, listTeams, removeTeamMember } from '../services/teams.ts';
+import {
+  addTeamMember,
+  assertNotManaged,
+  createTeam,
+  listTeams,
+  removeTeamMember,
+} from '../services/teams.ts';
 import { assertTriageRule, toTriageRule } from '../services/triage.ts';
 
 /** Loads a team of the workspace and checks the caller's access to it. */
@@ -258,6 +264,7 @@ export async function teamRoutes(app: FastifyInstance) {
       if (!selfJoin && !canAdminTeam(ctx.access, teamId)) {
         throw forbidden('Only team admins can add people to this team').as('team_admins_add');
       }
+      await assertNotManaged(ctx, teamId);
       await addTeamMember(ctx, teamId, userId, input.role);
       return { ok: true };
     });
@@ -291,6 +298,7 @@ export async function teamRoutes(app: FastifyInstance) {
     const { teamId, userId } = req.params as { teamId: string; userId: string };
     return mutate(app, req, async (ctx) => {
       await loadTeam(ctx, teamId, userId === ctx.userId ? 'read' : 'admin');
+      await assertNotManaged(ctx, teamId);
       await removeTeamMember(ctx, teamId, userId);
       return { ok: true };
     });

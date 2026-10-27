@@ -292,6 +292,8 @@ export default {
       apiKeyCreated: 'created an API key',
       scimTokenCreated: 'created a directory sync token',
       scimTokenDeleted: 'revoked a directory sync token',
+      scimGroupLinked: 'linked directory group {group} to {team}',
+      scimGroupUnlinked: 'unlinked directory group {group}',
       memberJoinedByDirectory: 'was added by directory sync',
       passkeyAdded: 'added a passkey',
       passkeyRemoved: 'removed a passkey',

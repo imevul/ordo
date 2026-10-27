@@ -90,6 +90,11 @@ export default {
     leave: 'Lämna teamet',
     remove: 'Ta bort {name}',
     empty: '// ingen har gått med än',
+    managedBy: {
+      one: 'Medlemmarna kommer från kataloggruppen {groups}. Ändra dem i er identitetsleverantör.',
+      other:
+        'Medlemmarna kommer från kataloggrupperna {groups}. Ändra dem i er identitetsleverantör.',
+    },
   },
   sla: {
     title: 'SLA:er',

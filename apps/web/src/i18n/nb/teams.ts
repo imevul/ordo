@@ -88,6 +88,10 @@ export default {
     leave: 'Forlat teamet',
     remove: 'Fjern {name}',
     empty: '// ingen har blitt med ennå',
+    managedBy: {
+      one: 'Medlemmene kommer fra kataloggruppen {groups}. Endre dem i identitetsleverandøren.',
+      other: 'Medlemmene kommer fra kataloggruppene {groups}. Endre dem i identitetsleverandøren.',
+    },
   },
   sla: {
     title: 'SLA-er',
