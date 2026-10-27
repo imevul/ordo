@@ -16,7 +16,7 @@ import {
   workspaceMembers,
 } from '../db/schema.ts';
 import { badRequest, forbidden, notFound } from '../lib/errors.ts';
-import { type Access, canReadTeam, usersWithTeamAccess } from './access.ts';
+import { type Access, canReadTeam, teamScope, usersWithTeamAccess } from './access.ts';
 import { claimAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { getIssue } from './issues.ts';
@@ -63,6 +63,28 @@ export async function listComments(
     .where(eq(comments.issueId, issue.id))
     .orderBy(asc(comments.createdAt));
   return withReactions(db, rows);
+}
+
+/** The given comments, on issues `access` can see (not trashed or archived); for sync clients. */
+export async function commentsByIds(db: DbOrTx, access: Access, ids: string[]): Promise<Comment[]> {
+  if (!ids.length) return [];
+  const rows = await db
+    .select({ comment: comments })
+    .from(comments)
+    .innerJoin(issues, eq(issues.id, comments.issueId))
+    .where(
+      and(
+        inArray(comments.id, ids),
+        eq(issues.workspaceId, access.workspaceId),
+        teamScope(access, issues.teamId),
+        isNull(issues.deletedAt),
+        isNull(issues.archivedAt),
+      ),
+    );
+  return withReactions(
+    db,
+    rows.map((r) => r.comment),
+  );
 }
 
 /** Reactions per comment, grouped by emoji in the order each was first used. */

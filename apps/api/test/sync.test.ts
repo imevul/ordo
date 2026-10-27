@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Bootstrap, RealtimeEvent } from '@ordo/shared';
+import type { Bootstrap, RealtimeEvent, SyncIssuePage } from '@ordo/shared';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -136,5 +136,52 @@ describe('publishing', () => {
     );
     // Publishing directly would tell open clients about a change that sync clients never hear of.
     expect(offenders).toEqual([]);
+  });
+});
+
+describe('feed', () => {
+  it('loads issues a page at a time', async () => {
+    const all: string[] = [];
+    let after: string | null = null;
+    for (;;) {
+      const page: SyncIssuePage = (await owner.post(`${ws}/sync/issues`, { after, limit: 7 })).data;
+      all.push(...page.issues.map((i) => i.id));
+      if (!page.next) break;
+      after = page.next;
+    }
+    expect(all).toEqual([...all].sort());
+    expect(new Set(all).size).toBe(all.length);
+    expect(all.length).toBeGreaterThan(20);
+  });
+
+  it('pages through changes and says when more are waiting', async () => {
+    const snap = (await owner.get(`${ws}/sync/snapshot`)).data;
+    for (let i = 0; i < 3; i++) await newIssue(`Feed ${i}`);
+    const first = (
+      await owner.get(`${ws}/sync/changes?since=${snap.seq}&epoch=${snap.epoch}&limit=2`)
+    ).data;
+    expect(first).toMatchObject({ more: true, seq: snap.seq + 2 });
+    const rest = (await owner.get(`${ws}/sync/changes?since=${first.seq}&epoch=${snap.epoch}`))
+      .data;
+    expect(rest.more).toBe(false);
+    expect([...first.issues, ...rest.issues].map((i: { title: string }) => i.title)).toEqual([
+      'Feed 0',
+      'Feed 1',
+      'Feed 2',
+    ]);
+  });
+
+  it('says when the bootstrap needs loading again', async () => {
+    const snap = (await owner.get(`${ws}/sync/snapshot`)).data;
+    await owner.post(`${ws}/labels`, { name: `Feed ${Date.now()}`, color: '#ff1493' });
+    const got = (await owner.get(`${ws}/sync/changes?since=${snap.seq}&epoch=${snap.epoch}`)).data;
+    expect(got).toMatchObject({ bootstrapChanged: true, issues: [], kinds: [] });
+  });
+
+  it('sends clients behind the pruned log back to the start', async () => {
+    const { minSeq, epoch } = await cursor();
+    expect(minSeq).toBeGreaterThan(0);
+    const res = await owner.get(`${ws}/sync/changes?since=${minSeq - 1}&epoch=${epoch}`);
+    expect(res.statusCode).toBe(410);
   });
 });

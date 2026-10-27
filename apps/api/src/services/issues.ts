@@ -280,6 +280,18 @@ export async function queryIssuePage(
   return rows.map(toIssue);
 }
 
+/**
+ * The given issues as `access` may see them: in readable teams, not trashed or archived. Sync
+ * clients treat the ones missing from the answer as gone.
+ */
+export async function issuesByIds(db: DbOrTx, access: Access, ids: string[]): Promise<Issue[]> {
+  if (!ids.length) return [];
+  const rows = await baseQuery(db).where(
+    and(...filterConditions(access, {}), inArray(issues.id, ids)),
+  );
+  return rows.map(toIssue);
+}
+
 /** Every issue of a workspace, trashed ones too, a page at a time in id order (for exports). */
 export async function workspaceIssuePage(
   db: DbOrTx,

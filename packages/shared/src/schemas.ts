@@ -724,6 +724,17 @@ export const updateAuthProviderSchema = z
 
 export const createScimTokenSchema = z.object({ name: z.string().trim().min(1).max(80) });
 
+export const syncIssuesSchema = z.object({
+  after: id.nullish(),
+  limit: z.number().int().min(1).max(1000).default(500),
+});
+
+export const syncChangesQuerySchema = z.object({
+  since: z.coerce.number().int().min(0),
+  epoch: z.coerce.number().int().min(1),
+  limit: z.coerce.number().int().min(1).max(2000).default(500),
+});
+
 /** Links a directory group to a team (or unlinks it, with null). */
 export const linkScimGroupSchema = z.object({ teamId: id.nullable() });
 

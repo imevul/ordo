@@ -298,6 +298,26 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 `kind` is one of `issue`, `comment`, `project`, `projectUpdate`, `cycle`, `label`, `team`, `state`, `workspace`,
 `member`, `view`, `favorite`, `notification`, `import`, `export`; `action` is `created`, `updated` or `deleted`. Notification and
 favorite events are delivered only to their user. Events are hints — refetch what you display.
+Events also carry `seq` and `epoch`, their place in the workspace's change log (below). An issue that moves to a
+team you can't read arrives as `deleted` from the team you could.
+
+### Sync
+
+For clients that keep their own copy of a workspace (and work offline). Load it once, then follow the change log:
+
+| Method | Path             |                                                                                                |
+| ------ | ---------------- | ---------------------------------------------------------------------------------------------- |
+| GET    | `/sync/snapshot` | `{ seq, epoch, bootstrap }`: the bootstrap data as of change `seq`                             |
+| POST   | `/sync/issues`   | `{ after?, limit? }` → `{ issues, next }`: issues that aren't trashed or archived, in id order |
+| GET    | `/sync/changes`  | `?since=<seq>&epoch=<epoch>&limit=` → what changed after `since` (below)                       |
+
+A changes answer has `seq` (pass it as `since` next time), `more` (ask again straight away), `issues` and `comments`
+as they are now, `deletedIssueIds` and `deletedCommentIds` (deleted, trashed, archived, or moved out of your sight),
+`bootstrapChanged` (teams, members, labels, projects… changed: load the snapshot again) and `kinds` (other things
+that changed, such as `notification`). Only changes you're allowed to see are included, but `seq` moves past the
+others too. `410 resync` means the workspace started a new epoch (an import, a deleted team) or you're further
+behind than the 30 days the log keeps: start again from the snapshot. Read the snapshot before the issue pages; a
+change made while you load shows up in the changes after it.
 
 There is also a [GraphQL API](graphql.md) per workspace, for reading issues with everything around them in one request.
 

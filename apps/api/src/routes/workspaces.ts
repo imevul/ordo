@@ -9,7 +9,7 @@ import {
   updateWorkspaceSchema,
 } from '@ordo/shared';
 import { and, asc, count, desc, eq, isNull, or, sql } from 'drizzle-orm';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import {
   auditLog,
   favorites,
@@ -40,102 +40,106 @@ import { listTeams } from '../services/teams.ts';
 import { listTemplates } from '../services/templates.ts';
 import { listMembers, memberRole, toWorkspace, workspaceSettings } from '../services/workspaces.ts';
 
+/** Everything the app needs to show a workspace, as the requester may see it. */
+export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): Promise<Bootstrap> {
+  const { db } = app;
+  const user = requireUser(req);
+  const ws = requireWorkspace(req);
+  const access = ws.access;
+  const ai = await resolveWorkspaceAi(app, ws.id);
+  const [
+    workspace,
+    members,
+    teamList,
+    labelRows,
+    templates,
+    projects,
+    cycles,
+    viewRows,
+    favoriteRows,
+    unread,
+    bots,
+    placeholders,
+  ] = await Promise.all([
+    db.select().from(workspaces).where(eq(workspaces.id, ws.id)),
+    listMembers(db, access),
+    listTeams(db, access),
+    listLabels(db, access),
+    listTemplates(db, access),
+    listProjects(db, access),
+    listCycles(db, access),
+    db
+      .select()
+      .from(views)
+      .where(
+        and(eq(views.workspaceId, ws.id), or(eq(views.shared, true), eq(views.ownerId, user.id))),
+      )
+      .orderBy(asc(views.name)),
+    db
+      .select()
+      .from(favorites)
+      .where(and(eq(favorites.workspaceId, ws.id), eq(favorites.userId, user.id)))
+      .orderBy(asc(favorites.sortOrder)),
+    db
+      .select({ n: count() })
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.workspaceId, ws.id),
+          eq(notifications.userId, user.id),
+          isNull(notifications.readAt),
+          or(isNull(notifications.snoozedUntil), sql`${notifications.snoozedUntil} <= now()`),
+        ),
+      ),
+    workspaceBots(db, ws.id),
+    workspacePlaceholders(db, ws.id),
+  ]);
+  // Favorites only for things still visible.
+  const visibleTarget = (kind: string, id: string) =>
+    kind === 'project'
+      ? projects.some((p) => p.id === id)
+      : kind === 'team'
+        ? teamList.some((t) => t.id === id)
+        : kind === 'view'
+          ? viewRows.some((v) => v.id === id)
+          : true;
+  return {
+    workspace: toWorkspace(app, workspace[0]!),
+    role: ws.role,
+    members: members.map(({ avatarFileId, ...m }) => ({
+      ...m,
+      avatarUrl: signedFileUrl(app, avatarFileId),
+    })),
+    bots: bots.map((b) => ({ ...b, email: '', avatarUrl: null })),
+    placeholders,
+    teams: teamList,
+    labels: labelRows,
+    templates,
+    recurring: await listRecurring(db, access),
+    customers: await listCustomers(db, access),
+    initiatives: await listInitiatives(db, access, projects),
+    projects,
+    cycles,
+    views: viewRows.map(toView),
+    favorites: favoriteRows
+      .filter((f) => visibleTarget(f.kind, f.targetId))
+      .map((f) => ({ id: f.id, kind: f.kind, targetId: f.targetId, sortOrder: f.sortOrder })),
+    unreadCount: unread[0]?.n ?? 0,
+    ai: ai.settings
+      ? {
+          provider: ai.settings.provider,
+          model: ai.settings.model,
+          enabled: ai.enabled,
+          source: ai.source,
+        }
+      : null,
+  };
+}
+
 export async function workspaceRoutes(app: FastifyInstance) {
   const { db } = app;
 
-  app.get('/bootstrap', async (req): Promise<Bootstrap> => {
-    const user = requireUser(req);
-    const ws = requireWorkspace(req);
-    const access = ws.access;
-    const ai = await resolveWorkspaceAi(app, ws.id);
-    const [
-      workspace,
-      members,
-      teamList,
-      labelRows,
-      templates,
-      projects,
-      cycles,
-      viewRows,
-      favoriteRows,
-      unread,
-      bots,
-      placeholders,
-    ] = await Promise.all([
-      db.select().from(workspaces).where(eq(workspaces.id, ws.id)),
-      listMembers(db, access),
-      listTeams(db, access),
-      listLabels(db, access),
-      listTemplates(db, access),
-      listProjects(db, access),
-      listCycles(db, access),
-      db
-        .select()
-        .from(views)
-        .where(
-          and(eq(views.workspaceId, ws.id), or(eq(views.shared, true), eq(views.ownerId, user.id))),
-        )
-        .orderBy(asc(views.name)),
-      db
-        .select()
-        .from(favorites)
-        .where(and(eq(favorites.workspaceId, ws.id), eq(favorites.userId, user.id)))
-        .orderBy(asc(favorites.sortOrder)),
-      db
-        .select({ n: count() })
-        .from(notifications)
-        .where(
-          and(
-            eq(notifications.workspaceId, ws.id),
-            eq(notifications.userId, user.id),
-            isNull(notifications.readAt),
-            or(isNull(notifications.snoozedUntil), sql`${notifications.snoozedUntil} <= now()`),
-          ),
-        ),
-      workspaceBots(db, ws.id),
-      workspacePlaceholders(db, ws.id),
-    ]);
-    // Favorites only for things still visible.
-    const visibleTarget = (kind: string, id: string) =>
-      kind === 'project'
-        ? projects.some((p) => p.id === id)
-        : kind === 'team'
-          ? teamList.some((t) => t.id === id)
-          : kind === 'view'
-            ? viewRows.some((v) => v.id === id)
-            : true;
-    return {
-      workspace: toWorkspace(app, workspace[0]!),
-      role: ws.role,
-      members: members.map(({ avatarFileId, ...m }) => ({
-        ...m,
-        avatarUrl: signedFileUrl(app, avatarFileId),
-      })),
-      bots: bots.map((b) => ({ ...b, email: '', avatarUrl: null })),
-      placeholders,
-      teams: teamList,
-      labels: labelRows,
-      templates,
-      recurring: await listRecurring(db, access),
-      customers: await listCustomers(db, access),
-      initiatives: await listInitiatives(db, access, projects),
-      projects,
-      cycles,
-      views: viewRows.map(toView),
-      favorites: favoriteRows
-        .filter((f) => visibleTarget(f.kind, f.targetId))
-        .map((f) => ({ id: f.id, kind: f.kind, targetId: f.targetId, sortOrder: f.sortOrder })),
-      unreadCount: unread[0]?.n ?? 0,
-      ai: ai.settings
-        ? {
-            provider: ai.settings.provider,
-            model: ai.settings.model,
-            enabled: ai.enabled,
-            source: ai.source,
-          }
-        : null,
-    };
-  });
+  app.get('/bootstrap', (req) => loadBootstrap(app, req));
 
   app.patch('/', async (req) => {
     requireAdmin(req);
