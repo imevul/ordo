@@ -90,7 +90,7 @@ describe('instance', () => {
 
   beforeAll(async () => {
     // A fresh database so "first user" really is the first.
-    process.env.FOUNDATIONS_DB_URL ??= await freshDatabase('ordo_test_foundations');
+    process.env.FOUNDATIONS_DB_URL ??= await freshDatabase('foundations');
     app = await testApp({ databaseUrl: process.env.FOUNDATIONS_DB_URL, settingsFromEnv: {} });
   });
   afterAll(() => app.close());

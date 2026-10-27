@@ -44,8 +44,8 @@ Open <http://localhost:5173>. Load demo data with `pnpm db:seed` and sign in as 
 
 ## Tests
 
-API tests (`apps/api/test`) build the real Fastify app against a fresh `ordo_test` database on the dev Postgres
-(recreated by `test/global-setup.ts`) and drive it with `app.inject`. Point them elsewhere with
+API tests (`apps/api/test`) build the real Fastify app against a fresh `ordo_test_<pid>` database on the dev Postgres
+(created per run by `test/global-setup.ts` and dropped afterwards, so checkouts can run tests at the same time) and drive it with `app.inject`. Point them elsewhere with
 `TEST_ADMIN_DATABASE_URL`. They run serially and take a couple of seconds.
 
 ```bash
