@@ -23,6 +23,7 @@ import type {
 import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 import { toast } from 'sonner';
+import { t } from '../i18n/index.ts';
 import { ApiError, api, upload, wsPath } from './client.ts';
 
 export const keys = {
@@ -200,7 +201,7 @@ export function invalidateIssues(qc: QueryClient, slug: string) {
 }
 
 const onError = (err: unknown) =>
-  toast.error(err instanceof Error ? err.message : 'Something went wrong');
+  toast.error(err instanceof Error ? err.message : t('common.error'));
 
 export function useUpdateIssue(slug: string) {
   const qc = useQueryClient();

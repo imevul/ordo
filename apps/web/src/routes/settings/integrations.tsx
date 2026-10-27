@@ -16,13 +16,21 @@ import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
 import { Spinner } from '../../components/PageHeader.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
+import { type MessageKey, t, tx } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { CHAT_FORMS, ChatForm } from './chat.tsx';
+import { ChatForm, chatForms } from './chat.tsx';
 import { EmailForm } from './email-intake.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+
+/** A provider's name or description in the current language; the server's English for providers not translated. */
+function providerText(group: 'providers' | 'providerNames', key: string, fallback: string) {
+  const id = `integrations.${group}.${key}` as MessageKey;
+  const text = t(id);
+  return text === id ? fallback : text;
+}
 
 interface Field {
   key: string;
@@ -34,57 +42,79 @@ interface Field {
   initial?: string;
 }
 
-/** What each forge needs when connecting with a token. */
-const TOKEN_FORMS: Record<string, { fields: Field[]; docs: string }> = {
+/** What each forge needs when connecting with a token. A function: labels follow the language. */
+const tokenForms = (): Record<string, { fields: Field[]; docs: string }> => ({
   github: {
-    docs: 'A fine-grained token with read access to pull requests and contents, plus webhooks (read & write) to let Ordo add them.',
+    docs: t('integrations.forge.github.docs'),
     fields: [
-      { key: 'token', label: 'Personal access token', secret: true, placeholder: 'github_pat_…' },
+      {
+        key: 'token',
+        label: t('integrations.forge.github.token'),
+        secret: true,
+        placeholder: 'github_pat_…',
+      },
       {
         key: 'repos',
-        label: 'Repositories',
+        label: t('integrations.forge.repositories'),
         multiline: true,
         placeholder: 'acme/app\nacme/api',
-        hint: 'One owner/name per line.',
+        hint: t('integrations.forge.ownerNamePerLine'),
       },
       {
         key: 'apiUrl',
-        label: 'API URL',
+        label: t('integrations.forge.github.apiUrl'),
         initial: 'https://api.github.com',
-        hint: 'Change only for GitHub Enterprise Server (https://host/api/v3).',
+        hint: t('integrations.forge.github.apiUrlHint'),
       },
-      { key: 'webUrl', label: 'Web URL', initial: 'https://github.com' },
+      {
+        key: 'webUrl',
+        label: t('integrations.forge.github.webUrl'),
+        initial: 'https://github.com',
+      },
     ],
   },
   gitlab: {
-    docs: 'A personal, group or project access token with the "api" scope (Maintainer, to add webhooks).',
+    docs: t('integrations.forge.gitlab.docs'),
     fields: [
-      { key: 'baseUrl', label: 'GitLab URL', initial: 'https://gitlab.com' },
-      { key: 'token', label: 'Access token', secret: true, placeholder: 'glpat-…' },
+      {
+        key: 'baseUrl',
+        label: t('integrations.forge.gitlab.baseUrl'),
+        initial: 'https://gitlab.com',
+      },
+      {
+        key: 'token',
+        label: t('integrations.forge.accessToken'),
+        secret: true,
+        placeholder: 'glpat-…',
+      },
       {
         key: 'projects',
-        label: 'Projects',
+        label: t('integrations.forge.gitlab.projects'),
         multiline: true,
         placeholder: 'acme/app\nacme/platform/api',
-        hint: 'One group/project path per line.',
+        hint: t('integrations.forge.gitlab.projectsHint'),
       },
     ],
   },
   forgejo: {
-    docs: 'An access token with read access to repositories and write access to their webhooks (repository admin).',
+    docs: t('integrations.forge.forgejo.docs'),
     fields: [
-      { key: 'baseUrl', label: 'Server URL', placeholder: 'https://codeberg.org' },
-      { key: 'token', label: 'Access token', secret: true },
+      {
+        key: 'baseUrl',
+        label: t('integrations.forge.forgejo.baseUrl'),
+        placeholder: 'https://codeberg.org',
+      },
+      { key: 'token', label: t('integrations.forge.accessToken'), secret: true },
       {
         key: 'repos',
-        label: 'Repositories',
+        label: t('integrations.forge.repositories'),
         multiline: true,
         placeholder: 'acme/app',
-        hint: 'One owner/name per line.',
+        hint: t('integrations.forge.ownerNamePerLine'),
       },
     ],
   },
-};
+});
 
 export function IntegrationsSection() {
   const ws = useWorkspace();
@@ -112,14 +142,14 @@ export function IntegrationsSection() {
     window.history.replaceState(null, '', url);
   }, []);
 
-  if (!ws.isAdmin) return <p className="text-muted">Only admins can manage integrations.</p>;
+  if (!ws.isAdmin) return <p className="text-muted">{t('integrations.list.adminsOnly')}</p>;
   if (!data) return <Spinner />;
   const providerName = (k: string) => data.providers.find((p) => p.key === k)?.name ?? k;
   const isChat = (k: string) => data.providers.find((p) => p.key === k)?.category === 'chat';
 
   return (
     <>
-      <SettingsCard title="Connected">
+      <SettingsCard title={t('integrations.list.connectedTitle')}>
         {data.integrations.map((i) => (
           <div key={i.id} className="border-b border-border-soft py-3">
             <div className="flex items-center gap-3">
@@ -146,14 +176,15 @@ export function IntegrationsSection() {
                 </div>
                 <div className="truncate font-mono text-[11px] text-index">
                   {describe(i)}
-                  {i.lastEventAt && ` · last event ${relativeTime(i.lastEventAt)}`}
+                  {i.lastEventAt &&
+                    ` · ${t('integrations.list.lastEvent', { time: relativeTime(i.lastEventAt) })}`}
                 </div>
               </div>
               <StatusChip status={i.status} />
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                aria-label={`Settings for ${i.name}`}
+                aria-label={t('integrations.list.settingsFor', { name: i.name })}
                 onClick={() => setEditing(i)}
               >
                 <Pencil size={12} />
@@ -161,8 +192,16 @@ export function IntegrationsSection() {
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                aria-label={i.status === 'disabled' ? `Turn on ${i.name}` : `Turn off ${i.name}`}
-                title={i.status === 'disabled' ? 'Turn on' : 'Turn off'}
+                aria-label={
+                  i.status === 'disabled'
+                    ? t('integrations.list.turnOnName', { name: i.name })
+                    : t('integrations.list.turnOffName', { name: i.name })
+                }
+                title={
+                  i.status === 'disabled'
+                    ? t('integrations.list.turnOn')
+                    : t('integrations.list.turnOff')
+                }
                 onClick={async () => {
                   await api.patch(wsPath(ws.slug, `/integrations/${i.id}`), {
                     enabled: i.status === 'disabled',
@@ -175,13 +214,13 @@ export function IntegrationsSection() {
               <button
                 type="button"
                 className="btn btn-danger btn-sm"
-                aria-label={`Disconnect ${i.name}`}
+                aria-label={t('integrations.list.disconnectName', { name: i.name })}
                 onClick={async () => {
                   if (
                     !(await confirmDialog({
-                      title: `Disconnect ${i.name}?`,
-                      body: 'Links already on issues stay.',
-                      confirmLabel: 'Disconnect',
+                      title: t('integrations.list.confirmDisconnectTitle', { name: i.name }),
+                      body: t('integrations.list.confirmDisconnectBody'),
+                      confirmLabel: t('integrations.list.disconnect'),
                       danger: true,
                     }))
                   )
@@ -197,22 +236,26 @@ export function IntegrationsSection() {
           </div>
         ))}
         {data.integrations.length === 0 && (
-          <p className="font-mono text-[12px] text-index">// nothing connected yet</p>
+          <p className="font-mono text-[12px] text-index">{t('integrations.list.empty')}</p>
         )}
       </SettingsCard>
 
-      <SettingsCard title="Add an integration">
+      <SettingsCard title={t('integrations.list.addTitle')}>
         <div className="grid gap-3 sm:grid-cols-2">
           {data.providers.map((p) => (
             <div key={p.key} className="flex flex-col border border-border-soft bg-bg p-4">
-              <div className="mb-1 font-semibold">{p.name}</div>
-              <p className="mb-4 flex-1 text-[12.5px] text-muted">{p.description}</p>
+              <div className="mb-1 font-semibold">
+                {providerText('providerNames', p.key, p.name)}
+              </div>
+              <p className="mb-4 flex-1 text-[12.5px] text-muted">
+                {providerText('providers', p.key, p.description)}
+              </p>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm self-start"
                 onClick={() => setConnecting(p)}
               >
-                <Plug size={12} /> Connect
+                <Plug size={12} /> {t('integrations.list.connect')}
               </button>
             </div>
           ))}
@@ -239,14 +282,25 @@ export function IntegrationsSection() {
   );
 }
 
-const CHAT_DELIVERY: Record<string, string> = {
-  events: 'Events API',
-  socket: 'Socket Mode',
-  interactions: 'interactions endpoint',
-  gateway: 'gateway',
-  webhook: 'webhook',
-  longpoll: 'long polling',
-};
+/** How a chat integration receives events, as named in its summary line. */
+function chatDelivery(delivery: string | undefined) {
+  switch (delivery) {
+    case 'events':
+      return t('integrations.summary.delivery.events');
+    case 'socket':
+      return t('integrations.summary.delivery.socket');
+    case 'interactions':
+      return t('integrations.summary.delivery.interactions');
+    case 'gateway':
+      return t('integrations.summary.delivery.gateway');
+    case 'webhook':
+      return t('integrations.summary.delivery.webhook');
+    case 'longpoll':
+      return t('integrations.summary.delivery.longpoll');
+    default:
+      return '';
+  }
+}
 
 function describe(i: Integration) {
   const c = i.config as {
@@ -257,29 +311,33 @@ function describe(i: Integration) {
     baseUrl?: string;
     channels?: unknown[];
   };
-  if (c.mode === 'app') return 'GitHub App installation';
+  if (c.mode === 'app') return t('integrations.summary.githubApp');
   if (i.provider === 'email') {
     const e = i.config as { address?: string; host?: string };
-    return `${e.address ?? 'email'} · ${c.delivery === 'imap' ? `IMAP ${e.host}` : 'webhook'}`;
+    return `${e.address ?? t('integrations.summary.email')} · ${c.delivery === 'imap' ? `IMAP ${e.host}` : t('integrations.summary.webhook')}`;
   }
-  if (CHAT_FORMS[i.provider]) {
-    const n = c.channels?.length ?? 0;
-    const channels = `${n} channel${n === 1 ? '' : 's'}`;
+  if (chatForms()[i.provider]) {
+    const channels = t('integrations.summary.channels', { count: c.channels?.length ?? 0 });
     return i.provider === 'matrix'
-      ? `${channels} · sync`
-      : `${channels} · ${CHAT_DELIVERY[c.delivery ?? ''] ?? ''}`;
+      ? `${channels} · ${t('integrations.summary.sync')}`
+      : `${channels} · ${chatDelivery(c.delivery)}`;
   }
   const list = c.repos ?? c.projects ?? [];
   const where =
     list.length > 2 ? `${list.slice(0, 2).join(', ')} +${list.length - 2}` : list.join(', ');
-  return `${where} · ${c.delivery === 'poll' ? 'polling' : 'webhooks'}`;
+  return `${where} · ${c.delivery === 'poll' ? t('integrations.summary.polling') : t('integrations.summary.webhooks')}`;
 }
 
 function StatusChip({ status }: { status: Integration['status'] }) {
   if (status === 'active')
-    return <span className="chip [--chip:var(--color-success)]">active</span>;
-  if (status === 'error') return <span className="chip [--chip:var(--color-error)]">error</span>;
-  return <span className="tag font-mono">off</span>;
+    return (
+      <span className="chip [--chip:var(--color-success)]">{t('integrations.status.active')}</span>
+    );
+  if (status === 'error')
+    return (
+      <span className="chip [--chip:var(--color-error)]">{t('integrations.status.error')}</span>
+    );
+  return <span className="tag font-mono">{t('integrations.status.off')}</span>;
 }
 
 /** Webhooks or polling, and whether to comment on pull requests. Shared by connect and edit. */
@@ -299,7 +357,7 @@ function DeliveryFields({
   const local = /localhost|127\.0\.0\.1|\.local\b|\.lan\b/.test(location.host);
   return (
     <>
-      <div className="mb-1 text-[12px] text-muted">How Ordo hears about changes</div>
+      <div className="mb-1 text-[12px] text-muted">{t('integrations.forge.deliveryHeading')}</div>
       <label className="mb-1 flex items-start gap-2 text-[13px]">
         <input
           type="radio"
@@ -308,9 +366,12 @@ function DeliveryFields({
           onChange={() => setDelivery('webhook')}
         />
         <span>
-          Webhooks (instant)
+          {t('integrations.forge.webhooks')}
           <span className="block text-[11.5px] text-index">
-            {providerName} must be able to reach {location.origin}.
+            {t('integrations.forge.webhooksHint', {
+              provider: providerName,
+              origin: location.origin,
+            })}
           </span>
         </span>
       </label>
@@ -322,9 +383,11 @@ function DeliveryFields({
           onChange={() => setDelivery('poll')}
         />
         <span>
-          Polling (every two minutes)
+          {t('integrations.forge.polling')}
           <span className="block text-[11.5px] text-index">
-            For instances {providerName} can't reach{local ? ' — like this one looks to be' : ''}.
+            {local
+              ? t('integrations.forge.pollingHintLocal', { provider: providerName })
+              : t('integrations.forge.pollingHint', { provider: providerName })}
           </span>
         </span>
       </label>
@@ -335,7 +398,7 @@ function DeliveryFields({
           checked={comment}
           onChange={(e) => setComment(e.target.checked)}
         />
-        Comment on pull requests with a link to the issue
+        {t('integrations.forge.commentOnPullRequests')}
       </label>
     </>
   );
@@ -353,7 +416,7 @@ function TokenForm({
   onCancel: () => void;
 }) {
   const ws = useWorkspace();
-  const form = TOKEN_FORMS[provider.key]!;
+  const form = tokenForms()[provider.key]!;
   const config = (existing?.config ?? {}) as Record<string, unknown>;
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(
@@ -391,8 +454,14 @@ function TokenForm({
             config: cfg,
             secrets,
           });
-      if (res.status === 'error') toast.error(`Saved, but: ${res.lastError}`);
-      else toast.success(existing ? 'Saved' : `${provider.name} connected`);
+      if (res.status === 'error')
+        toast.error(t('integrations.form.savedButError', { error: res.lastError ?? '' }));
+      else
+        toast.success(
+          existing
+            ? t('common.saved')
+            : t('integrations.form.connected', { provider: provider.name }),
+        );
       onDone();
     } catch (err) {
       toast.error(errMsg(err));
@@ -408,7 +477,7 @@ function TokenForm({
         <FormRow
           key={f.key}
           label={f.label}
-          hint={f.secret && existing ? 'Leave empty to keep the current one.' : f.hint}
+          hint={f.secret && existing ? t('integrations.form.keepSecret') : f.hint}
         >
           {f.multiline ? (
             <textarea
@@ -436,14 +505,14 @@ function TokenForm({
         setDelivery={setDelivery}
         comment={comment}
         setComment={setComment}
-        providerName={provider.name}
+        providerName={providerText('providerNames', provider.key, provider.name)}
       />
       <div className="mt-6 flex justify-end gap-2">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>
-          Cancel
+          {t('common.cancel')}
         </button>
         <button className="btn btn-primary" disabled={busy}>
-          {existing ? 'Save' : 'Connect'}
+          {existing ? t('common.save') : t('integrations.form.connect')}
         </button>
       </div>
     </form>
@@ -501,19 +570,20 @@ function GithubAppPanel({ onCancel }: { onCancel: () => void }) {
   return (
     <div>
       <p className="mb-4 text-[12.5px] text-muted">
-        The GitHub App is the smoothest way: install it on your account or organisation, pick the
-        repositories, done. GitHub needs to reach{' '}
-        <span className="font-mono">{data.publicUrl}</span>.
+        {tx('integrations.githubApp.intro', {
+          url: <span className="font-mono">{data.publicUrl}</span>,
+        })}
       </p>
       {data.app ? (
         <button type="button" className="btn btn-primary" onClick={install}>
-          Install {data.app.name} on GitHub <span className="arrow">→</span>
+          {t('integrations.githubApp.install', { app: data.app.name })}{' '}
+          <span className="arrow">→</span>
         </button>
       ) : data.canCreate ? (
         <form onSubmit={create}>
           <FormRow
-            label="GitHub organisation (optional)"
-            hint="Owns the app. Leave empty to create it under your personal account. The app is private: it can only be installed where it's owned."
+            label={t('integrations.githubApp.org')}
+            hint={t('integrations.githubApp.orgHint')}
           >
             <input
               className="input"
@@ -523,17 +593,15 @@ function GithubAppPanel({ onCancel }: { onCancel: () => void }) {
             />
           </FormRow>
           <button className="btn btn-primary">
-            Create the GitHub App <span className="arrow">→</span>
+            {t('integrations.githubApp.create')} <span className="arrow">→</span>
           </button>
         </form>
       ) : (
-        <p className="text-[13px] text-muted">
-          An instance admin has to create the GitHub App once. Until then, connect with a token.
-        </p>
+        <p className="text-[13px] text-muted">{t('integrations.githubApp.needsInstanceAdmin')}</p>
       )}
       <div className="mt-6 flex justify-end">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>
-          Cancel
+          {t('common.cancel')}
         </button>
       </div>
     </div>
@@ -555,19 +623,27 @@ function ConnectModal({
   if (!provider) return null;
   const isGithub = provider.key === 'github';
   return (
-    <Modal open onClose={onClose} width={560} label={`Connect ${provider.name}`} align="center">
+    <Modal
+      open
+      onClose={onClose}
+      width={560}
+      label={t('integrations.connect.title', { provider: provider.name })}
+      align="center"
+    >
       <div className="max-h-[82vh] overflow-y-auto p-6">
-        <div className="section-label mb-4">Connect {provider.name}</div>
+        <div className="section-label mb-4">
+          {t('integrations.connect.title', { provider: provider.name })}
+        </div>
         {isGithub && (
           <div className="mb-5 flex gap-1 border-b border-border-soft">
-            {(['app', 'token'] as const).map((t) => (
+            {(['app', 'token'] as const).map((k) => (
               <button
-                key={t}
+                key={k}
                 type="button"
-                className={`-mb-px border-b-2 px-3 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase ${tab === t ? 'border-primary text-text' : 'border-transparent text-index hover:text-text'}`}
-                onClick={() => setTab(t)}
+                className={`-mb-px border-b-2 px-3 py-1.5 font-mono text-[11px] tracking-[0.12em] uppercase ${tab === k ? 'border-primary text-text' : 'border-transparent text-index hover:text-text'}`}
+                onClick={() => setTab(k)}
               >
-                {t === 'app' ? 'GitHub App' : 'Access token'}
+                {k === 'app' ? 'GitHub App' : t('integrations.connect.accessTokenTab')}
               </button>
             ))}
           </div>
@@ -576,12 +652,12 @@ function ConnectModal({
           <GithubAppPanel onCancel={onClose} />
         ) : provider.key === 'email' ? (
           <EmailForm provider={provider} onDone={onDone} onCancel={onClose} />
-        ) : CHAT_FORMS[provider.key] ? (
+        ) : chatForms()[provider.key] ? (
           <ChatForm provider={provider} onDone={onDone} onCancel={onClose} />
-        ) : TOKEN_FORMS[provider.key] ? (
+        ) : tokenForms()[provider.key] ? (
           <TokenForm provider={provider} onDone={onDone} onCancel={onClose} />
         ) : (
-          <p className="text-muted">This integration is set up elsewhere.</p>
+          <p className="text-muted">{t('integrations.connect.setUpElsewhere')}</p>
         )}
       </div>
     </Modal>
@@ -606,7 +682,7 @@ function EditModal({
   }, [integration]);
   if (!integration) return null;
   const app = (integration.config as { mode?: string }).mode === 'app';
-  const chat = !!CHAT_FORMS[integration.provider];
+  const chat = !!chatForms()[integration.provider];
   const info: IntegrationProviderInfo = {
     key: integration.provider,
     name: integration.name,
@@ -614,13 +690,19 @@ function EditModal({
     category: chat ? 'chat' : 'forge',
   };
   return (
-    <Modal open onClose={onClose} width={560} label={`${integration.name} settings`} align="center">
+    <Modal
+      open
+      onClose={onClose}
+      width={560}
+      label={t('integrations.edit.label', { name: integration.name })}
+      align="center"
+    >
       <div className="max-h-[82vh] overflow-y-auto p-6">
         <div className="section-label mb-4">{integration.name}</div>
         {integration.inboundUrl && (
           <div className="mb-5 border border-border-soft bg-bg p-3">
             <div className="mb-1 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-              Webhook URL
+              {t('integrations.edit.webhookUrl')}
             </div>
             <code className="block truncate font-mono text-[12px]">{integration.inboundUrl}</code>
           </div>
@@ -639,9 +721,7 @@ function EditModal({
               onDone();
             }}
           >
-            <p className="mb-4 text-[12.5px] text-muted">
-              Choose repositories on GitHub, in the app's installation settings.
-            </p>
+            <p className="mb-4 text-[12.5px] text-muted">{t('integrations.edit.appRepos')}</p>
             <label className="flex items-center gap-2 text-[13px]">
               <input
                 type="checkbox"
@@ -649,13 +729,13 @@ function EditModal({
                 checked={comment}
                 onChange={(e) => setComment(e.target.checked)}
               />
-              Comment on pull requests with a link to the issue
+              {t('integrations.forge.commentOnPullRequests')}
             </label>
             <div className="mt-6 flex justify-end gap-2">
               <button type="button" className="btn btn-ghost" onClick={onClose}>
-                Cancel
+                {t('common.cancel')}
               </button>
-              <button className="btn btn-primary">Save</button>
+              <button className="btn btn-primary">{t('common.save')}</button>
             </div>
           </form>
         ) : (
@@ -687,8 +767,8 @@ export function GitAccountsCard() {
   const reload = () => qc.invalidateQueries({ queryKey: key });
   return (
     <SettingsCard
-      title="Git usernames"
-      description={`Your usernames on the forges ${ws.workspace.name} is connected to, so your pull requests show as yours.`}
+      title={t('integrations.gitAccounts.title')}
+      description={t('integrations.gitAccounts.description', { workspace: ws.workspace.name })}
     >
       {data.services.map((s) => {
         const id = `${s.provider}:${s.host}`;
@@ -705,7 +785,7 @@ export function GitAccountsCard() {
                   {a.username}
                   <button
                     type="button"
-                    aria-label={`Remove ${a.username}`}
+                    aria-label={t('integrations.gitAccounts.remove', { username: a.username })}
                     className="text-index hover:text-text"
                     onClick={async () => {
                       await api.del(wsPath(ws.slug, `/me/external-accounts/${a.id}`));
@@ -735,12 +815,12 @@ export function GitAccountsCard() {
               >
                 <input
                   className="input h-7 w-44 font-mono text-[12px]"
-                  placeholder="username"
+                  placeholder={t('integrations.gitAccounts.placeholder')}
                   value={drafts[id] ?? ''}
                   onChange={(e) => setDrafts({ ...drafts, [id]: e.target.value })}
-                  aria-label={`Your ${s.name} username`}
+                  aria-label={t('integrations.gitAccounts.usernameLabel', { service: s.name })}
                 />
-                <button className="btn btn-ghost btn-sm">Add</button>
+                <button className="btn btn-ghost btn-sm">{t('common.add')}</button>
               </form>
             </div>
           </div>

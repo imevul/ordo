@@ -6,10 +6,11 @@ import {
   type ImportMapping,
   type ImportReport,
   type ImportTeamTarget,
-  STATE_TYPE_LABELS,
   STATE_TYPES,
 } from '@ordo/shared';
 import { useEffect, useState } from 'react';
+import { t } from '../../i18n/index.ts';
+import { stateTypeLabel } from '../../i18n/labels.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 
 /**
@@ -17,25 +18,7 @@ import { useWorkspace } from '../../lib/workspace.tsx';
  * mapping, and the report of a (dry) run.
  */
 
-const FIELD_LABELS: Record<CsvField, string> = {
-  id: 'ID',
-  title: 'Title',
-  description: 'Description',
-  team: 'Team',
-  status: 'Status',
-  priority: 'Priority',
-  assignee: 'Assignee',
-  creator: 'Creator',
-  labels: 'Labels',
-  project: 'Project',
-  parent: 'Parent',
-  estimate: 'Estimate',
-  dueDate: 'Due date',
-  createdAt: 'Created',
-  updatedAt: 'Updated',
-  completedAt: 'Completed',
-  url: 'URL',
-};
+const fieldLabel = (field: CsvField) => t(`imports.fields.${field}`);
 
 function Group({
   title,
@@ -91,14 +74,11 @@ export function CsvColumnsEditor({
   useEffect(() => setColumns(csv.columns), [csv.columns]);
   const changed = JSON.stringify(columns) !== JSON.stringify(csv.columns);
   return (
-    <Group
-      title="Columns"
-      hint="Which column of the file feeds each field. Changing them reads the file again."
-    >
+    <Group title={t('imports.columns.title')} hint={t('imports.columns.hint')}>
       <div className="grid grid-cols-1 gap-x-6 px-3 py-2 sm:grid-cols-2">
         {CSV_FIELDS.map((field) => (
           <label key={field} className="flex items-center gap-2 py-1 text-[12.5px]">
-            <span className="w-24 flex-none text-muted">{FIELD_LABELS[field]}</span>
+            <span className="w-24 flex-none text-muted">{fieldLabel(field)}</span>
             <select
               className={select}
               value={columns[field] ?? ''}
@@ -117,7 +97,7 @@ export function CsvColumnsEditor({
       {changed && (
         <div className="flex justify-end border-t border-border-soft p-2">
           <button type="button" className="btn btn-primary btn-sm" onClick={() => onApply(columns)}>
-            Read the file again
+            {t('imports.columns.readAgain')}
           </button>
         </div>
       )}
@@ -125,8 +105,14 @@ export function CsvColumnsEditor({
   );
 }
 
-const teamValue = (t: ImportTeamTarget | undefined) =>
-  !t ? '' : 'skip' in t ? 'skip' : 'create' in t ? 'create' : `team:${t.teamId}`;
+const teamValue = (target: ImportTeamTarget | undefined) =>
+  !target
+    ? ''
+    : 'skip' in target
+      ? 'skip'
+      : 'create' in target
+        ? 'create'
+        : `team:${target.teamId}`;
 
 /** Where everything goes. Edits stay local until `onChange` hands them up for saving. */
 export function MappingEditor({
@@ -147,24 +133,21 @@ export function MappingEditor({
 
   return (
     <>
-      <Group
-        title="Teams"
-        hint="Each team of the source goes into a team here, a new one, or nowhere."
-      >
-        {summary.teams.map((t) => {
-          const target = mapping.teams[t.id];
+      <Group title={t('imports.mapping.teams')} hint={t('imports.mapping.teamsHint')}>
+        {summary.teams.map((src) => {
+          const target = mapping.teams[src.id];
           return (
-            <div key={t.id} className="border-b border-border-soft/60 last:border-0">
+            <div key={src.id} className="border-b border-border-soft/60 last:border-0">
               <Row
                 left={
                   <span>
-                    {t.name}
-                    {t.key && (
-                      <span className="ml-2 font-mono text-[11px] text-index">{t.key}</span>
+                    {src.name}
+                    {src.key && (
+                      <span className="ml-2 font-mono text-[11px] text-index">{src.key}</span>
                     )}
                   </span>
                 }
-                count={t.issueCount}
+                count={src.issueCount}
               >
                 <select
                   className={select}
@@ -177,9 +160,9 @@ export function MappingEditor({
                         : v === 'create'
                           ? {
                               create: {
-                                name: t.name.slice(0, 120),
+                                name: src.name.slice(0, 120),
                                 key:
-                                  (t.key ?? t.name)
+                                  (src.key ?? src.name)
                                     .toUpperCase()
                                     .replace(/[^A-Z0-9]/g, '')
                                     .slice(0, 7) || 'IMP',
@@ -197,12 +180,12 @@ export function MappingEditor({
                     const lower = (x: string) => x.trim().toLowerCase();
                     onChange({
                       ...mapping,
-                      teams: { ...mapping.teams, [t.id]: next },
+                      teams: { ...mapping.teams, [src.id]: next },
                       statuses: {
                         ...mapping.statuses,
                         // No match leaves the status out: the team's default.
-                        [t.id]: Object.fromEntries(
-                          t.statuses
+                        [src.id]: Object.fromEntries(
+                          src.statuses
                             .map((s) => [
                               s.name,
                               states
@@ -223,31 +206,31 @@ export function MappingEditor({
                       {x.name} ({x.key})
                     </option>
                   ))}
-                  <option value="create">New team…</option>
-                  <option value="skip">Don't import</option>
+                  <option value="create">{t('imports.mapping.newTeam')}</option>
+                  <option value="skip">{t('imports.mapping.dontImport')}</option>
                 </select>
               </Row>
               {target && 'create' in target && (
                 <div className="flex gap-2 px-3 pb-2">
                   <input
                     className="input h-8 flex-1 text-[12.5px]"
-                    aria-label="New team's name"
+                    aria-label={t('imports.mapping.newTeamName')}
                     value={target.create.name}
                     onChange={(e) =>
                       set('teams', {
                         ...mapping.teams,
-                        [t.id]: { create: { ...target.create, name: e.target.value } },
+                        [src.id]: { create: { ...target.create, name: e.target.value } },
                       })
                     }
                   />
                   <input
                     className="input h-8 w-24 font-mono text-[12.5px] uppercase"
-                    aria-label="New team's key"
+                    aria-label={t('imports.mapping.newTeamKey')}
                     value={target.create.key}
                     onChange={(e) =>
                       set('teams', {
                         ...mapping.teams,
-                        [t.id]: {
+                        [src.id]: {
                           create: {
                             ...target.create,
                             key: e.target.value.toUpperCase().slice(0, 7),
@@ -264,27 +247,29 @@ export function MappingEditor({
       </Group>
 
       {summary.teams
-        .filter((t) => t.statuses.length && !('skip' in (mapping.teams[t.id] ?? { skip: true })))
-        .map((t) => {
-          const target = mapping.teams[t.id]!;
+        .filter(
+          (src) => src.statuses.length && !('skip' in (mapping.teams[src.id] ?? { skip: true })),
+        )
+        .map((src) => {
+          const target = mapping.teams[src.id]!;
           const team = 'teamId' in target ? ws.teamById.get(target.teamId) : undefined;
           return (
-            <Group key={t.id} title={`Statuses · ${t.name}`}>
-              {t.statuses.map((s) => (
+            <Group key={src.id} title={t('imports.mapping.statusesFor', { team: src.name })}>
+              {src.statuses.map((s) => (
                 <Row key={s.name} left={s.name} count={s.count}>
                   <select
                     className={select}
-                    value={mapping.statuses[t.id]?.[s.name] ?? ''}
+                    value={mapping.statuses[src.id]?.[s.name] ?? ''}
                     onChange={(e) => {
                       // The team's default is no entry at all.
-                      const { [s.name]: _, ...rest } = mapping.statuses[t.id] ?? {};
+                      const { [s.name]: _, ...rest } = mapping.statuses[src.id] ?? {};
                       set('statuses', {
                         ...mapping.statuses,
-                        [t.id]: e.target.value ? { ...rest, [s.name]: e.target.value } : rest,
+                        [src.id]: e.target.value ? { ...rest, [s.name]: e.target.value } : rest,
                       });
                     }}
                   >
-                    <option value="">The team's default</option>
+                    <option value="">{t('imports.mapping.teamDefault')}</option>
                     {team
                       ? [...team.states]
                           .sort((a, b) => a.position - b.position)
@@ -295,7 +280,7 @@ export function MappingEditor({
                           ))
                       : STATE_TYPES.map((type) => (
                           <option key={type} value={type}>
-                            {STATE_TYPE_LABELS[type]}
+                            {stateTypeLabel(type)}
                           </option>
                         ))}
                   </select>
@@ -306,10 +291,7 @@ export function MappingEditor({
         })}
 
       {people.length > 0 && (
-        <Group
-          title="People"
-          hint="Members are matched by claimed username, email or name. A placeholder keeps someone's name on their issues until you merge it into their account."
-        >
+        <Group title={t('imports.mapping.people')} hint={t('imports.mapping.peopleHint')}>
           <div className="max-h-80 overflow-y-auto">
             {people.map((u) => (
               <Row
@@ -331,9 +313,9 @@ export function MappingEditor({
                     set('users', { ...mapping.users, [u.id]: e.target.value || null })
                   }
                 >
-                  <option value="placeholder">New placeholder</option>
-                  <option value="">Nobody (leave unassigned)</option>
-                  <optgroup label="Members">
+                  <option value="placeholder">{t('imports.mapping.newPlaceholder')}</option>
+                  <option value="">{t('imports.mapping.nobody')}</option>
+                  <optgroup label={t('imports.mapping.members')}>
                     {ws.members.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name}
@@ -341,7 +323,7 @@ export function MappingEditor({
                     ))}
                   </optgroup>
                   {(ws.placeholders ?? []).length > 0 && (
-                    <optgroup label="Placeholders">
+                    <optgroup label={t('imports.mapping.placeholders')}>
                       {ws.placeholders.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
@@ -357,7 +339,7 @@ export function MappingEditor({
       )}
 
       {summary.labels.length > 0 && (
-        <Group title="Labels">
+        <Group title={t('imports.mapping.labels')}>
           {summary.labels.map((l) => (
             <Row key={l.id} left={l.name} count={l.count}>
               <select
@@ -365,8 +347,8 @@ export function MappingEditor({
                 value={mapping.labels[l.id] ?? 'create'}
                 onChange={(e) => set('labels', { ...mapping.labels, [l.id]: e.target.value })}
               >
-                <option value="create">New label</option>
-                <option value="skip">Leave off</option>
+                <option value="create">{t('imports.mapping.newLabel')}</option>
+                <option value="skip">{t('imports.mapping.leaveOff')}</option>
                 {workspaceLabels.map((x) => (
                   <option key={x.id} value={x.id}>
                     {x.name}
@@ -379,7 +361,7 @@ export function MappingEditor({
       )}
 
       {summary.projects.length > 0 && (
-        <Group title="Projects">
+        <Group title={t('imports.mapping.projects')}>
           {summary.projects.map((p) => (
             <Row key={p.id} left={p.name} count={p.count}>
               <select
@@ -387,8 +369,8 @@ export function MappingEditor({
                 value={mapping.projects[p.id] ?? 'create'}
                 onChange={(e) => set('projects', { ...mapping.projects, [p.id]: e.target.value })}
               >
-                <option value="create">New project</option>
-                <option value="skip">Leave out</option>
+                <option value="create">{t('imports.mapping.newProject')}</option>
+                <option value="skip">{t('imports.mapping.leaveOut')}</option>
                 {ws.projects.map((x) => (
                   <option key={x.id} value={x.id}>
                     {x.name}
@@ -408,10 +390,9 @@ export function MappingEditor({
           onChange={(e) => set('keepNumbers', e.target.checked)}
         />
         <span>
-          Keep issue numbers
+          {t('imports.mapping.keepNumbers')}
           <span className="block text-[12px] text-muted">
-            In teams that are new or have no issues yet. Elsewhere issues are numbered after the
-            team's own.
+            {t('imports.mapping.keepNumbersHint')}
           </span>
         </span>
       </label>
@@ -419,30 +400,30 @@ export function MappingEditor({
   );
 }
 
-const CREATED: [keyof ImportReport['created'], string][] = [
-  ['issues', 'issues'],
-  ['comments', 'comments'],
-  ['relations', 'relations'],
-  ['teams', 'teams'],
-  ['people', 'placeholders'],
-  ['labels', 'labels'],
-  ['projects', 'projects'],
-  ['cycles', 'cycles'],
+const CREATED: (keyof ImportReport['created'])[] = [
+  'issues',
+  'comments',
+  'relations',
+  'teams',
+  'people',
+  'labels',
+  'projects',
+  'cycles',
 ];
 
 export function ImportReportView({ report }: { report: ImportReport }) {
-  const cells = CREATED.filter(([key]) => key === 'issues' || report.created[key]);
+  const cells = CREATED.filter((key) => key === 'issues' || report.created[key]);
   return (
     <div className="mb-6">
       <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.16em] text-index uppercase">
-        {report.dryRun ? 'The dry run would create' : 'Created'}
+        {report.dryRun ? t('imports.report.wouldCreate') : t('imports.report.created')}
       </div>
       {/* Lines as borders, not a gap colour, so a short last row leaves no block behind. */}
       <div className="grid grid-cols-2 border-t border-l border-border-soft sm:grid-cols-4">
-        {cells.map(([key, label]) => (
+        {cells.map((key) => (
           <div key={key} className="border-r border-b border-border-soft bg-bg px-3 py-2.5">
             <div className="font-mono text-[10px] tracking-[0.16em] text-index uppercase">
-              {label}
+              {t(`imports.report.counts.${key}`)}
             </div>
             <div className="mt-0.5 font-mono text-[18px] font-semibold">{report.created[key]}</div>
           </div>
@@ -450,17 +431,17 @@ export function ImportReportView({ report }: { report: ImportReport }) {
       </div>
       {report.existing > 0 && (
         <p className="mt-2 text-[12px] text-muted">
-          {report.existing} already imported by an earlier run, so left as they are.
+          {t('imports.report.existing', { count: report.existing })}
         </p>
       )}
       <Problems
-        title="Skipped"
+        title={t('imports.report.skipped', { count: report.skippedCount })}
         items={report.skipped}
         count={report.skippedCount}
         tone="text-error"
       />
       <Problems
-        title="Warnings"
+        title={t('imports.report.warnings', { count: report.warningCount })}
         items={report.warnings}
         count={report.warningCount}
         tone="text-warning"
@@ -484,7 +465,7 @@ function Problems({
   return (
     <div className="mt-4">
       <div className={`mb-1 font-mono text-[10.5px] tracking-[0.16em] uppercase ${tone}`}>
-        {title} · {count}
+        {title}
       </div>
       <div className="max-h-48 overflow-y-auto border border-border-soft">
         {items.map((p, i) => (
@@ -502,7 +483,7 @@ function Problems({
         ))}
         {count > items.length && (
           <div className="px-3 py-1.5 font-mono text-[11.5px] text-index">
-            // and {count - items.length} more
+            {t('imports.report.andMore', { count: count - items.length })}
           </div>
         )}
       </div>

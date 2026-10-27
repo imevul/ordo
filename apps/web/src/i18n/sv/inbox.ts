@@ -1,0 +1,45 @@
+import type { Catalog, Translation } from '../index.ts';
+
+export default {
+  kicker: 'inkorg',
+  title: 'Inkorg',
+  snoozedTitle: 'Snoozade',
+  describe: {
+    assigned: '{actor} tilldelade dig',
+    unassigned: '{actor} tog bort dig som ansvarig',
+    comment: '{actor} kommenterade',
+    mention: '{actor} nämnde dig',
+    statusChanged: '{actor} ändrade status till {status}',
+    urgent: '{actor} markerade ärendet som brådskande',
+    slaBreached: '{actor} missade sin SLA',
+    reaction: '{actor} reagerade med {emoji} på din kommentar',
+  },
+  newStatus: 'en ny status',
+  deletedIssue: 'Raderat ärende',
+  unread: 'Oläst',
+  snoozedUntil: 'till {time}',
+  snooze: {
+    button: 'Snooza',
+    buttonTitle: 'Snooza (H)',
+    unsnoozeTitle: 'Avbryt snooze (H)',
+    inAnHour: 'Om en timme',
+    laterToday: 'Senare i dag',
+    tomorrowMorning: 'I morgon bitti',
+    nextWeek: 'Nästa vecka',
+  },
+  showSnoozed: 'Visa snoozade',
+  backToInbox: 'Tillbaka till inkorgen',
+  markAllRead: 'Markera alla som lästa',
+  deleteRead: 'Radera lästa notiser',
+  empty: {
+    snoozedTitle: 'inget snoozat',
+    snoozedBody: 'Snoozade notiser väntar här och kommer tillbaka som olästa när det är dags.',
+    title: 'allt är läst',
+    body: 'Tilldelningar, omnämnanden och kommentarer på ärenden du följer hamnar här.',
+  },
+  back: '← tillbaka till inkorgen',
+  select: {
+    title: 'inkorg',
+    body: 'Välj en notis för att se ärendet. J/K för att flytta, U för att växla läst, H för att snooza, ⌫ för att radera.',
+  },
+} satisfies Translation<Catalog['inbox']>;

@@ -1,0 +1,45 @@
+import type { Catalog, Translation } from '../index.ts';
+
+export default {
+  kicker: 'innboks',
+  title: 'Innboks',
+  snoozedTitle: 'Slumret',
+  describe: {
+    assigned: '{actor} tildelte deg',
+    unassigned: '{actor} fjernet deg som ansvarlig',
+    comment: '{actor} kommenterte',
+    mention: '{actor} nevnte deg',
+    statusChanged: '{actor} endret status til {status}',
+    urgent: '{actor} markerte saken som hastende',
+    slaBreached: '{actor} brøt SLA-en',
+    reaction: '{actor} reagerte med {emoji} på kommentaren din',
+  },
+  newStatus: 'en ny status',
+  deletedIssue: 'Slettet sak',
+  unread: 'Ulest',
+  snoozedUntil: 'til {time}',
+  snooze: {
+    button: 'Slumre',
+    buttonTitle: 'Slumre (H)',
+    unsnoozeTitle: 'Avslutt slumring (H)',
+    inAnHour: 'Om en time',
+    laterToday: 'Senere i dag',
+    tomorrowMorning: 'I morgen tidlig',
+    nextWeek: 'Neste uke',
+  },
+  showSnoozed: 'Vis slumrede',
+  backToInbox: 'Tilbake til innboksen',
+  markAllRead: 'Merk alle som lest',
+  deleteRead: 'Slett leste varsler',
+  empty: {
+    snoozedTitle: 'ingenting slumrer',
+    snoozedBody: 'Slumrede varsler venter her og kommer tilbake som uleste når det er tid.',
+    title: 'alt er lest',
+    body: 'Tildelinger, omtaler og kommentarer på saker du følger havner her.',
+  },
+  back: '← tilbake til innboksen',
+  select: {
+    title: 'innboks',
+    body: 'Velg et varsel for å se saken. J/K for å flytte, U for å veksle lest/ulest, H for å slumre, ⌫ for å slette.',
+  },
+} satisfies Translation<Catalog['inbox']>;

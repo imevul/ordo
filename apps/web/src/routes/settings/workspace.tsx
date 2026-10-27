@@ -7,7 +7,6 @@ import {
   DEFAULT_ACCENT,
   HEX_COLOR,
   type Invite,
-  MEMBER_ROLE_LABELS,
   MEMBER_ROLES,
   type MemberRole,
   THEME_BACKGROUND,
@@ -37,12 +36,14 @@ import { Picker } from '../../components/properties.tsx';
 import { ActorName } from '../../components/ui/ActorName.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
+import { type Catalog, type Params, t, tx } from '../../i18n/index.ts';
+import { roleLabel } from '../../i18n/labels.ts';
 import { relativeTime, shortDate } from '../../lib/format.ts';
 import { useTheme } from '../../lib/theme.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 
 // ─── General ───────────────────────────────────────────────────────────
 
@@ -58,13 +59,13 @@ export function WorkspaceSection() {
     qc.invalidateQueries({ queryKey: keys.me });
   };
 
-  if (!ws.isAdmin) return <p className="text-muted">Only admins can change workspace settings.</p>;
+  if (!ws.isAdmin) return <p className="text-muted">{t('workspaceSettings.general.adminsOnly')}</p>;
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
     try {
       await api.patch(wsPath(ws.slug, '/'), { name, slug });
-      toast.success('Workspace saved');
+      toast.success(t('workspaceSettings.general.saved'));
       if (slug !== ws.slug)
         navigate({ to: '/$slug/settings/$section', params: { slug, section: 'workspace' } });
       refresh();
@@ -79,7 +80,7 @@ export function WorkspaceSection() {
 
   return (
     <>
-      <SettingsCard title="Workspace">
+      <SettingsCard title={t('workspaceSettings.general.title')}>
         <div className="mb-5 flex items-center gap-4">
           {ws.workspace.logoUrl ? (
             <img src={ws.workspace.logoUrl} alt="" className="h-12 w-12 object-cover" />
@@ -92,7 +93,7 @@ export function WorkspaceSection() {
               className="btn btn-ghost btn-sm"
               onClick={() => fileRef.current?.click()}
             >
-              <Upload size={12} /> Upload logo
+              <Upload size={12} /> {t('workspaceSettings.general.uploadLogo')}
             </button>
             {ws.workspace.logoUrl && (
               <button
@@ -103,7 +104,7 @@ export function WorkspaceSection() {
                   refresh();
                 }}
               >
-                Remove
+                {t('common.remove')}
               </button>
             )}
           </div>
@@ -125,7 +126,7 @@ export function WorkspaceSection() {
           />
         </div>
         <form onSubmit={save}>
-          <FormRow label="Name">
+          <FormRow label={t('workspaceSettings.general.name')}>
             <input
               className="input"
               value={name}
@@ -133,7 +134,10 @@ export function WorkspaceSection() {
               required
             />
           </FormRow>
-          <FormRow label="URL" hint="Changing it breaks existing links.">
+          <FormRow
+            label={t('workspaceSettings.general.url')}
+            hint={t('workspaceSettings.general.urlHint')}
+          >
             <div className="flex items-center border border-border bg-bg focus-within:border-primary">
               <span className="pl-3 font-mono text-[12px] text-index">{location.host}/</span>
               <input
@@ -144,25 +148,25 @@ export function WorkspaceSection() {
               />
             </div>
           </FormRow>
-          <button className="btn btn-primary">Save</button>
+          <button className="btn btn-primary">{t('common.save')}</button>
         </form>
       </SettingsCard>
 
       <SettingsCard
-        title="Default team"
-        description="New members (except guests) join this team automatically, and it's preselected for new issues."
+        title={t('workspaceSettings.defaultTeam.title')}
+        description={t('workspaceSettings.defaultTeam.description')}
       >
         <select
           className="input w-72"
           value={ws.workspace.defaultTeamId ?? 'none'}
           onChange={(e) => setDefaultTeam(e.target.value)}
         >
-          <option value="none">None</option>
+          <option value="none">{t('common.none')}</option>
           {ws.teams
-            .filter((t) => !t.private)
-            .map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+            .filter((team) => !team.private)
+            .map((team) => (
+              <option key={team.id} value={team.id}>
+                {team.name}
               </option>
             ))}
         </select>
@@ -177,6 +181,19 @@ export function WorkspaceSection() {
       {ws.isOwner && <DangerZone />}
     </>
   );
+}
+
+/** A preset's name in the reader's language; Hotline Pink is a name and stays as it is. */
+function presetName(name: string) {
+  const names: Record<string, string> = {
+    Ember: t('workspaceSettings.accent.presets.ember'),
+    Amber: t('workspaceSettings.accent.presets.amber'),
+    Acid: t('workspaceSettings.accent.presets.acid'),
+    Mint: t('workspaceSettings.accent.presets.mint'),
+    Electric: t('workspaceSettings.accent.presets.electric'),
+    Violet: t('workspaceSettings.accent.presets.violet'),
+  };
+  return names[name] ?? name;
 }
 
 /**
@@ -199,15 +216,15 @@ function AccentCard() {
         },
       });
       qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
-      toast.success('Accent saved');
+      toast.success(t('workspaceSettings.accent.saved'));
     } catch (err) {
       toast.error(errMsg(err));
     }
   };
   return (
     <SettingsCard
-      title="Accent colour"
-      description="Buttons, highlights and glows across this workspace. Everyone in it sees the same colour (a deeper shade of it in the light theme); sign-in pages stay Hotline Pink."
+      title={t('workspaceSettings.accent.title')}
+      description={t('workspaceSettings.accent.description')}
     >
       <div className="mb-4 flex flex-wrap gap-2">
         {ACCENT_PRESETS.map((p) => (
@@ -219,7 +236,7 @@ function AccentCard() {
             aria-pressed={draft.toLowerCase() === p.color}
           >
             <span className="h-3 w-3" style={{ background: p.color }} />
-            {p.name}
+            {presetName(p.name)}
           </button>
         ))}
       </div>
@@ -229,13 +246,13 @@ function AccentCard() {
           className="h-8 w-10 cursor-pointer border border-border bg-bg p-0.5"
           value={valid ? draft : DEFAULT_ACCENT}
           onChange={(e) => setDraft(e.target.value)}
-          aria-label="Custom colour"
+          aria-label={t('workspaceSettings.accent.custom')}
         />
         <input
           className="input w-32 font-mono"
           value={draft}
           onChange={(e) => setDraft(e.target.value.trim())}
-          aria-label="Hex colour"
+          aria-label={t('workspaceSettings.accent.hex')}
         />
       </div>
       {/* The palette is a set of CSS variables, so this box previews it without touching the page. */}
@@ -244,21 +261,28 @@ function AccentCard() {
         style={valid ? (accentVariables(draft, mode) as React.CSSProperties) : undefined}
       >
         <div className="kicker mb-2">
-          <span className="text-muted">// </span>preview
+          <span className="text-muted">// </span>
+          {t('workspaceSettings.accent.preview')}
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <span className="btn btn-primary btn-sm">Primary</span>
-          <span className="btn btn-ghost btn-sm">Ghost</span>
-          <span className="chip [--chip:var(--color-primary)]">in progress</span>
-          <span className="text-[13px] text-highlight">a link</span>
+          <span className="btn btn-primary btn-sm">
+            {t('workspaceSettings.accent.previewPrimary')}
+          </span>
+          <span className="btn btn-ghost btn-sm">{t('workspaceSettings.accent.previewGhost')}</span>
+          <span className="chip [--chip:var(--color-primary)]">
+            {t('workspaceSettings.accent.previewChip')}
+          </span>
+          <span className="text-[13px] text-highlight">
+            {t('workspaceSettings.accent.previewLink')}
+          </span>
           <span className="h-[7px] w-[7px] bg-primary shadow-[0_0_10px_var(--color-primary)]" />
-          <span className="text-[12px] text-muted">muted text</span>
+          <span className="text-[12px] text-muted">
+            {t('workspaceSettings.accent.previewMuted')}
+          </span>
         </div>
       </div>
       {faint && (
-        <p className="mb-3 text-[12px] text-warning">
-          This colour is hard to see on the dark background; pick something brighter.
-        </p>
+        <p className="mb-3 text-[12px] text-warning">{t('workspaceSettings.accent.tooFaint')}</p>
       )}
       <div className="flex gap-2">
         <button
@@ -267,7 +291,7 @@ function AccentCard() {
           disabled={!valid || draft.toLowerCase() === saved.toLowerCase()}
           onClick={() => save(draft)}
         >
-          Save
+          {t('common.save')}
         </button>
         {saved !== DEFAULT_ACCENT && (
           <button
@@ -278,7 +302,7 @@ function AccentCard() {
               save(DEFAULT_ACCENT);
             }}
           >
-            Back to Hotline Pink
+            {t('workspaceSettings.accent.reset')}
           </button>
         )}
       </div>
@@ -292,21 +316,17 @@ function BranchFormatCard() {
   const [format, setFormat] = useState(ws.workspace.settings.gitBranchFormat);
   const example = branchName(format, {
     identifier: 'ENG-42',
-    title: 'Fix the flux capacitor',
+    title: t('workspaceSettings.branch.exampleTitle'),
     username: ws.me.username,
   });
   return (
     <SettingsCard
-      title="Git branch names"
-      description={
-        <>
-          What “Copy git branch name” produces. Use{' '}
-          <code className="font-mono">{'{identifier}'}</code>,{' '}
-          <code className="font-mono">{'{title}'}</code> and{' '}
-          <code className="font-mono">{'{username}'}</code>. Branches containing the identifier link
-          to the issue.
-        </>
-      }
+      title={t('workspaceSettings.branch.title')}
+      description={tx('workspaceSettings.branch.description', {
+        identifier: <code className="font-mono">{'{identifier}'}</code>,
+        title: <code className="font-mono">{'{title}'}</code>,
+        username: <code className="font-mono">{'{username}'}</code>,
+      })}
     >
       <form
         className="flex gap-2"
@@ -315,7 +335,7 @@ function BranchFormatCard() {
           try {
             await api.patch(wsPath(ws.slug, '/'), { settings: { gitBranchFormat: format } });
             qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
-            toast.success('Saved');
+            toast.success(t('common.saved'));
           } catch (err) {
             toast.error(errMsg(err));
           }
@@ -325,9 +345,9 @@ function BranchFormatCard() {
           className="input w-72 font-mono"
           value={format}
           onChange={(e) => setFormat(e.target.value)}
-          aria-label="Branch name format"
+          aria-label={t('workspaceSettings.branch.formatLabel')}
         />
-        <button className="btn btn-primary">Save</button>
+        <button className="btn btn-primary">{t('common.save')}</button>
       </form>
       <p className="mt-2 font-mono text-[11.5px] text-index">→ {example}</p>
     </SettingsCard>
@@ -340,18 +360,18 @@ function AiCard() {
   const qc = useQueryClient();
   return (
     <SettingsCard
-      title="AI assistance"
+      title={t('workspaceSettings.ai.title')}
       description={
         ws.ai
           ? ws.ai.provider === 'anthropic'
-            ? `Summaries, issue drafts and triage suggestions by Claude (${ws.ai.model}). When someone asks, the issue text they can see is sent to Anthropic's API. Ordo stores neither the request nor the answer.`
-            : `Summaries, issue drafts and triage suggestions by ${ws.ai.model}, a model your instance runs or reaches itself. When someone asks, the issue text they can see is sent to it.`
-          : 'An instance admin can set up a model (the Claude API or a local OpenAI-compatible one such as Ollama) for summaries, issue drafts and triage suggestions.'
+            ? t('workspaceSettings.ai.claude', { model: ws.ai.model })
+            : t('workspaceSettings.ai.local', { model: ws.ai.model })
+          : t('workspaceSettings.ai.notSetUp')
       }
     >
       {ws.ai && (
-        <label className="flex items-center justify-between py-2.5 text-[13.5px]">
-          Offer AI assistance in this workspace
+        <label className="flex items-center justify-between gap-3 py-2.5 text-[13.5px]">
+          {t('workspaceSettings.ai.toggle')}
           <input
             type="checkbox"
             className="accent-primary"
@@ -385,15 +405,18 @@ function DangerZone() {
   );
 
   return (
-    <SettingsCard title="Danger zone">
+    <SettingsCard title={t('workspaceSettings.danger.title')}>
       <div className="mb-6">
-        <div className="mb-2 text-[13.5px]">Transfer ownership</div>
-        <div className="flex gap-2">
+        <div className="mb-2 text-[13.5px]">{t('workspaceSettings.danger.transferOwnership')}</div>
+        <div className="flex flex-wrap gap-2">
           <select className="input w-72" value={heir} onChange={(e) => setHeir(e.target.value)}>
-            <option value="">Choose a member…</option>
+            <option value="">{t('workspaceSettings.danger.chooseMember')}</option>
             {candidates.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.name} ({MEMBER_ROLE_LABELS[m.role]})
+                {t('workspaceSettings.danger.memberOption', {
+                  name: m.name,
+                  role: roleLabel(m.role),
+                })}
               </option>
             ))}
           </select>
@@ -405,9 +428,9 @@ function DangerZone() {
               const who = ws.memberById.get(heir)?.name;
               if (
                 !(await confirmDialog({
-                  title: `Make ${who} the owner?`,
-                  body: "You'll become an admin.",
-                  confirmLabel: 'Transfer ownership',
+                  title: t('workspaceSettings.danger.transferTitle', { name: who ?? '' }),
+                  body: t('workspaceSettings.danger.transferBody'),
+                  confirmLabel: t('workspaceSettings.danger.transferOwnership'),
                   danger: true,
                 }))
               )
@@ -417,25 +440,30 @@ function DangerZone() {
                   userId: heir,
                   stepDown: true,
                 });
-                toast.success(`${who} now owns ${ws.workspace.name}`);
+                toast.success(
+                  t('workspaceSettings.danger.transferred', {
+                    name: who ?? '',
+                    workspace: ws.workspace.name,
+                  }),
+                );
                 qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
               } catch (err) {
                 toast.error(errMsg(err));
               }
             }}
           >
-            Transfer
+            {t('workspaceSettings.danger.transfer')}
           </button>
         </div>
       </div>
       <button type="button" className="btn btn-danger" onClick={() => setDeleting(true)}>
-        <Trash2 size={13} /> Delete workspace
+        <Trash2 size={13} /> {t('workspaceSettings.danger.deleteWorkspace')}
       </button>
       <Modal
         open={deleting}
         onClose={() => setDeleting(false)}
         width={460}
-        label="Delete workspace"
+        label={t('workspaceSettings.danger.deleteWorkspace')}
         align="center"
       >
         <form
@@ -451,11 +479,15 @@ function DangerZone() {
             }
           }}
         >
-          <div className="section-label mb-4">Careful</div>
-          <h2 className="text-lg font-bold tracking-tight">Delete {ws.workspace.name}?</h2>
+          <div className="section-label mb-4">{t('workspaceSettings.danger.careful')}</div>
+          <h2 className="text-lg font-bold tracking-tight">
+            {t('workspaceSettings.danger.deleteTitle', { name: ws.workspace.name })}
+          </h2>
           <p className="mt-2 text-[13.5px] text-muted">
-            This permanently deletes every team, issue, project and comment in it, for everyone.
-            Type <span className="font-mono text-text">{ws.slug}</span> to confirm.
+            {tx('workspaceSettings.danger.deleteBody', {
+              slug: ws.slug,
+              code: (c) => <span className="font-mono text-text">{c}</span>,
+            })}
           </p>
           <input
             className="input mt-4 font-mono"
@@ -465,10 +497,10 @@ function DangerZone() {
           />
           <div className="mt-6 flex justify-end gap-2">
             <button type="button" className="btn btn-ghost" onClick={() => setDeleting(false)}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button className="btn btn-danger" disabled={confirm !== ws.slug}>
-              Delete forever
+              {t('workspaceSettings.danger.deleteForever')}
             </button>
           </div>
         </form>
@@ -509,9 +541,11 @@ function InviteForm() {
           if (list.length === 0 || !emailEnabled) {
             navigator.clipboard?.writeText(rows.map((r) => r.url).join('\n'));
             toast.success(
-              list.length ? `${rows.length} invite links copied` : 'Invite link copied',
+              list.length
+                ? t('workspaceSettings.invite.linksCopied', { count: rows.length })
+                : t('workspaceSettings.invite.linkCopied'),
             );
-          } else toast.success(`Invited ${rows.length} ${rows.length === 1 ? 'person' : 'people'}`);
+          } else toast.success(t('workspaceSettings.invite.invited', { count: rows.length }));
         },
       },
     );
@@ -519,18 +553,18 @@ function InviteForm() {
 
   return (
     <SettingsCard
-      title="Invite people"
+      title={t('workspaceSettings.invite.title')}
       description={
         emailEnabled
-          ? 'Enter email addresses to send invites, or leave it empty to create a shareable link. Links with an address only work for that person; open links work for anyone until they expire (14 days).'
-          : "Email isn't set up on this instance, so invites are links you share yourself. Links with an address only work for that person."
+          ? t('workspaceSettings.invite.descriptionEmail')
+          : t('workspaceSettings.invite.descriptionNoEmail')
       }
     >
       <form onSubmit={submit}>
         <textarea
           className="input"
           rows={2}
-          placeholder="ann@example.com, bob@example.com (optional)"
+          placeholder={t('workspaceSettings.invite.emailsPlaceholder')}
           value={emails}
           onChange={(e) => setEmails(e.target.value)}
         />
@@ -539,21 +573,21 @@ function InviteForm() {
             className="input w-32"
             value={role}
             onChange={(e) => setRole(e.target.value as Exclude<MemberRole, 'owner'>)}
-            aria-label="Role"
+            aria-label={t('workspaceSettings.invite.role')}
           >
             {(ws.isAdmin
               ? (['member', 'guest', 'admin'] as const)
               : (['member', 'guest'] as const)
             ).map((r) => (
               <option key={r} value={r}>
-                {MEMBER_ROLE_LABELS[r]}
+                {roleLabel(r)}
               </option>
             ))}
           </select>
           <Picker
             multi
-            placeholder="Add to teams…"
-            options={ws.teams.map((t) => ({ value: t.id, label: t.name, hint: t.key }))}
+            placeholder={t('workspaceSettings.invite.addToTeams')}
+            options={ws.teams.map((team) => ({ value: team.id, label: team.name, hint: team.key }))}
             selected={teamIds}
             onSelect={(id) =>
               setTeamIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]))
@@ -561,17 +595,20 @@ function InviteForm() {
             trigger={
               <button type="button" className="prop">
                 {teamIds.length
-                  ? `${teamIds.length} team${teamIds.length > 1 ? 's' : ''}`
-                  : 'Teams…'}
+                  ? t('workspaceSettings.invite.teamCount', { count: teamIds.length })
+                  : t('workspaceSettings.invite.teams')}
               </button>
             }
           />
           <button className="btn btn-primary ml-auto">
-            <Mail size={13} /> {emails.trim() && emailEnabled ? 'Send invites' : 'Create link'}
+            <Mail size={13} />{' '}
+            {emails.trim() && emailEnabled
+              ? t('workspaceSettings.invite.send')
+              : t('workspaceSettings.invite.createLink')}
           </button>
         </div>
         {role === 'guest' && (
-          <p className="mt-2 text-[12px] text-index">Guests only see the teams you add them to.</p>
+          <p className="mt-2 text-[12px] text-index">{t('workspaceSettings.invite.guestHint')}</p>
         )}
       </form>
     </SettingsCard>
@@ -593,39 +630,39 @@ function PendingInvites() {
     (id: string) => api.post(wsPath(ws.slug, `/invites/${id}/resend`)),
     {
       invalidate: inv,
-      success: 'Invite sent again',
+      success: t('workspaceSettings.pending.resent'),
     },
   );
   if (invites.length === 0) return null;
   return (
-    <SettingsCard title={`Pending invites · ${invites.length}`}>
+    <SettingsCard title={t('workspaceSettings.pending.title', { count: invites.length })}>
       {invites.map((i) => (
         <div
           key={i.id}
           className="flex h-11 items-center gap-3 border-b border-border-soft text-[13px]"
         >
           <span className="min-w-0 flex-1 truncate">
-            {i.email ?? <span className="text-muted">Anyone with the link</span>}
+            {i.email ?? <span className="text-muted">{t('workspaceSettings.pending.anyone')}</span>}
             {i.teamIds.length > 0 && (
               <span className="ml-2 text-index">
-                → {i.teamIds.map((t) => ws.teamById.get(t)?.key ?? '?').join(', ')}
+                → {i.teamIds.map((id) => ws.teamById.get(id)?.key ?? '?').join(', ')}
               </span>
             )}
           </span>
-          <span className="tag font-mono">{MEMBER_ROLE_LABELS[i.role]}</span>
+          <span className="tag font-mono">{roleLabel(i.role)}</span>
           <span className="hidden font-mono text-[11px] text-index sm:block">
             {i.lastSentAt
-              ? `sent ${relativeTime(i.lastSentAt)}`
-              : `expires ${shortDate(i.expiresAt)}`}
+              ? t('workspaceSettings.pending.sent', { time: relativeTime(i.lastSentAt) })
+              : t('workspaceSettings.pending.expires', { date: shortDate(i.expiresAt) })}
           </span>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => {
               navigator.clipboard?.writeText(i.url);
-              toast.success('Invite link copied');
+              toast.success(t('workspaceSettings.invite.linkCopied'));
             }}
-            aria-label="Copy invite link"
+            aria-label={t('workspaceSettings.pending.copyLink')}
           >
             <Copy size={12} />
           </button>
@@ -634,7 +671,7 @@ function PendingInvites() {
               type="button"
               className="btn btn-ghost btn-sm"
               onClick={() => resend.mutate(i.id)}
-              aria-label="Resend"
+              aria-label={t('workspaceSettings.pending.resend')}
             >
               <RotateCcw size={12} />
             </button>
@@ -643,7 +680,7 @@ function PendingInvites() {
             type="button"
             className="btn btn-danger btn-sm"
             onClick={() => revoke.mutate(i.id)}
-            aria-label="Revoke invite"
+            aria-label={t('workspaceSettings.pending.revoke')}
           >
             <Trash2 size={12} />
           </button>
@@ -666,7 +703,7 @@ export function MembersSection() {
     ws.slug,
     (userId: string) => api.del(wsPath(ws.slug, `/members/${userId}`)),
     {
-      success: 'Member removed',
+      success: t('workspaceSettings.members.removed'),
     },
   );
 
@@ -674,7 +711,7 @@ export function MembersSection() {
     <>
       {canInvite && <InviteForm />}
       {canInvite && <PendingInvites />}
-      <SettingsCard title={`Members · ${ws.members.length}`}>
+      <SettingsCard title={t('workspaceSettings.members.title', { count: ws.members.length })}>
         {ws.members.map((m) => (
           <div
             key={m.id}
@@ -683,9 +720,14 @@ export function MembersSection() {
             <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={24} />
             <div className="min-w-0 flex-1">
               <div className="truncate text-[13.5px]">
-                {m.name} {m.id === ws.me.id && <span className="text-index">(you)</span>}
+                {m.name}{' '}
+                {m.id === ws.me.id && (
+                  <span className="text-index">{t('workspaceSettings.members.you')}</span>
+                )}
                 {m.suspended && (
-                  <span className="chip ml-2 [--chip:var(--color-warning)]">suspended</span>
+                  <span className="chip ml-2 [--chip:var(--color-warning)]">
+                    {t('workspaceSettings.members.suspended')}
+                  </span>
                 )}
               </div>
               <div className="truncate font-mono text-[11px] text-index">
@@ -694,7 +736,7 @@ export function MembersSection() {
               </div>
             </div>
             <span className="hidden font-mono text-[11px] text-index md:block">
-              joined {relativeTime(m.joinedAt)}
+              {t('workspaceSettings.members.joined', { time: relativeTime(m.joinedAt) })}
             </span>
             {/* Admins manage roles; only owners can grant or take away ownership. */}
             {isAdmin && (ws.isOwner || m.role !== 'owner') ? (
@@ -702,24 +744,33 @@ export function MembersSection() {
                 className="h-7 border border-border bg-bg px-2 text-[12px] outline-none focus:border-primary"
                 value={m.role}
                 onChange={(e) => update.mutate({ userId: m.id, role: e.target.value })}
-                aria-label={`Role of ${m.name}`}
+                aria-label={t('workspaceSettings.members.roleOf', { name: m.name })}
               >
                 {MEMBER_ROLES.filter((r) => ws.isOwner || r !== 'owner').map((r) => (
                   <option key={r} value={r}>
-                    {MEMBER_ROLE_LABELS[r]}
+                    {roleLabel(r)}
                   </option>
                 ))}
               </select>
             ) : (
-              <span className="tag font-mono">{MEMBER_ROLE_LABELS[m.role]}</span>
+              <span className="tag font-mono">{roleLabel(m.role)}</span>
             )}
             {isAdmin && m.id !== ws.me.id && (ws.isOwner || m.role !== 'owner') && (
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => update.mutate({ userId: m.id, suspended: !m.suspended })}
-                aria-label={m.suspended ? `Restore ${m.name}` : `Suspend ${m.name}`}
-                title={m.suspended ? 'Restore access' : 'Suspend (keeps their history)'}
+                aria-label={t(
+                  m.suspended
+                    ? 'workspaceSettings.members.restore'
+                    : 'workspaceSettings.members.suspend',
+                  { name: m.name },
+                )}
+                title={
+                  m.suspended
+                    ? t('workspaceSettings.members.restoreHint')
+                    : t('workspaceSettings.members.suspendHint')
+                }
               >
                 {m.suspended ? <UserCheck size={12} /> : <Ban size={12} />}
               </button>
@@ -731,13 +782,19 @@ export function MembersSection() {
                 onClick={async () => {
                   const self = m.id === ws.me.id;
                   const ok = await confirmDialog({
-                    title: self ? 'Leave this workspace?' : `Remove ${m.name} from the workspace?`,
-                    confirmLabel: self ? 'Leave' : 'Remove',
+                    title: self
+                      ? t('workspaceSettings.members.leaveTitle')
+                      : t('workspaceSettings.members.removeTitle', { name: m.name }),
+                    confirmLabel: self ? t('workspaceSettings.members.leave') : t('common.remove'),
                     danger: true,
                   });
                   if (ok) removeMember.mutate(m.id);
                 }}
-                aria-label={m.id === ws.me.id ? 'Leave workspace' : `Remove ${m.name}`}
+                aria-label={
+                  m.id === ws.me.id
+                    ? t('workspaceSettings.members.leaveWorkspace')
+                    : t('workspaceSettings.members.removeName', { name: m.name })
+                }
               >
                 <Trash2 size={12} />
               </button>
@@ -763,15 +820,16 @@ export function OrgSecuritySection() {
       toast.error(errMsg(err));
     }
   };
-  if (!ws.isAdmin) return <p className="text-muted">Only admins can change security settings.</p>;
+  if (!ws.isAdmin)
+    return <p className="text-muted">{t('workspaceSettings.security.adminsOnly')}</p>;
   return (
     <>
-      <SettingsCard title="Invitations">
-        <label className="flex items-center justify-between py-2 text-[13.5px]">
+      <SettingsCard title={t('workspaceSettings.security.invitations')}>
+        <label className="flex items-center justify-between gap-3 py-2 text-[13.5px]">
           <span>
-            Who can invite people
+            {t('workspaceSettings.security.whoCanInvite')}
             <span className="block text-[12px] text-index">
-              Members can't invite admins either way.
+              {t('workspaceSettings.security.whoCanInviteHint')}
             </span>
           </span>
           <select
@@ -781,18 +839,18 @@ export function OrgSecuritySection() {
               save({ invitePolicy: e.target.value as WorkspaceSettings['invitePolicy'] })
             }
           >
-            <option value="admins">Admins only</option>
-            <option value="members">Admins and members</option>
+            <option value="admins">{t('workspaceSettings.security.adminsOnlyOption')}</option>
+            <option value="members">{t('workspaceSettings.security.adminsAndMembers')}</option>
           </select>
         </label>
       </SettingsCard>
       <DomainsCard />
       <SettingsCard
-        title="Join by domain"
-        description="Let anyone with a verified email address at one of your verified domains join without an invite."
+        title={t('workspaceSettings.security.joinByDomain')}
+        description={t('workspaceSettings.security.joinByDomainDescription')}
       >
-        <label className="flex items-center justify-between border-b border-border-soft py-2.5 text-[13.5px]">
-          Allow joining by domain
+        <label className="flex items-center justify-between gap-3 border-b border-border-soft py-2.5 text-[13.5px]">
+          {t('workspaceSettings.security.allowJoin')}
           <input
             type="checkbox"
             className="accent-primary"
@@ -800,8 +858,8 @@ export function OrgSecuritySection() {
             onChange={(e) => save({ domainAutoJoin: e.target.checked })}
           />
         </label>
-        <label className="flex items-center justify-between py-2.5 text-[13.5px]">
-          They join as
+        <label className="flex items-center justify-between gap-3 py-2.5 text-[13.5px]">
+          {t('workspaceSettings.security.joinAs')}
           <select
             className="input w-40"
             value={settings.autoJoinRole}
@@ -809,8 +867,8 @@ export function OrgSecuritySection() {
               save({ autoJoinRole: e.target.value as WorkspaceSettings['autoJoinRole'] })
             }
           >
-            <option value="member">Member</option>
-            <option value="guest">Guest</option>
+            <option value="member">{roleLabel('member')}</option>
+            <option value="guest">{roleLabel('guest')}</option>
           </select>
         </label>
       </SettingsCard>
@@ -840,8 +898,8 @@ function DomainsCard() {
   };
   return (
     <SettingsCard
-      title="Domains"
-      description="Prove you own an email domain by adding a DNS TXT record. On instances without public DNS, an instance admin can approve it instead."
+      title={t('workspaceSettings.domains.title')}
+      description={t('workspaceSettings.domains.description')}
     >
       <form onSubmit={add} className="mb-4 flex gap-2">
         <input
@@ -852,7 +910,7 @@ function DomainsCard() {
           required
         />
         <button className="btn btn-primary">
-          <Globe size={13} /> Add
+          <Globe size={13} /> {t('common.add')}
         </button>
       </form>
       {domains.map((d) => (
@@ -861,7 +919,9 @@ function DomainsCard() {
             <span className="flex-1 font-mono text-[13px]">{d.domain}</span>
             {d.verified ? (
               <span className="chip [--chip:var(--color-success)]">
-                verified{d.verifiedBy === 'instance_admin' ? ' by admin' : ''}
+                {d.verifiedBy === 'instance_admin'
+                  ? t('workspaceSettings.domains.verifiedByAdmin')
+                  : t('workspaceSettings.domains.verified')}
               </span>
             ) : (
               <button
@@ -870,14 +930,16 @@ function DomainsCard() {
                 onClick={async () => {
                   try {
                     await api.post(wsPath(ws.slug, `/domains/${d.id}/verify`));
-                    toast.success(`${d.domain} verified`);
+                    toast.success(
+                      t('workspaceSettings.domains.verifiedToast', { domain: d.domain }),
+                    );
                     reload();
                   } catch (err) {
                     toast.error(errMsg(err));
                   }
                 }}
               >
-                <CheckCircle2 size={12} /> Verify
+                <CheckCircle2 size={12} /> {t('workspaceSettings.domains.verify')}
               </button>
             )}
             <button
@@ -887,7 +949,7 @@ function DomainsCard() {
                 await api.del(wsPath(ws.slug, `/domains/${d.id}`));
                 reload();
               }}
-              aria-label={`Remove ${d.domain}`}
+              aria-label={t('workspaceSettings.domains.remove', { domain: d.domain })}
             >
               <Trash2 size={12} />
             </button>
@@ -901,7 +963,7 @@ function DomainsCard() {
         </div>
       ))}
       {domains.length === 0 && (
-        <p className="font-mono text-[12px] text-index">// no domains yet</p>
+        <p className="font-mono text-[12px] text-index">{t('workspaceSettings.domains.empty')}</p>
       )}
     </SettingsCard>
   );
@@ -909,47 +971,96 @@ function DomainsCard() {
 
 // ─── Audit log ─────────────────────────────────────────────────────────
 
-/** Human wording for audit actions. */
+/** Human wording for audit actions: what the actor did, shown after their name. */
 export function describeAudit(e: { action: string; data: Record<string, unknown> }) {
   const d = e.data;
-  const map: Record<string, string> = {
-    'workspace.created': 'created the workspace',
-    'workspace.updated': 'changed workspace settings',
-    'workspace.deleted': 'deleted a workspace',
-    'member.joined': `joined${d.via === 'domain' ? ' by domain' : ''}`,
-    'member.role_changed': `changed a role to ${String(d.role)}`,
-    'member.removed': d.self ? 'left the workspace' : 'removed a member',
-    'member.suspended': 'suspended a member',
-    'member.unsuspended': 'restored a member',
-    'invite.created': `invited ${d.email ? String(d.email) : 'with a link'} as ${String(d.role)}`,
-    'invite.revoked': 'revoked an invite',
-    'invite.accepted': 'accepted an invite',
-    'team.created': `created team ${String(d.name ?? '')}`,
-    'team.updated': 'changed team settings',
-    'team.deleted': `deleted team ${String(d.name ?? '')}`,
-    'team.member_added': 'added someone to a team',
-    'team.member_removed': 'removed someone from a team',
-    'team.member_role_changed': 'changed a team role',
-    'domain.added': `added domain ${String(d.domain)}`,
-    'domain.verified': `verified ${String(d.domain)}`,
-    'domain.removed': `removed domain ${String(d.domain)}`,
-    'sso.provider_created': `added sign-in provider ${String(d.name ?? '')}`,
-    'sso.provider_updated': 'changed a sign-in provider',
-    'sso.provider_deleted': `removed sign-in provider ${String(d.name ?? '')}`,
-    'auth.login':
-      d.method === 'sso' ? `signed in with ${String(d.provider ?? 'SSO')}` : 'signed in',
-    'auth.sso_bypass': 'signed in with a password (owner fallback)',
-    'webhook.created': `added a webhook to ${String(d.url ?? '')}`,
-    'webhook.updated': 'changed a webhook',
-    'webhook.deleted': `removed the webhook to ${String(d.url ?? '')}`,
-    'webhook.disabled': `webhook to ${String(d.url ?? '')} switched off after failures`,
-    'integration.created': `connected ${String(d.name ?? d.provider ?? 'an integration')}`,
-    'integration.updated': 'changed an integration',
-    'integration.deleted': `disconnected ${String(d.name ?? d.provider ?? 'an integration')}`,
-    'auth.identity_linked': `linked ${String(d.provider ?? 'an identity')}`,
-  };
-  return map[e.action] ?? e.action;
+  const str = (v: unknown) => String(v ?? '');
+  const role = (v: unknown) =>
+    v === 'owner' || v === 'admin' || v === 'member' || v === 'guest'
+      ? roleLabel(v).toLowerCase()
+      : String(v);
+  const a = (key: AuditKey, params?: Params) => t(`workspaceSettings.audit.actions.${key}`, params);
+  const named = (name: unknown, withName: AuditKey, without: AuditKey) =>
+    name ? a(withName, { name: String(name) }) : a(without);
+  switch (e.action) {
+    case 'workspace.created':
+      return a('workspaceCreated');
+    case 'workspace.updated':
+      return a('workspaceUpdated');
+    case 'workspace.deleted':
+      return a('workspaceDeleted');
+    case 'member.joined':
+      return a(d.via === 'domain' ? 'memberJoinedByDomain' : 'memberJoined');
+    case 'member.role_changed':
+      return a('memberRoleChanged', { role: role(d.role) });
+    case 'member.removed':
+      return a(d.self ? 'memberLeft' : 'memberRemoved');
+    case 'member.suspended':
+      return a('memberSuspended');
+    case 'member.unsuspended':
+      return a('memberUnsuspended');
+    case 'invite.created':
+      return d.email
+        ? a('inviteCreated', { email: String(d.email), role: role(d.role) })
+        : a('inviteCreatedLink', { role: role(d.role) });
+    case 'invite.revoked':
+      return a('inviteRevoked');
+    case 'invite.accepted':
+      return a('inviteAccepted');
+    case 'team.created':
+      return a('teamCreated', { name: str(d.name) });
+    case 'team.updated':
+      return a('teamUpdated');
+    case 'team.deleted':
+      return a('teamDeleted', { name: str(d.name) });
+    case 'team.member_added':
+      return a('teamMemberAdded');
+    case 'team.member_removed':
+      return a('teamMemberRemoved');
+    case 'team.member_role_changed':
+      return a('teamMemberRoleChanged');
+    case 'domain.added':
+      return a('domainAdded', { domain: String(d.domain) });
+    case 'domain.verified':
+      return a('domainVerified', { domain: String(d.domain) });
+    case 'domain.removed':
+      return a('domainRemoved', { domain: String(d.domain) });
+    case 'sso.provider_created':
+      return a('ssoProviderCreated', { name: str(d.name) });
+    case 'sso.provider_updated':
+      return a('ssoProviderUpdated');
+    case 'sso.provider_deleted':
+      return a('ssoProviderDeleted', { name: str(d.name) });
+    case 'auth.login':
+      return d.method === 'sso'
+        ? a('loginSso', { provider: String(d.provider ?? 'SSO') })
+        : a('login');
+    case 'auth.sso_bypass':
+      return a('ssoBypass');
+    case 'webhook.created':
+      return a('webhookCreated', { url: str(d.url) });
+    case 'webhook.updated':
+      return a('webhookUpdated');
+    case 'webhook.deleted':
+      return a('webhookDeleted', { url: str(d.url) });
+    case 'webhook.disabled':
+      return a('webhookDisabled', { url: str(d.url) });
+    case 'integration.created':
+      return named(d.name ?? d.provider, 'integrationCreated', 'integrationCreatedUnnamed');
+    case 'integration.updated':
+      return a('integrationUpdated');
+    case 'integration.deleted':
+      return named(d.name ?? d.provider, 'integrationDeleted', 'integrationDeletedUnnamed');
+    case 'auth.identity_linked':
+      return d.provider
+        ? a('identityLinked', { provider: String(d.provider) })
+        : a('identityLinkedUnnamed');
+    default:
+      return e.action;
+  }
 }
+
+type AuditKey = keyof Catalog['workspaceSettings']['audit']['actions'];
 
 export function AuditSection() {
   const ws = useWorkspace();
@@ -958,12 +1069,12 @@ export function AuditSection() {
     queryFn: () => api.get<AuditEntry[]>(wsPath(ws.slug, '/audit-log?limit=200')),
     enabled: ws.isAdmin,
   });
-  if (!ws.isAdmin) return <p className="text-muted">Only admins can see the audit log.</p>;
+  if (!ws.isAdmin) return <p className="text-muted">{t('workspaceSettings.audit.adminsOnly')}</p>;
   if (isLoading) return <Spinner />;
   return (
     <SettingsCard
-      title="Audit log"
-      description="Security-relevant changes in this workspace, newest first."
+      title={t('workspaceSettings.audit.title')}
+      description={t('workspaceSettings.audit.description')}
     >
       {data?.map((e) => {
         const actor = e.actorId ? ws.memberById.get(e.actorId) : null;
@@ -986,7 +1097,9 @@ export function AuditSection() {
           </div>
         );
       })}
-      {data?.length === 0 && <p className="font-mono text-[12px] text-index">// nothing yet</p>}
+      {data?.length === 0 && (
+        <p className="font-mono text-[12px] text-index">{t('workspaceSettings.audit.empty')}</p>
+      )}
     </SettingsCard>
   );
 }

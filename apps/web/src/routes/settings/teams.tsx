@@ -2,14 +2,10 @@ import {
   type CycleAutomation,
   defaultGitAutomation,
   ESTIMATE_SCALE_NAMES,
-  GIT_EVENT_LABELS,
   GIT_EVENTS,
   type GitAutomation,
   LABEL_COLORS,
-  MEMBER_ROLE_LABELS,
-  priorityLabel,
   type SlaHours,
-  STATE_TYPE_LABELS,
   STATE_TYPES,
   type StateType,
   type Team,
@@ -27,6 +23,8 @@ import { Picker } from '../../components/properties.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { ConfirmModal, confirmDialog } from '../../components/ui/Modal.tsx';
 import { Popover } from '../../components/ui/Popover.tsx';
+import { t } from '../../i18n/index.ts';
+import { priorityLabel, roleLabel, stateTypeLabel } from '../../i18n/labels.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { TriageRulesCard } from './triage-rules.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
@@ -40,7 +38,7 @@ export function TeamsSection() {
   const create = useWsMutation(
     ws.slug,
     (body: object) => api.post<Team>(wsPath(ws.slug, '/teams'), body),
-    { success: 'Team created' },
+    { success: t('teams.create.created') },
   );
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -52,42 +50,41 @@ export function TeamsSection() {
         color: LABEL_COLORS[Math.floor(Math.random() * LABEL_COLORS.length)],
       },
       {
-        onSuccess: (t) =>
-          navigate({ to: '/$slug/settings/team/$key', params: { slug: ws.slug, key: t.key } }),
+        onSuccess: (team) =>
+          navigate({ to: '/$slug/settings/team/$key', params: { slug: ws.slug, key: team.key } }),
       },
     );
   };
   return (
     <>
-      <SettingsCard
-        title="Teams"
-        description="Every team has its own workflow, issue identifiers, cycles and settings."
-      >
-        {ws.teams.map((t) => (
+      <SettingsCard title={t('teams.list.title')} description={t('teams.list.description')}>
+        {ws.teams.map((team) => (
           <Link
-            key={t.id}
+            key={team.id}
             to="/$slug/settings/team/$key"
-            params={{ slug: ws.slug, key: t.key }}
+            params={{ slug: ws.slug, key: team.key }}
             className="row flex h-11 items-center gap-3 border-b border-border-soft px-1"
           >
-            <TeamIcon color={t.color} label={t.key} />
-            <span className="min-w-0 flex-1 truncate">{t.name}</span>
-            {t.private && (
+            <TeamIcon color={team.color} label={team.key} />
+            <span className="min-w-0 flex-1 truncate">{team.name}</span>
+            {team.private && (
               <span className="tag">
-                <Lock size={11} /> private
+                <Lock size={11} /> {t('teams.list.private')}
               </span>
             )}
-            <span className="tag font-mono">{t.key}</span>
-            <span className="font-mono text-[11px] text-index">{t.memberIds.length} members</span>
+            <span className="tag font-mono">{team.key}</span>
+            <span className="font-mono text-[11px] whitespace-nowrap text-index">
+              {t('teams.list.memberCount', { count: team.memberIds.length })}
+            </span>
           </Link>
         ))}
       </SettingsCard>
       {!ws.isGuest && (
-        <SettingsCard title="New team">
+        <SettingsCard title={t('teams.create.title')}>
           <form onSubmit={submit} className="grid grid-cols-[1fr_7rem_auto] gap-2">
             <input
               className="input"
-              placeholder="Team name"
+              placeholder={t('teams.create.namePlaceholder')}
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -102,14 +99,14 @@ export function TeamsSection() {
             />
             <input
               className="input font-mono"
-              placeholder="KEY"
+              placeholder={t('teams.create.keyPlaceholder')}
               value={key}
               maxLength={7}
               onChange={(e) => setKey(e.target.value.toUpperCase())}
               required
             />
             <button className="btn btn-primary">
-              <Plus size={13} /> Create
+              <Plus size={13} /> {t('common.create')}
             </button>
             <label className="col-span-3 flex items-center gap-2 text-[13px] text-muted">
               <input
@@ -118,7 +115,7 @@ export function TeamsSection() {
                 checked={isPrivate}
                 onChange={(e) => setPrivate(e.target.checked)}
               />
-              Private — only members and workspace admins can see it
+              {t('teams.create.private')}
             </label>
           </form>
         </SettingsCard>
@@ -143,7 +140,7 @@ function StateRow({ state, team }: { state: WorkflowState; team: Team }) {
       <Popover
         width={176}
         trigger={
-          <button type="button" aria-label="Status color">
+          <button type="button" aria-label={t('teams.states.color')}>
             <StatusIcon type={state.type} color={state.color} />
           </button>
         }
@@ -172,10 +169,10 @@ function StateRow({ state, team }: { state: WorkflowState; team: Team }) {
         onChange={(e) => setName(e.target.value)}
         onBlur={() => name.trim() && name !== state.name && save.mutate({ name })}
         onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        aria-label="Status name"
+        aria-label={t('teams.states.name')}
       />
       {isDefault ? (
-        <span className="chip [--chip:var(--color-primary)]">default</span>
+        <span className="chip [--chip:var(--color-primary)]">{t('teams.states.default')}</span>
       ) : (
         state.type !== 'completed' &&
         state.type !== 'canceled' && (
@@ -184,7 +181,7 @@ function StateRow({ state, team }: { state: WorkflowState; team: Team }) {
             className="font-mono text-[10.5px] tracking-[0.1em] text-index uppercase opacity-0 group-hover:opacity-100 hover:text-text"
             onClick={() => setDefault.mutate(undefined)}
           >
-            make default
+            {t('teams.states.makeDefault')}
           </button>
         )
       )}
@@ -193,13 +190,13 @@ function StateRow({ state, team }: { state: WorkflowState; team: Team }) {
         className="btn btn-danger btn-sm opacity-0 group-hover:opacity-100"
         onClick={async () => {
           const ok = await confirmDialog({
-            title: `Delete status “${state.name}”?`,
-            body: 'Its issues move to another status of the same type.',
+            title: t('teams.states.deleteTitle', { name: state.name }),
+            body: t('teams.states.deleteBody'),
             danger: true,
           });
           if (ok) remove.mutate(undefined);
         }}
-        aria-label={`Delete ${state.name}`}
+        aria-label={t('teams.states.deleteLabel', { name: state.name })}
       >
         <Trash2 size={12} />
       </button>
@@ -228,7 +225,7 @@ function AddState({ team, type }: { team: Team; type: StateType }) {
       <Plus size={13} className="text-index" />
       <input
         className="h-8 min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-index"
-        placeholder={`Add ${STATE_TYPE_LABELS[type].toLowerCase()} status…`}
+        placeholder={t(`teams.states.add.${type}`)}
         value={name}
         onChange={(e) => setName(e.target.value)}
       />
@@ -245,7 +242,7 @@ export function TeamSettings({ team }: { team: Team }) {
   const save = useWsMutation(
     ws.slug,
     (body: object) => api.patch(wsPath(ws.slug, `/teams/${team.id}`), body),
-    { success: 'Team saved' },
+    { success: t('teams.settings.saved') },
   );
   const join = useWsMutation(ws.slug, (on: boolean) =>
     on
@@ -253,7 +250,7 @@ export function TeamSettings({ team }: { team: Team }) {
       : api.del(wsPath(ws.slug, `/teams/${team.id}/members/${ws.me.id}`)),
   );
   const remove = useWsMutation(ws.slug, () => api.del(wsPath(ws.slug, `/teams/${team.id}`)), {
-    success: 'Team deleted',
+    success: t('teams.settings.deleted'),
   });
   const member = team.memberIds.includes(ws.me.id);
   const canAdmin = ws.canAdminTeam(team.id);
@@ -262,12 +259,12 @@ export function TeamSettings({ team }: { team: Team }) {
     <>
       {!canAdmin && (
         <p className="mb-6 border border-border-soft px-3 py-2 text-[13px] text-muted">
-          Only team admins and workspace admins can change this team's settings.
+          {t('teams.settings.adminsOnly')}
         </p>
       )}
       {/* A disabled fieldset makes every control below read-only for non-admins. */}
       <fieldset disabled={!canAdmin} className="contents">
-        <SettingsCard title="General">
+        <SettingsCard title={t('teams.settings.general')}>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -283,7 +280,7 @@ export function TeamSettings({ team }: { team: Team }) {
             }}
           >
             <div className="grid grid-cols-[1fr_8rem] gap-3">
-              <FormRow label="Name">
+              <FormRow label={t('teams.settings.name')}>
                 <input
                   className="input"
                   value={name}
@@ -291,7 +288,7 @@ export function TeamSettings({ team }: { team: Team }) {
                   required
                 />
               </FormRow>
-              <FormRow label="Key" hint="Renames every identifier.">
+              <FormRow label={t('teams.settings.key')} hint={t('teams.settings.keyHint')}>
                 <input
                   className="input font-mono"
                   value={key}
@@ -309,20 +306,20 @@ export function TeamSettings({ team }: { team: Team }) {
                   onClick={() => save.mutate({ color: c })}
                   className={`h-5 w-5 ${team.color === c ? 'outline-2 outline-offset-2 outline-text' : ''}`}
                   style={{ background: c }}
-                  aria-label={`Team color ${c}`}
+                  aria-label={t('teams.settings.teamColor', { color: c })}
                 />
               ))}
             </div>
-            <button className="btn btn-primary">Save</button>
+            <button className="btn btn-primary">{t('common.save')}</button>
           </form>
         </SettingsCard>
 
-        <SettingsCard title="Features">
-          <label className="flex items-center justify-between border-b border-border-soft py-3 text-[13.5px]">
+        <SettingsCard title={t('teams.settings.features')}>
+          <label className="flex items-center justify-between gap-3 border-b border-border-soft py-3 text-[13.5px]">
             <span>
-              Private team
+              {t('teams.settings.private')}
               <span className="block text-[12px] text-index">
-                Only members of this team and workspace admins can see it and its issues.
+                {t('teams.settings.privateHint')}
               </span>
             </span>
             <input
@@ -332,12 +329,10 @@ export function TeamSettings({ team }: { team: Team }) {
               onChange={(e) => save.mutate({ private: e.target.checked })}
             />
           </label>
-          <label className="flex items-center justify-between border-b border-border-soft py-3 text-[13.5px]">
+          <label className="flex items-center justify-between gap-3 border-b border-border-soft py-3 text-[13.5px]">
             <span>
-              Triage
-              <span className="block text-[12px] text-index">
-                An inbox for incoming issues that need review before they enter the backlog.
-              </span>
+              {t('teams.settings.triage')}
+              <span className="block text-[12px] text-index">{t('teams.settings.triageHint')}</span>
             </span>
             <input
               type="checkbox"
@@ -346,12 +341,10 @@ export function TeamSettings({ team }: { team: Team }) {
               onChange={(e) => save.mutate({ triageEnabled: e.target.checked })}
             />
           </label>
-          <label className="flex items-center justify-between border-b border-border-soft py-3 text-[13.5px]">
+          <label className="flex items-center justify-between gap-3 border-b border-border-soft py-3 text-[13.5px]">
             <span>
-              Cycles
-              <span className="block text-[12px] text-index">
-                Time-boxed iterations for planning work.
-              </span>
+              {t('teams.settings.cycles')}
+              <span className="block text-[12px] text-index">{t('teams.settings.cyclesHint')}</span>
             </span>
             <input
               type="checkbox"
@@ -360,12 +353,11 @@ export function TeamSettings({ team }: { team: Team }) {
               onChange={(e) => save.mutate({ cyclesEnabled: e.target.checked })}
             />
           </label>
-          <label className="flex items-center justify-between border-b border-border-soft py-3 text-[13.5px]">
+          <label className="flex items-center justify-between gap-3 border-b border-border-soft py-3 text-[13.5px]">
             <span>
-              Auto-archive
+              {t('teams.settings.autoArchive')}
               <span className="block text-[12px] text-index">
-                Closed issues leave lists and boards this long after they close. They stay in
-                search, by link and under Archived.
+                {t('teams.settings.autoArchiveHint')}
               </span>
             </span>
             <select
@@ -375,18 +367,20 @@ export function TeamSettings({ team }: { team: Team }) {
                 save.mutate({ autoArchiveMonths: e.target.value ? Number(e.target.value) : null })
               }
             >
-              <option value="">Never</option>
+              <option value="">{t('teams.settings.never')}</option>
               {[1, 3, 6, 9, 12].map((n) => (
                 <option key={n} value={n}>
-                  After {n} month{n === 1 ? '' : 's'}
+                  {t('teams.settings.afterMonths', { count: n })}
                 </option>
               ))}
             </select>
           </label>
-          <label className="flex items-center justify-between py-3 text-[13.5px]">
+          <label className="flex items-center justify-between gap-3 py-3 text-[13.5px]">
             <span>
-              Estimates
-              <span className="block text-[12px] text-index">Scale used for issue estimates.</span>
+              {t('teams.settings.estimates')}
+              <span className="block text-[12px] text-index">
+                {t('teams.settings.estimatesHint')}
+              </span>
             </span>
             <select
               className="input w-40"
@@ -395,7 +389,7 @@ export function TeamSettings({ team }: { team: Team }) {
             >
               {ESTIMATE_SCALE_NAMES.map((s) => (
                 <option key={s} value={s}>
-                  {s === 'tshirt' ? 'T-shirt sizes' : s[0]!.toUpperCase() + s.slice(1)}
+                  {t(`teams.settings.scales.${s}`)}
                 </option>
               ))}
             </select>
@@ -403,13 +397,13 @@ export function TeamSettings({ team }: { team: Team }) {
         </SettingsCard>
 
         <SettingsCard
-          title="Workflow"
-          description="Statuses are grouped by type. Issues move through them from left to right on the board."
+          title={t('teams.settings.workflow')}
+          description={t('teams.settings.workflowDescription')}
         >
-          {STATE_TYPES.filter((t) => t !== 'triage' || team.triageEnabled).map((type) => (
+          {STATE_TYPES.filter((type) => type !== 'triage' || team.triageEnabled).map((type) => (
             <div key={type} className="mb-4">
               <div className="mb-1 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-                {STATE_TYPE_LABELS[type]}
+                {stateTypeLabel(type)}
               </div>
               {team.states
                 .filter((s) => s.type === type)
@@ -435,25 +429,25 @@ export function TeamSettings({ team }: { team: Team }) {
       {(member || !ws.isGuest) && (
         <div className="mb-10">
           <button type="button" className="btn btn-ghost" onClick={() => join.mutate(!member)}>
-            {member ? 'Leave team' : 'Join team'}
+            {member ? t('teams.settings.leave') : t('teams.settings.join')}
           </button>
         </div>
       )}
       <TeamMembers team={team} />
 
       {ws.isAdmin && (
-        <SettingsCard title="Danger zone">
+        <SettingsCard title={t('teams.settings.dangerZone')}>
           <button type="button" className="btn btn-danger" onClick={() => setConfirmDelete(true)}>
-            <Trash2 size={13} /> Delete team
+            <Trash2 size={13} /> {t('teams.settings.deleteTeam')}
           </button>
         </SettingsCard>
       )}
       <ConfirmModal
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
-        title={`Delete ${team.name}?`}
-        body="This permanently deletes the team and all of its issues, cycles and statuses."
-        confirmLabel="Delete team"
+        title={t('teams.settings.deleteTitle', { name: team.name })}
+        body={t('teams.settings.deleteBody')}
+        confirmLabel={t('teams.settings.deleteTeam')}
         danger
         onConfirm={() =>
           remove.mutate(undefined, {
@@ -462,7 +456,8 @@ export function TeamSettings({ team }: { team: Team }) {
                 to: '/$slug/settings/$section',
                 params: { slug: ws.slug, section: 'teams' },
               }),
-            onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
+            onError: (e) =>
+              toast.error(e instanceof Error ? e.message : t('teams.settings.failed')),
           })
         }
       />
@@ -486,21 +481,19 @@ function TeamMembers({ team }: { team: Team }) {
   const candidates = ws.members.filter((m) => !team.memberIds.includes(m.id));
   return (
     <SettingsCard
-      title={`Members · ${team.members.length}`}
+      title={t('teams.members.title', { count: team.members.length })}
       description={
-        team.private
-          ? 'This team is private: only its members and workspace admins can see it.'
-          : 'Everyone except guests can see this team. Guests see it only once added here.'
+        team.private ? t('teams.members.privateDescription') : t('teams.members.publicDescription')
       }
     >
       {canAdmin && candidates.length > 0 && (
         <div className="mb-3">
           <Picker
-            placeholder="Add someone…"
+            placeholder={t('teams.members.addSomeone')}
             options={candidates.map((m) => ({
               value: m.id,
               label: m.name,
-              hint: MEMBER_ROLE_LABELS[m.role],
+              hint: roleLabel(m.role),
               keywords: `${m.username} ${m.email}`,
               icon: <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={16} />,
             }))}
@@ -508,7 +501,7 @@ function TeamMembers({ team }: { team: Team }) {
             onSelect={(id) => add.mutate(id)}
             trigger={
               <button type="button" className="btn btn-ghost btn-sm">
-                <Plus size={12} /> Add member
+                <Plus size={12} /> {t('teams.members.addMember')}
               </button>
             }
           />
@@ -522,27 +515,35 @@ function TeamMembers({ team }: { team: Team }) {
             <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={20} />
             <span className="min-w-0 flex-1 truncate text-[13.5px]">
               {m.name}
-              {m.role === 'guest' && <span className="ml-2 tag font-mono">guest</span>}
+              {m.role === 'guest' && (
+                <span className="ml-2 tag font-mono">{t('teams.members.guest')}</span>
+              )}
             </span>
             {canAdmin ? (
               <select
                 className="h-7 border border-border bg-bg px-2 text-[12px] outline-none focus:border-primary"
                 value={role}
                 onChange={(e) => setRole.mutate({ userId, role: e.target.value as TeamRole })}
-                aria-label={`Team role of ${m.name}`}
+                aria-label={t('teams.members.roleOf', { name: m.name })}
               >
-                <option value="member">Member</option>
-                <option value="admin">Team admin</option>
+                <option value="member">{t('teams.members.member')}</option>
+                <option value="admin">{t('teams.members.teamAdmin')}</option>
               </select>
             ) : (
-              <span className="tag font-mono">{role === 'admin' ? 'team admin' : 'member'}</span>
+              <span className="tag font-mono">
+                {role === 'admin' ? t('teams.members.teamAdminTag') : t('teams.members.memberTag')}
+              </span>
             )}
             {(canAdmin || userId === ws.me.id) && (
               <button
                 type="button"
                 className="btn btn-danger btn-sm"
                 onClick={() => remove.mutate(userId)}
-                aria-label={userId === ws.me.id ? 'Leave team' : `Remove ${m.name}`}
+                aria-label={
+                  userId === ws.me.id
+                    ? t('teams.members.leave')
+                    : t('teams.members.remove', { name: m.name })
+                }
               >
                 <Trash2 size={12} />
               </button>
@@ -551,13 +552,22 @@ function TeamMembers({ team }: { team: Team }) {
         );
       })}
       {team.members.length === 0 && (
-        <p className="font-mono text-[12px] text-index">// nobody has joined yet</p>
+        <p className="font-mono text-[12px] text-index">{t('teams.members.empty')}</p>
       )}
     </SettingsCard>
   );
 }
 
-const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** Weekday names in Date.getDay() order (Sunday first), which is how startDay is stored. */
+const weekdays = () => [
+  t('teams.cycleAutomation.weekdays.sunday'),
+  t('teams.cycleAutomation.weekdays.monday'),
+  t('teams.cycleAutomation.weekdays.tuesday'),
+  t('teams.cycleAutomation.weekdays.wednesday'),
+  t('teams.cycleAutomation.weekdays.thursday'),
+  t('teams.cycleAutomation.weekdays.friday'),
+  t('teams.cycleAutomation.weekdays.saturday'),
+];
 
 /** How long each priority may stay open before it misses its SLA. */
 function SlaCard({ team, onSave }: { team: Team; onSave: (slaHours: SlaHours) => void }) {
@@ -573,14 +583,11 @@ function SlaCard({ team, onSave }: { team: Team; onSave: (slaHours: SlaHours) =>
     if (JSON.stringify(next) !== JSON.stringify(team.slaHours)) onSave(next);
   };
   return (
-    <SettingsCard
-      title="SLAs"
-      description="Hours an issue may stay open, counted from when it was created, by priority. Issues show the time left; assignees and subscribers hear when an SLA runs out. Applies to new issues and priority changes."
-    >
+    <SettingsCard title={t('teams.sla.title')} description={t('teams.sla.description')}>
       {(['1', '2', '3', '4'] as const).map((p) => (
         <label
           key={p}
-          className="flex items-center justify-between border-b border-border-soft py-2 text-[13.5px]"
+          className="flex items-center justify-between gap-3 border-b border-border-soft py-2 text-[13.5px]"
         >
           <span className="inline-flex items-center gap-2">
             <PriorityIcon priority={Number(p)} /> {priorityLabel(Number(p))}
@@ -590,13 +597,13 @@ function SlaCard({ team, onSave }: { team: Team; onSave: (slaHours: SlaHours) =>
               type="number"
               min={1}
               className="input h-8 w-24 text-right font-mono"
-              placeholder="none"
+              placeholder={t('teams.sla.none')}
               value={draft[p]}
               onChange={(e) => setDraft({ ...draft, [p]: e.target.value })}
               onBlur={commit}
               onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
             />
-            hours
+            {t('teams.sla.hours')}
           </span>
         </label>
       ))}
@@ -613,7 +620,8 @@ function CycleAutomationCard({
   onSave: (automation: Partial<CycleAutomation>) => void;
 }) {
   const auto = team.cycleAutomation;
-  const row = 'flex items-center justify-between border-b border-border-soft py-2.5 text-[13.5px]';
+  const row =
+    'flex items-center justify-between gap-3 border-b border-border-soft py-2.5 text-[13.5px]';
   const numberSelect = (
     key: 'weeks' | 'cooldownWeeks' | 'upcoming',
     values: number[],
@@ -631,14 +639,13 @@ function CycleAutomationCard({
       ))}
     </select>
   );
-  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
   return (
     <SettingsCard
-      title="Cycle automation"
-      description="Ordo creates cycles ahead of time and, when one ends, moves its unfinished issues to the next. Changes are made by the “Ordo” bot, without notifications."
+      title={t('teams.cycleAutomation.title')}
+      description={t('teams.cycleAutomation.description')}
     >
       <label className={row}>
-        Automate cycles
+        {t('teams.cycleAutomation.enabled')}
         <input
           type="checkbox"
           className="accent-primary"
@@ -649,21 +656,25 @@ function CycleAutomationCard({
       {auto.enabled && (
         <>
           <label className={row}>
-            Cycle length
-            {numberSelect('weeks', [1, 2, 3, 4, 5, 6, 7, 8], (n) => plural(n, 'week'))}
+            {t('teams.cycleAutomation.length')}
+            {numberSelect('weeks', [1, 2, 3, 4, 5, 6, 7, 8], (n) =>
+              t('teams.cycleAutomation.weeks', { count: n }),
+            )}
           </label>
           <label className={row}>
-            Cooldown between cycles
-            {numberSelect('cooldownWeeks', [0, 1, 2], (n) => (n ? plural(n, 'week') : 'None'))}
+            {t('teams.cycleAutomation.cooldown')}
+            {numberSelect('cooldownWeeks', [0, 1, 2], (n) =>
+              n ? t('teams.cycleAutomation.weeks', { count: n }) : t('common.none'),
+            )}
           </label>
           <label className={row}>
-            Cycles start on
+            {t('teams.cycleAutomation.startDay')}
             <select
               className="input w-40"
               value={auto.startDay}
               onChange={(e) => onSave({ startDay: Number(e.target.value) })}
             >
-              {WEEKDAYS.map((d, i) => (
+              {weekdays().map((d, i) => (
                 <option key={d} value={i}>
                   {d}
                 </option>
@@ -671,14 +682,16 @@ function CycleAutomationCard({
             </select>
           </label>
           <label className={row}>
-            Plan ahead
-            {numberSelect('upcoming', [1, 2, 3, 4, 5, 6], (n) => plural(n, 'cycle'))}
+            {t('teams.cycleAutomation.planAhead')}
+            {numberSelect('upcoming', [1, 2, 3, 4, 5, 6], (n) =>
+              t('teams.cycleAutomation.cycleCount', { count: n }),
+            )}
           </label>
           <label className={row}>
             <span>
-              Roll over unfinished issues
+              {t('teams.cycleAutomation.rollOver')}
               <span className="block text-[12px] text-index">
-                When a cycle ends, open issues move to the next cycle.
+                {t('teams.cycleAutomation.rollOverHint')}
               </span>
             </span>
             <input
@@ -690,9 +703,9 @@ function CycleAutomationCard({
           </label>
           <label className={row}>
             <span>
-              Add started issues to the active cycle
+              {t('teams.cycleAutomation.addStarted')}
               <span className="block text-[12px] text-index">
-                Issues that move to a started status join the current cycle, if they have none.
+                {t('teams.cycleAutomation.addStartedHint')}
               </span>
             </span>
             <input
@@ -717,18 +730,16 @@ function GitAutomationCard({
   onSave: (automation: GitAutomation) => void;
 }) {
   const defaults = defaultGitAutomation(team.states);
-  const name = (id: string | null) => team.states.find((s) => s.id === id)?.name ?? 'no change';
+  const name = (id: string | null) =>
+    team.states.find((s) => s.id === id)?.name ?? t('teams.git.noChangeLower');
   return (
-    <SettingsCard
-      title="Git automation"
-      description="Issues named in a branch, pull request title, or after “fixes” in a description or commit move through these statuses. They only ever move forward."
-    >
+    <SettingsCard title={t('teams.git.title')} description={t('teams.git.description')}>
       {GIT_EVENTS.map((event) => (
         <label
           key={event}
-          className="flex items-center justify-between border-b border-border-soft py-2.5 text-[13.5px]"
+          className="flex items-center justify-between gap-3 border-b border-border-soft py-2.5 text-[13.5px]"
         >
-          {GIT_EVENT_LABELS[event]}
+          {t(`teams.git.events.${event}`)}
           <select
             className="input w-52"
             value={team.gitAutomation[event] ?? ''}
@@ -739,8 +750,8 @@ function GitAutomationCard({
               onSave(next);
             }}
           >
-            <option value="">Default ({name(defaults[event])})</option>
-            <option value="none">No change</option>
+            <option value="">{t('teams.git.default', { status: name(defaults[event]) })}</option>
+            <option value="none">{t('teams.git.noChange')}</option>
             {team.states.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}

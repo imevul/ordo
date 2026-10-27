@@ -13,15 +13,16 @@ import { api, wsPath } from '../../api/client.ts';
 import { TeamIcon } from '../../components/icons.tsx';
 import { Spinner } from '../../components/PageHeader.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
+import { t, tx } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 
 const copy = (text: string) => {
   navigator.clipboard.writeText(text);
-  toast.success('Copied');
+  toast.success(t('common.copied'));
 };
 
 export function WebhooksSection() {
@@ -38,23 +39,18 @@ export function WebhooksSection() {
   const [open, setOpen] = useState<string | null>(null);
   const reload = () => qc.invalidateQueries({ queryKey: key });
 
-  if (!ws.isAdmin) return <p className="text-muted">Only admins can manage webhooks.</p>;
+  if (!ws.isAdmin) return <p className="text-muted">{t('webhooks.adminsOnly')}</p>;
   if (!hooks) return <Spinner />;
 
   return (
     <>
       <SettingsCard
-        title="Webhooks"
-        description={
-          <>
-            Ordo POSTs a JSON event to your URL when issues, comments, projects and cycles change.
-            Each request is signed: verify{' '}
-            <code className="font-mono text-text">Ordo-Signature</code> (
-            <code className="font-mono">t=…,v1=…</code>, an HMAC-SHA256 of{' '}
-            <code className="font-mono">{'"<t>.<body>"'}</code> with the webhook's secret). Failed
-            deliveries are retried for about an hour.
-          </>
-        }
+        title={t('webhooks.title')}
+        description={tx('webhooks.description', {
+          header: <code className="font-mono text-text">Ordo-Signature</code>,
+          format: <code className="font-mono">t=…,v1=…</code>,
+          signed: <code className="font-mono">{'"<t>.<body>"'}</code>,
+        })}
       >
         {hooks.map((h) => (
           <div key={h.id} className="border-b border-border-soft py-3">
@@ -70,27 +66,35 @@ export function WebhooksSection() {
               >
                 <div className="truncate font-mono text-[12.5px]">{h.url}</div>
                 <div className="truncate text-[11.5px] text-index">
-                  {h.description || 'No description'} ·{' '}
-                  {h.eventTypes.length ? `${h.eventTypes.length} events` : 'all events'} ·{' '}
-                  {h.teamIds.length ? `${h.teamIds.length} teams` : 'all teams'}
+                  {h.description || t('webhooks.noDescription')} ·{' '}
+                  {h.eventTypes.length
+                    ? t('webhooks.eventCount', { count: h.eventTypes.length })
+                    : t('webhooks.allEvents')}{' '}
+                  ·{' '}
+                  {h.teamIds.length
+                    ? t('webhooks.teamCount', { count: h.teamIds.length })
+                    : t('webhooks.allTeams')}
                   {h.lastDeliveryAt &&
-                    ` · last ${h.lastStatus ?? 'error'} ${relativeTime(h.lastDeliveryAt)}`}
+                    ` · ${t('webhooks.lastDelivery', {
+                      status: h.lastStatus ?? t('webhooks.error'),
+                      time: relativeTime(h.lastDeliveryAt),
+                    })}`}
                 </div>
               </button>
               {h.enabled ? (
-                <span className="chip [--chip:var(--color-success)]">on</span>
+                <span className="chip [--chip:var(--color-success)]">{t('webhooks.on')}</span>
               ) : (
-                <span className="tag font-mono">off</span>
+                <span className="tag font-mono">{t('webhooks.off')}</span>
               )}
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                aria-label="Send a test event"
-                title="Send a ping"
+                aria-label={t('webhooks.sendTest')}
+                title={t('webhooks.sendPing')}
                 onClick={async () => {
                   try {
                     await api.post(wsPath(ws.slug, `/webhooks/${h.id}/ping`));
-                    toast.success('Ping queued');
+                    toast.success(t('webhooks.pingQueued'));
                     setOpen(h.id);
                     setTimeout(
                       () => qc.invalidateQueries({ queryKey: ['ws', ws.slug, 'deliveries', h.id] }),
@@ -106,7 +110,7 @@ export function WebhooksSection() {
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                aria-label={`Edit ${h.url}`}
+                aria-label={t('webhooks.editLabel', { url: h.url })}
                 onClick={() => setEditing(h)}
               >
                 <Pencil size={12} />
@@ -114,11 +118,11 @@ export function WebhooksSection() {
               <button
                 type="button"
                 className="btn btn-danger btn-sm"
-                aria-label={`Delete ${h.url}`}
+                aria-label={t('webhooks.deleteLabel', { url: h.url })}
                 onClick={async () => {
                   if (
                     !(await confirmDialog({
-                      title: `Delete the webhook to ${h.url}?`,
+                      title: t('webhooks.confirmDelete', { url: h.url }),
                       danger: true,
                     }))
                   )
@@ -132,17 +136,17 @@ export function WebhooksSection() {
             </div>
             {h.disabledReason && (
               <p className="mt-2 text-[12px] text-warning">
-                {h.disabledReason}. Fix the endpoint, then switch it back on.
+                {t('webhooks.disabledReason', { reason: h.disabledReason })}
               </p>
             )}
             {open === h.id && <Deliveries hook={h} />}
           </div>
         ))}
         {hooks.length === 0 && (
-          <p className="font-mono text-[12px] text-index">// no webhooks yet</p>
+          <p className="font-mono text-[12px] text-index">{t('webhooks.empty')}</p>
         )}
         <button type="button" className="btn btn-primary mt-4" onClick={() => setEditing('new')}>
-          <Plus size={13} /> Add webhook
+          <Plus size={13} /> {t('webhooks.addWebhook')}
         </button>
       </SettingsCard>
 
@@ -159,24 +163,21 @@ export function WebhooksSection() {
         open={!!secret}
         onClose={() => setSecret(null)}
         width={520}
-        label="Signing secret"
+        label={t('webhooks.secret.title')}
         align="center"
       >
         <div className="p-6">
-          <div className="section-label mb-4">Signing secret</div>
-          <p className="mb-3 text-[13.5px] text-muted">
-            Use this to verify that requests come from Ordo. You can see it again later from the
-            webhook's settings.
-          </p>
+          <div className="section-label mb-4">{t('webhooks.secret.title')}</div>
+          <p className="mb-3 text-[13.5px] text-muted">{t('webhooks.secret.body')}</p>
           <div className="flex items-center gap-2 border border-border-soft bg-bg p-3">
             <code className="flex-1 truncate font-mono text-[12.5px]">{secret}</code>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => copy(secret!)}>
-              <Copy size={12} /> Copy
+              <Copy size={12} /> {t('common.copy')}
             </button>
           </div>
           <div className="mt-6 flex justify-end">
             <button type="button" className="btn btn-primary" onClick={() => setSecret(null)}>
-              Done
+              {t('common.done')}
             </button>
           </div>
         </div>
@@ -205,7 +206,7 @@ function Deliveries({ hook }: { hook: Webhook }) {
     <div className="mt-3 border border-border-soft bg-bg">
       <div className="flex items-center gap-2 border-b border-border-soft px-3 py-2">
         <span className="flex-1 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-          Recent deliveries
+          {t('webhooks.deliveries.title')}
         </span>
         <button
           type="button"
@@ -217,7 +218,7 @@ function Deliveries({ hook }: { hook: Webhook }) {
             copy(secret);
           }}
         >
-          <Eye size={12} /> Copy secret
+          <Eye size={12} /> {t('webhooks.deliveries.copySecret')}
         </button>
       </div>
       {isLoading && <Spinner />}
@@ -237,15 +238,15 @@ function Deliveries({ hook }: { hook: Webhook }) {
             {d.eventType}
           </button>
           <span className="font-mono text-[11px] text-index">
-            {d.responseStatus ?? (d.error ? 'error' : '…')}
-            {d.attempts > 1 && ` · ${d.attempts} tries`}
+            {d.responseStatus ?? (d.error ? t('webhooks.error') : '…')}
+            {d.attempts > 1 && ` · ${t('webhooks.deliveries.tries', { count: d.attempts })}`}
             {d.durationMs !== null && ` · ${d.durationMs}ms`} · {relativeTime(d.createdAt)}
           </span>
           <button
             type="button"
             className="btn btn-ghost btn-sm"
-            aria-label="Redeliver"
-            title="Redeliver"
+            aria-label={t('webhooks.deliveries.redeliver')}
+            title={t('webhooks.deliveries.redeliver')}
             disabled={!hook.enabled}
             onClick={async () => {
               try {
@@ -263,30 +264,33 @@ function Deliveries({ hook }: { hook: Webhook }) {
         </div>
       ))}
       {!isLoading && data.length === 0 && (
-        <p className="px-3 py-3 font-mono text-[12px] text-index">// nothing delivered yet</p>
+        <p className="px-3 py-3 font-mono text-[12px] text-index">
+          {t('webhooks.deliveries.empty')}
+        </p>
       )}
       <Modal
         open={!!shown}
         onClose={() => setShown(null)}
         width={720}
-        label="Delivery"
+        label={t('webhooks.deliveries.delivery')}
         align="center"
       >
         {shown && (
           <div className="max-h-[80vh] overflow-y-auto p-6">
             <div className="section-label mb-2">{shown.eventType}</div>
             <p className="mb-4 font-mono text-[11.5px] text-index">
-              {shown.status} · {shown.responseStatus ?? shown.error ?? 'no response'} ·{' '}
-              {shown.attempts} attempt{shown.attempts === 1 ? '' : 's'}
+              {t(`webhooks.deliveries.status.${shown.status}`)} ·{' '}
+              {shown.responseStatus ?? shown.error ?? t('webhooks.deliveries.noResponse')} ·{' '}
+              {t('webhooks.deliveries.attempts', { count: shown.attempts })}
             </p>
             <div className="mb-1 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-              Request
+              {t('webhooks.deliveries.request')}
             </div>
             <pre className="mb-4 max-h-80 overflow-auto border border-border-soft bg-bg p-3 font-mono text-[11.5px] whitespace-pre-wrap">
               {JSON.stringify(shown.payload, null, 2)}
             </pre>
             <div className="mb-1 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase">
-              Response
+              {t('webhooks.deliveries.response')}
             </div>
             <pre className="max-h-48 overflow-auto border border-border-soft bg-bg p-3 font-mono text-[11.5px] whitespace-pre-wrap">
               {shown.error ?? shown.responseBody ?? '—'}
@@ -298,7 +302,7 @@ function Deliveries({ hook }: { hook: Webhook }) {
   );
 }
 
-const EVENT_GROUPS = [...new Set(DOMAIN_EVENT_TYPES.map((t) => t.split('.')[0]!))];
+const EVENT_GROUPS = [...new Set(DOMAIN_EVENT_TYPES.map((type) => type.split('.')[0]!))];
 
 function WebhookModal({
   hook,
@@ -348,10 +352,18 @@ function WebhookModal({
   };
 
   return (
-    <Modal open={!!hook} onClose={onClose} width={600} label="Webhook" align="center">
+    <Modal
+      open={!!hook}
+      onClose={onClose}
+      width={600}
+      label={t('webhooks.form.label')}
+      align="center"
+    >
       <form className="max-h-[82vh] overflow-y-auto p-6" onSubmit={submit}>
-        <div className="section-label mb-4">{existing ? 'Edit webhook' : 'New webhook'}</div>
-        <FormRow label="Payload URL">
+        <div className="section-label mb-4">
+          {existing ? t('webhooks.form.edit') : t('webhooks.form.new')}
+        </div>
+        <FormRow label={t('webhooks.form.url')}>
           <input
             className="input font-mono"
             type="url"
@@ -362,14 +374,14 @@ function WebhookModal({
             onChange={(e) => setUrl(e.target.value)}
           />
         </FormRow>
-        <FormRow label="Description">
+        <FormRow label={t('webhooks.form.description')}>
           <input
             className="input"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
         </FormRow>
-        <div className="mb-1 text-[12px] text-muted">Events</div>
+        <div className="mb-1 text-[12px] text-muted">{t('webhooks.form.events')}</div>
         <label className="mb-2 flex items-center gap-2 text-[13px]">
           <input
             type="checkbox"
@@ -377,26 +389,26 @@ function WebhookModal({
             checked={events.length === 0}
             onChange={() => setEvents(events.length ? [] : ['issue.created'])}
           />
-          Everything
+          {t('webhooks.form.everything')}
         </label>
         {events.length > 0 && (
           <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-1 border border-border-soft p-3 sm:grid-cols-3">
             {EVENT_GROUPS.flatMap((g) =>
-              DOMAIN_EVENT_TYPES.filter((t) => t.startsWith(`${g}.`)).map((t) => (
-                <label key={t} className="flex items-center gap-2 font-mono text-[11.5px]">
+              DOMAIN_EVENT_TYPES.filter((type) => type.startsWith(`${g}.`)).map((type) => (
+                <label key={type} className="flex items-center gap-2 font-mono text-[11.5px]">
                   <input
                     type="checkbox"
                     className="accent-primary"
-                    checked={events.includes(t)}
-                    onChange={() => setEvents(toggle(events, t))}
+                    checked={events.includes(type)}
+                    onChange={() => setEvents(toggle(events, type))}
                   />
-                  {t}
+                  {type}
                 </label>
               )),
             )}
           </div>
         )}
-        <div className="mt-3 mb-1 text-[12px] text-muted">Teams</div>
+        <div className="mt-3 mb-1 text-[12px] text-muted">{t('webhooks.form.teams')}</div>
         <label className="mb-2 flex items-center gap-2 text-[13px]">
           <input
             type="checkbox"
@@ -404,19 +416,19 @@ function WebhookModal({
             checked={teamIds.length === 0}
             onChange={() => setTeamIds(teamIds.length ? [] : [ws.teams[0]!.id])}
           />
-          All teams
+          {t('webhooks.form.allTeams')}
         </label>
         {teamIds.length > 0 && (
           <div className="mb-4 flex flex-wrap gap-3 border border-border-soft p-3">
-            {ws.teams.map((t) => (
-              <label key={t.id} className="flex items-center gap-2 text-[13px]">
+            {ws.teams.map((team) => (
+              <label key={team.id} className="flex items-center gap-2 text-[13px]">
                 <input
                   type="checkbox"
                   className="accent-primary"
-                  checked={teamIds.includes(t.id)}
-                  onChange={() => setTeamIds(toggle(teamIds, t.id))}
+                  checked={teamIds.includes(team.id)}
+                  onChange={() => setTeamIds(toggle(teamIds, team.id))}
                 />
-                <TeamIcon color={t.color} label={t.key} size={14} /> {t.name}
+                <TeamIcon color={team.color} label={team.key} size={14} /> {team.name}
               </label>
             ))}
           </div>
@@ -428,14 +440,14 @@ function WebhookModal({
             checked={enabled}
             onChange={(e) => setEnabled(e.target.checked)}
           />
-          Active
+          {t('webhooks.form.active')}
         </label>
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button className="btn btn-primary" disabled={busy}>
-            {existing ? 'Save' : 'Add webhook'}
+            {existing ? t('common.save') : t('webhooks.addWebhook')}
           </button>
         </div>
       </form>

@@ -5,6 +5,7 @@ import { api, wsPath } from '../../api/client.ts';
 import { useWsMutation } from '../../api/queries.ts';
 import { confirmDialog } from '../../components/ui/Modal.tsx';
 import { Popover } from '../../components/ui/Popover.tsx';
+import { t } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { SettingsCard } from './ui.tsx';
 
@@ -17,7 +18,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
           type="button"
           className="h-5 w-5 flex-none"
           style={{ background: value }}
-          aria-label="Change color"
+          aria-label={t('settings.labels.changeColor')}
         />
       }
     >
@@ -59,17 +60,22 @@ function LabelRow({ label }: { label: Label }) {
         onChange={(e) => setName(e.target.value)}
         onBlur={() => name.trim() && name !== label.name && save.mutate({ name })}
         onKeyDown={(e) => e.key === 'Enter' && e.currentTarget.blur()}
-        aria-label="Label name"
+        aria-label={t('settings.labels.name')}
       />
-      <span className="tag font-mono">{team ? team.key : 'workspace'}</span>
+      <span className="tag font-mono">{team ? team.key : t('settings.labels.workspaceTag')}</span>
       <button
         type="button"
         className="btn btn-danger btn-sm"
         onClick={async () => {
-          if (await confirmDialog({ title: `Delete label “${label.name}”?`, danger: true }))
+          if (
+            await confirmDialog({
+              title: t('settings.labels.deleteTitle', { name: label.name }),
+              danger: true,
+            })
+          )
             remove.mutate(undefined);
         }}
-        aria-label={`Delete ${label.name}`}
+        aria-label={t('settings.labels.deleteLabel', { name: label.name })}
       >
         <Trash2 size={12} />
       </button>
@@ -86,10 +92,7 @@ export function LabelsSection() {
     api.post(wsPath(ws.slug, '/labels'), body),
   );
   return (
-    <SettingsCard
-      title="Labels"
-      description="Workspace labels are available to every team; team labels only to that team."
-    >
+    <SettingsCard title={t('settings.labels.title')} description={t('settings.labels.description')}>
       <form
         className="mb-5 flex items-center gap-2"
         onSubmit={(e) => {
@@ -101,7 +104,7 @@ export function LabelsSection() {
         <ColorPicker value={color} onChange={setColor} />
         <input
           className="input min-w-0 flex-1"
-          placeholder="New label"
+          placeholder={t('settings.labels.newLabel')}
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
@@ -109,22 +112,22 @@ export function LabelsSection() {
           className="input w-36"
           value={teamId}
           onChange={(e) => setTeamId(e.target.value)}
-          aria-label="Scope"
+          aria-label={t('settings.labels.scope')}
         >
-          <option value="">Workspace</option>
-          {ws.teams.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
+          <option value="">{t('settings.labels.workspace')}</option>
+          {ws.teams.map((team) => (
+            <option key={team.id} value={team.id}>
+              {team.name}
             </option>
           ))}
         </select>
-        <button className="btn btn-primary">Add</button>
+        <button className="btn btn-primary">{t('common.add')}</button>
       </form>
       {ws.labels.map((l) => (
         <LabelRow key={l.id} label={l} />
       ))}
       {ws.labels.length === 0 && (
-        <p className="font-mono text-[12px] text-index">// no labels yet</p>
+        <p className="font-mono text-[12px] text-index">{t('settings.labels.empty')}</p>
       )}
     </SettingsCard>
   );

@@ -5,6 +5,8 @@ import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
 import { ProjectIcon } from '../components/icons.tsx';
 import { EmptyState, PageHeader, Sep } from '../components/PageHeader.tsx';
+import { getLocale, INTL_TAG, t } from '../i18n/index.ts';
+import { shortDate } from '../lib/format.ts';
 import { readPref, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { InitiativeIcon } from './initiatives.tsx';
@@ -19,18 +21,22 @@ const toDay = (iso: string) => Math.floor(Date.parse(`${iso}T00:00:00Z`) / DAY);
 const fromDay = (day: number) => new Date(day * DAY).toISOString().slice(0, 10);
 const todayDay = () => toDay(new Date().toISOString().slice(0, 10));
 
-/** First day of each month in [from, to], for the axis. */
+/** First day of each month in [from, to], for the axis; the first month and each January show the year. */
 function months(from: number, to: number) {
-  const out: { day: number; label: string; year: boolean }[] = [];
+  const tag = INTL_TAG[getLocale()];
+  const month = new Intl.DateTimeFormat(tag, { month: 'short', timeZone: 'UTC' });
+  const monthYear = new Intl.DateTimeFormat(tag, {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  const out: { day: number; label: string }[] = [];
   const d = new Date(from * DAY);
   d.setUTCDate(1);
   while (toDay(d.toISOString().slice(0, 10)) <= to) {
     const day = toDay(d.toISOString().slice(0, 10));
-    out.push({
-      day,
-      label: d.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' }),
-      year: d.getUTCMonth() === 0,
-    });
+    const withYear = out.length === 0 || d.getUTCMonth() === 0;
+    out.push({ day, label: (withYear ? monthYear : month).format(d) });
     d.setUTCMonth(d.getUTCMonth() + 1);
   }
   return out;
@@ -146,7 +152,12 @@ export function RoadmapPage() {
       <div
         className="absolute top-1/2 h-5 -translate-y-1/2"
         style={{ left, width: w }}
-        title={`${p.name}: ${p.startDate ?? '?'} → ${p.targetDate ?? '?'} · ${Math.round(pct * 100)}% done`}
+        title={t('roadmap.barTitle', {
+          name: p.name,
+          start: p.startDate ? shortDate(p.startDate) : '?',
+          end: p.targetDate ? shortDate(p.targetDate) : '?',
+          percent: Math.round(pct * 100),
+        })}
       >
         <Link
           to="/$slug/project/$projectId"
@@ -182,7 +193,7 @@ export function RoadmapPage() {
               key={m.id}
               className="pointer-events-auto absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rotate-45 border border-bg"
               style={{ left: x(toDay(m.targetDate!)) - left + px / 2, background: p.color }}
-              title={`${m.name} · ${m.targetDate}`}
+              title={`${m.name} · ${shortDate(m.targetDate!)}`}
             />
           ))}
       </div>
@@ -196,12 +207,12 @@ export function RoadmapPage() {
           <>
             {ws.workspace.name}
             <Sep />
-            roadmap
+            {t('roadmap.title')}
           </>
         }
-        title="Roadmap"
+        title={t('roadmap.title')}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             <label className="flex items-center gap-1.5 font-mono text-[11px] text-index">
               <input
                 type="checkbox"
@@ -209,7 +220,7 @@ export function RoadmapPage() {
                 checked={showClosed}
                 onChange={(e) => setShowClosed(e.target.checked)}
               />
-              closed
+              {t('roadmap.showClosed')}
             </label>
             <div className="flex">
               {(Object.keys(ZOOMS) as Zoom[]).map((z) => (
@@ -222,7 +233,7 @@ export function RoadmapPage() {
                     writePref('roadmapZoom', z);
                   }}
                 >
-                  {z}
+                  {t(`roadmap.zoom.${z}`)}
                 </button>
               ))}
             </div>
@@ -230,10 +241,7 @@ export function RoadmapPage() {
         }
       />
       {projects.length === 0 ? (
-        <EmptyState
-          title="nothing on the roadmap"
-          body="Projects with a start or target date show up here, grouped by initiative."
-        />
+        <EmptyState title={t('roadmap.emptyTitle')} body={t('roadmap.emptyBody')} />
       ) : (
         <div
           className="min-h-0 flex-1 overflow-auto select-none"
@@ -256,8 +264,6 @@ export function RoadmapPage() {
                     style={{ left: x(m.day) }}
                   >
                     {m.label}
-                    {(m.year || m.day === months(range.from, range.to)[0]!.day) &&
-                      ` ${new Date(m.day * DAY).getUTCFullYear()}`}
                   </span>
                 ))}
               </div>
@@ -290,7 +296,7 @@ export function RoadmapPage() {
                       </Link>
                     ) : (
                       <span className="font-mono text-[11px] tracking-[0.12em] text-index uppercase">
-                        No initiative
+                        {t('roadmap.noInitiative')}
                       </span>
                     )}
                   </div>
@@ -301,7 +307,10 @@ export function RoadmapPage() {
                         left: NAME_WIDTH + x(toDay(g.initiative.targetDate)) + px / 2,
                         background: g.initiative.color,
                       }}
-                      title={`${g.initiative.name} target · ${g.initiative.targetDate}`}
+                      title={t('roadmap.initiativeTarget', {
+                        name: g.initiative.name,
+                        date: shortDate(g.initiative.targetDate),
+                      })}
                     />
                   )}
                 </div>
@@ -332,7 +341,7 @@ export function RoadmapPage() {
                   className="sticky left-0 flex items-center border-b border-border-soft bg-surface/60 px-3 font-mono text-[11px] tracking-[0.12em] text-index uppercase"
                   style={{ height: ROW, width: NAME_WIDTH }}
                 >
-                  No dates
+                  {t('roadmap.noDates')}
                 </div>
                 {unscheduled.map((p) => (
                   <Link

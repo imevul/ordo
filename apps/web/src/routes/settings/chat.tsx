@@ -12,11 +12,12 @@ import { type FormEvent, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
 import { confirmDialog } from '../../components/ui/Modal.tsx';
+import { t, tx } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 
 interface Field {
   key: string;
@@ -36,100 +37,133 @@ interface ChatForm {
   fields: Field[];
 }
 
-/** What each chat service needs. See docs/integrations for the matching app setup. */
-export const CHAT_FORMS: Record<string, ChatForm> = {
+/**
+ * What each chat service needs. See docs/integrations for the matching app setup. A function:
+ * labels follow the language.
+ */
+export const chatForms = (): Record<string, ChatForm> => ({
   slack: {
-    docs: 'Create a Slack app from the manifest in the Ordo docs, install it to your workspace, then paste its tokens.',
-    channelHint:
-      'Channel ids look like C0123ABCD (channel details → About). Invite the app to the channel.',
+    docs: t('integrations.chat.slack.docs'),
+    channelHint: t('integrations.chat.slack.channelHint'),
     deliveries: [
       {
         key: 'events',
-        label: 'Events API',
-        hint: 'Slack posts to Ordo; it must reach this server.',
+        label: t('integrations.chat.slack.events'),
+        hint: t('integrations.chat.slack.eventsHint'),
       },
       {
         key: 'socket',
-        label: 'Socket Mode',
-        hint: 'Ordo keeps a connection open to Slack. Works behind NAT and firewalls.',
+        label: t('integrations.chat.slack.socket'),
+        hint: t('integrations.chat.slack.socketHint'),
       },
     ],
     fields: [
-      { key: 'botToken', label: 'Bot token', secret: true, placeholder: 'xoxb-…' },
-      { key: 'signingSecret', label: 'Signing secret', secret: true, for: ['events'] },
+      {
+        key: 'botToken',
+        label: t('integrations.chat.botToken'),
+        secret: true,
+        placeholder: 'xoxb-…',
+      },
+      {
+        key: 'signingSecret',
+        label: t('integrations.chat.slack.signingSecret'),
+        secret: true,
+        for: ['events'],
+      },
       {
         key: 'appToken',
-        label: 'App-level token',
+        label: t('integrations.chat.slack.appToken'),
         secret: true,
         placeholder: 'xapp-…',
-        hint: 'With the connections:write scope.',
+        hint: t('integrations.chat.slack.appTokenHint'),
         for: ['socket'],
       },
     ],
   },
   discord: {
-    docs: 'Create an application in the Discord developer portal, add a bot with the Message Content intent, and invite it with the bot and applications.commands scopes.',
-    channelHint:
-      'Channel ids are numbers (enable developer mode, then right-click → Copy channel ID).',
+    docs: t('integrations.chat.discord.docs'),
+    channelHint: t('integrations.chat.discord.channelHint'),
     deliveries: [
       {
         key: 'interactions',
-        label: 'Interactions endpoint',
-        hint: 'Discord posts slash commands to Ordo; it must reach this server.',
+        label: t('integrations.chat.discord.interactions'),
+        hint: t('integrations.chat.discord.interactionsHint'),
       },
       {
         key: 'gateway',
-        label: 'Gateway',
-        hint: 'Ordo keeps a connection open to Discord. Works behind NAT; also answers !ordo messages and previews links.',
+        label: t('integrations.chat.discord.gateway'),
+        hint: t('integrations.chat.discord.gatewayHint'),
       },
     ],
     fields: [
-      { key: 'applicationId', label: 'Application id', placeholder: '1234567890' },
-      { key: 'botToken', label: 'Bot token', secret: true },
+      {
+        key: 'applicationId',
+        label: t('integrations.chat.discord.applicationId'),
+        placeholder: '1234567890',
+      },
+      { key: 'botToken', label: t('integrations.chat.botToken'), secret: true },
       {
         key: 'publicKey',
-        label: 'Public key',
+        label: t('integrations.chat.discord.publicKey'),
         secret: true,
-        hint: 'From General information; it verifies requests from Discord.',
+        hint: t('integrations.chat.discord.publicKeyHint'),
         for: ['interactions'],
       },
     ],
   },
   matrix: {
-    docs: 'Register an account for the bot on your homeserver and paste its access token. Ordo syncs from your homeserver, so nothing has to reach Ordo. Encrypted rooms are not supported.',
-    channelHint: 'Room ids look like !abc123:example.org (room settings → Advanced).',
+    docs: t('integrations.chat.matrix.docs'),
+    channelHint: t('integrations.chat.matrix.channelHint'),
     deliveries: [],
     fields: [
-      { key: 'homeserverUrl', label: 'Homeserver URL', placeholder: 'https://matrix.example.org' },
-      { key: 'accessToken', label: 'Access token', secret: true },
+      {
+        key: 'homeserverUrl',
+        label: t('integrations.chat.matrix.homeserverUrl'),
+        placeholder: 'https://matrix.example.org',
+      },
+      { key: 'accessToken', label: t('integrations.chat.accessToken'), secret: true },
     ],
   },
   telegram: {
-    docs: 'Create a bot with @BotFather and paste its token. To see issue links in groups, turn the bot’s privacy mode off.',
-    channelHint: 'Group ids are negative numbers, e.g. -1001234567890.',
+    docs: t('integrations.chat.telegram.docs'),
+    channelHint: t('integrations.chat.telegram.channelHint'),
     deliveries: [
       {
         key: 'webhook',
-        label: 'Webhook',
-        hint: 'Telegram posts to Ordo; it must reach this server over HTTPS.',
+        label: t('integrations.chat.telegram.webhook'),
+        hint: t('integrations.chat.telegram.webhookHint'),
       },
       {
         key: 'longpoll',
-        label: 'Long polling',
-        hint: 'Ordo asks Telegram for updates. Works behind NAT.',
+        label: t('integrations.chat.telegram.longpoll'),
+        hint: t('integrations.chat.telegram.longpollHint'),
       },
     ],
-    fields: [{ key: 'botToken', label: 'Bot token', secret: true, placeholder: '123456:ABC…' }],
+    fields: [
+      {
+        key: 'botToken',
+        label: t('integrations.chat.botToken'),
+        secret: true,
+        placeholder: '123456:ABC…',
+      },
+    ],
   },
-};
+});
 
-const EVENT_LABELS: Record<ChatEventKind, string> = {
-  'issue.created': 'New issues',
-  'issue.status': 'Status changes',
-  'issue.completed': 'Completed issues',
-  'comment.created': 'Comments',
-  'project_update.created': 'Project updates',
-};
+function eventLabel(kind: ChatEventKind) {
+  switch (kind) {
+    case 'issue.created':
+      return t('integrations.chat.events.issueCreated');
+    case 'issue.status':
+      return t('integrations.chat.events.issueStatus');
+    case 'issue.completed':
+      return t('integrations.chat.events.issueCompleted');
+    case 'comment.created':
+      return t('integrations.chat.events.commentCreated');
+    case 'project_update.created':
+      return t('integrations.chat.events.projectUpdateCreated');
+  }
+}
 
 const emptyChannel = (): ChatChannel => ({
   id: '',
@@ -157,30 +191,30 @@ function ChannelsEditor({
     list.includes(item) ? list.filter((x) => x !== item) : [...list, item];
   return (
     <div className="mb-4">
-      <div className="mb-1 text-[12px] text-muted">Channels</div>
+      <div className="mb-1 text-[12px] text-muted">{t('integrations.chat.channels')}</div>
       <p className="mb-2 text-[11.5px] text-index">{hint}</p>
       {value.map((c, i) => (
         <div key={i} className="mb-2 border border-border-soft bg-bg p-3">
           <div className="mb-2 flex gap-2">
             <input
               className="input flex-1 font-mono"
-              placeholder="Channel id"
-              aria-label="Channel id"
+              placeholder={t('integrations.chat.channelId')}
+              aria-label={t('integrations.chat.channelId')}
               required
               value={c.id}
               onChange={(e) => set(i, { id: e.target.value })}
             />
             <input
               className="input w-36"
-              placeholder="Name (optional)"
-              aria-label="Channel name"
+              placeholder={t('integrations.chat.channelNamePlaceholder')}
+              aria-label={t('integrations.chat.channelName')}
               value={c.name ?? ''}
               onChange={(e) => set(i, { name: e.target.value })}
             />
             <button
               type="button"
               className="btn btn-ghost btn-sm"
-              aria-label="Remove channel"
+              aria-label={t('integrations.chat.removeChannel')}
               onClick={() => onChange(value.filter((_, j) => j !== i))}
             >
               <Trash2 size={12} />
@@ -195,41 +229,46 @@ function ChannelsEditor({
                   checked={c.events.includes(k)}
                   onChange={() => set(i, { events: toggle(c.events, k) })}
                 />
-                {EVENT_LABELS[k]}
+                {eventLabel(k)}
               </label>
             ))}
           </div>
           <div className="mb-1 text-[11.5px] text-index">
-            From {c.teamIds.length ? 'these teams' : 'every public team'}:
+            {c.teamIds.length
+              ? t('integrations.chat.fromTeams')
+              : t('integrations.chat.fromPublicTeams')}
           </div>
           <div className="mb-2 flex flex-wrap gap-1">
-            {teams.map((t) => (
+            {teams.map((team) => (
               <button
-                key={t.id}
+                key={team.id}
                 type="button"
-                className={`tag font-mono ${c.teamIds.includes(t.id) ? 'border-primary text-text' : ''}`}
-                aria-pressed={c.teamIds.includes(t.id)}
-                onClick={() => set(i, { teamIds: toggle(c.teamIds, t.id) })}
+                className={`tag font-mono ${c.teamIds.includes(team.id) ? 'border-primary text-text' : ''}`}
+                aria-pressed={c.teamIds.includes(team.id)}
+                onClick={() => set(i, { teamIds: toggle(c.teamIds, team.id) })}
               >
-                {t.key}
-                {t.private && ' · private'}
+                {team.key}
+                {team.private && ` · ${t('integrations.chat.private')}`}
               </button>
             ))}
           </div>
-          <label className="flex items-center gap-2 text-[12px] text-muted">
-            New issues from here go to
-            <select
-              className="input h-7 w-auto py-0 text-[12px]"
-              value={c.defaultTeamId ?? ''}
-              onChange={(e) => set(i, { defaultTeamId: e.target.value || null })}
-            >
-              <option value="">the workspace default team</option>
-              {teams.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+          <label className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
+            {tx('integrations.chat.newIssuesGoTo', {
+              select: (
+                <select
+                  className="input h-7 w-auto min-w-0 max-w-full py-0 text-[12px]"
+                  value={c.defaultTeamId ?? ''}
+                  onChange={(e) => set(i, { defaultTeamId: e.target.value || null })}
+                >
+                  <option value="">{t('integrations.chat.defaultTeam')}</option>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              ),
+            })}
           </label>
         </div>
       ))}
@@ -238,7 +277,7 @@ function ChannelsEditor({
         className="btn btn-ghost btn-sm"
         onClick={() => onChange([...value, emptyChannel()])}
       >
-        <Plus size={12} /> Add channel
+        <Plus size={12} /> {t('integrations.chat.addChannel')}
       </button>
     </div>
   );
@@ -257,7 +296,7 @@ export function ChatForm({
   onCancel: () => void;
 }) {
   const ws = useWorkspace();
-  const form = CHAT_FORMS[provider.key]!;
+  const form = chatForms()[provider.key]!;
   const config = (existing?.config ?? {}) as Record<string, unknown>;
   const [delivery, setDelivery] = useState(
     String(config.delivery ?? form.deliveries[0]?.key ?? ''),
@@ -293,8 +332,14 @@ export function ChatForm({
             config: cfg,
             secrets,
           });
-      if (res.status === 'error') toast.error(`Saved, but: ${res.lastError}`);
-      else toast.success(existing ? 'Saved' : `${provider.name} connected`);
+      if (res.status === 'error')
+        toast.error(t('integrations.form.savedButError', { error: res.lastError ?? '' }));
+      else
+        toast.success(
+          existing
+            ? t('common.saved')
+            : t('integrations.form.connected', { provider: provider.name }),
+        );
       onDone();
     } catch (err) {
       toast.error(errMsg(err));
@@ -308,7 +353,9 @@ export function ChatForm({
       <p className="mb-4 text-[12.5px] text-muted">{form.docs}</p>
       {form.deliveries.length > 0 && (
         <>
-          <div className="mb-1 text-[12px] text-muted">How Ordo hears from {provider.name}</div>
+          <div className="mb-1 text-[12px] text-muted">
+            {t('integrations.chat.deliveryHeading', { provider: provider.name })}
+          </div>
           {form.deliveries.map((d) => (
             <label key={d.key} className="mb-2 flex items-start gap-2 text-[13px]">
               <input
@@ -330,7 +377,7 @@ export function ChatForm({
         <FormRow
           key={f.key}
           label={f.label}
-          hint={f.secret && existing ? 'Leave empty to keep the current one.' : f.hint}
+          hint={f.secret && existing ? t('integrations.form.keepSecret') : f.hint}
         >
           <input
             className="input font-mono"
@@ -346,10 +393,10 @@ export function ChatForm({
       <ChannelsEditor value={channels} onChange={setChannels} hint={form.channelHint} />
       <div className="mt-6 flex justify-end gap-2">
         <button type="button" className="btn btn-ghost" onClick={onCancel}>
-          Cancel
+          {t('common.cancel')}
         </button>
         <button className="btn btn-primary" disabled={busy}>
-          {existing ? 'Save' : 'Connect'}
+          {existing ? t('common.save') : t('integrations.form.connect')}
         </button>
       </div>
     </form>
@@ -375,8 +422,8 @@ export function ChatAccountsCard() {
 
   return (
     <SettingsCard
-      title="Chat"
-      description="Link your chat accounts to get notifications as direct messages and to create issues from chat as yourself."
+      title={t('integrations.chatAccounts.title')}
+      description={t('integrations.chatAccounts.description')}
     >
       {data.services.map((s) => {
         const pending = codes[s.integrationId];
@@ -398,13 +445,18 @@ export function ChatAccountsCard() {
                   }
                 }}
               >
-                <Link2 size={12} /> {s.accounts.length ? 'Link another' : 'Link account'}
+                <Link2 size={12} />{' '}
+                {s.accounts.length
+                  ? t('integrations.chatAccounts.linkAnother')
+                  : t('integrations.chatAccounts.linkAccount')}
               </button>
             </div>
             {pending && (
               <div className="mb-2 border border-border-soft bg-bg p-3 text-[12.5px]">
                 <div className="mb-1 text-muted">
-                  Send {pending.hint.replace('CODE', pending.code)}
+                  {t('integrations.chatAccounts.send', {
+                    command: pending.hint.replace('CODE', pending.code),
+                  })}
                 </div>
                 <div className="flex items-center gap-2">
                   <code className="font-mono text-[15px] tracking-[0.12em] text-highlight">
@@ -413,29 +465,41 @@ export function ChatAccountsCard() {
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    aria-label="Copy code"
+                    aria-label={t('integrations.chatAccounts.copyCode')}
                     onClick={() => {
                       void navigator.clipboard?.writeText(pending.code);
-                      toast.success('Copied');
+                      toast.success(t('common.copied'));
                     }}
                   >
                     <Copy size={12} />
                   </button>
-                  <span className="text-[11.5px] text-index">valid for 15 minutes, once</span>
+                  <span className="text-[11.5px] text-index">
+                    {t('integrations.chatAccounts.validity')}
+                  </span>
                 </div>
               </div>
             )}
             {s.accounts.map((a) => (
               <div key={a.id} className="flex items-center gap-2 py-1 text-[12.5px]">
                 <span className="flex-1 font-mono">
-                  {a.username ?? 'linked account'}
-                  <span className="ml-2 text-index">linked {relativeTime(a.createdAt)}</span>
+                  {a.username ?? t('integrations.chatAccounts.linkedAccount')}
+                  <span className="ml-2 text-index">
+                    {t('integrations.chatAccounts.linkedAgo', { time: relativeTime(a.createdAt) })}
+                  </span>
                 </span>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
-                  title={a.notify ? 'Notifications on' : 'Notifications off'}
-                  aria-label={a.notify ? 'Turn notifications off' : 'Turn notifications on'}
+                  title={
+                    a.notify
+                      ? t('integrations.chatAccounts.notificationsOn')
+                      : t('integrations.chatAccounts.notificationsOff')
+                  }
+                  aria-label={
+                    a.notify
+                      ? t('integrations.chatAccounts.turnNotificationsOff')
+                      : t('integrations.chatAccounts.turnNotificationsOn')
+                  }
                   onClick={async () => {
                     await api.patch(wsPath(ws.slug, `/me/chat-accounts/${a.id}`), {
                       notify: !a.notify,
@@ -448,13 +512,15 @@ export function ChatAccountsCard() {
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
-                  aria-label="Unlink"
+                  aria-label={t('integrations.chatAccounts.unlink')}
                   onClick={async () => {
                     if (
                       !(await confirmDialog({
-                        title: `Unlink this ${s.name} account?`,
-                        body: 'You will stop getting notifications there.',
-                        confirmLabel: 'Unlink',
+                        title: t('integrations.chatAccounts.confirmUnlinkTitle', {
+                          service: s.name,
+                        }),
+                        body: t('integrations.chatAccounts.confirmUnlinkBody'),
+                        confirmLabel: t('integrations.chatAccounts.unlink'),
                         danger: true,
                       }))
                     )

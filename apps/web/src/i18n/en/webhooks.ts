@@ -1,0 +1,61 @@
+/** Settings → Webhooks. Event type names (issue.created…) are API identifiers and stay as they are. */
+export default {
+  adminsOnly: 'Only admins can manage webhooks.',
+  title: 'Webhooks',
+  /** {header} is Ordo-Signature, {format} is t=…,v1=…, {signed} is "<t>.<body>" */
+  description:
+    "Ordo POSTs a JSON event to your URL when issues, comments, projects and cycles change. Each request is signed: verify {header} ({format}, an HMAC-SHA256 of {signed} with the webhook's secret). Failed deliveries are retried for about an hour.",
+  noDescription: 'No description',
+  eventCount: { one: '{count} event', other: '{count} events' },
+  allEvents: 'all events',
+  teamCount: { one: '{count} team', other: '{count} teams' },
+  allTeams: 'all teams',
+  /** {status} is an HTTP status code or "error" */
+  lastDelivery: 'last {status} {time}',
+  error: 'error',
+  on: 'on',
+  off: 'off',
+  sendTest: 'Send a test event',
+  sendPing: 'Send a ping',
+  pingQueued: 'Ping queued',
+  editLabel: 'Edit {url}',
+  deleteLabel: 'Delete {url}',
+  confirmDelete: 'Delete the webhook to {url}?',
+  /** {reason} comes from the server, e.g. "Switched off after 10 failed deliveries in a row" */
+  disabledReason: '{reason}. Fix the endpoint, then switch it back on.',
+  empty: '// no webhooks yet',
+  addWebhook: 'Add webhook',
+  secret: {
+    title: 'Signing secret',
+    body: "Use this to verify that requests come from Ordo. You can see it again later from the webhook's settings.",
+  },
+  deliveries: {
+    title: 'Recent deliveries',
+    copySecret: 'Copy secret',
+    tries: { one: '{count} try', other: '{count} tries' },
+    redeliver: 'Redeliver',
+    empty: '// nothing delivered yet',
+    delivery: 'Delivery',
+    noResponse: 'no response',
+    attempts: { one: '{count} attempt', other: '{count} attempts' },
+    request: 'Request',
+    response: 'Response',
+    status: {
+      success: 'success',
+      pending: 'pending',
+      failed: 'failed',
+    },
+  },
+  form: {
+    label: 'Webhook',
+    edit: 'Edit webhook',
+    new: 'New webhook',
+    url: 'Payload URL',
+    description: 'Description',
+    events: 'Events',
+    everything: 'Everything',
+    teams: 'Teams',
+    allTeams: 'All teams',
+    active: 'Active',
+  },
+};

@@ -9,6 +9,7 @@ import { useMe } from '../api/queries.ts';
 import { OrdoMark } from '../components/icons.tsx';
 import { PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
 import { confirmDialog } from '../components/ui/Modal.tsx';
+import { getLocale, INTL_TAG, t } from '../i18n/index.ts';
 import { relativeTime, shortDate } from '../lib/format.ts';
 
 /**
@@ -17,16 +18,22 @@ import { relativeTime, shortDate } from '../lib/format.ts';
  */
 
 const SECTIONS = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'users', label: 'Users' },
-  { key: 'workspaces', label: 'Workspaces' },
-  { key: 'domains', label: 'Domains' },
-  { key: 'settings', label: 'Settings' },
-  { key: 'jobs', label: 'Jobs' },
-  { key: 'audit', label: 'Audit log' },
+  'overview',
+  'users',
+  'workspaces',
+  'domains',
+  'settings',
+  'jobs',
+  'audit',
 ] as const;
+type Section = (typeof SECTIONS)[number];
+const sectionLabel = (s: Section) => t(`admin.sections.${s}`);
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
+
+/** Whichever of `forms` is known, else the raw value (the API may add new ones). */
+const known = <K extends string>(value: string, forms: readonly K[], label: (k: K) => string) =>
+  (forms as readonly string[]).includes(value) ? label(value as K) : value;
 
 function Card({
   title,
@@ -49,37 +56,38 @@ function Card({
 export function AdminPage() {
   const { section } = useParams({ from: '/admin/$section' });
   const me = useMe();
-  if (me.isLoading) return <Spinner label="booting" />;
+  if (me.isLoading) return <Spinner label={t('auth.booting')} />;
   if (!me.data) return <Navigate to="/login" search={{ redirect: `/admin/${section}` }} />;
   if (!me.data.isInstanceAdmin) return <Navigate to="/" />;
-  const current = SECTIONS.find((s) => s.key === section) ?? SECTIONS[0];
+  const current = SECTIONS.find((s) => s === section) ?? SECTIONS[0];
   const back = me.data.workspaces[0];
 
   return (
     <div className="flex h-full">
       <nav
         className="hidden w-56 flex-none flex-col border-r border-border-soft bg-surface p-3 md:flex"
-        aria-label="Admin"
+        aria-label={t('admin.navLabel')}
       >
         <div className="mb-6 flex h-9 items-center px-2">
           <OrdoMark />
           <span className="ml-2 font-mono text-[10.5px] tracking-[0.16em] text-primary uppercase">
-            admin
+            {t('admin.brand')}
           </span>
         </div>
         {SECTIONS.map((s) => (
           <Link
-            key={s.key}
+            key={s}
             to="/admin/$section"
-            params={{ section: s.key }}
-            className={`nav-item ${s.key === current.key ? 'active' : ''}`}
+            params={{ section: s }}
+            className={`nav-item ${s === current ? 'active' : ''}`}
           >
-            {s.label}
+            {sectionLabel(s)}
           </Link>
         ))}
         {back && (
           <Link to="/$slug" params={{ slug: back.slug }} className="nav-item mt-auto">
-            <ArrowLeft size={14} /> Back to {back.name}
+            <ArrowLeft size={14} />
+            <span className="min-w-0 truncate">{t('admin.backTo', { name: back.name })}</span>
           </Link>
         )}
       </nav>
@@ -87,22 +95,22 @@ export function AdminPage() {
         <PageHeader
           kicker={
             <>
-              instance
+              {t('admin.kicker')}
               <Sep />
-              {current.key}
+              {sectionLabel(current)}
             </>
           }
-          title={current.label}
+          title={sectionLabel(current)}
         />
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-5xl px-6 py-8">
-            {current.key === 'overview' && <Overview />}
-            {current.key === 'users' && <Users myId={me.data.id} />}
-            {current.key === 'workspaces' && <Workspaces />}
-            {current.key === 'domains' && <Domains />}
-            {current.key === 'settings' && <Settings />}
-            {current.key === 'jobs' && <Jobs />}
-            {current.key === 'audit' && <Audit />}
+            {current === 'overview' && <Overview />}
+            {current === 'users' && <Users myId={me.data.id} />}
+            {current === 'workspaces' && <Workspaces />}
+            {current === 'domains' && <Domains />}
+            {current === 'settings' && <Settings />}
+            {current === 'jobs' && <Jobs />}
+            {current === 'audit' && <Audit />}
           </div>
         </div>
       </main>
@@ -143,46 +151,45 @@ function Overview() {
   if (!data) return <Spinner />;
   return (
     <>
-      <Card title="Instance">
+      <Card title={t('admin.overview.instance')}>
         <div className="grid grid-cols-2 gap-px bg-border-soft md:grid-cols-4">
-          <Stat label="version" value={data.version} />
-          <Stat label="users" value={data.users} />
-          <Stat label="workspaces" value={data.workspaces} />
-          <Stat label="issues" value={data.issues} />
-          <Stat label="database" value={data.databaseSize ?? '—'} />
-          <Stat label="live sockets" value={data.realtimeConnections} />
-          <Stat label="pending jobs" value={data.jobs.pending ?? 0} />
+          <Stat label={t('admin.overview.version')} value={data.version} />
+          <Stat label={t('admin.overview.users')} value={data.users} />
+          <Stat label={t('admin.overview.workspaces')} value={data.workspaces} />
+          <Stat label={t('admin.overview.issues')} value={data.issues} />
+          <Stat label={t('admin.overview.database')} value={data.databaseSize ?? '—'} />
+          <Stat label={t('admin.overview.liveSockets')} value={data.realtimeConnections} />
+          <Stat label={t('admin.overview.pendingJobs')} value={data.jobs.pending ?? 0} />
           <Stat
-            label="dead jobs"
+            label={t('admin.overview.deadJobs')}
             value={data.jobs.dead ?? 0}
             tone={data.jobs.dead ? 'text-error' : 'text-success'}
           />
         </div>
       </Card>
-      <Card title="Health">
+      <Card title={t('admin.overview.health')}>
         <div className="flex flex-col gap-2 font-mono text-[12.5px]">
           <span>
             <span
               className={`mr-2 inline-block h-[7px] w-[7px] ${data.emailEnabled ? 'bg-success' : 'bg-warning'}`}
             />
-            email{' '}
-            {data.emailEnabled
-              ? 'configured'
-              : 'not configured — password resets and emailed invites are off'}
+            {data.emailEnabled ? t('admin.overview.emailOk') : t('admin.overview.emailOff')}
           </span>
           <span>
             <span
               className={`mr-2 inline-block h-[7px] w-[7px] ${data.secretKey ? 'bg-success' : 'bg-error'}`}
             />
-            secret key {data.secretKey ? 'present' : 'missing — set ORDO_SECRET_KEY'}
+            {data.secretKey
+              ? t('admin.overview.secretKeyOk')
+              : t('admin.overview.secretKeyMissing')}
           </span>
           <span>
             <span className="mr-2 inline-block h-[7px] w-[7px] bg-success" />
-            storage: {data.storage}
+            {t('admin.overview.storage', { storage: data.storage })}
           </span>
           {data.leases.map((l) => (
             <span key={l.key} className="text-muted">
-              &gt; lease {l.key} held by {l.holder}
+              &gt; {t('admin.overview.lease', { key: l.key, holder: l.holder })}
             </span>
           ))}
         </div>
@@ -225,10 +232,10 @@ function Users({ myId }: { myId: string }) {
     }
   };
   return (
-    <Card title="Users">
+    <Card title={t('admin.sections.users')}>
       <input
         className="input mb-4"
-        placeholder="Search by name, email or username…"
+        placeholder={t('admin.users.search')}
         value={q}
         onChange={(e) => setQ(e.target.value)}
       />
@@ -242,17 +249,39 @@ function Users({ myId }: { myId: string }) {
               <div className="flex items-center gap-2 text-[13.5px]">
                 {u.name}
                 {u.isInstanceAdmin && (
-                  <span className="chip [--chip:var(--color-primary)]">admin</span>
+                  <span className="chip [--chip:var(--color-primary)]">
+                    {t('admin.users.admin')}
+                  </span>
                 )}
-                {u.disabledAt && <span className="chip [--chip:var(--color-error)]">disabled</span>}
-                {u.kind !== 'human' && <span className="tag font-mono">{u.kind}</span>}
-                {u.twoFactor && <Shield size={12} className="text-success" aria-label="2FA on" />}
+                {u.disabledAt && (
+                  <span className="chip [--chip:var(--color-error)]">
+                    {t('admin.users.disabled')}
+                  </span>
+                )}
+                {u.kind !== 'human' && (
+                  <span className="tag font-mono">
+                    {known(u.kind, ['bot', 'placeholder'] as const, (k) =>
+                      t(`admin.users.kind.${k}`),
+                    )}
+                  </span>
+                )}
+                {u.twoFactor && (
+                  <Shield
+                    size={12}
+                    className="text-success"
+                    aria-label={t('admin.users.twoFactorOn')}
+                  />
+                )}
               </div>
               <div className="truncate font-mono text-[11px] text-index">
-                {u.email}
-                {!u.emailVerifiedAt && ' (unverified)'} · {u.workspaceCount} workspace
-                {u.workspaceCount === 1 ? '' : 's'} · joined {shortDate(u.createdAt)}
-                {u.lastSeenAt && ` · seen ${relativeTime(u.lastSeenAt)}`}
+                {[
+                  u.emailVerifiedAt ? u.email : t('admin.users.unverified', { email: u.email }),
+                  t('admin.users.workspaces', { count: u.workspaceCount }),
+                  t('admin.users.joined', { date: shortDate(u.createdAt) }),
+                  u.lastSeenAt && t('admin.users.seen', { time: relativeTime(u.lastSeenAt) }),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
               </div>
             </div>
             {u.id !== myId && u.kind === 'human' && (
@@ -260,8 +289,8 @@ function Users({ myId }: { myId: string }) {
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
-                  title="Password reset link"
-                  aria-label={`Reset link for ${u.name}`}
+                  title={t('admin.users.resetLink')}
+                  aria-label={t('admin.users.resetLinkFor', { name: u.name })}
                   onClick={() =>
                     act(async () => {
                       const res = await api.post<{ url: string; emailed: boolean }>(
@@ -269,9 +298,7 @@ function Users({ myId }: { myId: string }) {
                       );
                       navigator.clipboard?.writeText(res.url);
                       toast.success(
-                        res.emailed
-                          ? 'Reset link emailed and copied'
-                          : 'Reset link copied — send it to them',
+                        res.emailed ? t('admin.users.resetEmailed') : t('admin.users.resetCopied'),
                       );
                     })
                   }
@@ -287,13 +314,17 @@ function Users({ myId }: { myId: string }) {
                     )
                   }
                 >
-                  {u.isInstanceAdmin ? 'Revoke admin' : 'Make admin'}
+                  {u.isInstanceAdmin ? t('admin.users.revokeAdmin') : t('admin.users.makeAdmin')}
                 </button>
                 <button
                   type="button"
                   className="btn btn-ghost btn-sm"
-                  title={u.disabledAt ? 'Enable' : 'Disable (signs them out)'}
-                  aria-label={u.disabledAt ? `Enable ${u.name}` : `Disable ${u.name}`}
+                  title={u.disabledAt ? t('admin.users.enable') : t('admin.users.disable')}
+                  aria-label={
+                    u.disabledAt
+                      ? t('admin.users.enableUser', { name: u.name })
+                      : t('admin.users.disableUser', { name: u.name })
+                  }
                   onClick={() =>
                     act(() => api.patch(`/admin/users/${u.id}`, { disabled: !u.disabledAt }))
                   }
@@ -303,14 +334,14 @@ function Users({ myId }: { myId: string }) {
                 <button
                   type="button"
                   className="btn btn-danger btn-sm"
-                  aria-label={`Delete ${u.name}`}
+                  aria-label={t('admin.users.deleteUser', { name: u.name })}
                   onClick={async () => {
                     const ok = await confirmDialog({
-                      title: `Delete ${u.email}?`,
-                      body: 'Their issues and comments stay, attributed to a former member.',
+                      title: t('admin.users.deleteTitle', { email: u.email }),
+                      body: t('admin.users.deleteBody'),
                       danger: true,
                     });
-                    if (ok) act(() => api.del(`/admin/users/${u.id}`), 'User deleted');
+                    if (ok) act(() => api.del(`/admin/users/${u.id}`), t('admin.users.deleted'));
                   }}
                 >
                   <Trash2 size={12} />
@@ -342,7 +373,7 @@ function Workspaces() {
       >('/admin/workspaces'),
   });
   return (
-    <Card title="Workspaces">
+    <Card title={t('admin.sections.workspaces')}>
       {data.map((w) => (
         <div key={w.id} className="flex items-center gap-3 border-b border-border-soft py-2.5">
           <div className="min-w-0 flex-1">
@@ -350,23 +381,29 @@ function Workspaces() {
               {w.name} <span className="font-mono text-[11px] text-index">/{w.slug}</span>
             </div>
             <div className="truncate font-mono text-[11px] text-index">
-              {w.members} members · {w.issues} issues · owned by {w.owners.join(', ') || 'nobody'} ·
-              created {shortDate(w.createdAt)}
+              {[
+                t('admin.workspaces.members', { count: w.members }),
+                t('common.issueCount', { count: w.issues }),
+                t('admin.workspaces.ownedBy', {
+                  owners: w.owners.join(', ') || t('admin.workspaces.nobody'),
+                }),
+                t('admin.workspaces.created', { date: shortDate(w.createdAt) }),
+              ].join(' · ')}
             </div>
           </div>
           <button
             type="button"
             className="btn btn-danger btn-sm"
-            aria-label={`Delete ${w.name}`}
+            aria-label={t('admin.workspaces.delete', { name: w.name })}
             onClick={async () => {
               const typed = prompt(
-                `This deletes ${w.name} and everything in it. Type its URL (${w.slug}) to confirm.`,
+                t('admin.workspaces.deletePrompt', { name: w.name, slug: w.slug }),
               );
               if (typed !== w.slug) return;
               try {
                 await api.del(`/admin/workspaces/${w.id}`, { confirmSlug: typed });
                 qc.invalidateQueries({ queryKey: ['admin'] });
-                toast.success('Workspace deleted');
+                toast.success(t('admin.workspaces.deleted'));
               } catch (err) {
                 toast.error(errMsg(err));
               }
@@ -397,10 +434,7 @@ function Domains() {
       >('/admin/domains'),
   });
   return (
-    <Card
-      title="Domains"
-      description="Domains workspaces have claimed. Approve one when DNS verification isn't possible (internal domains); a domain can belong to one workspace only."
-    >
+    <Card title={t('admin.sections.domains')} description={t('admin.domains.description')}>
       {data.map((d) => (
         <div
           key={d.id}
@@ -410,7 +444,9 @@ function Domains() {
           <span className="text-muted">{d.workspace}</span>
           {d.verified ? (
             <span className="chip [--chip:var(--color-success)]">
-              verified{d.verifiedBy === 'instance_admin' ? ' by admin' : ''}
+              {d.verifiedBy === 'instance_admin'
+                ? t('admin.domains.verifiedByAdmin')
+                : t('admin.domains.verified')}
             </span>
           ) : (
             <button
@@ -425,13 +461,13 @@ function Domains() {
                 }
               }}
             >
-              Approve
+              {t('admin.domains.approve')}
             </button>
           )}
         </div>
       ))}
       {data.length === 0 && (
-        <p className="font-mono text-[12px] text-index">// no domains claimed</p>
+        <p className="font-mono text-[12px] text-index">{t('admin.domains.empty')}</p>
       )}
     </Card>
   );
@@ -454,14 +490,14 @@ function Settings() {
       await api.patch('/admin/settings', patch);
       qc.invalidateQueries({ queryKey: ['admin', 'settings'] });
       qc.invalidateQueries({ queryKey: ['config'] });
-      toast.success('Saved');
+      toast.success(t('common.saved'));
     } catch (err) {
       toast.error(errMsg(err));
     }
   };
   const smtp = entry('smtp').value as { url: string; from: string } | null;
   const lockedTag = (k: InstanceSettingEntry['key']) =>
-    locked(k) ? <span className="tag ml-2 font-mono">set by env</span> : null;
+    locked(k) ? <span className="tag ml-2 font-mono">{t('admin.settings.setByEnv')}</span> : null;
 
   const saveSmtp = (e: FormEvent) => {
     e.preventDefault();
@@ -471,10 +507,10 @@ function Settings() {
 
   return (
     <>
-      <Card title="Sign-up">
+      <Card title={t('admin.settings.signup')}>
         <label className="flex items-center justify-between border-b border-border-soft py-3 text-[13.5px]">
           <span>
-            Who can create an account
+            {t('admin.settings.signupMode')}
             {lockedTag('signupMode')}
           </span>
           <select
@@ -483,13 +519,13 @@ function Settings() {
             value={entry('signupMode').value as string}
             onChange={(e) => save({ signupMode: e.target.value })}
           >
-            <option value="invite">Only people with an invite</option>
-            <option value="open">Anyone</option>
+            <option value="invite">{t('admin.settings.inviteOnly')}</option>
+            <option value="open">{t('admin.settings.anyone')}</option>
           </select>
         </label>
         <label className="flex items-center justify-between py-3 text-[13.5px]">
           <span>
-            Members may create more workspaces
+            {t('admin.settings.allowWorkspaceCreation')}
             {lockedTag('allowWorkspaceCreation')}
           </span>
           <input
@@ -502,23 +538,24 @@ function Settings() {
         </label>
       </Card>
 
-      <Card
-        title="Email"
-        description="Used for password resets, invites, email verification and notification emails. The password is stored encrypted and never shown again."
-      >
+      <Card title={t('admin.settings.email')} description={t('admin.settings.emailDescription')}>
         {locked('smtp') ? (
           <p className="font-mono text-[12.5px] text-muted">
-            Set by ORDO_SMTP_URL: {smtp?.url} {lockedTag('smtp')}
+            {t('admin.settings.smtpFromEnv', { url: smtp?.url ?? '' })} {lockedTag('smtp')}
           </p>
         ) : (
           <form onSubmit={saveSmtp}>
-            {smtp && <p className="mb-3 font-mono text-[12px] text-muted">Current: {smtp.url}</p>}
+            {smtp && (
+              <p className="mb-3 font-mono text-[12px] text-muted">
+                {t('admin.settings.current', { url: smtp.url })}
+              </p>
+            )}
             <div className="grid gap-2 md:grid-cols-[1fr_16rem_auto]">
               <input
                 className="input"
                 placeholder={
                   smtp
-                    ? 'New SMTP URL (leave empty to keep)'
+                    ? t('admin.settings.newSmtpUrl')
                     : 'smtps://user:password@smtp.example.com:465'
                 }
                 value={smtpUrl}
@@ -531,7 +568,7 @@ function Settings() {
                 onChange={(e) => setSmtpFrom(e.target.value)}
                 required
               />
-              <button className="btn btn-primary">Save</button>
+              <button className="btn btn-primary">{t('common.save')}</button>
             </div>
             {smtp && (
               <button
@@ -539,45 +576,44 @@ function Settings() {
                 className="btn btn-danger btn-sm mt-3"
                 onClick={() => save({ smtp: null })}
               >
-                Turn email off
+                {t('admin.settings.turnEmailOff')}
               </button>
             )}
           </form>
         )}
         {smtp && (
           <form
-            className="mt-5 flex gap-2"
+            className="mt-5 flex flex-wrap gap-2"
             onSubmit={async (e) => {
               e.preventDefault();
               try {
                 await api.post('/admin/settings/test-email', { to: testTo });
-                toast.success(`Test email sent to ${testTo}`);
+                toast.success(t('admin.settings.testSent', { to: testTo }));
               } catch (err) {
                 toast.error(errMsg(err));
               }
             }}
           >
             <input
-              className="input w-72"
+              className="input w-72 max-w-full"
               type="email"
               placeholder="you@example.com"
               value={testTo}
               onChange={(e) => setTestTo(e.target.value)}
               required
             />
-            <button className="btn btn-ghost">Send test email</button>
+            <button className="btn btn-ghost">{t('admin.settings.sendTest')}</button>
           </form>
         )}
       </Card>
 
-      <Card title="Network">
+      <Card title={t('admin.settings.network')}>
         <label className="flex items-center justify-between py-3 text-[13.5px]">
           <span>
-            Allow private network targets
+            {t('admin.settings.allowPrivate')}
             {lockedTag('allowPrivateNetworkTargets')}
             <span className="block text-[12px] text-index">
-              Let SSO discovery, webhooks and integrations reach LAN or loopback addresses (e.g. a
-              self-hosted Keycloak on 10.0.0.5). Off protects against server-side request forgery.
+              {t('admin.settings.allowPrivateHelp')}
             </span>
           </span>
           <input
@@ -590,14 +626,13 @@ function Settings() {
         </label>
       </Card>
 
-      <Card title="Uploads">
+      <Card title={t('admin.settings.uploads')}>
         <label className="flex items-center justify-between gap-4 py-3 text-[13.5px]">
           <span>
-            Largest attachment
+            {t('admin.settings.maxAttachment')}
             {lockedTag('maxAttachmentMb')}
             <span className="block text-[12px] text-index">
-              Files people attach to issues and comments, in megabytes. Keep your reverse proxy's
-              body limit above this.
+              {t('admin.settings.maxAttachmentHelp')}
             </span>
           </span>
           <input
@@ -675,7 +710,11 @@ function AiCard({
     setTesting(true);
     try {
       const r = await api.post<{ reply: string; ms: number }>('/admin/settings/test-ai');
-      toast.success(`The model answered in ${(r.ms / 1000).toFixed(1)} s: “${r.reply}”`);
+      const seconds = new Intl.NumberFormat(INTL_TAG[getLocale()], {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      }).format(r.ms / 1000);
+      toast.success(t('admin.ai.answered', { seconds, reply: r.reply }));
     } catch (err) {
       toast.error(errMsg(err));
     } finally {
@@ -684,22 +723,20 @@ function AiCard({
   };
 
   return (
-    <Card
-      title="AI assistance"
-      description="Issue summaries, drafts written from rough notes, and triage suggestions (priority, labels, duplicates). When someone asks, the issue text they can see is sent to this model; nothing is changed until they apply a suggestion. Workspace admins can turn it off for their workspace."
-    >
+    <Card title={t('admin.ai.title')} description={t('admin.ai.description')}>
       {locked ? (
         <p className="font-mono text-[12.5px] text-muted">
-          Set by ORDO_AI_PROVIDER:{' '}
-          {value
-            ? `${value.provider} · ${value.model}${value.baseUrl ? ` · ${value.baseUrl}` : ''}`
-            : 'off'}
-          <span className="tag ml-2 font-mono">set by env</span>
+          {t('admin.ai.fromEnv', {
+            value: value
+              ? `${value.provider} · ${value.model}${value.baseUrl ? ` · ${value.baseUrl}` : ''}`
+              : t('admin.ai.off'),
+          })}
+          <span className="tag ml-2 font-mono">{t('admin.settings.setByEnv')}</span>
         </p>
       ) : (
         <form onSubmit={submit} className="space-y-3">
           <label className="flex items-center justify-between gap-4 text-[13.5px]">
-            Provider
+            {t('admin.ai.provider')}
             <select
               className="input w-72"
               value={provider}
@@ -709,21 +746,18 @@ function AiCard({
                 setBaseUrl('');
               }}
             >
-              <option value="off">Off</option>
-              <option value="anthropic">Claude API (Anthropic)</option>
-              <option value="openai">OpenAI-compatible (Ollama, vLLM, LM Studio…)</option>
+              <option value="off">{t('admin.ai.providerOff')}</option>
+              <option value="anthropic">{t('admin.ai.anthropic')}</option>
+              <option value="openai">{t('admin.ai.openai')}</option>
             </select>
           </label>
           {hint && (
             <>
               {provider === 'anthropic' && (
-                <p className="text-[12px] text-index">
-                  Issue text leaves this server for Anthropic's API, under your API account's terms.
-                  Pick a local model instead to keep everything on your own hardware.
-                </p>
+                <p className="text-[12px] text-index">{t('admin.ai.anthropicNote')}</p>
               )}
               <label className="flex items-center justify-between gap-4 text-[13.5px]">
-                Model
+                {t('admin.ai.model')}
                 <input
                   className="input w-72 font-mono"
                   placeholder={hint.model}
@@ -733,11 +767,11 @@ function AiCard({
               </label>
               <label className="flex items-center justify-between gap-4 text-[13.5px]">
                 <span>
-                  Base URL
+                  {t('admin.ai.baseUrl')}
                   <span className="block text-[12px] text-index">
                     {provider === 'openai'
-                      ? 'Ends in /v1. Private and local addresses are allowed here.'
-                      : 'Only for a gateway or proxy in front of the API.'}
+                      ? t('admin.ai.baseUrlOpenai')
+                      : t('admin.ai.baseUrlAnthropic')}
                   </span>
                 </span>
                 <input
@@ -749,13 +783,13 @@ function AiCard({
               </label>
               <label className="flex items-center justify-between gap-4 text-[13.5px]">
                 <span>
-                  API key
+                  {t('admin.ai.apiKey')}
                   <span className="block text-[12px] text-index">
                     {sameProvider && value?.apiKey
-                      ? `Current: ${value.apiKey}. Leave empty to keep it.`
+                      ? t('admin.ai.apiKeyCurrent', { key: value.apiKey })
                       : provider === 'openai'
-                        ? 'Optional; local servers usually need none.'
-                        : 'From the Claude Console. Stored encrypted.'}
+                        ? t('admin.ai.apiKeyOptional')
+                        : t('admin.ai.apiKeyConsole')}
                   </span>
                 </span>
                 <input
@@ -769,10 +803,10 @@ function AiCard({
             </>
           )}
           <div className="flex gap-2 pt-1">
-            <button className="btn btn-primary">Save</button>
+            <button className="btn btn-primary">{t('common.save')}</button>
             {value && (
               <button type="button" className="btn btn-ghost" onClick={test} disabled={testing}>
-                {testing ? 'Testing…' : 'Test connection'}
+                {testing ? t('admin.ai.testing') : t('admin.ai.test')}
               </button>
             )}
           </div>
@@ -802,21 +836,23 @@ function Jobs() {
   });
   const reload = () => qc.invalidateQueries({ queryKey: ['admin', 'jobs'] });
   return (
-    <Card
-      title="Background jobs"
-      description="Queued and failed jobs. Failed jobs retry with backoff, then stop here as dead."
-    >
+    <Card title={t('admin.jobs.title')} description={t('admin.jobs.description')}>
       {data.map((j) => (
         <div key={j.id} className="border-b border-border-soft py-2.5">
-          <div className="flex items-center gap-3 text-[13px]">
+          <div className="flex flex-wrap items-center gap-3 text-[13px]">
             <span className="font-mono">{j.name}</span>
             <span
               className={`chip ${j.status === 'dead' ? '[--chip:var(--color-error)]' : '[--chip:var(--color-warning)]'}`}
             >
-              {j.status}
+              {known(j.status, ['pending', 'running', 'dead'] as const, (k) =>
+                t(`admin.jobs.status.${k}`),
+              )}
             </span>
             <span className="font-mono text-[11px] text-index">
-              {j.attempts} attempt{j.attempts === 1 ? '' : 's'} · next {relativeTime(j.runAt)}
+              {t('admin.jobs.attempts', { count: j.attempts })} ·{' '}
+              {t(j.status === 'dead' ? 'admin.jobs.lastTried' : 'admin.jobs.next', {
+                time: relativeTime(j.runAt),
+              })}
             </span>
             {j.status === 'dead' && (
               <span className="ml-auto flex gap-1">
@@ -825,12 +861,12 @@ function Jobs() {
                   className="btn btn-ghost btn-sm"
                   onClick={() => api.post(`/admin/jobs/${j.id}/retry`).then(reload)}
                 >
-                  <RotateCcw size={12} /> Retry
+                  <RotateCcw size={12} /> {t('admin.jobs.retry')}
                 </button>
                 <button
                   type="button"
                   className="btn btn-danger btn-sm"
-                  aria-label="Discard"
+                  aria-label={t('admin.jobs.discard')}
                   onClick={() => api.del(`/admin/jobs/${j.id}`).then(reload)}
                 >
                   <Trash2 size={12} />
@@ -845,7 +881,9 @@ function Jobs() {
           )}
         </div>
       ))}
-      {data.length === 0 && <p className="font-mono text-[12px] text-index">// queue is empty</p>}
+      {data.length === 0 && (
+        <p className="font-mono text-[12px] text-index">{t('admin.jobs.empty')}</p>
+      )}
     </Card>
   );
 }
@@ -867,8 +905,8 @@ function Audit() {
       >(`/admin/audit-log?scope=${scope}`),
   });
   return (
-    <Card title="Audit log">
-      <div className="mb-3 flex gap-1">
+    <Card title={t('admin.sections.audit')}>
+      <div className="mb-3 flex flex-wrap gap-1">
         {(['instance', 'all'] as const).map((s) => (
           <button
             type="button"
@@ -876,7 +914,7 @@ function Audit() {
             onClick={() => setScope(s)}
             className={`h-6 px-2.5 font-mono text-[11px] tracking-[0.1em] uppercase ${scope === s ? 'bg-raised text-primary' : 'text-index hover:text-text'}`}
           >
-            {s === 'instance' ? 'sign-ins & instance' : 'everything'}
+            {s === 'instance' ? t('admin.audit.instance') : t('admin.audit.all')}
           </button>
         ))}
       </div>

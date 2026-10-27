@@ -7,6 +7,7 @@ import { IssuesView } from '../components/IssuesView.tsx';
 import { EmptyState, PageHeader, Sep } from '../components/PageHeader.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { ConfirmModal } from '../components/ui/Modal.tsx';
+import { t } from '../i18n/index.ts';
 import { relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
@@ -19,17 +20,14 @@ export function ViewsPage() {
           <>
             {ws.workspace.name}
             <Sep />
-            views
+            {t('views.list.kicker')}
           </>
         }
-        title="Views"
+        title={t('views.list.title')}
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {ws.views.length === 0 ? (
-          <EmptyState
-            title="no saved views"
-            body="Filter any issue list, then choose “Save view” to keep it here for the whole workspace — or just for you."
-          />
+          <EmptyState title={t('views.list.emptyTitle')} body={t('views.list.emptyBody')} />
         ) : (
           ws.views.map((v) => {
             const owner = v.ownerId ? ws.memberById.get(v.ownerId) : undefined;
@@ -46,7 +44,7 @@ export function ViewsPage() {
                 {team && <span className="tag font-mono">{team.key}</span>}
                 {!v.shared && (
                   <span className="tag">
-                    <Lock size={11} /> private
+                    <Lock size={11} /> {t('views.list.private')}
                   </span>
                 )}
                 {owner && (
@@ -82,9 +80,9 @@ export function ViewPage() {
       : api.post(wsPath(ws.slug, '/favorites'), { kind: 'view', targetId: viewId }),
   );
   const remove = useWsMutation(ws.slug, () => api.del(wsPath(ws.slug, `/views/${viewId}`)), {
-    success: 'View deleted',
+    success: t('views.view.deleted'),
   });
-  if (!view) return <EmptyState title="view not found" />;
+  if (!view) return <EmptyState title={t('views.view.notFound')} />;
   const canEdit = view.ownerId === ws.me.id || ws.isAdmin;
   return (
     <>
@@ -93,9 +91,9 @@ export function ViewPage() {
         view={view}
         kicker={
           <>
-            views
+            {t('views.view.kicker')}
             <Sep />
-            {view.shared ? 'shared' : 'private'}
+            {view.shared ? t('views.view.shared') : t('views.view.private')}
           </>
         }
         title={view.name}
@@ -109,7 +107,7 @@ export function ViewPage() {
               className="btn btn-ghost btn-sm"
               onClick={() => toggleFav.mutate(undefined)}
               aria-pressed={!!fav}
-              aria-label="Favorite"
+              aria-label={t('views.view.favorite')}
             >
               <Star size={13} className={fav ? 'fill-primary text-primary' : ''} />
             </button>
@@ -118,7 +116,7 @@ export function ViewPage() {
                 type="button"
                 className="btn btn-danger btn-sm"
                 onClick={() => setConfirm(true)}
-                aria-label="Delete view"
+                aria-label={t('views.view.delete')}
               >
                 <Trash2 size={13} />
               </button>
@@ -129,9 +127,9 @@ export function ViewPage() {
       <ConfirmModal
         open={confirm}
         onClose={() => setConfirm(false)}
-        title={`Delete “${view.name}”?`}
-        body="Issues are not affected."
-        confirmLabel="Delete view"
+        title={t('views.view.confirmDeleteTitle', { name: view.name })}
+        body={t('views.view.confirmDeleteBody')}
+        confirmLabel={t('views.view.delete')}
         danger
         onConfirm={() =>
           remove.mutate(undefined, {

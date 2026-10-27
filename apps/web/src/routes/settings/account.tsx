@@ -30,14 +30,14 @@ import { keys, useAccount, useApiKeys, useConfig, useSessions } from '../../api/
 import { Spinner } from '../../components/PageHeader.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
-import { switchLocale, t } from '../../i18n/index.ts';
+import { switchLocale, t, tx } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
 import { disablePush, enablePush, type PushState, pushState } from '../../lib/push.ts';
 import { setThemePref, THEME_PREFS, useTheme } from '../../lib/theme.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
-const errMsg = (e: unknown) => (e instanceof Error ? e.message : 'Something went wrong');
+const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 
 /** Refreshes everything that shows the current user after an account change. */
 function useRefreshAccount() {
@@ -71,7 +71,7 @@ async function toAvatar(file: File): Promise<Blob> {
     );
   return new Promise((resolve, reject) =>
     canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error('Could not process image'))),
+      (b) => (b ? resolve(b) : reject(new Error(t('settings.profile.imageError')))),
       'image/webp',
       0.9,
     ),
@@ -169,7 +169,7 @@ function ProfileCard({ account }: { account: Account }) {
     try {
       await api.patch('/me', { name, username, avatarColor: color });
       refresh();
-      toast.success('Profile saved');
+      toast.success(t('settings.profile.saved'));
     } catch (err) {
       toast.error(errMsg(err));
     }
@@ -187,14 +187,14 @@ function ProfileCard({ account }: { account: Account }) {
     try {
       await upload('/me/avatar', await toAvatar(file), 'avatar.webp');
       refresh();
-      toast.success('Picture updated');
+      toast.success(t('settings.profile.pictureUpdated'));
     } catch (err) {
       toast.error(errMsg(err));
     }
   };
 
   return (
-    <SettingsCard title="Profile">
+    <SettingsCard title={t('settings.profile.title')}>
       <div className="mb-6 flex items-center gap-4">
         <Avatar name={name || '?'} color={color} src={account.avatarUrl} size={56} />
         <div className="flex flex-col gap-2">
@@ -204,7 +204,7 @@ function ProfileCard({ account }: { account: Account }) {
               className="btn btn-ghost btn-sm"
               onClick={() => fileRef.current?.click()}
             >
-              <Upload size={12} /> Upload picture
+              <Upload size={12} /> {t('settings.profile.uploadPicture')}
             </button>
             {account.avatarUrl && (
               <button
@@ -215,7 +215,7 @@ function ProfileCard({ account }: { account: Account }) {
                   refresh();
                 }}
               >
-                Remove
+                {t('common.remove')}
               </button>
             )}
           </div>
@@ -226,7 +226,11 @@ function ProfileCard({ account }: { account: Account }) {
             className="hidden"
             onChange={(e) => onFile(e.target.files?.[0])}
           />
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Initials colour">
+          <div
+            className="flex flex-wrap gap-1.5"
+            role="group"
+            aria-label={t('settings.profile.initialsColour')}
+          >
             {AVATAR_COLORS.map((c) => (
               <button
                 type="button"
@@ -234,14 +238,14 @@ function ProfileCard({ account }: { account: Account }) {
                 onClick={() => setColor(c)}
                 className={`h-5 w-5 ${color === c ? 'outline-2 outline-offset-2 outline-text' : ''}`}
                 style={{ background: c }}
-                aria-label={`Colour ${c}`}
+                aria-label={t('settings.profile.colour', { color: c })}
               />
             ))}
           </div>
         </div>
       </div>
       <form onSubmit={saveProfile}>
-        <FormRow label="Full name">
+        <FormRow label={t('settings.profile.fullName')}>
           <input
             className="input"
             value={name}
@@ -249,7 +253,7 @@ function ProfileCard({ account }: { account: Account }) {
             required
           />
         </FormRow>
-        <FormRow label="Username" hint="Used for @mentions.">
+        <FormRow label={t('settings.profile.username')} hint={t('settings.profile.usernameHint')}>
           <input
             className="input font-mono"
             value={username}
@@ -257,16 +261,16 @@ function ProfileCard({ account }: { account: Account }) {
             required
           />
         </FormRow>
-        <button className="btn btn-primary">Save profile</button>
+        <button className="btn btn-primary">{t('settings.profile.save')}</button>
       </form>
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        <FormRow label="Time zone">
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        <FormRow label={t('settings.profile.timeZone')}>
           <select
             className="input"
             value={account.preferences.timezone ?? ''}
             onChange={(e) => savePrefs({ timezone: e.target.value || null })}
           >
-            <option value="">Follow my browser</option>
+            <option value="">{t('settings.profile.followBrowser')}</option>
             {zones.map((z) => (
               <option key={z} value={z}>
                 {z}
@@ -274,14 +278,14 @@ function ProfileCard({ account }: { account: Account }) {
             ))}
           </select>
         </FormRow>
-        <FormRow label="Weeks start on">
+        <FormRow label={t('settings.profile.weekStart')}>
           <select
             className="input"
             value={account.preferences.weekStartsOn}
             onChange={(e) => savePrefs({ weekStartsOn: Number(e.target.value) as 0 | 1 })}
           >
-            <option value={1}>Monday</option>
-            <option value={0}>Sunday</option>
+            <option value={1}>{t('settings.profile.monday')}</option>
+            <option value={0}>{t('settings.profile.sunday')}</option>
           </select>
         </FormRow>
       </div>
@@ -303,8 +307,8 @@ function EmailCard({ account }: { account: Account }) {
         email,
         password: password || undefined,
       });
-      if (res.pending) toast.success(`Check ${email} for a confirmation link`);
-      else toast.success('Email changed');
+      if (res.pending) toast.success(t('settings.email.checkInbox', { email }));
+      else toast.success(t('settings.email.changed'));
       setEmail('');
       setPassword('');
       refresh();
@@ -314,24 +318,26 @@ function EmailCard({ account }: { account: Account }) {
   };
 
   return (
-    <SettingsCard title="Email">
-      <div className="mb-4 flex items-center gap-3">
+    <SettingsCard title={t('settings.email.title')}>
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <span className="text-[14px]">{account.email}</span>
         {account.emailVerified ? (
-          <span className="chip [--chip:var(--color-success)]">verified</span>
+          <span className="chip [--chip:var(--color-success)]">{t('settings.email.verified')}</span>
         ) : (
           <>
-            <span className="chip [--chip:var(--color-warning)]">unverified</span>
+            <span className="chip [--chip:var(--color-warning)]">
+              {t('settings.email.unverified')}
+            </span>
             {emailEnabled && (
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={async () => {
                   await api.post('/me/email/verify');
-                  toast.success('Verification email sent');
+                  toast.success(t('settings.email.verificationSent'));
                 }}
               >
-                Resend link
+                {t('settings.email.resend')}
               </button>
             )}
           </>
@@ -341,7 +347,7 @@ function EmailCard({ account }: { account: Account }) {
         <input
           className="input"
           type="email"
-          placeholder="New email address"
+          placeholder={t('settings.email.newAddress')}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
@@ -350,19 +356,17 @@ function EmailCard({ account }: { account: Account }) {
           <input
             className="input"
             type="password"
-            placeholder="Current password"
+            placeholder={t('settings.currentPassword')}
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
           />
         )}
-        <button className="btn btn-ghost">Change email</button>
+        <button className="btn btn-ghost">{t('settings.email.change')}</button>
       </form>
       <p className="mt-2 text-[12px] text-index">
-        {emailEnabled
-          ? "We'll send a link to the new address; the change applies once you open it."
-          : "Email isn't set up on this instance, so the new address can't be verified."}
+        {emailEnabled ? t('settings.email.hintEnabled') : t('settings.email.hintDisabled')}
       </p>
     </SettingsCard>
   );
@@ -384,10 +388,8 @@ function PasswordCard({ account }: { account: Account }) {
   const [pw, setPw] = useState({ currentPassword: '', newPassword: '' });
   if (!account.hasPassword) {
     return (
-      <SettingsCard title="Password">
-        <p className="text-[13px] text-muted">
-          This account signs in through single sign-on and has no password.
-        </p>
+      <SettingsCard title={t('settings.password.title')}>
+        <p className="text-[13px] text-muted">{t('settings.password.ssoOnly')}</p>
       </SettingsCard>
     );
   }
@@ -396,15 +398,15 @@ function PasswordCard({ account }: { account: Account }) {
     try {
       await api.post('/me/password', pw);
       setPw({ currentPassword: '', newPassword: '' });
-      toast.success('Password changed. Other sessions were signed out.');
+      toast.success(t('settings.password.changed'));
     } catch (err) {
       toast.error(errMsg(err));
     }
   };
   return (
-    <SettingsCard title="Password">
+    <SettingsCard title={t('settings.password.title')}>
       <form onSubmit={submit}>
-        <FormRow label="Current password">
+        <FormRow label={t('settings.currentPassword')}>
           <input
             className="input"
             type="password"
@@ -414,10 +416,7 @@ function PasswordCard({ account }: { account: Account }) {
             required
           />
         </FormRow>
-        <FormRow
-          label="New password"
-          hint="At least 8 characters. Changing it signs out your other sessions."
-        >
+        <FormRow label={t('settings.password.newPassword')} hint={t('settings.password.newHint')}>
           <input
             className="input"
             type="password"
@@ -428,7 +427,7 @@ function PasswordCard({ account }: { account: Account }) {
             required
           />
         </FormRow>
-        <button className="btn btn-ghost">Change password</button>
+        <button className="btn btn-ghost">{t('settings.password.change')}</button>
       </form>
     </SettingsCard>
   );
@@ -438,9 +437,7 @@ function RecoveryCodes({ codes }: { codes: string[] }) {
   const text = codes.join('\n');
   return (
     <div className="panel panel-sm p-4 [--panel-border:var(--color-primary)]">
-      <div className="kicker mb-3">
-        // save these now — each works once, and they won't be shown again
-      </div>
+      <div className="kicker mb-3">{t('settings.twoFactor.recoveryKicker')}</div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-1 font-mono text-[13px]">
         {codes.map((c) => (
           <span key={c}>{c}</span>
@@ -452,17 +449,17 @@ function RecoveryCodes({ codes }: { codes: string[] }) {
           className="btn btn-ghost btn-sm"
           onClick={() => {
             navigator.clipboard?.writeText(text);
-            toast.success('Copied');
+            toast.success(t('common.copied'));
           }}
         >
-          <Copy size={12} /> Copy
+          <Copy size={12} /> {t('common.copy')}
         </button>
         <a
           className="btn btn-ghost btn-sm"
-          href={`data:text/plain;charset=utf-8,${encodeURIComponent(`Ordo recovery codes\n\n${text}\n`)}`}
+          href={`data:text/plain;charset=utf-8,${encodeURIComponent(`${t('settings.twoFactor.recoveryFileTitle')}\n\n${text}\n`)}`}
           download="ordo-recovery-codes.txt"
         >
-          <Download size={12} /> Download
+          <Download size={12} /> {t('settings.download')}
         </a>
       </div>
     </div>
@@ -515,13 +512,13 @@ function TwoFactorCard({ account }: { account: Account }) {
       setCode('');
       setCodes(null);
       refresh();
-      toast.success('Two-factor authentication is off');
+      toast.success(t('settings.twoFactor.turnedOff'));
     } catch (err) {
       toast.error(errMsg(err));
     }
   };
   const regenerate = async () => {
-    const c = prompt('Enter a current 6-digit code from your authenticator app');
+    const c = prompt(t('settings.twoFactor.regeneratePrompt'));
     if (!c) return;
     try {
       setCodes(
@@ -535,8 +532,8 @@ function TwoFactorCard({ account }: { account: Account }) {
 
   return (
     <SettingsCard
-      title="Two-factor authentication"
-      description="Require a code from an authenticator app (1Password, Bitwarden, Aegis, Google Authenticator…) when signing in."
+      title={t('settings.twoFactor.title')}
+      description={t('settings.twoFactor.description')}
     >
       {codes && (
         <div className="mb-4">
@@ -545,16 +542,18 @@ function TwoFactorCard({ account }: { account: Account }) {
       )}
       {account.twoFactorEnabled ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="chip mr-2 [--chip:var(--color-success)]">on</span>
+          <span className="chip mr-2 [--chip:var(--color-success)]">
+            {t('settings.twoFactor.on')}
+          </span>
           <button type="button" className="btn btn-ghost btn-sm" onClick={regenerate}>
-            New recovery codes
+            {t('settings.twoFactor.newRecoveryCodes')}
           </button>
           <button
             type="button"
             className="btn btn-danger btn-sm"
             onClick={() => setDisabling(true)}
           >
-            Turn off
+            {t('settings.turnOff')}
           </button>
         </div>
       ) : (
@@ -563,7 +562,7 @@ function TwoFactorCard({ account }: { account: Account }) {
             <input
               className="input w-64"
               type="password"
-              placeholder="Current password"
+              placeholder={t('settings.currentPassword')}
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -571,7 +570,7 @@ function TwoFactorCard({ account }: { account: Account }) {
             />
           )}
           <button className="btn btn-primary">
-            <ShieldCheck size={13} /> Set up
+            <ShieldCheck size={13} /> {t('settings.twoFactor.setUp')}
           </button>
         </form>
       )}
@@ -580,29 +579,29 @@ function TwoFactorCard({ account }: { account: Account }) {
         open={!!setup}
         onClose={() => setSetup(null)}
         width={460}
-        label="Set up two-factor authentication"
+        label={t('settings.twoFactor.setupLabel')}
         align="center"
       >
         {setup && (
           <form onSubmit={enable} className="p-6">
-            <div className="section-label mb-4">Scan the code</div>
+            <div className="section-label mb-4">{t('settings.twoFactor.scanTitle')}</div>
             <div className="flex gap-5">
               <img
                 src={setup.qr}
-                alt="QR code for your authenticator app"
+                alt={t('settings.twoFactor.qrAlt')}
                 width={160}
                 height={160}
                 className="flex-none"
               />
               <div className="min-w-0 text-[13px] text-muted">
-                Scan it with your authenticator app, or enter this key:
+                {t('settings.twoFactor.scanHelp')}
                 <code className="mt-2 block break-all font-mono text-[12px] text-text">
                   {setup.secret}
                 </code>
               </div>
             </div>
             <div className="mt-6" />
-            <FormRow label="6-digit code from the app">
+            <FormRow label={t('settings.twoFactor.codeFromApp')}>
               <input
                 className="input font-mono tracking-[0.3em]"
                 inputMode="numeric"
@@ -616,10 +615,10 @@ function TwoFactorCard({ account }: { account: Account }) {
             </FormRow>
             <div className="flex justify-end gap-2">
               <button type="button" className="btn btn-ghost" onClick={() => setSetup(null)}>
-                Cancel
+                {t('common.cancel')}
               </button>
               <button className="btn btn-primary" disabled={code.length !== 6}>
-                Turn on <span className="arrow">→</span>
+                {t('settings.turnOn')} <span className="arrow">→</span>
               </button>
             </div>
           </form>
@@ -630,13 +629,13 @@ function TwoFactorCard({ account }: { account: Account }) {
         open={disabling}
         onClose={() => setDisabling(false)}
         width={420}
-        label="Turn off two-factor authentication"
+        label={t('settings.twoFactor.disableLabel')}
         align="center"
       >
         <form onSubmit={disable} className="p-6">
-          <div className="section-label mb-4">Turn off two-factor</div>
+          <div className="section-label mb-4">{t('settings.twoFactor.disableTitle')}</div>
           {account.hasPassword && (
-            <FormRow label="Current password">
+            <FormRow label={t('settings.currentPassword')}>
               <input
                 className="input"
                 type="password"
@@ -647,7 +646,7 @@ function TwoFactorCard({ account }: { account: Account }) {
               />
             </FormRow>
           )}
-          <FormRow label="Code from your app, or a recovery code">
+          <FormRow label={t('settings.twoFactor.disableCode')}>
             <input
               className="input font-mono"
               value={code}
@@ -657,9 +656,9 @@ function TwoFactorCard({ account }: { account: Account }) {
           </FormRow>
           <div className="flex justify-end gap-2">
             <button type="button" className="btn btn-ghost" onClick={() => setDisabling(false)}>
-              Cancel
+              {t('common.cancel')}
             </button>
-            <button className="btn btn-danger">Turn off</button>
+            <button className="btn btn-danger">{t('settings.turnOff')}</button>
           </div>
         </form>
       </Modal>
@@ -669,7 +668,7 @@ function TwoFactorCard({ account }: { account: Account }) {
 
 /** A short, human description of a browser from its user agent. */
 function describeAgent(ua: string | null) {
-  if (!ua) return 'Unknown device';
+  if (!ua) return t('settings.sessions.unknownDevice');
   const browser = /Firefox\//.test(ua)
     ? 'Firefox'
     : /Edg\//.test(ua)
@@ -679,8 +678,8 @@ function describeAgent(ua: string | null) {
         : /Safari\//.test(ua)
           ? 'Safari'
           : /curl|node|undici/i.test(ua)
-            ? 'Script'
-            : 'Browser';
+            ? t('settings.sessions.script')
+            : t('settings.sessions.browser');
   const os = /Windows/.test(ua)
     ? 'Windows'
     : /Mac OS X/.test(ua)
@@ -692,7 +691,7 @@ function describeAgent(ua: string | null) {
           : /Linux/.test(ua)
             ? 'Linux'
             : '';
-  return os ? `${browser} on ${os}` : browser;
+  return os ? t('settings.sessions.browserOn', { browser, os }) : browser;
 }
 
 function SessionsCard() {
@@ -701,8 +700,8 @@ function SessionsCard() {
   const reload = () => qc.invalidateQueries({ queryKey: keys.sessions });
   return (
     <SettingsCard
-      title="Sessions"
-      description="Where you're signed in. Revoke anything you don't recognise."
+      title={t('settings.sessions.title')}
+      description={t('settings.sessions.description')}
     >
       {sessions.map((s) => (
         <div key={s.id} className="flex h-12 items-center gap-3 border-b border-border-soft">
@@ -710,13 +709,23 @@ function SessionsCard() {
             <div className="truncate text-[13.5px]">
               {describeAgent(s.userAgent)}
               {s.current && (
-                <span className="chip ml-3 [--chip:var(--color-success)]">this device</span>
+                <span className="chip ml-3 [--chip:var(--color-success)]">
+                  {t('settings.sessions.thisDevice')}
+                </span>
               )}
               {s.sso && <span className="tag ml-2 font-mono">sso</span>}
             </div>
             <div className="truncate font-mono text-[11px] text-index">
-              {s.ip ?? 'unknown ip'} · signed in {relativeTime(s.createdAt)}
-              {s.lastSeenAt && ` · active ${relativeTime(s.lastSeenAt)}`}
+              {s.lastSeenAt
+                ? t('settings.sessions.metaActive', {
+                    ip: s.ip ?? t('settings.sessions.unknownIp'),
+                    time: relativeTime(s.createdAt),
+                    active: relativeTime(s.lastSeenAt),
+                  })
+                : t('settings.sessions.meta', {
+                    ip: s.ip ?? t('settings.sessions.unknownIp'),
+                    time: relativeTime(s.createdAt),
+                  })}
             </div>
           </div>
           {!s.current && (
@@ -727,7 +736,7 @@ function SessionsCard() {
                 await api.del(`/me/sessions/${s.id}`);
                 reload();
               }}
-              aria-label="Revoke session"
+              aria-label={t('settings.sessions.revoke')}
             >
               <LogOut size={12} />
             </button>
@@ -741,26 +750,17 @@ function SessionsCard() {
           onClick={async () => {
             await api.post('/me/sessions/revoke-others');
             reload();
-            toast.success('Signed out everywhere else');
+            toast.success(t('settings.sessions.signedOutOthers'));
           }}
         >
-          Sign out other sessions
+          {t('settings.sessions.signOutOthers')}
         </button>
       )}
     </SettingsCard>
   );
 }
 
-const NOTIFICATION_LABELS: Record<NotificationType, string> = {
-  issue_assigned: 'Assigned to me',
-  issue_unassigned: 'Unassigned from me',
-  issue_comment: 'Comments on issues I follow',
-  issue_mention: 'Mentions',
-  issue_status_changed: 'Status changes on issues I follow',
-  issue_priority_urgent: 'My issues marked urgent',
-  comment_reaction: 'Reactions to my comments',
-  issue_sla_breached: 'Issues I follow that miss their SLA',
-};
+const notificationLabel = (type: NotificationType) => t(`settings.notifications.types.${type}`);
 
 /** Push notifications on this device (each browser or installed app subscribes on its own). */
 export function PushCard() {
@@ -780,21 +780,18 @@ export function PushCard() {
     }
   };
   return (
-    <SettingsCard
-      title="Push notifications"
-      description="Get your notifications on this device even when Ordo isn't open — on desktop, or on your phone after adding Ordo to the home screen. Reactions aren't pushed."
-    >
+    <SettingsCard title={t('settings.push.title')} description={t('settings.push.description')}>
       <div className="flex items-center gap-3">
         <span className="flex-1 text-[13px] text-muted">
           {state === null
-            ? 'Checking…'
+            ? t('settings.push.checking')
             : state === 'unsupported'
-              ? 'This browser can’t receive push notifications.'
+              ? t('settings.push.unsupported')
               : state === 'denied'
-                ? 'Notifications are blocked for Ordo in this browser’s site settings.'
+                ? t('settings.push.denied')
                 : state === 'on'
-                  ? 'On for this device.'
-                  : 'Off for this device.'}
+                  ? t('settings.push.on')
+                  : t('settings.push.off')}
         </span>
         {(state === 'on' || state === 'off') && (
           <button
@@ -803,7 +800,7 @@ export function PushCard() {
             disabled={busy}
             onClick={toggle}
           >
-            {state === 'on' ? 'Turn off' : 'Turn on'}
+            {state === 'on' ? t('settings.turnOff') : t('settings.turnOn')}
           </button>
         )}
       </div>
@@ -830,37 +827,38 @@ export function NotificationsSection() {
   };
   return (
     <SettingsCard
-      title="Email notifications"
+      title={t('settings.notifications.title')}
       description={
         config.data?.emailEnabled
-          ? 'Everything always shows up in your Inbox. Choose what is also emailed, and how often. Anything you read in the app first is not emailed.'
-          : "Email isn't set up on this instance, so these settings have no effect yet."
+          ? t('settings.notifications.description')
+          : t('settings.notifications.descriptionNoEmail')
       }
     >
-      <FormRow label="Send emails">
+      <FormRow label={t('settings.notifications.sendEmails')}>
         <select
           className="input w-64"
           value={prefs.emailDigest}
           onChange={(e) => save({ emailDigest: e.target.value as EmailDigest })}
         >
-          <option value="instant">Within a few minutes</option>
-          <option value="hourly">At most hourly</option>
-          <option value="daily">Once a day</option>
-          <option value="off">Never</option>
+          {(['instant', 'hourly', 'daily', 'off'] as const).map((d) => (
+            <option key={d} value={d}>
+              {t(`settings.notifications.digest.${d}`)}
+            </option>
+          ))}
         </select>
       </FormRow>
       <div className={prefs.emailDigest === 'off' ? 'pointer-events-none opacity-50' : ''}>
-        {NOTIFICATION_TYPES.map((t) => (
+        {NOTIFICATION_TYPES.map((type) => (
           <label
-            key={t}
-            className="flex items-center justify-between border-b border-border-soft py-2.5 text-[13.5px]"
+            key={type}
+            className="flex items-center justify-between gap-3 border-b border-border-soft py-2.5 text-[13.5px]"
           >
-            {NOTIFICATION_LABELS[t]}
+            {notificationLabel(type)}
             <input
               type="checkbox"
               className="accent-primary"
-              checked={prefs.email[t]}
-              onChange={(e) => save({ email: { [t]: e.target.checked } })}
+              checked={prefs.email[type]}
+              onChange={(e) => save({ email: { [type]: e.target.checked } })}
             />
           </label>
         ))}
@@ -889,9 +887,9 @@ export function ApiKeysSection() {
   const revoke = async (id: string) => {
     if (
       !(await confirmDialog({
-        title: 'Revoke this key?',
-        body: 'Anything using it stops working.',
-        confirmLabel: 'Revoke',
+        title: t('settings.apiKeys.revokeTitle'),
+        body: t('settings.apiKeys.revokeBody'),
+        confirmLabel: t('settings.apiKeys.revokeConfirm'),
         danger: true,
       }))
     )
@@ -902,30 +900,27 @@ export function ApiKeysSection() {
 
   return (
     <SettingsCard
-      title="Personal API keys"
-      description={
-        <>
-          Keys act as you against the REST API. Send them as{' '}
-          <code className="font-mono text-highlight">Authorization: Bearer ordo_…</code>. See{' '}
-          <span className="font-mono">docs/api.md</span>.
-        </>
-      }
+      title={t('settings.apiKeys.title')}
+      description={tx('settings.apiKeys.description', {
+        header: <code className="font-mono text-highlight">Authorization: Bearer ordo_…</code>,
+        doc: <span className="font-mono">docs/api.md</span>,
+      })}
     >
       <form onSubmit={create} className="mb-5 flex gap-2">
         <input
           className="input"
-          placeholder="Key name, e.g. CI bot"
+          placeholder={t('settings.apiKeys.namePlaceholder')}
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
         />
         <button className="btn btn-primary">
-          <KeyRound size={13} /> Create
+          <KeyRound size={13} /> {t('common.create')}
         </button>
       </form>
       {created && (
         <div className="panel panel-sm mb-5 p-4 [--panel-border:var(--color-primary)]">
-          <div className="kicker mb-2">// copy it now — it won't be shown again</div>
+          <div className="kicker mb-2">{t('settings.apiKeys.copyNow')}</div>
           <div className="flex items-center gap-2">
             <code className="min-w-0 flex-1 truncate font-mono text-[12.5px]">{created}</code>
             <button
@@ -933,10 +928,10 @@ export function ApiKeysSection() {
               className="btn btn-ghost btn-sm"
               onClick={() => {
                 navigator.clipboard?.writeText(created);
-                toast.success('Copied');
+                toast.success(t('common.copied'));
               }}
             >
-              <Copy size={12} /> Copy
+              <Copy size={12} /> {t('common.copy')}
             </button>
           </div>
         </div>
@@ -946,21 +941,23 @@ export function ApiKeysSection() {
           <KeyRound size={14} className="text-muted" />
           <span className="min-w-0 flex-1 truncate">{k.name}</span>
           <span className="font-mono text-[11.5px] text-index">{k.prefix}…</span>
-          <span className="hidden w-32 text-right font-mono text-[11px] text-index sm:block">
-            {k.lastUsedAt ? `used ${relativeTime(k.lastUsedAt)}` : 'never used'}
+          <span className="hidden min-w-32 flex-none text-right font-mono text-[11px] text-index sm:block">
+            {k.lastUsedAt
+              ? t('settings.apiKeys.used', { time: relativeTime(k.lastUsedAt) })
+              : t('settings.apiKeys.neverUsed')}
           </span>
           <button
             type="button"
             className="btn btn-danger btn-sm"
             onClick={() => revoke(k.id)}
-            aria-label={`Revoke ${k.name}`}
+            aria-label={t('settings.apiKeys.revokeKey', { name: k.name })}
           >
             <Trash2 size={12} />
           </button>
         </div>
       ))}
       {list.length === 0 && !created && (
-        <p className="font-mono text-[12px] text-index">// no keys yet</p>
+        <p className="font-mono text-[12px] text-index">{t('settings.apiKeys.empty')}</p>
       )}
     </SettingsCard>
   );
@@ -972,14 +969,11 @@ export function CliCard() {
   const install = `curl -fsSL ${origin}/cli/ordo.mjs -o ~/.local/bin/ordo && chmod +x ~/.local/bin/ordo\nordo login ${origin}`;
   return (
     <SettingsCard
-      title="Command line"
-      description={
-        <>
-          The <span className="font-mono text-text">ordo</span> command lists, creates and updates
-          issues from a terminal, with one of these keys. It needs Node.js 22 or newer. See{' '}
-          <span className="font-mono">docs/cli.md</span>.
-        </>
-      }
+      title={t('settings.cli.title')}
+      description={tx('settings.cli.description', {
+        command: <span className="font-mono text-text">ordo</span>,
+        doc: <span className="font-mono">docs/cli.md</span>,
+      })}
     >
       <div className="flex items-start gap-2">
         <pre className="min-w-0 flex-1 overflow-x-auto border border-border-soft bg-bg p-3 font-mono text-[11.5px] leading-relaxed">
@@ -990,10 +984,10 @@ export function CliCard() {
           className="btn btn-ghost btn-sm flex-none"
           onClick={() => {
             navigator.clipboard?.writeText(install);
-            toast.success('Copied');
+            toast.success(t('common.copied'));
           }}
         >
-          <Copy size={12} /> Copy
+          <Copy size={12} /> {t('common.copy')}
         </button>
       </div>
     </SettingsCard>

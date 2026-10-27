@@ -95,11 +95,15 @@ toast.success(t('issues.moved', { count: ids.length }));          // { one: '…
 - `{name}` placeholders and `<tag>…</tag>` markup must match English in every translation (a test checks).
   Write whole sentences as one message so a translation can reorder them; never glue translated pieces together.
 - Messages with a number are plural objects (`{ one, other }`) picked by `count`.
-- Call `t()` while rendering, not at module scope: the catalogue loads after the module, and changing language
-  remounts the app so every `t()` runs again.
+- Call `t()` while rendering or in handlers, not at module scope: the catalogue loads after the module. Changing
+  language reloads the page, so nothing needs to subscribe. A module-level list of labels becomes a function or uses
+  getters (`THEME_PREFS` in `lib/theme.ts`).
 - Labels for fixed values (priorities, state types, statuses, roles, estimates) come from `i18n/labels.ts`, not the
   English `*_LABELS` constants in `@ordo/shared`, which stay for the API and CLI.
 - Dates go through `lib/format.ts` (`shortDate`, `longDate`, `relativeTime`), which follow the language.
+- Text the server or `@ordo/shared` sends in English (integration provider descriptions, MCP tool descriptions) is
+  translated in the web app by its id, falling back to the English it came with (`providerText` in
+  `routes/settings/integrations.tsx`).
 
 To add a language, add its code to `LOCALES` and `LOCALE_NAMES` in `packages/shared/src/constants.ts`, a folder
 like `sv/`, a loader in `LOADERS` and an `INTL_TAG` in `i18n/index.ts`, and a date-fns locale in `lib/format.ts`.

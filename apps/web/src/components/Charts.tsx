@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
+import { getLocale, INTL_TAG, t } from '../i18n/index.ts';
 
 /**
  * Small SVG charts in Hotline Pink: square ends, 2px lines, a recessive grid, text in text tokens
@@ -15,9 +16,16 @@ export interface Series {
   values: number[];
 }
 
-const fmt = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
+/** Whole numbers as they are, others with one decimal, in the reader's language. */
+const fmt = (n: number) => {
+  const digits = Number.isInteger(n) ? 0 : 1;
+  return n.toLocaleString(INTL_TAG[getLocale()], {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+};
 const shortDay = (iso: string) =>
-  new Date(`${iso}T00:00:00Z`).toLocaleDateString(undefined, {
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString(INTL_TAG[getLocale()], {
     month: 'short',
     day: 'numeric',
     timeZone: 'UTC',
@@ -101,24 +109,24 @@ export function LineChart({
       <Legend series={series} />
       <div ref={ref} className="relative">
         <svg width={width} height={height} role="img" aria-label={label}>
-          {ticks.map((t) => (
-            <g key={t}>
+          {ticks.map((tick) => (
+            <g key={tick}>
               <line
                 x1={m.left}
                 x2={m.left + w}
-                y1={py(t)}
-                y2={py(t)}
+                y1={py(tick)}
+                y2={py(tick)}
                 stroke="var(--color-border-soft)"
                 strokeWidth="1"
               />
               <text
                 x={m.left - 6}
-                y={py(t)}
+                y={py(tick)}
                 textAnchor="end"
                 dominantBaseline="middle"
                 className="fill-index font-mono text-[10px]"
               >
-                {fmt(t)}
+                {fmt(tick)}
               </text>
             </g>
           ))}
@@ -203,7 +211,7 @@ export function LineChart({
         <caption>{label}</caption>
         <thead>
           <tr>
-            <th>Date</th>
+            <th>{t('insights.chart.date')}</th>
             {series.map((s) => (
               <th key={s.key}>{s.label}</th>
             ))}
@@ -242,7 +250,15 @@ export function BarList({
         <li
           key={b.key}
           className="group grid grid-cols-[minmax(0,9rem)_1fr_3.5rem] items-center gap-2 py-0.5"
-          title={`${b.label}: ${format(b.value)}${sum ? ` (${Math.round((b.value / sum) * 100)}%)` : ''}`}
+          title={
+            sum
+              ? t('insights.chart.barShare', {
+                  label: b.label,
+                  value: format(b.value),
+                  percent: Math.round((b.value / sum) * 100),
+                })
+              : t('insights.chart.bar', { label: b.label, value: format(b.value) })
+          }
         >
           <span className="truncate text-[12.5px] text-muted group-hover:text-text">{b.label}</span>
           <span className="h-3.5 bg-border-soft/40">

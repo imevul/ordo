@@ -1,4 +1,6 @@
-import { type Issue, PRIORITIES, STATE_TYPES } from '@ordo/shared';
+import { type Issue, STATE_TYPES } from '@ordo/shared';
+import { t } from '../i18n/index.ts';
+import { priorityLabel } from '../i18n/labels.ts';
 import type { WorkspaceData } from './workspace.tsx';
 
 /**
@@ -43,36 +45,50 @@ export function breakdown(ws: WorkspaceData, issues: Issue[], slice: Slice, m: M
       case 'state': {
         // Keyed so that sorting by key gives workflow order: status type, then name.
         const s = ws.stateById.get(i.stateId);
-        add(s ? `${STATE_TYPES.indexOf(s.type)}:${s.name}` : '9:Unknown', s?.name ?? 'Unknown', i);
+        add(
+          s ? `${STATE_TYPES.indexOf(s.type)}:${s.name}` : '9:Unknown',
+          s?.name ?? t('common.unknown'),
+          i,
+        );
         break;
       }
       case 'assignee':
         add(
           i.assigneeId ?? 'none',
-          i.assigneeId ? (ws.memberById.get(i.assigneeId)?.name ?? 'Someone') : 'No assignee',
+          i.assigneeId
+            ? (ws.memberById.get(i.assigneeId)?.name ?? t('insights.breakdown.someone'))
+            : t('insights.breakdown.noAssignee'),
           i,
         );
         break;
       case 'priority':
-        add(String(i.priority), PRIORITIES.find((p) => p.value === i.priority)?.label ?? '?', i);
+        add(String(i.priority), priorityLabel(i.priority), i);
         break;
       case 'label':
-        if (i.labelIds.length === 0) add('none', 'No labels', i);
-        for (const l of i.labelIds) add(l, ws.labelById.get(l)?.name ?? 'Label', i);
+        if (i.labelIds.length === 0) add('none', t('insights.breakdown.noLabels'), i);
+        for (const l of i.labelIds) add(l, ws.labelById.get(l)?.name ?? t('common.label'), i);
         break;
       case 'project':
         add(
           i.projectId ?? 'none',
-          i.projectId ? (ws.projectById.get(i.projectId)?.name ?? 'Project') : 'No project',
+          i.projectId
+            ? (ws.projectById.get(i.projectId)?.name ?? t('common.project'))
+            : t('insights.breakdown.noProject'),
           i,
         );
         break;
       case 'team':
-        add(i.teamId, ws.teamById.get(i.teamId)?.name ?? 'Team', i);
+        add(i.teamId, ws.teamById.get(i.teamId)?.name ?? t('common.team'), i);
         break;
       case 'cycle': {
         const c = i.cycleId ? ws.cycleById.get(i.cycleId) : null;
-        add(i.cycleId ?? 'none', c ? c.name || `Cycle ${c.number}` : 'No cycle', i);
+        add(
+          i.cycleId ?? 'none',
+          c
+            ? c.name || t('common.cycleNumber', { number: c.number })
+            : t('insights.breakdown.noCycle'),
+          i,
+        );
         break;
       }
     }
@@ -191,8 +207,8 @@ export function durations(issues: Issue[], since: number): Durations {
   };
 }
 
-/** "3.5 days", "6 hours". */
+/** "3.5 d", "6 h", in the reader's language. */
 export function formatDays(d: number) {
-  if (d < 1) return `${Math.max(1, Math.round(d * 24))} h`;
-  return `${d < 10 ? Math.round(d * 10) / 10 : Math.round(d)} d`;
+  if (d < 1) return t('insights.durations.hours', { count: Math.max(1, Math.round(d * 24)) });
+  return t('insights.durations.days', { count: d < 10 ? Math.round(d * 10) / 10 : Math.round(d) });
 }
