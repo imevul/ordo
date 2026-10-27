@@ -10,9 +10,10 @@ import {
 } from '@ordo/shared';
 import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { Milestone as MilestoneIcon, Plus, Star, Trash2 } from 'lucide-react';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
-import { keys, useProjectUpdates, useWsMutation } from '../api/queries.ts';
+import { keys, useIssues, useProjectUpdates, useWsMutation } from '../api/queries.ts';
+import { LineChart } from '../components/Charts.tsx';
 import { IssuesView } from '../components/IssuesView.tsx';
 import { ProjectIcon, ProjectStatusIcon, TeamIcon } from '../components/icons.tsx';
 import { Markdown } from '../components/Markdown.tsx';
@@ -23,6 +24,7 @@ import { assigneeOptions, Picker } from '../components/properties.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { ConfirmModal, confirmDialog, Modal } from '../components/ui/Modal.tsx';
 import { relativeTime, shortDate } from '../lib/format.ts';
+import { burnUp, isoDay } from '../lib/insights.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
 const HEALTH_COLOR: Record<ProjectHealth, string> = {
@@ -310,6 +312,46 @@ function MilestoneRow({ milestone }: { milestone: Milestone }) {
   );
 }
 
+/** Scope and completed work since the project started (or its first issue), day by day. */
+function ProjectProgressChart({ project }: { project: Project }) {
+  const ws = useWorkspace();
+  const filter = useMemo(() => ({ projectIds: [project.id] }), [project.id]);
+  const { data: issues = [] } = useIssues(ws.slug, filter);
+  const points = useMemo(() => {
+    if (issues.length === 0) return [];
+    const first = issues.map((i) => i.createdAt).sort()[0]!;
+    const from =
+      project.startDate && project.startDate < first ? project.startDate : first.slice(0, 10);
+    return burnUp(issues, 'count', from, isoDay(Date.now()));
+  }, [issues, project.startDate]);
+  if (points.length < 2) return null;
+  return (
+    <div className="mt-8">
+      <div className="section-label mb-3">Progress over time</div>
+      <LineChart
+        label={`${project.name}: scope and completed issues per day`}
+        x={points.map((p) => p.day)}
+        height={160}
+        series={[
+          {
+            key: 'scope',
+            label: 'Scope',
+            color: 'var(--color-chart-2)',
+            dashed: true,
+            values: points.map((p) => p.scope),
+          },
+          {
+            key: 'completed',
+            label: 'Completed',
+            color: 'var(--color-primary)',
+            values: points.map((p) => p.completed),
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
 /** Stages of the project, each with a target date and its own progress. */
 function ProjectMilestones({ project }: { project: Project }) {
   const ws = useWorkspace();
@@ -446,6 +488,8 @@ function ProjectOverview({ project }: { project: Project }) {
           <ProgressStats progress={project.progress} />
           <ProgressBar progress={project.progress} className="mt-3" />
         </div>
+
+        <ProjectProgressChart project={project} />
 
         <ProjectMilestones project={project} />
 

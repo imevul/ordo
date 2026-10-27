@@ -9,7 +9,7 @@ import {
 } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
-import { Plus, Save, Trash2, X } from 'lucide-react';
+import { ChartColumn, Plus, Save, Trash2, X } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
@@ -27,6 +27,7 @@ import { readPref, ui, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { DisplayOptions, LayoutToggle } from './DisplayOptions.tsx';
 import { FilterButton, FilterChips, hasUserFilters } from './FilterBar.tsx';
+import { InsightsPanel } from './InsightsPanel.tsx';
 import { IssueBoard } from './IssueBoard.tsx';
 import { IssueList } from './IssueList.tsx';
 import { EmptyState, PageHeader, Spinner } from './PageHeader.tsx';
@@ -44,6 +45,10 @@ interface Props {
   view?: View;
   actions?: ReactNode;
   tabs?: ReactNode;
+  /** A time box (cycle): the insights panel shows a burn-up across it. */
+  burn?: { from: string; to: string };
+  /** Open the insights panel until the person closes it (remembered per screen). */
+  insightsOpen?: boolean;
   emptyTitle?: string;
   emptyBody?: ReactNode;
 }
@@ -101,6 +106,13 @@ export function IssuesView(props: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [anchor, setAnchor] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [insights, setInsights] = useState(() =>
+    readPref(`insights:${storageKey}`, props.insightsOpen ?? false),
+  );
+  const toggleInsights = (open: boolean) => {
+    setInsights(open);
+    writePref(`insights:${storageKey}`, open);
+  };
 
   const update = useUpdateIssue(ws.slug);
   const batch = useBatchUpdateIssues(ws.slug);
@@ -252,6 +264,16 @@ export function IssuesView(props: Props) {
                 <span className="hidden sm:inline">Save view</span>
               </button>
             )}
+            <button
+              type="button"
+              className={`btn btn-ghost btn-sm ${insights ? 'text-primary' : ''}`}
+              aria-pressed={insights}
+              onClick={() => toggleInsights(!insights)}
+              title="Insights"
+            >
+              <ChartColumn size={13} />
+              <span className="hidden lg:inline">Insights</span>
+            </button>
             <FilterButton filter={userFilter} onChange={setUserFilter} teamId={teamId} />
             <DisplayOptions display={display} onChange={setDisplay} />
             <LayoutToggle display={display} onChange={setDisplay} />
@@ -273,59 +295,69 @@ export function IssuesView(props: Props) {
         <FilterChips filter={userFilter} onChange={setUserFilter} teamId={teamId} />
       </PageHeader>
 
-      {isLoading && !data ? (
-        <Spinner label="loading issues" />
-      ) : issues.length === 0 ? (
-        <EmptyState
-          title={props.emptyTitle ?? 'nothing here'}
-          body={
-            props.emptyBody ??
-            (hasUserFilters(userFilter)
-              ? 'No issues match these filters.'
-              : 'Create an issue to get started.')
-          }
-          action={
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() =>
-                ui.openCreateIssue({ teamId: teamId ?? ws.myTeams[0]?.id, ...props.createDefaults })
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-w-0 flex-1 flex-col">
+          {isLoading && !data ? (
+            <Spinner label="loading issues" />
+          ) : issues.length === 0 ? (
+            <EmptyState
+              title={props.emptyTitle ?? 'nothing here'}
+              body={
+                props.emptyBody ??
+                (hasUserFilters(userFilter)
+                  ? 'No issues match these filters.'
+                  : 'Create an issue to get started.')
               }
-            >
-              New issue <span className="arrow">→</span>
-            </button>
-          }
-        />
-      ) : display.layout === 'board' ? (
-        <div className="min-h-0 flex-1">
-          <IssueBoard
-            groups={groups}
-            groupBy={display.groupBy}
-            manualOrder={display.orderBy === 'manual'}
-            focusedId={focusedId}
-            selected={selected}
-            onPatch={onPatch}
-            onFocus={setFocusedId}
-            onCreateInGroup={createInGroup}
-          />
+              action={
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() =>
+                    ui.openCreateIssue({
+                      teamId: teamId ?? ws.myTeams[0]?.id,
+                      ...props.createDefaults,
+                    })
+                  }
+                >
+                  New issue <span className="arrow">→</span>
+                </button>
+              }
+            />
+          ) : display.layout === 'board' ? (
+            <div className="min-h-0 flex-1">
+              <IssueBoard
+                groups={groups}
+                groupBy={display.groupBy}
+                manualOrder={display.orderBy === 'manual'}
+                focusedId={focusedId}
+                selected={selected}
+                onPatch={onPatch}
+                onFocus={setFocusedId}
+                onCreateInGroup={createInGroup}
+              />
+            </div>
+          ) : (
+            <div className="min-h-0 flex-1">
+              <IssueList
+                groups={groups}
+                flat={flat}
+                groupKind={display.groupBy}
+                focusedId={focusedId}
+                selected={selected}
+                collapsed={collapsed}
+                onToggleCollapse={toggleCollapse}
+                onPatch={onPatch}
+                onFocus={setFocusedId}
+                onToggleSelect={toggleSelect}
+                onCreateInGroup={createInGroup}
+              />
+            </div>
+          )}
         </div>
-      ) : (
-        <div className="min-h-0 flex-1">
-          <IssueList
-            groups={groups}
-            flat={flat}
-            groupKind={display.groupBy}
-            focusedId={focusedId}
-            selected={selected}
-            collapsed={collapsed}
-            onToggleCollapse={toggleCollapse}
-            onPatch={onPatch}
-            onFocus={setFocusedId}
-            onToggleSelect={toggleSelect}
-            onCreateInGroup={createInGroup}
-          />
-        </div>
-      )}
+        {insights && data && (
+          <InsightsPanel issues={data} burn={props.burn} onClose={() => toggleInsights(false)} />
+        )}
+      </div>
 
       {selected.size > 0 && (
         <div className="pointer-events-none fixed inset-x-0 bottom-5 z-40 flex justify-center px-4">

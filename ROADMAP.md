@@ -119,8 +119,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [x] ✅ Rich text editor and attachments; comment reactions; issue templates
 - [x] ✅ Full-text search; pagination for very large teams
 - [x] ✅ Cycle automation; auto-archive
-- [~] 🟡 Project milestones; initiatives and roadmap timeline; insights and charts — milestones, initiatives and the
-  roadmap shipped
+- [x] ✅ Project milestones; initiatives and roadmap timeline; insights and charts
 - ⬜ SLAs, recurring issues, triage rules; customer requests and intake by email
 - ⬜ Project documents; notification snooze
 - ⬜ PWA and push; light theme; i18n

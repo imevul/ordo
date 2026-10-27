@@ -218,6 +218,8 @@ export function CycleDetailPage() {
         storageKey={`cycle:${team.id}`}
         defaultDisplay={{ layout: 'board' }}
         createDefaults={{ teamId: team.id, cycleId: cycle.id }}
+        burn={{ from: cycle.startsAt, to: cycle.endsAt }}
+        insightsOpen
         actions={
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEdit(true)}>
             Edit

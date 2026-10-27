@@ -63,6 +63,14 @@ Hotline Pink is the default. A workspace can pick another accent (Settings → G
 - Focus is always a 2 px cyan outline (inset on list rows).
 - All motion is 180 ms `cubic-bezier(0.2, 0.7, 0.2, 1)` and disabled under `prefers-reduced-motion`.
 
+## Charts
+
+Charts (`components/Charts.tsx`) follow the same rules: square ends, 2 px lines, a recessive grid in `border-soft`,
+labels and values in text tokens (never the series color), a legend for two or more series and a hover readout. The
+"completed" series is the accent; the context series (scope, created) is `--color-chart-2` (#4f8ff7) and dashed, so
+it never depends on color alone. That pair passes color-blind separation checks against `bg`; re-check if you add a
+series.
+
 ## Not adopted (yet)
 
 - The website's scanline overlay — too busy behind dense lists.
