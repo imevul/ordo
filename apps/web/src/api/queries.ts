@@ -14,6 +14,7 @@ import type {
   IssueFilter,
   Me,
   Notification,
+  OAuthGrant,
   ProjectUpdate,
   SearchResults,
   SessionInfo,
@@ -30,6 +31,7 @@ export const keys = {
   account: ['account'] as const,
   sessions: ['sessions'] as const,
   apiKeys: ['apiKeys'] as const,
+  oauthGrants: ['oauthGrants'] as const,
   ws: (slug: string) => ['ws', slug] as const,
   bootstrap: (slug: string) => ['ws', slug, 'bootstrap'] as const,
   issues: (slug: string, filter?: IssueFilter) => ['ws', slug, 'issues', filter ?? {}] as const,
@@ -150,6 +152,12 @@ export const useSessions = () =>
 
 export const useApiKeys = () =>
   useQuery({ queryKey: keys.apiKeys, queryFn: () => api.get<ApiKey[]>('/me/api-keys') });
+
+export const useOAuthGrants = () =>
+  useQuery({
+    queryKey: keys.oauthGrants,
+    queryFn: () => api.get<OAuthGrant[]>('/me/oauth-grants'),
+  });
 
 export const useSearch = (slug: string, q: string) =>
   useQuery({

@@ -502,6 +502,31 @@ export interface ApiKey {
   createdAt: string;
 }
 
+/** An app as the consent screen and the connected-apps list show it. */
+export interface OAuthClientInfo {
+  name: string;
+  /** The host the app is known by: its metadata document's, else where it sends people back to. */
+  host: string;
+  /** The name comes from a document on the app's own domain, not from what the app claimed. */
+  verified: boolean;
+}
+
+/** An app allowed to use a workspace's MCP server as this person. */
+export interface OAuthGrant {
+  id: string;
+  client: OAuthClientInfo;
+  workspace: { name: string; slug: string };
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
+/** What the consent screen shows about a valid authorization request. */
+export interface OAuthAuthorizeInfo {
+  client: OAuthClientInfo;
+  workspace: { name: string; slug: string };
+  redirectUri: string;
+}
+
 /** Everything small enough to load once per workspace; issues load per view. */
 export interface Bootstrap {
   workspace: Workspace;

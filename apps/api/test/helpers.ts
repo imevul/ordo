@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -95,7 +96,8 @@ export async function signup(
 ) {
   const c = new Client(app);
   n++;
-  const email = `${name.split(' ')[0]!.toLowerCase()}${n}-${Date.now()}@example.com`;
+  // Test files run in parallel workers, each counting from 1, so the time alone can collide.
+  const email = `${name.split(' ')[0]!.toLowerCase()}${n}-${Date.now()}-${randomBytes(3).toString('hex')}@example.com`;
   const res = await c.post('/api/auth/signup', {
     name,
     email,

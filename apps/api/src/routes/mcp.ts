@@ -3,15 +3,17 @@ import { requireUser, requireWorkspace } from '../lib/auth.ts';
 import { HttpError, unauthorized } from '../lib/errors.ts';
 import { requestMeta, runInWorkspace } from '../lib/mutate.ts';
 import { callMcpTool, isMcpTool, type McpCaller, mcpToolList } from '../services/mcp.ts';
+import { resourceMetadataUrl, SCOPE } from '../services/oauth.ts';
 
 /**
  * Remote MCP server (Streamable HTTP) for one workspace: POST /api/w/:ws/mcp.
  *
  * Stateless and JSON-only: every POST carries one JSON-RPC message and gets one JSON response.
  * It serves both eras of the protocol: 2026-07-28 clients send their version in each request's
- * `_meta` (mirrored in headers), older clients open with `initialize`. Auth is a personal API
- * key, resolved by the workspace hook like any REST call, so the agent has exactly the user's
- * access and the workspace's SSO policy applies.
+ * `_meta` (mirrored in headers), older clients open with `initialize`. Auth is an OAuth access
+ * token issued for this endpoint (services/oauth.ts) or a personal API key, resolved by the
+ * workspace hook like any REST call, so the agent has exactly the user's access and the
+ * workspace's SSO policy applies.
  */
 
 const MODERN = '2026-07-28';
@@ -81,9 +83,14 @@ export async function mcpRoutes(app: FastifyInstance) {
       message = 'Internal server error';
     }
     if (status === 401) {
-      reply.header('www-authenticate', 'Bearer realm="Ordo"');
-      message =
-        'Missing or invalid API key. Send a personal API key as Authorization: Bearer ordo_…';
+      // Where an OAuth client finds out how to sign in (RFC 9728 §5.1).
+      const { ws } = req.params as { ws: string };
+      const invalid = req.headers.authorization ? ', error="invalid_token"' : '';
+      reply.header(
+        'www-authenticate',
+        `Bearer realm="Ordo", resource_metadata="${resourceMetadataUrl(app, ws)}", scope="${SCOPE}"${invalid}`,
+      );
+      message = 'Sign in with OAuth, or send a personal API key as Authorization: Bearer ordo_…';
     }
     const data =
       err instanceof RpcError
@@ -104,8 +111,8 @@ export async function mcpRoutes(app: FastifyInstance) {
     '/mcp',
     { config: { rateLimit: { max: 600, timeWindow: '1 minute', keyGenerator: rateKey } } },
     async (req, reply) => {
-      if (req.authMethod !== 'api_key')
-        throw unauthorized('Use a personal API key as a Bearer token');
+      if (req.authMethod !== 'api_key' && req.authMethod !== 'oauth')
+        throw unauthorized('Sign in with OAuth or use a personal API key as a Bearer token');
       checkOrigin(req);
       const msg = req.body as Message;
       if (Array.isArray(msg)) throw new RpcError(INVALID_REQUEST, 'Batches are not supported');

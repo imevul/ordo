@@ -11,6 +11,7 @@ export default defineConfig({
     proxy: {
       '/api/ws': { target: api.replace(/^http/, 'ws'), ws: true },
       '/api': { target: api, changeOrigin: false },
+      '/.well-known/oauth-': { target: api, changeOrigin: false },
     },
   },
   build: {

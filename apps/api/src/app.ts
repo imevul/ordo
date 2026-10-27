@@ -42,6 +42,7 @@ import { labelRoutes } from './routes/labels.ts';
 import { mcpRoutes } from './routes/mcp.ts';
 import { memberRoutes } from './routes/members.ts';
 import { notificationRoutes } from './routes/notifications.ts';
+import { OAUTH_CLIENT_PATHS, oauthRoutes, wellKnownRoutes } from './routes/oauth.ts';
 import { placeholderRoutes } from './routes/placeholders.ts';
 import { projectRoutes } from './routes/projects.ts';
 import { pushRoutes } from './routes/push.ts';
@@ -134,6 +135,7 @@ export async function buildApp(
   app.decorateRequest('sessionId', null);
   app.decorateRequest('authMethod', null);
   app.decorateRequest('sso', null);
+  app.decorateRequest('oauth', null);
   app.decorateRequest('workspace', null);
 
   // Issue lists of big teams are megabytes of JSON; no proxy in front is assumed to compress.
@@ -165,11 +167,14 @@ export async function buildApp(
     if (!req.url.startsWith('/api/')) return;
     rejectCrossSite(req);
     const auth = await resolveUser(db, req);
+    // OAuth tokens are issued for the MCP endpoint (RFC 8707); anywhere else they're no one.
+    if (auth?.oauth && req.routeOptions.url !== MCP_ROUTE) return;
     if (auth) {
       req.user = auth.user;
       req.sessionId = auth.sessionId;
       req.authMethod = auth.method;
       req.sso = auth.sso;
+      req.oauth = auth.oauth ?? null;
     }
   });
 
@@ -183,6 +188,8 @@ export async function buildApp(
     };
   });
 
+  await app.register(wellKnownRoutes);
+  await app.register(oauthRoutes, { prefix: '/api' });
   await app.register(authRoutes, { prefix: '/api' });
   await app.register(accountRoutes, { prefix: '/api' });
   await app.register(pushRoutes, { prefix: '/api' });
@@ -202,6 +209,8 @@ export async function buildApp(
         if (!req.user) throw new HttpError(401, 'Not signed in', 'unauthorized');
         const { ws } = req.params as { ws: string };
         req.workspace = await authorizeWorkspace(db, req.user, ws, authInfo(req));
+        if (req.oauth && req.oauth.workspaceId !== req.workspace.id)
+          throw new HttpError(401, 'This token is for another workspace', 'unauthorized');
       });
       await w.register(workspaceRoutes);
       await w.register(memberRoutes);
@@ -258,6 +267,7 @@ export async function buildApp(
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const MCP_ROUTE = '/api/w/:ws/mcp';
 
 /**
  * Cookie sessions are SameSite=Lax and the API only parses JSON, which already stops classic
@@ -266,6 +276,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
  */
 function rejectCrossSite(req: FastifyRequest) {
   if (SAFE_METHODS.has(req.method) || req.url.startsWith('/api/hooks/')) return;
+  // Apps call the OAuth token endpoints from anywhere, authenticated by what they post, never by cookie.
+  if (OAUTH_CLIENT_PATHS.has(req.url.split('?')[0]!)) return;
   if (req.headers.authorization?.startsWith('Bearer ')) return;
   const site = req.headers['sec-fetch-site'];
   if (site === 'cross-site') throw new HttpError(403, 'Cross-site request blocked', 'forbidden');

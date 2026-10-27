@@ -125,7 +125,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [~] 🟡 PWA and push; light theme; i18n — PWA and push shipped
 - ✅ MCP server for AI agents (Streamable HTTP, per workspace, personal API keys; search, read, create, update and
   comment on issues) and Settings → AI agents with setup snippets and an agent prompt
-- ⬜ GraphQL API, TypeScript SDK, CLI; optional AI assistance; OAuth sign-in for MCP (claude.ai connectors)
+- [~] ⬜ GraphQL API, TypeScript SDK, CLI; optional AI assistance; OAuth sign-in for MCP (claude.ai connectors) — OAuth sign-in for MCP shipped
 - ⬜ Later: passkeys, SCIM, SAML, offline-first sync, desktop app, Helm chart and prebuilt images
 
 ## Known limitations
