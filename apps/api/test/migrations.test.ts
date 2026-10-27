@@ -31,7 +31,7 @@ describe('migrations', { timeout: 60_000 }, () => {
   });
 
   it('backfills the earliest user as instance admin', async () => {
-    const url = await freshDatabase('ordo_test_migrations');
+    const url = await freshDatabase('migrations');
     const { db, sql } = createDb(url);
     cleanup.push(() => sql.end());
 
@@ -52,7 +52,7 @@ describe('migrations', { timeout: 60_000 }, () => {
   });
 
   it('gives every workspace an owner: its earliest admin, else its earliest member', async () => {
-    const url = await freshDatabase('ordo_test_migrations_owner');
+    const url = await freshDatabase('migrations_owner');
     const { db, sql } = createDb(url);
     cleanup.push(() => sql.end());
 
@@ -84,7 +84,7 @@ describe('migrations', { timeout: 60_000 }, () => {
   });
 
   it('ties bots to their workspace, and marks bots without an integration as removed', async () => {
-    const url = await freshDatabase('ordo_test_migrations_bots');
+    const url = await freshDatabase('migrations_bots');
     const { db, sql } = createDb(url);
     cleanup.push(() => sql.end());
 
