@@ -100,9 +100,11 @@ export function Popover({
                 pointerEvents: isPositioned ? undefined : 'none',
               }}
               {...getFloatingProps({ onClick: (e: React.MouseEvent) => e.stopPropagation() })}
-              className={`panel panel-sm panel-raised flex flex-col overflow-hidden ${isPositioned ? 'animate-pop' : ''} ${className}`}
+              className={`panel panel-sm panel-raised panel-clip flex flex-col overflow-hidden ${isPositioned ? 'animate-pop' : ''} ${className}`}
             >
-              {typeof children === 'function' ? children(() => setOpen(false)) : children}
+              <div className="panel-body flex min-h-0 flex-1 flex-col">
+                {typeof children === 'function' ? children(() => setOpen(false)) : children}
+              </div>
             </div>
           </FloatingFocusManager>
         </FloatingPortal>

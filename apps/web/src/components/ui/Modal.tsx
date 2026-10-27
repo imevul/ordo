@@ -37,10 +37,10 @@ export function Modal({ open, onClose, children, width = 640, label, align = 'to
             role="dialog"
             aria-modal="true"
             aria-label={label}
-            className="panel panel-raised animate-pop flex max-h-[76vh] w-full flex-col"
+            className="panel panel-raised panel-clip animate-pop flex max-h-[76vh] w-full flex-col"
             style={{ maxWidth: width }}
           >
-            {children}
+            <div className="panel-body flex min-h-0 flex-1 flex-col">{children}</div>
           </div>
         </FloatingFocusManager>
       </FloatingOverlay>
