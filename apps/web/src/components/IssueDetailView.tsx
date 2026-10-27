@@ -15,6 +15,7 @@ import {
   Link2,
   MoreHorizontal,
   Plus,
+  Sparkles,
   Trash2,
   X,
 } from 'lucide-react';
@@ -33,6 +34,7 @@ import { isDone } from '../lib/issues.ts';
 import { ui } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Activity } from './Activity.tsx';
+import { type AiPanelKind, IssueAiPanel, useAiEnabled } from './AiAssist.tsx';
 import { CustomerRequests } from './CustomerRequests.tsx';
 import { IssueAttachments } from './IssueAttachments.tsx';
 import { IssueLinks } from './IssueLinks.tsx';
@@ -180,6 +182,11 @@ export function IssueDetailView({
   const navigate = useNavigate();
   const update = useUpdateIssue(ws.slug);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const aiEnabled = useAiEnabled();
+  const [aiPanel, setAiPanel] = useState<AiPanelKind | null>(null);
+  // A panel belongs to the issue it was opened on.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the issue changes
+  useEffect(() => setAiPanel(null), [issue.id]);
   const patch = (p: UpdateIssueInput) => update.mutate({ id: issue.id, patch: p });
   const sla = slaState(issue, isDone(ws, issue));
   const team = ws.teamById.get(issue.teamId)!;
@@ -288,6 +295,37 @@ export function IssueDetailView({
         title={compact ? issue.title : <span className="text-muted">{issue.identifier}</span>}
         actions={
           <>
+            {aiEnabled && (
+              <Popover
+                placement="bottom-end"
+                width={200}
+                trigger={
+                  <button type="button" className="btn btn-ghost btn-sm" aria-label="Ask AI">
+                    <Sparkles size={13} />
+                    <span className="hidden lg:inline">Ask AI</span>
+                  </button>
+                }
+              >
+                {(close) => (
+                  <div className="py-1" onClick={close}>
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => setAiPanel('summary')}
+                    >
+                      Summarize
+                    </button>
+                    <button
+                      type="button"
+                      className="menu-item"
+                      onClick={() => setAiPanel('triage')}
+                    >
+                      Suggest properties
+                    </button>
+                  </div>
+                )}
+              </Popover>
+            )}
             <button
               type="button"
               className="btn btn-ghost btn-sm"
@@ -372,6 +410,15 @@ export function IssueDetailView({
             )}
             <Title issue={issue} onSave={(title) => patch({ title })} />
             <Description issue={issue} onSave={(description) => patch({ description })} />
+            {aiPanel && (
+              <IssueAiPanel
+                key={aiPanel}
+                kind={aiPanel}
+                issue={issue}
+                onPatch={patch}
+                onClose={() => setAiPanel(null)}
+              />
+            )}
 
             {/* Sub-issues */}
             <section className="mt-8">

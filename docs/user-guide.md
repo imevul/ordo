@@ -25,8 +25,9 @@ Admins can **suspend** a member — they keep their history but can't open the w
 
 ### Workspace settings
 
-- **General** — name, URL, logo, an **accent colour** (Hotline Pink by default; pick a preset or any colour), and a
-  **default team** every new member (except guests) joins automatically.
+- **General** — name, URL, logo, an **accent colour** (Hotline Pink by default; pick a preset or any colour), a
+  **default team** every new member (except guests) joins automatically, and whether to offer
+  [AI assistance](ai.md) when the instance has a model set up.
 - **Access** — who may invite; **domains** you've verified with a DNS TXT record
   (`_ordo-verify.example.com` → `ordo-verify=…`); and **join by domain**, which lets anyone with a _verified_ email at
   one of those domains join without an invite (as member or guest). They'll see the workspace when they sign up.
@@ -75,7 +76,9 @@ applies; the **Ordo** bot makes the changes, so the issue's history shows them.
 
 Create an issue with `C` (or the pen icon). Type a title, optionally a description, then set
 properties with the chips below — or press `Mod Enter` straight away. Toggle **Create more** to keep the
-dialog open for the next one.
+dialog open for the next one. When your instance offers [AI assistance](ai.md), **Write with AI** turns rough notes into a
+clear title and description, and **Ask AI** on an issue summarizes it or suggests a priority, labels and possible
+duplicates.
 
 **Templates** give new issues a head start. Pick one under **Template** at the top of the dialog: it switches to the
 template's team, sets the properties it defines (status, priority, assignee, labels, project, estimate), and fills

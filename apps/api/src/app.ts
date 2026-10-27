@@ -23,6 +23,7 @@ import { createStorage, type Storage } from './lib/storage/index.ts';
 import { Realtime } from './realtime.ts';
 import { accountRoutes } from './routes/account.ts';
 import { adminRoutes } from './routes/admin.ts';
+import { aiRoutes } from './routes/ai.ts';
 import { attachmentDownloadRoutes, attachmentRoutes } from './routes/attachments.ts';
 import { authRoutes } from './routes/auth.ts';
 import { authProviderRoutes } from './routes/authProviders.ts';
@@ -238,6 +239,7 @@ export async function buildApp(
       await w.register(externalAccountRoutes);
       await w.register(mcpRoutes);
       await w.register(graphqlRoutes);
+      await w.register(aiRoutes);
     },
     { prefix: '/api/w/:ws' },
   );

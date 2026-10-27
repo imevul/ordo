@@ -42,6 +42,9 @@ export interface McpCaller {
   run: <T>(fn: (ctx: Ctx) => Promise<T>) => Promise<T>;
 }
 
+/** Enough of a caller to read: AI assistance shows models issues the same way. */
+export type McpReader = Omit<McpCaller, 'run'>;
+
 const same = (a: string, b: string) =>
   a.localeCompare(b, undefined, { sensitivity: 'accent' }) === 0;
 const PRIORITY_NAMES = { none: 0, urgent: 1, high: 2, medium: 3, low: 4 } as const;
@@ -54,7 +57,7 @@ function once<T>(load: () => Promise<T>): () => Promise<T> {
 
 /** What the caller can see, loaded on first use and resolved by name. */
 class Directory {
-  constructor(private readonly c: McpCaller) {}
+  constructor(private readonly c: McpReader) {}
   private get db() {
     return this.c.app.db;
   }
@@ -178,7 +181,7 @@ const priorityOf = (p: string | number) =>
   typeof p === 'number' ? p : PRIORITY_NAMES[p as keyof typeof PRIORITY_NAMES];
 
 /** Issues as an agent reads them: names instead of ids. */
-async function summarize(c: McpCaller, dir: Directory, list: Issue[]) {
+async function summarize(c: McpReader, dir: Directory, list: Issue[]) {
   const [teams, labels, projects, cycles, people] = await Promise.all([
     dir.teams(),
     dir.labels(),
@@ -216,7 +219,7 @@ async function summarize(c: McpCaller, dir: Directory, list: Issue[]) {
   });
 }
 
-async function issueResult(c: McpCaller, dir: Directory, ref: string, withComments: boolean) {
+async function issueResult(c: McpReader, dir: Directory, ref: string, withComments: boolean) {
   const detail = await getIssueDetail(c.app.db, c.access, ref);
   const [summary] = await summarize(c, dir, [detail]);
   const [subIssues, comments] = await Promise.all([
@@ -261,6 +264,12 @@ async function issueResult(c: McpCaller, dir: Directory, ref: string, withCommen
       : undefined,
   };
 }
+
+/** An issue with its comments, sub-issues and relations, by name, as the MCP tools return it. */
+export const readIssue = (c: McpReader, ref: string) => issueResult(c, new Directory(c), ref, true);
+
+/** Issues as the MCP tools list them. */
+export const describeIssues = (c: McpReader, list: Issue[]) => summarize(c, new Directory(c), list);
 
 async function search(
   c: McpCaller,

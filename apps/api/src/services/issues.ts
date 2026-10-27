@@ -23,6 +23,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  ne,
   or,
   type SQL,
   sql,
@@ -57,7 +58,7 @@ import { cycleForStartedIssue } from './cycle-automation.ts';
 import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 import { isWorkspacePlaceholder } from './placeholders.ts';
-import { matchingIssueIds, textQuery, textRank } from './search.ts';
+import { anyWordQuery, matchingIssueIds, textQuery, textRank } from './search.ts';
 import { applyTriageRules } from './triage.ts';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -231,6 +232,32 @@ export async function queryIssues(
   const rows = await baseQuery(db)
     .where(and(...filterConditions(access, filter)))
     .orderBy(...orderBy)
+    .limit(limit);
+  return rows.map(toIssue);
+}
+
+/**
+ * Open issues sharing telling words with `text`, best match first: the candidates when looking
+ * for duplicates of an issue (`excludeId`) or of one about to be written.
+ */
+export async function similarIssues(
+  db: DbOrTx,
+  access: Access,
+  text: string,
+  excludeId: string | null,
+  limit = 15,
+): Promise<Issue[]> {
+  const query = anyWordQuery(text);
+  if (!query) return [];
+  const rows = await baseQuery(db)
+    .where(
+      and(
+        ...filterConditions(access, { stateTypes: ['triage', 'backlog', 'unstarted', 'started'] }),
+        sql`"issues"."id" in (${matchingIssueIds(query)})`,
+        excludeId ? ne(issues.id, excludeId) : undefined,
+      ),
+    )
+    .orderBy(desc(textRank(query)), desc(issues.updatedAt))
     .limit(limit);
   return rows.map(toIssue);
 }

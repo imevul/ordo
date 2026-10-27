@@ -1,12 +1,14 @@
-import type { CreateIssueInput, IssueTemplate, UpdateIssueInput } from '@ordo/shared';
+import type { AiDraft, CreateIssueInput, IssueTemplate, UpdateIssueInput } from '@ordo/shared';
 import { useNavigate } from '@tanstack/react-router';
-import { ChevronRight, FileText, X } from 'lucide-react';
+import { ChevronRight, FileText, Sparkles, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
+import { api, wsPath } from '../api/client.ts';
 import { useAttachmentUpload, useCreateIssue } from '../api/queries.ts';
 import { modKey } from '../lib/hotkeys.ts';
 import { ui, useUi } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
+import { useAiEnabled } from './AiAssist.tsx';
 import { TeamIcon } from './icons.tsx';
 import { MarkdownEditor } from './MarkdownEditor.tsx';
 import {
@@ -34,6 +36,8 @@ export function CreateIssueModal() {
   const create = useCreateIssue(ws.slug);
   const [more, setMore] = useState(false);
   const [form, setForm] = useState<Form | null>(null);
+  const aiEnabled = useAiEnabled();
+  const [drafting, setDrafting] = useState(false);
 
   const initial = (d: Partial<CreateIssueInput>, keep?: Form): Form => {
     const team = ws.teamById.get(d.teamId ?? '') ?? ws.myTeams[0] ?? ws.teams[0]!;
@@ -132,6 +136,41 @@ export function CreateIssueModal() {
       };
     });
 
+  /**
+   * Rewrites what's typed so far (title and description as notes) into a proper issue. Priority
+   * and labels are only filled in, never replaced; Undo brings the notes back.
+   */
+  const draft = async () => {
+    const notes = [form.title, form.description].filter((t) => t.trim()).join('\n\n');
+    if (!notes.trim()) return;
+    setDrafting(true);
+    try {
+      const d = await api.post<AiDraft>(wsPath(ws.slug, '/ai/draft'), {
+        teamId: form.teamId,
+        text: notes,
+      });
+      const before = form;
+      setForm((f) =>
+        f
+          ? {
+              ...f,
+              title: d.title,
+              description: d.description,
+              priority: f.priority || d.priority,
+              labelIds: [...new Set([...f.labelIds, ...d.labelIds])],
+            }
+          : f,
+      );
+      toast('Written with AI — check it before creating', {
+        action: { label: 'Undo', onClick: () => setForm(before) },
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Writing with AI failed');
+    } finally {
+      setDrafting(false);
+    }
+  };
+
   const submit = () => {
     if (!form.title.trim()) return;
     const input: CreateIssueInput = {
@@ -216,6 +255,18 @@ export function CreateIssueModal() {
                 </button>
               }
             />
+          )}
+          {aiEnabled && (
+            <button
+              type="button"
+              className="prop ml-2"
+              onClick={draft}
+              disabled={drafting || !(form.title.trim() || form.description.trim())}
+              title="Turn what you've typed into a well-written issue"
+            >
+              <Sparkles size={13} />
+              <span>{drafting ? 'Writing…' : 'Write with AI'}</span>
+            </button>
           )}
           <button
             type="button"

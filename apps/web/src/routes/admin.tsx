@@ -1,4 +1,4 @@
-import type { InstanceSettingEntry } from '@ordo/shared';
+import type { AiSettings, InstanceSettingEntry } from '@ordo/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, Navigate, useParams } from '@tanstack/react-router';
 import { ArrowLeft, Ban, KeyRound, RotateCcw, Shield, Trash2, UserCheck } from 'lucide-react';
@@ -616,7 +616,169 @@ function Settings() {
           />
         </label>
       </Card>
+
+      <AiCard
+        // Starts over from what's saved after every save.
+        key={JSON.stringify(entry('ai').value)}
+        value={entry('ai').value as AiSettings | null}
+        locked={locked('ai')}
+        save={save}
+      />
     </>
+  );
+}
+
+const MODEL_HINTS: Record<AiSettings['provider'], { model: string; baseUrl: string }> = {
+  anthropic: { model: 'claude-opus-5-5', baseUrl: 'https://api.anthropic.com' },
+  openai: { model: 'llama3.3', baseUrl: 'http://localhost:11434/v1' },
+};
+
+/**
+ * The model behind AI assistance. Off by default: turning it on sends issue text to whatever is
+ * chosen here whenever someone asks for a summary, a draft or suggestions.
+ */
+function AiCard({
+  value,
+  locked,
+  save,
+}: {
+  value: AiSettings | null;
+  locked: boolean;
+  save: (patch: object) => Promise<void>;
+}) {
+  const [provider, setProvider] = useState<AiSettings['provider'] | 'off'>(
+    value?.provider ?? 'off',
+  );
+  const [model, setModel] = useState(value?.model ?? '');
+  const [baseUrl, setBaseUrl] = useState(value?.baseUrl ?? '');
+  const [apiKey, setApiKey] = useState('');
+  const [testing, setTesting] = useState(false);
+  const hint = provider === 'off' ? null : MODEL_HINTS[provider];
+  const sameProvider = value?.provider === provider;
+
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (provider === 'off') return save({ ai: null });
+    await save({
+      ai: {
+        provider,
+        model: model.trim() || hint!.model,
+        baseUrl: baseUrl.trim() || (provider === 'openai' ? hint!.baseUrl : null),
+        // Empty keeps the stored key, but only for the provider it was stored for.
+        apiKey: apiKey.trim() || (sameProvider ? '' : null),
+      },
+    });
+    setApiKey('');
+  };
+
+  const test = async () => {
+    setTesting(true);
+    try {
+      const r = await api.post<{ reply: string; ms: number }>('/admin/settings/test-ai');
+      toast.success(`The model answered in ${(r.ms / 1000).toFixed(1)} s: “${r.reply}”`);
+    } catch (err) {
+      toast.error(errMsg(err));
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <Card
+      title="AI assistance"
+      description="Issue summaries, drafts written from rough notes, and triage suggestions (priority, labels, duplicates). When someone asks, the issue text they can see is sent to this model; nothing is changed until they apply a suggestion. Workspace admins can turn it off for their workspace."
+    >
+      {locked ? (
+        <p className="font-mono text-[12.5px] text-muted">
+          Set by ORDO_AI_PROVIDER:{' '}
+          {value
+            ? `${value.provider} · ${value.model}${value.baseUrl ? ` · ${value.baseUrl}` : ''}`
+            : 'off'}
+          <span className="tag ml-2 font-mono">set by env</span>
+        </p>
+      ) : (
+        <form onSubmit={submit} className="space-y-3">
+          <label className="flex items-center justify-between gap-4 text-[13.5px]">
+            Provider
+            <select
+              className="input w-72"
+              value={provider}
+              onChange={(e) => {
+                setProvider(e.target.value as typeof provider);
+                setModel('');
+                setBaseUrl('');
+              }}
+            >
+              <option value="off">Off</option>
+              <option value="anthropic">Claude API (Anthropic)</option>
+              <option value="openai">OpenAI-compatible (Ollama, vLLM, LM Studio…)</option>
+            </select>
+          </label>
+          {hint && (
+            <>
+              {provider === 'anthropic' && (
+                <p className="text-[12px] text-index">
+                  Issue text leaves this server for Anthropic's API, under your API account's terms.
+                  Pick a local model instead to keep everything on your own hardware.
+                </p>
+              )}
+              <label className="flex items-center justify-between gap-4 text-[13.5px]">
+                Model
+                <input
+                  className="input w-72 font-mono"
+                  placeholder={hint.model}
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                />
+              </label>
+              <label className="flex items-center justify-between gap-4 text-[13.5px]">
+                <span>
+                  Base URL
+                  <span className="block text-[12px] text-index">
+                    {provider === 'openai'
+                      ? 'Ends in /v1. Private and local addresses are allowed here.'
+                      : 'Only for a gateway or proxy in front of the API.'}
+                  </span>
+                </span>
+                <input
+                  className="input w-72 font-mono"
+                  placeholder={hint.baseUrl}
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                />
+              </label>
+              <label className="flex items-center justify-between gap-4 text-[13.5px]">
+                <span>
+                  API key
+                  <span className="block text-[12px] text-index">
+                    {sameProvider && value?.apiKey
+                      ? `Current: ${value.apiKey}. Leave empty to keep it.`
+                      : provider === 'openai'
+                        ? 'Optional; local servers usually need none.'
+                        : 'From the Claude Console. Stored encrypted.'}
+                  </span>
+                </span>
+                <input
+                  className="input w-72 font-mono"
+                  type="password"
+                  autoComplete="off"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
+              </label>
+            </>
+          )}
+          <div className="flex gap-2 pt-1">
+            <button className="btn btn-primary">Save</button>
+            {value && (
+              <button type="button" className="btn btn-ghost" onClick={test} disabled={testing}>
+                {testing ? 'Testing…' : 'Test connection'}
+              </button>
+            )}
+          </div>
+        </form>
+      )}
+    </Card>
   );
 }
 

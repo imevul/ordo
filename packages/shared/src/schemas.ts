@@ -128,6 +128,7 @@ export const updateWorkspaceSchema = z.object({
       allowApiKeysUnderSso: z.boolean().optional(),
       gitBranchFormat: z.string().trim().min(1).max(100).optional(),
       accentColor: z.string().regex(HEX_COLOR, 'Use a #rrggbb colour').nullable().optional(),
+      aiEnabled: z.boolean().optional(),
     })
     .optional(),
 });
@@ -166,6 +167,25 @@ export const adminSettingsSchema = z.object({
     .object({ url: z.string().max(2000), from: z.string().min(3).max(200) })
     .nullable()
     .optional(),
+  /** `apiKey: ''` keeps the stored key, `null` removes it; `ai: null` turns AI off. */
+  ai: z
+    .object({
+      provider: z.enum(['anthropic', 'openai']),
+      model: z.string().trim().min(1).max(200),
+      baseUrl: z
+        .url({ protocol: /^https?$/ })
+        .max(500)
+        .nullable(),
+      apiKey: z.string().trim().max(500).nullable(),
+    })
+    .nullable()
+    .optional(),
+});
+
+/** Turns rough notes (what's typed into the new-issue form) into an issue draft. */
+export const aiDraftSchema = z.object({
+  teamId: id,
+  text: z.string().trim().min(1).max(20_000),
 });
 
 export const createInviteSchema = z.object({

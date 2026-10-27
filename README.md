@@ -97,6 +97,7 @@ chamfered corners instead of rounded ones ([docs/design.md](docs/design.md)).
 | [docs/graphql.md](docs/graphql.md)                       | GraphQL API                                        |
 | [docs/cli.md](docs/cli.md)                               | The `ordo` command line and the TypeScript SDK     |
 | [docs/mcp.md](docs/mcp.md)                               | MCP server for AI agents                           |
+| [docs/ai.md](docs/ai.md)                                 | Optional AI assistance (Claude API or local model) |
 | [docs/architecture.md](docs/architecture.md)             | How it's built, data model                         |
 | [docs/development.md](docs/development.md)               | Working on Ordo                                    |
 | [docs/design.md](docs/design.md)                         | The design system as applied to Ordo               |

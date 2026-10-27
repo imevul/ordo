@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { AiSettings } from '@ordo/shared';
 
 function bool(v: string | undefined, fallback: boolean) {
   if (v == null || v === '') return fallback;
@@ -43,6 +44,21 @@ function parseKey(raw: string | undefined): Buffer | null {
   return createHash('sha256').update(raw.trim()).digest();
 }
 
+/** ORDO_AI_PROVIDER pins the AI model; `off` pins it off. Unset leaves it to the admin UI. */
+function aiFromEnv(): AiSettings | null | undefined {
+  const provider = process.env.ORDO_AI_PROVIDER?.trim().toLowerCase();
+  if (!provider) return undefined;
+  if (provider === 'off' || provider === 'none') return null;
+  if (provider !== 'anthropic' && provider !== 'openai')
+    throw new Error('ORDO_AI_PROVIDER must be anthropic, openai or off');
+  const model = process.env.ORDO_AI_MODEL?.trim();
+  if (!model) throw new Error('ORDO_AI_PROVIDER needs ORDO_AI_MODEL');
+  const baseUrl = process.env.ORDO_AI_BASE_URL?.trim().replace(/\/$/, '') || null;
+  if (provider === 'openai' && !baseUrl)
+    throw new Error('ORDO_AI_PROVIDER=openai needs ORDO_AI_BASE_URL (e.g. http://ollama:11434/v1)');
+  return { provider, model, baseUrl, apiKey: process.env.ORDO_AI_API_KEY?.trim() || null };
+}
+
 /** Instance settings that may be pinned by environment variables (see services/settings.ts). */
 export interface SettingsFromEnv {
   signupMode?: 'open' | 'invite';
@@ -50,6 +66,7 @@ export interface SettingsFromEnv {
   allowPrivateNetworkTargets?: boolean;
   maxAttachmentMb?: number;
   smtp?: { url: string; from: string } | null;
+  ai?: AiSettings | null;
 }
 
 export type StorageConfig =
@@ -124,6 +141,7 @@ export function loadEnv(overrides: Partial<Env> = {}): Env {
           }
         : undefined,
       maxAttachmentMb: optionalInt(process.env.ORDO_MAX_ATTACHMENT_MB),
+      ai: aiFromEnv(),
     },
     storage:
       process.env.ORDO_STORAGE === 's3'

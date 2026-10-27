@@ -26,6 +26,31 @@ export function textQuery(q: string): SQL | null {
   return sql`to_tsquery('simple', ${words.map((w) => `'${w}':*`).join(' & ')})`;
 }
 
+// Words too common to say anything about whether two issues are about the same thing.
+const STOPWORDS = new Set(
+  'the and for with from that this when into not are was but can should would could have has after before when then than does doesnt dont cant wont add fix make use issue bug'.split(
+    ' ',
+  ),
+);
+
+/**
+ * A tsquery matching any of the telling words in `text` (as prefixes), for finding issues that
+ * share some of its words rather than all of them.
+ */
+export function anyWordQuery(text: string, maxTerms = 12): SQL | null {
+  const words = [
+    ...new Set(
+      text
+        .toLowerCase()
+        .replace(/['’]/g, '')
+        .match(/[\p{L}\p{N}]+/gu)
+        ?.filter((w) => w.length >= 3 && !STOPWORDS.has(w)),
+    ),
+  ].slice(0, maxTerms);
+  if (!words.length) return null;
+  return sql`to_tsquery('simple', ${words.map((w) => `'${w}':*`).join(' | ')})`;
+}
+
 /**
  * Ids of issues whose title, description or a comment matches: a union of lookups that can each
  * use their index (an OR across them couldn't).
