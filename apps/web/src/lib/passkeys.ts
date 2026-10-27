@@ -23,11 +23,18 @@ export const passkeyAutofillSupported = () => browserSupportsWebAuthnAutofill();
 // biome-ignore lint/suspicious/noExplicitAny: WebAuthn options are passed through untouched.
 type Options = { challengeId: string; options: any };
 
-/** Adds a passkey on this device; `password` confirms it when the account has one. */
+/**
+ * Adds a passkey on this device; `password` confirms it when the account has one. The first
+ * second factor on an account comes back with its recovery codes.
+ */
 export async function addPasskey(password: string | undefined, name: string) {
   const { challengeId, options } = await api.post<Options>('/me/passkeys/options', { password });
   const response = await startRegistration({ optionsJSON: options });
-  return api.post<Passkey>('/me/passkeys', { challengeId, response, name });
+  return api.post<Passkey & { recoveryCodes?: string[] }>('/me/passkeys', {
+    challengeId,
+    response,
+    name,
+  });
 }
 
 /**
@@ -41,6 +48,15 @@ export async function signInWithPasskey(autofill = false) {
     useBrowserAutofill: autofill,
   });
   await api.post('/auth/passkey', { challengeId, response });
+}
+
+/** Answers the second step of a password sign-in with one of the account's passkeys. */
+export async function confirmWithPasskey(mfaToken: string) {
+  const { challengeId, options } = await api.post<Options>('/auth/mfa/passkey/options', {
+    mfaToken,
+  });
+  const response = await startAuthentication({ optionsJSON: options });
+  await api.post('/auth/mfa', { mfaToken, passkey: { challengeId, response } });
 }
 
 /** Stops a waiting autofill request (e.g. before starting a dialog one). */

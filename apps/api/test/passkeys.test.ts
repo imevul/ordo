@@ -1,7 +1,9 @@
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { Secret, TOTP } from 'otpauth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { auditLog, sessions, users, webauthnChallenges, workspaces } from '../src/db/schema.ts';
+import { createToken } from '../src/services/tokens.ts';
 import { Client, captureMail, signup, testApp } from './helpers.ts';
 import { SoftAuthenticator } from './soft-authenticator.ts';
 
@@ -33,8 +35,12 @@ async function withPasskey(name = 'Pat Passkey') {
 }
 
 /** Starts a passwordless sign-in and answers it with `answer`. */
+let ips = 0;
+/** A client from an address of its own (sign-in endpoints are rate-limited per address). */
+const anon = () => new Client(app, { ip: `10.200.${(++ips >> 8) & 255}.${ips & 255}` });
+
 async function signInWith(answer: (options: { challenge: string }) => Record<string, unknown>) {
-  const client = new Client(app);
+  const client = anon();
   const { challengeId, options } = (await client.post('/api/auth/passkey/options')).data;
   const res = await client.post('/api/auth/passkey', { challengeId, response: answer(options) });
   return { client, res, challengeId, options };
@@ -42,7 +48,7 @@ async function signInWith(answer: (options: { challenge: string }) => Record<str
 
 describe('passkeys', () => {
   it('are offered on secure origins', async () => {
-    expect((await new Client(app).get('/api/config')).data.passkeyOrigin).toBe(site.origin);
+    expect((await anon().get('/api/config')).data.passkeyOrigin).toBe(site.origin);
   });
 
   it('are added after confirming the password, and the owner is told', async () => {
@@ -119,12 +125,12 @@ describe('passkeys', () => {
     expect(ok.res.statusCode).toBe(200);
     // A counter that went backwards: a cloned authenticator.
     await refused((o) => key.authenticate(o, { counter: 3 }));
-    const replay = await new Client(app).post('/api/auth/passkey', {
+    const replay = await anon().post('/api/auth/passkey', {
       challengeId: ok.challengeId,
       response: key.authenticate(ok.options),
     });
     expect(replay.data.messageKey).toBe('passkey_failed');
-    const client = new Client(app);
+    const client = anon();
     const { challengeId, options } = (await client.post('/api/auth/passkey/options')).data;
     await app.db
       .update(webauthnChallenges)
@@ -139,7 +145,7 @@ describe('passkeys', () => {
     // A challenge made for adding a passkey can't sign in.
     const owner = await signup(app, 'Pia Purpose');
     const registration = (await owner.client.post('/api/me/passkeys/options', { password })).data;
-    const wrong = await new Client(app).post('/api/auth/passkey', {
+    const wrong = await anon().post('/api/auth/passkey', {
       challengeId: registration.challengeId,
       response: key.authenticate(registration.options),
     });
@@ -214,5 +220,94 @@ describe('passkeys', () => {
       .orderBy(sql`${auditLog.createdAt} desc`)
       .limit(1);
     expect(bypass!.data).toEqual({ method: 'passkey' });
+  });
+});
+
+describe('passkeys as a second factor', () => {
+  const totp = (secret: string) =>
+    new TOTP({ secret: Secret.fromBase32(secret), digits: 6, period: 30 }).generate();
+  const signInWithPassword = async (email: string) => {
+    const client = anon();
+    const res = await client.post('/api/auth/login', { email, password });
+    return { client, res };
+  };
+  const passkeyStep = async (client: Client, mfaToken: string, key: SoftAuthenticator) => {
+    const { challengeId, options } = (
+      await client.post('/api/auth/mfa/passkey/options', { mfaToken })
+    ).data;
+    return client.post('/api/auth/mfa', {
+      mfaToken,
+      passkey: { challengeId, response: key.authenticate(options, { userVerified: false }) },
+    });
+  };
+
+  it('are asked for after the password, with recovery codes as the way back in', async () => {
+    const { client, email } = await signup(app, 'Tess Twofactor');
+    const key = new SoftAuthenticator(site);
+    const reg = (await client.post('/api/me/passkeys/options', { password })).data;
+    const added = await client.post('/api/me/passkeys', {
+      challengeId: reg.challengeId,
+      response: key.register(reg.options),
+    });
+    // The first passkey hands out recovery codes.
+    expect(added.data.recoveryCodes).toHaveLength(10);
+    expect((await client.get('/api/me/account')).data).toMatchObject({
+      twoFactorEnabled: true,
+      totpEnabled: false,
+    });
+
+    const first = await signInWithPassword(email);
+    expect(first.res.data).toMatchObject({ mfaRequired: true, factors: ['passkey', 'recovery'] });
+    const { mfaToken } = first.res.data;
+    // Someone else's passkey doesn't do, and doesn't use up the step.
+    const stranger = await withPasskey('Stu Stranger');
+    expect((await passkeyStep(first.client, mfaToken, stranger.key)).data.messageKey).toBe(
+      'passkey_failed',
+    );
+    const ok = await passkeyStep(first.client, mfaToken, key);
+    expect(ok.statusCode, ok.body).toBe(200);
+    expect((await first.client.get('/api/auth/me')).statusCode).toBe(200);
+
+    // A recovery code works once.
+    const second = await signInWithPassword(email);
+    const code = added.data.recoveryCodes[0];
+    const viaCode = await second.client.post('/api/auth/mfa', {
+      mfaToken: second.res.data.mfaToken,
+      code,
+    });
+    expect(viaCode.statusCode).toBe(200);
+
+    // New codes for an account with only passkeys: the password confirms it.
+    expect((await client.post('/api/me/2fa/recovery-codes', {})).statusCode).toBe(400);
+    const fresh = await client.post('/api/me/2fa/recovery-codes', { password });
+    expect(fresh.data.recoveryCodes).toHaveLength(10);
+
+    // A reset link alone doesn't sign in an account with a second factor (it signs out the rest).
+    const me = (await client.get('/api/auth/me')).data.id as string;
+    const token = await createToken(app.db, me, 'password_reset', 60);
+    const reset = await anon().post('/api/auth/reset', { token, password });
+    expect(reset.data.signedIn).toBe(false);
+  });
+
+  it('keep two-factor on when the authenticator app goes, and end it when they all go', async () => {
+    const { client, email, key, passkeyId } = await withPasskey('Theo Totp');
+    const setup = (await client.post('/api/me/2fa/setup', { password })).data;
+    await client.post('/api/me/2fa/enable', { code: totp(setup.secret) });
+    const both = await signInWithPassword(email);
+    expect(both.res.data.factors).toEqual(['totp', 'passkey', 'recovery']);
+
+    // Turning off the app leaves the passkey asking.
+    const off = await client.post('/api/me/2fa/disable', { password, code: totp(setup.secret) });
+    expect(off.statusCode, off.body).toBe(200);
+    expect((await client.get('/api/me/account')).data.twoFactorEnabled).toBe(true);
+    const after = await signInWithPassword(email);
+    expect(after.res.data.factors).toEqual(['passkey', 'recovery']);
+    expect((await passkeyStep(after.client, after.res.data.mfaToken, key)).statusCode).toBe(200);
+
+    // Without any factor left, the password is enough again and the codes are gone.
+    await client.req('DELETE', `/api/me/passkeys/${passkeyId}`, { password });
+    expect((await client.get('/api/me/account')).data.twoFactorEnabled).toBe(false);
+    const plain = await signInWithPassword(email);
+    expect(plain.res.data).toEqual({ ok: true });
   });
 });

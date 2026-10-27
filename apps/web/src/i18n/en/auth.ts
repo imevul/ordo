@@ -30,6 +30,13 @@ export default {
     code: 'Code',
     verify: 'Verify',
     back: 'back',
+    titlePasskey: 'Confirm it’s you.',
+    helpPasskey:
+      'Use one of your passkeys to finish signing in. Lost them? Enter one of your recovery codes instead.',
+    helpRecovery:
+      'Your passkeys can’t be used in this browser or at this address. Enter one of your recovery codes instead.',
+    usePasskey: 'Use a passkey',
+    recoveryCode: 'Recovery code',
   },
   workspaceSso: {
     kicker: 'single sign-on',

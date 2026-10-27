@@ -89,7 +89,7 @@ export default {
   passkeys: {
     title: 'Tilgangsnøkler',
     description:
-      'Logg inn med fingeravtrykk, ansikt eller enhetens PIN-kode i stedet for passord. Tilgangsnøkler kan ikke fiskes, og passordbehandleren din kan ta dem med til de andre enhetene dine.',
+      'Logg inn med fingeravtrykk, ansikt eller enhetens PIN-kode i stedet for passord. Tilgangsnøkler kan ikke fiskes, og passordbehandleren din kan ta dem med til de andre enhetene dine. Når du har en, ber innlogging med passord også om en tilgangsnøkkel.',
     needsHttps: 'Tilgangsnøkler krever at Ordo nås på en https-adresse. Spør administratoren din.',
     otherOrigin:
       'Tilgangsnøkler hører til instansens egen adresse. Åpne den på {origin} for å legge til eller bruke dem.',
@@ -108,12 +108,14 @@ export default {
     removeTitle: 'Fjerne «{name}»?',
     removeBody:
       'Den kan ikke lenger logge inn i Ordo. Du kan også slette den fra enheten eller passordbehandleren.',
+    newCodes: 'Lag nye koder',
+    newCodesBody: 'Nye gjenopprettingskoder erstatter de gamle, som slutter å virke.',
   },
   twoFactor: {
-    title: 'Tofaktorautentisering',
+    title: 'Autentiseringsapp',
     description:
       'Krev en kode fra en autentiseringsapp (1Password, Bitwarden, Aegis, Google Authenticator…) ved innlogging.',
-    turnedOff: 'Tofaktorautentisering er slått av',
+    turnedOff: 'Autentiseringsappen er slått av',
     regeneratePrompt: 'Skriv inn en gjeldende sekssifret kode fra autentiseringsappen',
     on: 'på',
     newRecoveryCodes: 'Nye gjenopprettingskoder',

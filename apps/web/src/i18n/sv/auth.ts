@@ -29,6 +29,13 @@ export default {
     code: 'Kod',
     verify: 'Verifiera',
     back: 'tillbaka',
+    titlePasskey: 'Bekräfta att det är du.',
+    helpPasskey:
+      'Använd en av dina lösennycklar för att slutföra inloggningen. Har du tappat bort dem? Ange en av dina återställningskoder i stället.',
+    helpRecovery:
+      'Dina lösennycklar kan inte användas i den här webbläsaren eller på den här adressen. Ange en av dina återställningskoder i stället.',
+    usePasskey: 'Använd en lösennyckel',
+    recoveryCode: 'Återställningskod',
   },
   workspaceSso: {
     kicker: 'single sign-on',

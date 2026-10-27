@@ -53,6 +53,10 @@ export default {
         title: 'Two-factor authentication is off',
         body: 'Signing in to Ordo now only needs your password.',
       },
+      totpOff: {
+        title: 'Your authenticator app no longer signs in to Ordo',
+        body: 'Signing in with your password now asks for one of your passkeys (or a recovery code) instead.',
+      },
       passkeyAdded: {
         title: 'A passkey was added to your Ordo account',
         body: 'The passkey "{name}" can now sign in to your account.',

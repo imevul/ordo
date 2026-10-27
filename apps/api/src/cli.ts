@@ -12,7 +12,7 @@
 import { eq, isNotNull } from 'drizzle-orm';
 import { createDb } from './db/client.ts';
 import { runMigrations } from './db/migrate.ts';
-import { recoveryCodes, users } from './db/schema.ts';
+import { passkeys, recoveryCodes, users } from './db/schema.ts';
 import { loadEnv } from './env.ts';
 import { Keyring } from './lib/secrets.ts';
 import { audit } from './services/audit.ts';
@@ -70,6 +70,8 @@ async function main() {
         .set({ totpEnabledAt: null, totpSecret: null })
         .where(eq(users.id, user.id));
       await db.delete(recoveryCodes).where(eq(recoveryCodes.userId, user.id));
+      // Passkeys are a second factor too; someone locked out has lost them as well.
+      await db.delete(passkeys).where(eq(passkeys.userId, user.id));
       await audit(db, {
         action: 'auth.2fa_disabled',
         actorId: null,

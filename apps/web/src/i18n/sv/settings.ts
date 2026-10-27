@@ -90,7 +90,7 @@ export default {
   passkeys: {
     title: 'Lösennycklar',
     description:
-      'Logga in med fingeravtryck, ansikte eller enhetens PIN-kod i stället för ett lösenord. Lösennycklar kan inte nätfiskas, och din lösenordshanterare kan ta dem till dina andra enheter.',
+      'Logga in med fingeravtryck, ansikte eller enhetens PIN-kod i stället för ett lösenord. Lösennycklar kan inte nätfiskas, och din lösenordshanterare kan ta dem till dina andra enheter. När du har en ber inloggning med lösenord också om en lösennyckel.',
     needsHttps: 'Lösennycklar kräver att Ordo nås via en https-adress. Fråga din administratör.',
     otherOrigin:
       'Lösennycklar hör till instansens egen adress. Öppna den på {origin} för att lägga till eller använda dem.',
@@ -109,12 +109,14 @@ export default {
     removeTitle: 'Ta bort ”{name}”?',
     removeBody:
       'Den kan inte längre logga in i Ordo. Du kan också radera den från enheten eller lösenordshanteraren.',
+    newCodes: 'Skapa nya koder',
+    newCodesBody: 'Nya återställningskoder ersätter de gamla, som slutar fungera.',
   },
   twoFactor: {
-    title: 'Tvåstegsverifiering',
+    title: 'Autentiseringsapp',
     description:
       'Kräv en kod från en autentiseringsapp (1Password, Bitwarden, Aegis, Google Authenticator…) vid inloggning.',
-    turnedOff: 'Tvåstegsverifiering är avstängd',
+    turnedOff: 'Autentiseringsappen är avstängd',
     regeneratePrompt: 'Ange en aktuell sexsiffrig kod från din autentiseringsapp',
     on: 'på',
     newRecoveryCodes: 'Nya återställningskoder',

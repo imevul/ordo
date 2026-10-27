@@ -9,6 +9,7 @@ import {
   loginSchema,
   type Me,
   mfaLoginSchema,
+  mfaPasskeyOptionsSchema,
   passkeyLoginSchema,
   resetPasswordSchema,
   signupSchema,
@@ -48,7 +49,7 @@ import { resolvePreferences } from '../services/digest.ts';
 import { signedFileUrl } from '../services/files.ts';
 import { passwordResetEmail, securityEmail, verifyEmailEmail } from '../services/mail-templates.ts';
 import { queueEmail } from '../services/mailer.ts';
-import { verifySecondFactor } from '../services/mfa.ts';
+import { hasSecondFactor, secondFactors, verifySecondFactor } from '../services/mfa.ts';
 import {
   authenticationOptions,
   passkeyFailed,
@@ -215,10 +216,11 @@ export async function authRoutes(app: FastifyInstance) {
       throw forbidden('This account has been disabled. Contact your administrator.').as(
         'account_disabled',
       );
-    if (user.totpEnabledAt) {
+    const factors = await secondFactors(db, user);
+    if (factors.length) {
       // Password was right; the session is created only after the second factor.
       const mfaToken = await createToken(db, user.id, 'mfa', 10);
-      return { ok: false, mfaRequired: true, mfaToken };
+      return { ok: false, mfaRequired: true, mfaToken, factors };
     }
     await audit(
       db,
@@ -251,7 +253,7 @@ export async function authRoutes(app: FastifyInstance) {
       throw err;
     }
     const [user] = await db.select().from(users).where(eq(users.id, userId));
-    if (!user || user.kind !== 'human') throw passkeyFailed();
+    if (user?.kind !== 'human') throw passkeyFailed();
     if (user.disabledAt)
       throw forbidden('This account has been disabled. Contact your administrator.').as(
         'account_disabled',
@@ -265,30 +267,55 @@ export async function authRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /** A challenge for answering the second step with a passkey; the step's token stays valid. */
+  app.post('/auth/mfa/passkey/options', authLimit, async (req) => {
+    const { mfaToken } = parse(mfaPasskeyOptionsSchema, req.body);
+    const [row] = await db
+      .select({ userId: authTokens.userId })
+      .from(authTokens)
+      .where(
+        and(
+          eq(authTokens.tokenHash, sha256(mfaToken)),
+          eq(authTokens.kind, 'mfa'),
+          isNull(authTokens.usedAt),
+          gt(authTokens.expiresAt, new Date().toISOString()),
+        ),
+      );
+    if (!row) throw unauthorized('Sign in again').as('sign_in_again');
+    return authenticationOptions(app, 'mfa', row.userId);
+  });
+
   app.post('/auth/mfa', authLimit, async (req, reply) => {
     const input = parse(mfaLoginSchema, req.body);
+    const method = input.passkey ? 'passkey' : 'totp';
     const userId = await db.transaction(async (tx) => {
       const token = await consumeToken(tx, 'mfa', input.mfaToken);
       const [user] = await tx.select().from(users).where(eq(users.id, token.userId));
-      if (!user || user.disabledAt || !user.totpEnabledAt)
+      if (!user || user.disabledAt || !(await hasSecondFactor(tx, user)))
         throw unauthorized('Sign in again').as('sign_in_again');
-      if (!(await verifySecondFactor(tx, app.keyring, user, input.code))) return null;
+      if (input.passkey) {
+        try {
+          await verifyPasskey(app, tx, input.passkey, 'mfa', user.id);
+        } catch {
+          return null;
+        }
+      } else if (!(await verifySecondFactor(tx, app.keyring, user, input.code!))) return null;
       await audit(
         tx,
-        { action: 'auth.login', actorId: user.id, data: { method: 'password+totp' } },
+        { action: 'auth.login', actorId: user.id, data: { method: `password+${method}` } },
         requestMeta(req),
       );
       return user.id;
     });
     if (!userId) {
-      // A wrong code doesn't burn the step: reissue the token so they can try again.
+      // A wrong answer doesn't burn the step: reissue the token so they can try again.
       const [row] = await db
         .select({ userId: authTokens.userId })
         .from(authTokens)
         .where(eq(authTokens.tokenHash, sha256(input.mfaToken)));
       await audit(
         db,
-        { action: 'auth.login_failed', actorId: row?.userId ?? null, data: { method: 'totp' } },
+        { action: 'auth.login_failed', actorId: row?.userId ?? null, data: { method } },
         requestMeta(req),
       );
       if (row)
@@ -296,6 +323,7 @@ export async function authRoutes(app: FastifyInstance) {
           .update(authTokens)
           .set({ usedAt: null })
           .where(eq(authTokens.tokenHash, sha256(input.mfaToken)));
+      if (input.passkey) throw passkeyFailed();
       throw unauthorized('That code is not valid').as('invalid_code');
     }
     await createSession(app, reply, userId, req);
@@ -347,11 +375,11 @@ export async function authRoutes(app: FastifyInstance) {
       return token.userId;
     });
     const [user] = await db
-      .select({ totp: users.totpEnabledAt })
+      .select({ id: users.id, totpEnabledAt: users.totpEnabledAt })
       .from(users)
       .where(eq(users.id, userId));
     // With 2FA on, a reset link alone doesn't sign you in.
-    if (user?.totp) return { ok: true, signedIn: false };
+    if (user && (await hasSecondFactor(db, user))) return { ok: true, signedIn: false };
     await createSession(app, reply, userId, req);
     return { ok: true, signedIn: true };
   });
