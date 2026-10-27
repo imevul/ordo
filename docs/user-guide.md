@@ -25,7 +25,8 @@ Admins can **suspend** a member — they keep their history but can't open the w
 
 ### Workspace settings
 
-- **General** — name, URL, logo, an **accent colour** (Hotline Pink by default; pick a preset or any colour), a
+- **General** — name, URL, logo, an **accent colour** (Hotline Pink by default; pick a preset or any colour; the
+  light theme uses a deeper shade of it so text stays readable), a
   **default team** every new member (except guests) joins automatically, and whether to offer
   [AI assistance](ai.md) when the instance has a model set up.
 - **Access** — who may invite; **domains** you've verified with a DNS TXT record
@@ -289,7 +290,9 @@ Open **Settings** (workspace menu, or `G` then `S`):
 
 - **Profile** — name, `@username`, picture (cropped to a square in your browser) or initials colour, time zone and
   first day of the week. Your email address: change it (the new address must be confirmed by a link when email is
-  set up) and see whether it's verified.
+  set up) and see whether it's verified. **Appearance**: dark, light, or **System** (the default), which follows your
+  device and switches when it does. It's saved per browser; the command menu has _Switch to light theme_ and friends
+  too.
 - **Security** — change your password (this signs out your other sessions); turn on **two-factor authentication**
   with any authenticator app, and keep the ten recovery codes somewhere safe — each works once if you lose your
   device; see and revoke your **sessions**.

@@ -60,7 +60,7 @@ const DEFS: FilterDef[] = [
       STATE_TYPES.map((t) => ({
         value: t,
         label: STATE_TYPE_LABELS[t],
-        icon: <StatusIcon type={t} color="#b8aab2" />,
+        icon: <StatusIcon type={t} color="var(--color-muted)" />,
       })),
   },
   {
@@ -231,7 +231,7 @@ export function FilterChips({
               trigger={
                 <button
                   type="button"
-                  className="flex max-w-56 items-center border-l border-border px-2 hover:bg-white/5"
+                  className="flex max-w-56 items-center border-l border-border px-2 hover:bg-text/5"
                 >
                   <span className="truncate">
                     {values.map((v) => valueLabel(ws, d.key, v)).join(', ')}

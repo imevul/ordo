@@ -7,7 +7,18 @@ import {
   type UserPreferences,
 } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Copy, Download, KeyRound, LogOut, ShieldCheck, Trash2, Upload } from 'lucide-react';
+import {
+  Copy,
+  Download,
+  KeyRound,
+  LogOut,
+  Monitor,
+  Moon,
+  ShieldCheck,
+  Sun,
+  Trash2,
+  Upload,
+} from 'lucide-react';
 import QRCode from 'qrcode';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -18,6 +29,7 @@ import { Avatar } from '../../components/ui/Avatar.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { relativeTime } from '../../lib/format.ts';
 import { disablePush, enablePush, type PushState, pushState } from '../../lib/push.ts';
+import { setThemePref, THEME_PREFS, useTheme } from '../../lib/theme.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
@@ -69,7 +81,38 @@ export function AccountSection() {
     <>
       <ProfileCard account={account} />
       <EmailCard account={account} />
+      <AppearanceCard />
     </>
+  );
+}
+
+const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon };
+
+function AppearanceCard() {
+  const { pref } = useTheme();
+  return (
+    <SettingsCard
+      title="Appearance"
+      description="Saved in this browser. System follows your device's light or dark setting."
+    >
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Theme">
+        {THEME_PREFS.map(({ value, label }) => {
+          const Icon = THEME_ICONS[value];
+          return (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setThemePref(value)}
+              aria-pressed={pref === value}
+              className={`flex items-center gap-2 border px-3 py-1.5 text-[13px] ${pref === value ? 'border-primary text-text' : 'border-border-soft text-muted hover:text-text'}`}
+            >
+              <Icon size={14} className={pref === value ? 'text-primary' : ''} />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    </SettingsCard>
   );
 }
 

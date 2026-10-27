@@ -1,4 +1,5 @@
 import type { ProjectStatus, StateType } from '@ordo/shared';
+import { useThemedColor } from '../lib/theme.ts';
 
 /**
  * Status glyphs are squares, not circles — Hotline Pink has no rounded shapes.
@@ -13,6 +14,7 @@ export function StatusIcon({
   color: string;
   size?: number;
 }) {
+  color = useThemedColor(color);
   const s = size;
   const common = {
     width: s,
@@ -78,14 +80,19 @@ export function StatusIcon({
       return (
         <svg {...common}>
           <rect x="1" y="1" width="12" height="12" fill={color} />
-          <path d="M4 7.2 6.1 9.3 10.2 4.9" fill="none" stroke="#09090b" strokeWidth="1.6" />
+          <path
+            d="M4 7.2 6.1 9.3 10.2 4.9"
+            fill="none"
+            stroke="var(--color-bg)"
+            strokeWidth="1.6"
+          />
         </svg>
       );
     case 'canceled':
       return (
         <svg {...common}>
           <rect x="1" y="1" width="12" height="12" fill={color} />
-          <path d="M4.6 4.6 9.4 9.4M9.4 4.6 4.6 9.4" stroke="#09090b" strokeWidth="1.6" />
+          <path d="M4.6 4.6 9.4 9.4M9.4 4.6 4.6 9.4" stroke="var(--color-bg)" strokeWidth="1.6" />
         </svg>
       );
   }
@@ -102,9 +109,9 @@ export function PriorityIcon({ priority, size = 14 }: { priority: number; size?:
   if (priority === 1) {
     return (
       <svg {...common}>
-        <rect x="1" y="1" width="12" height="12" fill="#f59e0b" />
-        <rect x="6.2" y="3" width="1.6" height="5.2" fill="#09090b" />
-        <rect x="6.2" y="9.4" width="1.6" height="1.6" fill="#09090b" />
+        <rect x="1" y="1" width="12" height="12" fill="var(--color-warning)" />
+        <rect x="6.2" y="3" width="1.6" height="5.2" fill="var(--color-bg)" />
+        <rect x="6.2" y="9.4" width="1.6" height="1.6" fill="var(--color-bg)" />
       </svg>
     );
   }
@@ -112,7 +119,7 @@ export function PriorityIcon({ priority, size = 14 }: { priority: number; size?:
     return (
       <svg {...common}>
         {[1.5, 5.75, 10].map((x) => (
-          <rect key={x} x={x} y="6.4" width="2.5" height="1.2" fill="#8e7985" />
+          <rect key={x} x={x} y="6.4" width="2.5" height="1.2" fill="var(--color-index)" />
         ))}
       </svg>
     );
@@ -135,12 +142,12 @@ export function PriorityIcon({ priority, size = 14 }: { priority: number; size?:
 }
 
 const PROJECT_STATUS_COLOR: Record<ProjectStatus, string> = {
-  backlog: '#8e7985',
-  planned: '#b8aab2',
-  started: '#f59e0b',
-  paused: '#8e7985',
-  completed: '#22c55e',
-  canceled: '#8e7985',
+  backlog: 'var(--color-index)',
+  planned: 'var(--color-muted)',
+  started: 'var(--color-warning)',
+  paused: 'var(--color-index)',
+  completed: 'var(--color-success)',
+  canceled: 'var(--color-index)',
 };
 
 export function ProjectStatusIcon({ status, size = 14 }: { status: ProjectStatus; size?: number }) {
@@ -159,6 +166,7 @@ export function ProjectStatusIcon({ status, size = 14 }: { status: ProjectStatus
 
 /** A project's mark: a small chamfered tile in the project's color. */
 export function ProjectIcon({ color, size = 14 }: { color: string; size?: number }) {
+  color = useThemedColor(color);
   return (
     <svg width={size} height={size} viewBox="0 0 14 14" aria-hidden className="flex-none">
       <path d="M1 1H10L13 4V13H4L1 10Z" fill="none" stroke={color} strokeWidth="1.4" />

@@ -205,12 +205,12 @@ interface IssuePropProps {
   variant?: Variant;
 }
 
-const fieldCls = 'prop w-full justify-start bg-transparent shadow-none hover:bg-white/[0.03]';
+const fieldCls = 'prop w-full justify-start bg-transparent shadow-none hover:bg-text/[0.03]';
 const cls = (variant: Variant) =>
   variant === 'field'
     ? fieldCls
     : variant === 'icon'
-      ? 'inline-flex h-6 w-6 items-center justify-center hover:bg-white/5'
+      ? 'inline-flex h-6 w-6 items-center justify-center hover:bg-text/5'
       : 'prop';
 
 export function StatusProp({ issue, onPatch, variant = 'chip' }: IssuePropProps) {

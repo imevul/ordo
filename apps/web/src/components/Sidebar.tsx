@@ -338,7 +338,7 @@ export function Sidebar({
 
       <div className="flex h-9 flex-none items-center gap-2 border-t border-border-soft px-3 font-mono text-[10.5px] tracking-[0.12em] text-index uppercase">
         <span
-          className={`h-[7px] w-[7px] ${status === 'live' ? 'bg-success shadow-[0_0_10px_#22c55e]' : status === 'connecting' ? 'bg-warning' : 'bg-error'}`}
+          className={`h-[7px] w-[7px] ${status === 'live' ? 'bg-success shadow-[0_0_10px_var(--color-success)]' : status === 'connecting' ? 'bg-warning' : 'bg-error'}`}
           aria-hidden
         />
         {status === 'live' ? 'live' : status === 'connecting' ? 'connecting' : 'offline'}

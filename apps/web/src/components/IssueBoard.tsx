@@ -173,7 +173,7 @@ function Column({
     <div className="flex w-[300px] flex-none flex-col">
       <header className="flex h-9 flex-none items-center gap-2 px-1">
         {groupBy === 'state' && group.stateType && (
-          <StatusIcon type={group.stateType} color={group.color ?? '#b8aab2'} />
+          <StatusIcon type={group.stateType} color={group.color ?? 'var(--color-muted)'} />
         )}
         {groupBy === 'priority' && <PriorityIcon priority={group.value as number} />}
         {groupBy === 'assignee' && group.value && (

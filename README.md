@@ -79,8 +79,8 @@ TypeScript end to end, in a pnpm monorepo:
 - `packages/shared` — Zod schemas, types and domain constants used by both.
 
 One container serves both the API and the built web app; the only other service is Postgres.
-The UI uses the **Hotline Pink** design system: dark charcoal ground, sparse pink accents, cyan focus rings,
-chamfered corners instead of rounded ones ([docs/design.md](docs/design.md)).
+The UI uses the **Hotline Pink** design system: dark charcoal ground (or a light theme), sparse pink accents, cyan
+focus rings, chamfered corners instead of rounded ones ([docs/design.md](docs/design.md)).
 
 ## Documentation
 

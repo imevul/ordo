@@ -23,7 +23,7 @@ interface Props {
 
 function GroupIcon({ group, kind }: { group: IssueGroup; kind: string }) {
   if (kind === 'state' && group.stateType)
-    return <StatusIcon type={group.stateType} color={group.color ?? '#b8aab2'} />;
+    return <StatusIcon type={group.stateType} color={group.color ?? 'var(--color-muted)'} />;
   if (kind === 'priority') return <PriorityIcon priority={group.value as number} />;
   if (kind === 'assignee' && group.value)
     return <Avatar name={group.label} color={group.color ?? 'var(--color-primary)'} size={16} />;

@@ -11,9 +11,12 @@ import {
   Keyboard,
   Layers,
   LogOut,
+  Monitor,
+  Moon,
   Plus,
   Search,
   Settings,
+  Sun,
   Target,
   Trash2,
   UserCheck,
@@ -24,6 +27,7 @@ import { api } from '../api/client.ts';
 import { useBatchUpdateIssues, useSearch, useTrashIssues } from '../api/queries.ts';
 import { useHotkeyScope } from '../lib/hotkeys.ts';
 import { type PalettePage, ui, useUi } from '../lib/store.ts';
+import { setThemePref, THEME_PREFS, useTheme } from '../lib/theme.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { StatusIcon, TeamIcon } from './icons.tsx';
 import {
@@ -56,6 +60,7 @@ export function CommandPalette() {
   const targets = useUi((s) => s.paletteTargets);
   const ws = useWorkspace();
   const qc = useQueryClient();
+  const theme = useTheme();
   const navigate = useNavigate();
   const batch = useBatchUpdateIssues(ws.slug);
   const trash = useTrashIssues(ws.slug);
@@ -406,6 +411,28 @@ export function CommandPalette() {
                     ))}
                 </Command.Group>
               )}
+
+              <Command.Group heading="Appearance">
+                {THEME_PREFS.filter((t) => t.value !== theme.pref).map((t) => (
+                  <Command.Item
+                    key={t.value}
+                    value={`theme ${t.value} ${t.value === 'system' ? 'automatic' : `${t.value} mode`}`}
+                    onSelect={() => {
+                      setThemePref(t.value);
+                      ui.set({ palette: null });
+                    }}
+                  >
+                    {t.value === 'light' ? (
+                      <Sun size={15} />
+                    ) : t.value === 'dark' ? (
+                      <Moon size={15} />
+                    ) : (
+                      <Monitor size={15} />
+                    )}
+                    {t.value === 'system' ? 'Use system theme' : `Switch to ${t.value} theme`}
+                  </Command.Item>
+                ))}
+              </Command.Group>
 
               <Command.Group heading="Help">
                 <Command.Item
