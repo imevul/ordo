@@ -50,7 +50,7 @@ There are three parts:
 The [CLI](cli.md) includes a generic runner. You tell it what to launch for each run:
 
 ```bash
-ordo agent run --key "$AGENT_KEY" -w acme -- claude -p --permission-mode acceptEdits
+ordo agent run --key "$AGENT_KEY" -w acme -- sh -c 'claude -p --mcp-config "$ORDO_MCP_CONFIG" --allowedTools mcp__ordo'
 ordo agent run --key "$AGENT_KEY" -w acme -- sh -c 'opencode run "$(cat "$ORDO_PROMPT_FILE")"'
 ordo agent run --key "$AGENT_KEY" -w acme -- ./my-factory.sh
 ```
@@ -82,6 +82,7 @@ This is all the runner asks of your command:
 | Environment                                                  | What it holds                                                                     |
 | ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | `ORDO_RUN_FILE`                                              | The run as JSON (`AgentRunContext`, below)                                        |
+| `ORDO_MCP_CONFIG`                                            | An MCP config (`mcpServers`) for the Ordo MCP server, with the agent's key        |
 | `ORDO_PROMPT_FILE`                                           | The run as a Markdown prompt; it is also on **stdin**                             |
 | `ORDO_SUMMARY_FILE`                                          | Write your summary here (Markdown); without one, the end of stdout is used        |
 | `ORDO_WORKDIR`                                               | Where the command starts: the first repository's worktree, or an empty directory  |
@@ -94,11 +95,21 @@ This is all the runner asks of your command:
 
 A line `ORDO_SESSION_URL=https://…` on stdout is reported right away and linked on the issue, and a line
 `ORDO_RESUME=<token>` is kept for the next pickup of the run (see [Questions](#questions)). Exit code 0 means the
-run succeeded; anything else means it failed, with the end of stderr as the error.
+run succeeded; anything else means it failed, with the end of stderr (or of stdout, if stderr is empty) as the error.
 
 Since `ORDO_TOKEN` is the agent's key, the command can use the CLI as the agent: `ordo issue comment "$ORDO_ISSUE"
-"Found the cause, fixing it now"`, `ordo issue edit "$ORDO_ISSUE" --status "In Progress"`. The
-[MCP server](mcp.md) accepts the same key.
+"Found the cause, fixing it now"`, `ordo issue edit "$ORDO_ISSUE" --status "In Progress"`. `ORDO_MCP_CONFIG` hands it
+the [MCP server](mcp.md) the same way.
+
+**Claude Code** asks before using tools, and `claude -p` can't ask, so it refuses them. Allow what the agent needs
+up front, and give it Ordo's tools:
+
+```yaml
+command: claude -p --permission-mode acceptEdits --mcp-config "$ORDO_MCP_CONFIG" --allowedTools mcp__ordo
+```
+
+That's the string form (run with `sh -c`), which expands `$ORDO_MCP_CONFIG`; the list form doesn't. To let it use
+the CLI instead, allow `"Bash(ordo:*)"`. Add `"Bash(git:*)"` and the like for what else it should run.
 
 ### Runner files
 
@@ -124,7 +135,7 @@ defaults:
 agents:
   claude: # a local label, for logs and the runner name
     key: ${CLAUDE_AGENT_KEY}
-    command: [claude, -p, --permission-mode, acceptEdits]
+    command: claude -p --permission-mode acceptEdits --mcp-config "$ORDO_MCP_CONFIG" --allowedTools mcp__ordo
     concurrency: 2
     instructions: |
       This machine has a GPU; run the benchmarks in bench/ before and after.

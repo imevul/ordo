@@ -359,8 +359,28 @@ export async function launch(
     const runFile = join(dir, 'run.json');
     const promptFile = join(dir, 'prompt.md');
     const summaryFile = join(dir, 'summary.md');
+    const mcpFile = join(dir, 'mcp.json');
     await writeFile(runFile, `${JSON.stringify(context, null, 2)}\n`);
     await writeFile(promptFile, context.prompt);
+    // The Ordo MCP server as the agent, in the `mcpServers` format MCP clients read (e.g.
+    // `claude --mcp-config`). It holds the key, so only its owner may read it.
+    await writeFile(
+      mcpFile,
+      `${JSON.stringify(
+        {
+          mcpServers: {
+            ordo: {
+              type: 'http',
+              url: `${spec.url}/api/w/${encodeURIComponent(spec.workspace)}/mcp`,
+              headers: { Authorization: `Bearer ${spec.key}` },
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+      { mode: 0o600 },
+    );
     const workdir = opts.workdir ?? dir;
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
@@ -375,6 +395,7 @@ export async function launch(
       ORDO_ISSUE_URL: context.issue.url,
       ORDO_WORKDIR: workdir,
       ORDO_RUN_FILE: runFile,
+      ORDO_MCP_CONFIG: mcpFile,
       ORDO_PROMPT_FILE: promptFile,
       ORDO_SUMMARY_FILE: summaryFile,
       ORDO_REPO_PATHS: JSON.stringify(
@@ -461,7 +482,8 @@ export async function launch(
       status: 'failed',
       summary,
       error: tail(
-        `${stderr.trim() || 'No output on stderr.'}\n(exit code ${code ?? 'signal'})`,
+        // Some tools say what went wrong on stdout (e.g. "not logged in"), so that's next best.
+        `${stderr.trim() || stdout.trim() || 'No output.'}\n(exit code ${code ?? 'signal'})`,
         4000,
       ),
       sessionUrl,
