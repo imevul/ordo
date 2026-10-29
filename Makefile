@@ -3,7 +3,9 @@
 COMPOSE      ?= docker compose
 DEV_COMPOSE  ?= docker compose -f docker-compose.dev.yml
 BACKUP_DIR   ?= backups
-IMAGE_REPO   ?= git.imevul.com/haxnet/ordo
+
+# Your own settings (git-ignored), e.g. IMAGE_REPO := registry.example.com/you/ordo for `make publish`.
+-include local.mk
 
 .DEFAULT_GOAL := help
 .PHONY: help up down restart update logs ps status seed backup restore psql ensure-secret admin reset-password \
@@ -46,7 +48,11 @@ restart: ## Restart the running containers
 	$(COMPOSE) restart
 	@$(COMPOSE) ps
 
-publish: ## Build and push git.imevul.com/haxnet/ordo:<git sha> and :latest
+publish: ## Build and push $IMAGE_REPO:<git sha> and :latest (set it in local.mk)
+	@if [ -z "$(IMAGE_REPO)" ]; then \
+		echo "Set IMAGE_REPO first: in local.mk (IMAGE_REPO := registry.example.com/you/ordo) or make publish IMAGE_REPO=…" >&2; \
+		exit 1; \
+	fi
 	@dirty=$$(git status --porcelain -- Dockerfile .dockerignore package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json apps packages); \
 		if [ -n "$$dirty" ]; then \
 			echo "Commit image inputs before publish so the tag matches what was built:" >&2; \
