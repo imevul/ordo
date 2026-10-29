@@ -8,6 +8,7 @@ import {
   Pencil,
   Plug,
   Power,
+  Ticket,
   Trash2,
   X,
 } from 'lucide-react';
@@ -21,6 +22,7 @@ import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { ChatForm, chatForms, SlackAppPanel } from './chat.tsx';
 import { EmailForm } from './email-intake.tsx';
+import { JiraForm } from './jira.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
@@ -155,6 +157,11 @@ export function IntegrationsSection() {
             <div className="flex items-center gap-3">
               {i.provider === 'email' ? (
                 <Mail
+                  size={14}
+                  className={`flex-none ${i.status === 'active' ? 'text-highlight' : 'text-index'}`}
+                />
+              ) : i.provider === 'jira' ? (
+                <Ticket
                   size={14}
                   className={`flex-none ${i.status === 'active' ? 'text-highlight' : 'text-index'}`}
                 />
@@ -315,6 +322,19 @@ function describe(i: Integration) {
   if (i.provider === 'email') {
     const e = i.config as { address?: string; host?: string };
     return `${e.address ?? t('integrations.summary.email')} · ${c.delivery === 'imap' ? `IMAP ${e.host}` : t('integrations.summary.webhook')}`;
+  }
+  if (i.provider === 'jira') {
+    const j = i.config as { mode?: 'links' | 'mirror' | 'sync'; projects?: { key: string }[] };
+    const keys = (j.projects ?? []).map((p) => p.key).join(', ');
+    return [
+      t(`integrations.summary.jiraModes.${j.mode ?? 'links'}`),
+      keys,
+      c.delivery === 'poll'
+        ? t('integrations.summary.polling')
+        : t('integrations.summary.webhooks'),
+    ]
+      .filter(Boolean)
+      .join(' · ');
   }
   if (chatForms()[i.provider]) {
     const channels = t('integrations.summary.channels', { count: c.channels?.length ?? 0 });
@@ -666,6 +686,8 @@ function ConnectModal({
           <SlackAppPanel onCancel={onClose} />
         ) : provider.key === 'email' ? (
           <EmailForm provider={provider} onDone={onDone} onCancel={onClose} />
+        ) : provider.key === 'jira' ? (
+          <JiraForm provider={provider} onDone={onDone} onCancel={onClose} />
         ) : chatForms()[provider.key] ? (
           <ChatForm provider={provider} onDone={onDone} onCancel={onClose} />
         ) : tokenForms()[provider.key] ? (
@@ -723,6 +745,8 @@ function EditModal({
         )}
         {integration.provider === 'email' ? (
           <EmailForm provider={info} existing={integration} onDone={onDone} onCancel={onClose} />
+        ) : integration.provider === 'jira' ? (
+          <JiraForm provider={info} existing={integration} onDone={onDone} onCancel={onClose} />
         ) : chat ? (
           <ChatForm provider={info} existing={integration} onDone={onDone} onCancel={onClose} />
         ) : app ? (

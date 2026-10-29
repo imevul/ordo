@@ -122,3 +122,87 @@ function emphasis(text: string): string {
       .replace(new RegExp(`${EDGE_BEFORE}\\+(\\S(?:[^+]*?\\S)?)\\+${EDGE_AFTER}`, 'g'), '$1$2')
   );
 }
+
+/**
+ * Markdown → Jira's wiki markup, for what Ordo writes to Jira (synced descriptions and comments).
+ * The reverse of `jiraToMarkdown` for the same subset; anything else is sent as written.
+ */
+export function markdownToJira(text: string): string {
+  const out: string[] = [];
+  let fence: string | null = null;
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const fenceLine = /^\s*(`{3,}|~{3,})\s*([\w+-]*)\s*$/.exec(line);
+    if (fence !== null) {
+      if (fenceLine && fenceLine[1]!.startsWith(fence)) {
+        out.push('{code}');
+        fence = null;
+      } else out.push(line);
+      continue;
+    }
+    if (fenceLine) {
+      fence = fenceLine[1]!;
+      out.push(fenceLine[2] ? `{code:${fenceLine[2]}}` : '{code}');
+      continue;
+    }
+    if (/^\s*([-*_])(\s*\1){2,}\s*$/.test(line)) {
+      out.push('----');
+      continue;
+    }
+    const heading = /^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (heading) {
+      out.push(`h${heading[1]!.length}. ${toWikiInline(heading[2]!)}`);
+      continue;
+    }
+    const quote = /^\s*>\s?(.*)$/.exec(line);
+    if (quote) {
+      out.push(`bq. ${toWikiInline(quote[1]!)}`);
+      continue;
+    }
+    const item = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(line);
+    if (item) {
+      const depth = Math.floor(item[1]!.replace(/\t/g, '    ').length / 2) + 1;
+      const marker = /\d/.test(item[2]!) ? '#' : '*';
+      // Task lists have no wiki equivalent; keep their boxes as text.
+      out.push(`${marker.repeat(Math.min(depth, 6))} ${toWikiInline(item[3]!)}`);
+      continue;
+    }
+    const cells = /^\s*\|(.*)\|\s*$/.exec(line);
+    if (cells) {
+      if (/^[\s|:-]+$/.test(line)) continue;
+      const next = lines[i + 1] ?? '';
+      const header = /^\s*\|?[\s|:-]+\|?\s*$/.test(next) && next.includes('-');
+      const sep = header ? '||' : '|';
+      const parts = cells[1]!.split('|').map((c) => toWikiInline(c.trim()));
+      out.push(`${sep}${parts.join(sep)}${sep}`);
+      continue;
+    }
+    out.push(toWikiInline(line));
+  }
+  if (fence !== null) out.push('{code}');
+  return out.join('\n');
+}
+
+/** Inline Markdown → wiki markup, leaving code spans alone. */
+function toWikiInline(text: string): string {
+  return text
+    .split(/(`[^`]+`)/)
+    .map((part, i) => (i % 2 ? `{{${part.slice(1, -1)}}}` : wikiEmphasis(part)))
+    .join('');
+}
+
+function wikiEmphasis(text: string): string {
+  const BOLD = '\u0001';
+  return (
+    text
+      .replace(/!\[[^\]]*\]\(([^)\s]+)[^)]*\)/g, '!$1!')
+      .replace(/\[([^\]]+)\]\(([^)\s]+)[^)]*\)/g, '[$1|$2]')
+      .replace(/<(https?:\/\/[^>\s]+)>/g, '[$1]')
+      .replace(/(\*\*|__)(\S(?:.*?\S)?)\1/g, `${BOLD}$2${BOLD}`)
+      .replace(/(^|[^\w*])\*(\S(?:[^*]*?\S)?)\*(?!\w)/g, '$1_$2_')
+      .replace(/~~(\S(?:.*?\S)?)~~/g, '-$1-')
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: the placeholder from above
+      .replace(/\u0001/g, '*')
+  );
+}

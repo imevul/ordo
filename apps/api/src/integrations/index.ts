@@ -3,6 +3,7 @@ import { emailProvider } from './email.ts';
 import { forgejo } from './forgejo.ts';
 import { github } from './github.ts';
 import { gitlab } from './gitlab.ts';
+import { jiraProvider } from './jira.ts';
 import { matrixProvider } from './matrix.ts';
 import { registerProvider } from './registry.ts';
 import { slackProvider } from './slack.ts';
@@ -19,6 +20,7 @@ export function registerBuiltinProviders() {
     matrixProvider,
     telegramProvider,
     emailProvider,
+    jiraProvider,
   ])
     registerProvider(provider);
 }

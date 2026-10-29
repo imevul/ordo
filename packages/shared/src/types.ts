@@ -1032,7 +1032,7 @@ export interface IntegrationProviderInfo {
   key: string;
   name: string;
   description: string;
-  category: 'forge' | 'chat' | 'other';
+  category: 'forge' | 'chat' | 'tracker' | 'other';
 }
 
 /** A chat channel that receives a feed of issue activity. */

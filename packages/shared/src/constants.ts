@@ -303,7 +303,15 @@ export const CHAT_EVENT_KINDS = [
 ] as const;
 export type ChatEventKind = (typeof CHAT_EVENT_KINDS)[number];
 
-export const ISSUE_LINK_KINDS = ['pull_request', 'branch', 'commit', 'message', 'link'] as const;
+export const ISSUE_LINK_KINDS = [
+  'pull_request',
+  'branch',
+  'commit',
+  'message',
+  'link',
+  /** An issue in another tracker (Jira). */
+  'external_issue',
+] as const;
 export type IssueLinkKind = (typeof ISSUE_LINK_KINDS)[number];
 
 /** Languages the web app, emails and notifications are translated into. English is the default and fallback. */

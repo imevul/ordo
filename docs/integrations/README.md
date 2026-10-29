@@ -14,10 +14,11 @@ webhooks Ordo created; links on issues stay, and its past changes keep its name,
 | [Matrix](matrix.md)            | The same on any Matrix homeserver                                 |
 | [Telegram](telegram.md)        | The same with a Telegram bot                                      |
 | [Email](email.md)              | Mail to an address becomes triage issues, filed under customers   |
+| [Jira](jira.md)                | Links Jira issues, mirrors Jira projects, or syncs both ways      |
 | [Webhooks](../api.md#webhooks) | Your own endpoints, for anything else                             |
 
-What the chat integrations share (feeds, linking accounts, commands) is in [chat](chat.md). Importers (Jira, Linear,
-GitHub Issues, CSV) are on the [roadmap](../../ROADMAP.md).
+What the chat integrations share (feeds, linking accounts, commands) is in [chat](chat.md). For moving data over once, see
+the importers under **Settings → Import & export**.
 
 ## Public or private instances
 

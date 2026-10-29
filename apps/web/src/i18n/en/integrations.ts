@@ -1,4 +1,4 @@
-/** Settings → Integrations (forges, chat apps, email intake) and the Account cards for Git and chat. */
+/** Settings → Integrations (forges, chat apps, email intake, Jira) and the Account cards for Git and chat. */
 export default {
   list: {
     adminsOnly: 'Only admins can manage integrations.',
@@ -32,6 +32,7 @@ export default {
     webhooks: 'webhooks',
     polling: 'polling',
     sync: 'sync',
+    jiraModes: { links: 'links', mirror: 'mirror', sync: 'two-way sync' },
     channels: { one: '{count} channel', other: '{count} channels' },
     delivery: {
       events: 'Events API',
@@ -222,6 +223,49 @@ export default {
     webhookAfterConnect: 'The webhook URL appears once connected.',
     issuesGoTo: 'Issues go to {team}.',
   },
+  jira: {
+    connected: 'Jira connected',
+    intro:
+      'Jira Cloud or Data Center. Cloud signs in with your Atlassian email and an API token; Data Center with a personal access token.',
+    siteUrl: 'Jira URL',
+    email: 'Atlassian account email',
+    emailHint: 'Jira Cloud only. Leave empty for Data Center.',
+    token: 'API token or personal access token',
+    modeTitle: 'What it does',
+    modes: {
+      links: 'Links only',
+      linksHint:
+        'Jira keys and URLs in Ordo issues and comments become links that show the Jira status, with a link back in Jira.',
+      mirror: 'Mirror Jira into Ordo',
+      mirrorHint:
+        'Issues of the projects below appear in their team and follow Jira: title, description, status, priority, assignee and comments. Ordo writes nothing to Jira.',
+      sync: 'Two-way sync',
+      syncHint:
+        'Like the mirror, and changes made in Ordo go to Jira too. New Ordo issues can be created in Jira.',
+    },
+    projects: 'Jira projects',
+    projectsHintLinks:
+      'Optional: which projects’ bare keys (PROJ-123) to recognise. Empty means every project the token can see. URLs always work.',
+    projectsHintSync: 'Each project’s issues go to the team chosen for it.',
+    projectKey: 'Project key',
+    team: 'Team',
+    issueType: 'Issue type',
+    issueTypeHint: 'For issues Ordo creates in Jira',
+    createInOrdo: 'New Jira issues appear in Ordo',
+    createInJira: 'New issues in the team are created in Jira',
+    addProject: 'Add project',
+    removeProject: 'Remove project',
+    backlinks: 'Add a link back to Ordo on Jira issues',
+    deliveryTitle: 'How Ordo hears about changes',
+    webhook: 'Webhook',
+    webhookHint:
+      'An admin adds a webhook in Jira (System → WebHooks) with the URL shown once connected. Jira must reach this server.',
+    poll: 'Polling (every two minutes)',
+    pollHint: 'Ordo asks Jira what changed. Works behind NAT and firewalls.',
+    webhookSecret: 'Webhook secret',
+    webhookSecretHint:
+      'Optional. Enter the same secret in Jira’s webhook; Ordo then accepts only signed deliveries.',
+  },
   /** Account → Git usernames. */
   gitAccounts: {
     title: 'Git usernames',
@@ -266,6 +310,7 @@ export default {
     telegram:
       'Post issue activity to groups, message people their notifications and create issues from messages.',
     email: 'Turn email to an address into triage issues, filed under the sender’s customer.',
+    jira: 'Link Jira issues, mirror Jira projects into teams, or keep issues in sync both ways.',
   },
   providerNames: {
     email: 'Email',
