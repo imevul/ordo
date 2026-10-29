@@ -2,9 +2,10 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { auditLog, issues, users } from '../src/db/schema.ts';
 import { hashPassword } from '../src/lib/crypto.ts';
+import { bypassesProxy, proxyFor } from '../src/lib/proxy.ts';
 import { BlockedTargetError, isPrivateAddress, safeFetch } from '../src/lib/safeFetch.ts';
 import { Keyring, SecretKeyMissingError } from '../src/lib/secrets.ts';
 import { Client, freshDatabase, signup, testApp } from './helpers.ts';
@@ -320,5 +321,80 @@ describe('cross-site protection', () => {
       },
     });
     expect(bearer.statusCode).toBe(200);
+  });
+});
+
+describe('outbound proxy', () => {
+  let proxy: Server;
+  let proxyUrl: string;
+  const seen: string[] = [];
+  const saved = { ...process.env };
+  beforeAll(async () => {
+    proxy = createServer((req, res) => {
+      // A forward proxy gets absolute URIs; answer for the target without contacting it.
+      seen.push(`${req.method} ${req.url}`);
+      res.setHeader('content-type', 'application/json');
+      res.end(JSON.stringify({ via: 'proxy', url: req.url }));
+    });
+    proxy.on('connect', (req, socket) => {
+      seen.push(`CONNECT ${req.url}`);
+      socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
+    });
+    await new Promise<void>((r) => proxy.listen(0, '127.0.0.1', r));
+    proxyUrl = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`;
+  });
+  const VARS = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY'].flatMap((k) => [
+    k,
+    k.toLowerCase(),
+  ]);
+  // Start each test from no proxy at all (the machine running the tests may have one).
+  beforeEach(() => {
+    for (const k of VARS) delete process.env[k];
+  });
+  afterAll(async () => {
+    for (const k of VARS) if (saved[k] !== undefined) process.env[k] = saved[k];
+    await new Promise<void>((r) => proxy.close(() => r()));
+  });
+
+  it('reads NO_PROXY like curl', () => {
+    const no = 'internal.example, .corp.test,api.example.com:8443,[::1]:9000,10.0.0.5';
+    const by = (url: string) => bypassesProxy(new URL(url), no);
+    expect(by('https://internal.example/x')).toBe(true);
+    expect(by('https://git.internal.example/x')).toBe(true);
+    expect(by('https://corp.test/')).toBe(true);
+    expect(by('https://a.corp.test/')).toBe(true);
+    expect(by('https://api.example.com:8443/')).toBe(true);
+    expect(by('https://api.example.com/')).toBe(false);
+    expect(by('http://[::1]:9000/')).toBe(true);
+    expect(by('http://10.0.0.5/')).toBe(true);
+    expect(by('https://notinternal.example/')).toBe(false);
+    expect(bypassesProxy(new URL('https://anything.example'), '*')).toBe(true);
+  });
+
+  it('sends requests through HTTP_PROXY, and loopback and NO_PROXY hosts around it', async () => {
+    process.env.HTTP_PROXY = proxyUrl;
+    process.env.NO_PROXY = 'skip.invalid';
+    // The target doesn't resolve: only the proxy could have answered.
+    const res = await safeFetch('http://ordo-proxy-test.invalid/meta.json', { allowPrivate: true });
+    expect(res.json()).toEqual({ via: 'proxy', url: 'http://ordo-proxy-test.invalid/meta.json' });
+    expect(proxyFor(new URL('http://skip.invalid/'))).toBeNull();
+    expect(proxyFor(new URL('http://localhost:3000/'))).toBeNull();
+    expect(proxyFor(new URL('https://example.com/'))).toBeNull(); // no HTTPS_PROXY
+  });
+
+  it('still refuses private targets, and hosts it cannot check, when proxied', async () => {
+    process.env.HTTP_PROXY = proxyUrl;
+    const before = seen.length;
+    await expect(safeFetch('http://10.1.2.3/x')).rejects.toBeInstanceOf(BlockedTargetError);
+    await expect(safeFetch('http://ordo-proxy-test.invalid/x')).rejects.toThrow(/Couldn't resolve/);
+    expect(seen.length).toBe(before);
+  });
+
+  it('tunnels https through CONNECT', async () => {
+    process.env.HTTPS_PROXY = proxyUrl;
+    await expect(
+      safeFetch('https://ordo-proxy-test.invalid/x', { allowPrivate: true }),
+    ).rejects.toThrow();
+    expect(seen).toContain('CONNECT ordo-proxy-test.invalid:443');
   });
 });

@@ -1,9 +1,12 @@
 import { buildApp } from './app.ts';
 import { runMigrations } from './db/migrate.ts';
 import { loadEnv } from './env.ts';
+import { useProxyFromEnv } from './lib/proxy.ts';
 
 const env = loadEnv();
+const proxy = useProxyFromEnv();
 const app = await buildApp(env);
+if (proxy) app.log.info(`Outgoing requests go through ${proxy} (except NO_PROXY hosts)`);
 
 try {
   await runMigrations(app.db);

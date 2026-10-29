@@ -111,4 +111,4 @@ Early (v0.1). The core tracker is complete and tested; integrations, imports, SS
 
 ## License
 
-Not chosen yet — add a `LICENSE` file before publishing.
+Ordo is licensed under the [Apache License 2.0](LICENSE).
