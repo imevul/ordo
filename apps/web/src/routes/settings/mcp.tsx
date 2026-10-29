@@ -406,6 +406,9 @@ export function McpSection() {
                 {t(`mcp.tools.descriptions.${tool.name}`)}
               </div>
             </div>
+            {tool.audience === 'agent' && (
+              <span className="tag flex-none">{t('mcp.tools.agentsOnly')}</span>
+            )}
             <span className="tag flex-none">
               {tool.readOnly ? t('mcp.tools.read') : t('mcp.tools.write')}
             </span>

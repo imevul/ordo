@@ -374,3 +374,108 @@ describe('tools', () => {
     );
   });
 });
+
+describe('agents', () => {
+  let agentKey: string;
+  const eng = () => boot.teams.find((t) => t.key === 'ENG')!.id;
+
+  beforeAll(async () => {
+    const agent = (await ada.post(`${ws}/agents`, { name: 'Robo', teamIds: [eng()] })).data;
+    agentKey = (await ada.post(`${ws}/agents/${agent.id}/keys`, { name: 'mcp' })).data.token;
+  });
+
+  const names = async (token?: string) =>
+    (await rpc('tools/list', {}, { token })).data.result.tools.map((t: { name: string }) => t.name);
+
+  it("lists an agent's own tools only for agents", async () => {
+    expect(await names()).toEqual(expect.arrayContaining(['assign_to_agent', 'agent_runs']));
+    expect(await names()).not.toContain('current_run');
+    expect(await names(agentKey)).toEqual(
+      expect.arrayContaining(['current_run', 'report_run', 'ask_question']),
+    );
+    expect(await names()).not.toContain('ask_question');
+    expect((await tool('current_run')).error).toContain('belongs to a person');
+  });
+
+  it('lets an assistant hand issues to agents and follow them', async () => {
+    expect(await tool('list_agents')).toEqual([{ username: 'robo', name: 'Robo', teams: ['ENG'] }]);
+    const issue = await tool('create_issue', { team: 'ENG', title: 'For the robot' });
+    expect(
+      (await tool('assign_to_agent', { issue: issue.identifier, agent: 'ada' })).error,
+    ).toContain('is a person');
+    const assigned = await tool('assign_to_agent', {
+      issue: issue.identifier,
+      agent: 'robo',
+      note: 'Start with the tests.',
+    });
+    expect(assigned).toMatchObject({
+      issue: issue.identifier,
+      assignee: { username: 'robo' },
+      runs: [{ agent: { username: 'robo' }, status: 'queued' }],
+    });
+    // The note is on the issue before the run starts.
+    const detail = await tool('get_issue', { issue: issue.identifier });
+    expect(detail.comments.at(-1).body).toBe('Start with the tests.');
+
+    // The agent works on it through MCP alone.
+    const claim = await app.inject({
+      method: 'POST',
+      url: `${ws}/agent/claim`,
+      headers: { authorization: `Bearer ${agentKey}` },
+    });
+    expect(claim.json().issue.identifier).toBe(issue.identifier);
+    const [held] = await tool('current_run', {}, agentKey);
+    expect(held).toMatchObject({ issue: issue.identifier, status: 'claimed', attempt: 1 });
+    expect(
+      await tool(
+        'report_run',
+        { sessionUrl: 'https://agents.example.com/s/1', status: 'running' },
+        agentKey,
+      ),
+    ).toMatchObject({ status: 'running', sessionUrl: 'https://agents.example.com/s/1' });
+    expect((await tool('report_run', {}, agentKey)).error).toBe('Nothing to report');
+    await tool(
+      'report_run',
+      { status: 'succeeded', summary: 'Tests first, then the fix.' },
+      agentKey,
+    );
+    expect(await tool('current_run', {}, agentKey)).toEqual([]);
+    expect((await tool('report_run', { status: 'failed' }, agentKey)).error).toContain('no run');
+
+    const runs = await tool('agent_runs', { issue: issue.identifier });
+    expect(runs.runs[0]).toMatchObject({
+      status: 'succeeded',
+      summary: 'Tests first, then the fix.',
+    });
+
+    // Feedback, a second run, and a change of mind.
+    const again = await tool('rerun_agent', {
+      issue: issue.identifier,
+      note: 'Also update the docs.',
+    });
+    expect(again.runs.map((r: { status: string }) => r.status)).toEqual(['queued', 'succeeded']);
+    const cancelled = await tool('cancel_agent_run', { issue: issue.identifier });
+    expect(cancelled.runs[0].status).toBe('cancelled');
+    expect((await tool('cancel_agent_run', { issue: issue.identifier })).error).toContain(
+      'No agent is working',
+    );
+  });
+
+  it('lets an agent ask over MCP and wait for a reply', async () => {
+    const issue = await tool('create_issue', { team: 'ENG', title: 'Needs a decision' });
+    await tool('assign_to_agent', { issue: issue.identifier, agent: 'robo' });
+    await app.inject({
+      method: 'POST',
+      url: `${ws}/agent/claim`,
+      headers: { authorization: `Bearer ${agentKey}` },
+    });
+    const asked = await tool('ask_question', { question: 'Tabs or spaces?' }, agentKey);
+    expect(asked).toMatchObject({ status: 'waiting' });
+    expect(asked.next).toContain('Stop working');
+    const runs = await tool('agent_runs', { issue: issue.identifier });
+    expect(runs.runs[0]).toMatchObject({ status: 'waiting', question: 'Tabs or spaces?' });
+    // An assistant answering with a person's key resumes it.
+    await tool('add_comment', { issue: issue.identifier, body: 'Spaces.' });
+    expect((await tool('agent_runs', { issue: issue.identifier })).runs[0].status).toBe('queued');
+  });
+});

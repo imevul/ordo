@@ -17,6 +17,7 @@ import {
 } from '../db/schema.ts';
 import { badRequest, forbidden, notFound } from '../lib/errors.ts';
 import { type Access, canReadTeam, teamScope, usersWithTeamAccess } from './access.ts';
+import { onComment } from './agents.ts';
 import { claimAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { getIssue, retriedCreate } from './issues.ts';
@@ -190,6 +191,8 @@ export async function createComment(
     },
     { teamIds: [issue.teamId] },
   );
+  // A person's reply answers an agent that's waiting on this issue.
+  if (!imported) await onComment(ctx, issue.id, authorId);
   return { ...comment!, reactions: [] } satisfies Comment;
 }
 

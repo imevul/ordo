@@ -128,6 +128,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [x] ✅ PWA and push; light theme; i18n (English, Swedish, Norwegian Bokmål: the app, emails, push and chat notifications, common errors)
 - ✅ MCP server for AI agents (Streamable HTTP, per workspace, personal API keys; search, read, create, update and
   comment on issues) and Settings → AI agents with setup snippets and an agent prompt
+- [x] ✅ Agents: assignable non-human members, repositories on projects and teams, agent runs with a claim/lease
+  runner protocol, and `ordo agent run` (any command, runner files with .env) — see docs/agents.md
 - [x] ✅ GraphQL API, TypeScript SDK, CLI; optional AI assistance (Claude API or a local OpenAI-compatible model: summaries, drafts, triage suggestions); OAuth sign-in for MCP (claude.ai connectors)
 
 ### Phase 11 — Enterprise sign-in and offline-first

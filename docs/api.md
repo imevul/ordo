@@ -350,19 +350,20 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 }
 ```
 
-| Type                                                             | `data`                                                                          |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| `issue.created` `issue.updated` `issue.trashed` `issue.restored` | The issue (as `GET /issues/:id` without the detail lists); `changes` on updates |
-| `issue.deleted`                                                  | `{ id }` (permanently deleted from the trash)                                   |
-| `issue.archived` `issue.unarchived`                              | `{ id, identifier, archivedAt }`                                                |
-| `comment.created` `comment.updated` `comment.deleted`            | `{ comment, issue? }`                                                           |
-| `reaction.created` `reaction.deleted`                            | `{ reaction: { commentId, issueId, userId, emoji } }`                           |
-| `relation.created` `relation.deleted`                            | `{ id, type, issueId, relatedIssueId }`                                         |
-| `project.created` `project.updated` `project.deleted`            | The project (`{ id, name }` when deleted)                                       |
-| `initiative.created` `initiative.updated` `initiative.deleted`   | The initiative (`{ id, name }` when deleted)                                    |
-| `project_update.created`                                         | `{ update, project }`                                                           |
-| `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                       |
-| `ping`                                                           | Sent by the "test" button                                                       |
+| Type                                                             | `data`                                                                           |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `issue.created` `issue.updated` `issue.trashed` `issue.restored` | The issue (as `GET /issues/:id` without the detail lists); `changes` on updates  |
+| `issue.deleted`                                                  | `{ id }` (permanently deleted from the trash)                                    |
+| `issue.archived` `issue.unarchived`                              | `{ id, identifier, archivedAt }`                                                 |
+| `comment.created` `comment.updated` `comment.deleted`            | `{ comment, issue? }`                                                            |
+| `reaction.created` `reaction.deleted`                            | `{ reaction: { commentId, issueId, userId, emoji } }`                            |
+| `relation.created` `relation.deleted`                            | `{ id, type, issueId, relatedIssueId }`                                          |
+| `project.created` `project.updated` `project.deleted`            | The project (`{ id, name }` when deleted)                                        |
+| `initiative.created` `initiative.updated` `initiative.deleted`   | The initiative (`{ id, name }` when deleted)                                     |
+| `project_update.created`                                         | `{ update, project }`                                                            |
+| `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                        |
+| `agent_run.updated`                                              | The run (queued, claimed, started, finished, cancelled), see [agents](agents.md) |
+| `ping`                                                           | Sent by the "test" button                                                        |
 
 `source` says where a change came from: `web`, `api` (an API key), `mcp` (an agent through the [MCP server](mcp.md)),
 `system`, `import` or `integration:<id>`.
@@ -400,6 +401,33 @@ Ordo if an admin chose to send them.
 | GET            | `/webhooks/:id/deliveries`                       | _Admin._ Recent deliveries (status, response, attempts)                                                 |
 | GET            | `/webhooks/:id/deliveries/:deliveryId`           | _Admin._ One delivery with its payload                                                                  |
 | POST           | `/webhooks/:id/deliveries/:deliveryId/redeliver` | _Admin._ Send the same payload again                                                                    |
+
+## Agents and repositories
+
+Agents are members a runner works for; see [agents.md](agents.md) for the idea and the runner protocol.
+
+| Method         | Path                            | What                                                                                                                     |
+| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| GET / POST     | `/agents`                       | _Admin._ List / create `{ name, teamIds, instructions?, concurrency?, username? }`                                       |
+| PATCH          | `/agents/:id`                   | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, disabled? }`                                                   |
+| POST           | `/agents/:id/keys`              | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                           |
+| DELETE         | `/agents/:id/keys/:keyId`       | _Admin._ Revoke a key                                                                                                    |
+| GET / POST     | `/issues/:id/agent-runs`        | The issue's runs / queue a new one for its agent ("Run again")                                                           |
+| POST           | `/agent-runs/:id/cancel`        | Cancel a run; its runner hears it on the next heartbeat                                                                  |
+| GET            | `/agent/me`                     | _Agent key._ The agent and its teams                                                                                     |
+| POST           | `/agent/claim?wait=30&runner=…` | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)            |
+| POST           | `/agent/runs/:id/heartbeat`     | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                  |
+| PATCH          | `/agent/runs/:id`               | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, resume?, sessionUrl?, summary?, error? }` |
+| GET            | `/repositories`                 | The workspace's repositories (also in the bootstrap)                                                                     |
+| POST           | `/repositories`                 | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo? }`                                                  |
+| PATCH / DELETE | `/repositories/:id`             | _Admin._ Update / delete                                                                                                 |
+
+Projects take `repositoryIds` (in order) on create and update; teams take `defaultRepositoryId`.
+
+**Default assignee.** An issue created without `assigneeId` goes to the default assignee: its project's
+`defaultAssignee` (`"workspace"`, `"none"`, or a member's id) or else the workspace's `settings.defaultAssigneeId`,
+as long as they can work in the issue's team. Send `"assigneeId": null` for nobody. Imports and issues created in
+triage are left alone.
 
 ## Integrations
 

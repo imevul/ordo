@@ -8,7 +8,7 @@ import { useAttachmentUpload, useCreateIssue } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
 import { modKey } from '../lib/hotkeys.ts';
 import { ui, useUi } from '../lib/store.ts';
-import { useWorkspace } from '../lib/workspace.tsx';
+import { defaultAssigneeOf, useWorkspace } from '../lib/workspace.tsx';
 import { useAiEnabled } from './AiAssist.tsx';
 import { TeamIcon } from './icons.tsx';
 import { MarkdownEditor } from './MarkdownEditor.tsx';
@@ -27,7 +27,13 @@ import {
 } from './properties.tsx';
 import { Modal } from './ui/Modal.tsx';
 
-type Form = IssueLike & { title: string; description: string; parentId: string | null };
+type Form = IssueLike & {
+  title: string;
+  description: string;
+  parentId: string | null;
+  /** The assignee is the default (workspace's or project's), so it follows the team and project. */
+  assigneeAuto: boolean;
+};
 
 export function CreateIssueModal() {
   const defaults = useUi((s) => s.createIssue);
@@ -46,6 +52,13 @@ export function CreateIssueModal() {
       team.states.find((s) => s.id === team.defaultStateId) ??
       team.states.find((s) => s.type === 'backlog') ??
       team.states[0]!;
+    const projectId = d.projectId !== undefined ? d.projectId : (keep?.projectId ?? null);
+    const explicit =
+      d.assigneeId !== undefined
+        ? d.assigneeId
+        : keep && !keep.assigneeAuto
+          ? keep.assigneeId
+          : undefined;
     return {
       title: '',
       description: '',
@@ -55,9 +68,10 @@ export function CreateIssueModal() {
           ? d.stateId
           : (keep?.stateId ?? defaultState.id),
       priority: d.priority ?? keep?.priority ?? 0,
-      assigneeId: d.assigneeId !== undefined ? d.assigneeId : (keep?.assigneeId ?? null),
+      assigneeId: explicit !== undefined ? explicit : defaultAssigneeOf(ws, team.id, projectId),
+      assigneeAuto: explicit === undefined,
       labelIds: d.labelIds ?? keep?.labelIds ?? [],
-      projectId: d.projectId !== undefined ? d.projectId : (keep?.projectId ?? null),
+      projectId,
       cycleId: d.cycleId !== undefined ? d.cycleId : (keep?.cycleId ?? null),
       estimate: d.estimate ?? null,
       dueDate: d.dueDate ?? null,
@@ -84,6 +98,10 @@ export function CreateIssueModal() {
       if (p.addLabelIds) next.labelIds = [...new Set([...f.labelIds, ...p.addLabelIds])];
       if (p.removeLabelIds)
         next.labelIds = f.labelIds.filter((l) => !p.removeLabelIds!.includes(l));
+      // Picking someone (or nobody) is final; until then the default follows the project.
+      if (p.assigneeId !== undefined) next.assigneeAuto = false;
+      else if (f.assigneeAuto && p.projectId !== undefined)
+        next.assigneeId = defaultAssigneeOf(ws, f.teamId, p.projectId);
       return next;
     });
 
@@ -95,7 +113,7 @@ export function CreateIssueModal() {
             title: f.title,
             description: f.description,
             priority: f.priority,
-            assigneeId: f.assigneeId,
+            ...(!f.assigneeAuto && { assigneeId: f.assigneeId, assigneeAuto: false }),
           }
         : f,
     );
@@ -106,6 +124,16 @@ export function CreateIssueModal() {
    * Fills the form from a template: its team, the properties it sets, and its title and description
    * where you haven't written your own (a description you started gets the template's below it).
    */
+  const templateProject = (tpl: IssueTemplate, base: Form) =>
+    tpl.projectId && ws.projectById.has(tpl.projectId) ? tpl.projectId : base.projectId;
+  // A template's assignee is a choice; without one, a default still follows the project.
+  const templateAssignee = (tpl: IssueTemplate, base: Form) =>
+    tpl.assigneeId && ws.memberById.has(tpl.assigneeId)
+      ? { assigneeId: tpl.assigneeId, assigneeAuto: false }
+      : base.assigneeAuto
+        ? { assigneeId: defaultAssigneeOf(ws, base.teamId, templateProject(tpl, base)) }
+        : {};
+
   const applyTemplate = (tpl: IssueTemplate) =>
     setForm((f) => {
       if (!f) return f;
@@ -131,11 +159,9 @@ export function CreateIssueModal() {
             ? tpl.stateId
             : base.stateId,
         priority: tpl.priority ?? base.priority,
-        assigneeId:
-          tpl.assigneeId && ws.memberById.has(tpl.assigneeId) ? tpl.assigneeId : base.assigneeId,
+        ...templateAssignee(tpl, base),
         labelIds: [...new Set([...base.labelIds, ...usable])],
-        projectId:
-          tpl.projectId && ws.projectById.has(tpl.projectId) ? tpl.projectId : base.projectId,
+        projectId: templateProject(tpl, base),
         estimate: tpl.estimate ?? base.estimate,
       };
     });

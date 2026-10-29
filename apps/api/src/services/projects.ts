@@ -14,6 +14,7 @@ import { type Access, assertCan, canReadTeam } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { assertInitiative } from './initiatives.ts';
 import { progressBy } from './progress.ts';
+import { projectRepositoryIds, setProjectRepositories } from './repositories.ts';
 import { toMilestone, toProject } from './serialize.ts';
 
 export async function assertProjectTeams(ctx: Ctx, teamIds: string[]) {
@@ -26,7 +27,12 @@ export async function assertProjectTeams(ctx: Ctx, teamIds: string[]) {
   }
 }
 
-export async function assertProjectLead(ctx: Ctx, leadId: string | null | undefined) {
+/** Throws unless `userId` is a member of the workspace (people and agents alike). */
+export async function assertProjectLead(
+  ctx: Ctx,
+  leadId: string | null | undefined,
+  what = 'Lead',
+) {
   if (!leadId) return;
   const [m] = await ctx.tx
     .select({ userId: workspaceMembers.userId })
@@ -34,7 +40,21 @@ export async function assertProjectLead(ctx: Ctx, leadId: string | null | undefi
     .where(
       and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, leadId)),
     );
-  if (!m) throw badRequest('Lead is not a workspace member');
+  if (!m) throw badRequest(`${what} is not a workspace member`);
+}
+
+/** A project's `defaultAssignee` input as its two columns; a member must be in the workspace. */
+export async function defaultAssigneeColumns(
+  ctx: Ctx,
+  value: string | undefined,
+): Promise<
+  Pick<Partial<typeof projects.$inferInsert>, 'defaultAssigneeMode' | 'defaultAssigneeId'>
+> {
+  if (value === undefined) return {};
+  if (value === 'workspace' || value === 'none')
+    return { defaultAssigneeMode: value as 'workspace' | 'none', defaultAssigneeId: null };
+  await assertProjectLead(ctx, value, 'Default assignee');
+  return { defaultAssigneeMode: 'member', defaultAssigneeId: value };
 }
 
 /** Creates a project at the top of the list; returns its id. */
@@ -47,11 +67,12 @@ export async function createProject(ctx: Ctx, input: CreateProjectInput): Promis
     .select({ first: min(projects.sortOrder) })
     .from(projects)
     .where(eq(projects.workspaceId, ctx.workspaceId))) as [{ first: number | null }];
-  const { teamIds, ...rest } = input;
+  const { teamIds, repositoryIds, defaultAssignee, ...rest } = input;
   const [row] = await ctx.tx
     .insert(projects)
     .values({
       ...rest,
+      ...(await defaultAssigneeColumns(ctx, defaultAssignee)),
       workspaceId: ctx.workspaceId,
       createdBy: ctx.userId,
       sortOrder: (first ?? 0) - 1024,
@@ -60,6 +81,7 @@ export async function createProject(ctx: Ctx, input: CreateProjectInput): Promis
   await ctx.tx
     .insert(projectTeams)
     .values(teamIds.map((teamId) => ({ projectId: row!.id, teamId })));
+  if (repositoryIds?.length) await setProjectRepositories(ctx, row!.id, repositoryIds);
   emit(ctx, { kind: 'project', action: 'created', id: row!.id });
   const [project] = await listProjects(ctx.tx, ctx.access, row!.id);
   record(ctx, 'project.created', project!, { teamIds: project!.teamIds });
@@ -103,7 +125,7 @@ export async function listProjects(
     .orderBy(asc(projects.sortOrder), asc(projects.createdAt));
   if (rows.length === 0) return [];
   const ids = rows.map((p) => p.id);
-  const [links, progress, updates, milestoneRows, milestoneProgress] = await Promise.all([
+  const [links, progress, updates, milestoneRows, milestoneProgress, repos] = await Promise.all([
     db.select().from(projectTeams).where(inArray(projectTeams.projectId, ids)),
     progressBy(db, 'project_id', access),
     db
@@ -124,6 +146,7 @@ export async function listProjects(
         asc(projectMilestones.createdAt),
       ),
     progressBy(db, 'milestone_id', access),
+    projectRepositoryIds(db, ids),
   ]);
   const health = new Map<string, ProjectHealth>(updates.map((u) => [u.projectId, u.health]));
   return rows.map((p) =>
@@ -137,6 +160,7 @@ export async function listProjects(
       milestoneRows
         .filter((m) => m.projectId === p.id)
         .map((m) => toMilestone(m, milestoneProgress.get(m.id))),
+      repos.get(p.id),
     ),
   );
 }

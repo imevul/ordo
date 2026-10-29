@@ -38,6 +38,14 @@ function openUrl(url: string) {
     .unref();
 }
 
+// `ordo agent run` winds down on the first Ctrl-C (no new runs) and quits on the second.
+const interrupted = new AbortController();
+if (process.argv[2] === 'agent')
+  process.on('SIGINT', () => {
+    if (interrupted.signal.aborted) process.exit(130);
+    interrupted.abort();
+  });
+
 const io: Io = {
   env: process.env,
   stdout: (text) => process.stdout.write(text),
@@ -47,6 +55,7 @@ const io: Io = {
   openUrl,
   color: process.stdout.isTTY && !process.env.NO_COLOR && process.env.TERM !== 'dumb',
   width: process.stdout.columns || 100,
+  signal: interrupted.signal,
 };
 
 process.exitCode = await run(process.argv.slice(2), io);

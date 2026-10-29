@@ -36,6 +36,7 @@ import { ui } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { useSyncEngine } from '../sync/context.tsx';
 import { Activity } from './Activity.tsx';
+import { AgentRuns } from './AgentRuns.tsx';
 import { type AiPanelKind, IssueAiPanel, useAiEnabled } from './AiAssist.tsx';
 import { CustomerRequests } from './CustomerRequests.tsx';
 import { IssueAttachments } from './IssueAttachments.tsx';
@@ -580,6 +581,7 @@ export function IssueDetailView({
 
             <IssueAttachments issue={issue} onChange={done} />
             <IssueLinks issue={issue} onChange={done} />
+            <AgentRuns issue={issue} />
             <CustomerRequests issue={issue} onChange={done} />
 
             <Activity issue={issue} />

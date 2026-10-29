@@ -1,0 +1,107 @@
+/** Agents (Settings → Agents, the issue's runs) and Settings → Repositories. */
+export default {
+  adminsOnly: 'Only admins can manage agents.',
+  title: 'Agents',
+  /** {command} is `ordo agent run` */
+  description:
+    "Agents are members that aren't people. Assign an issue to one and a runner picks it up: {command} on a laptop or server, or your own program. Ordo never runs anything itself; the runner decides what to launch.",
+  empty: '// no agents yet',
+  add: 'Add agent',
+  disabled: 'disabled',
+  agentTag: 'agent',
+  agentHint: 'An agent: a runner works on what is assigned to it',
+  teams: 'Teams',
+  noTeams: 'no teams',
+  keyCount: { one: '{count} key', other: '{count} keys' },
+  edit: 'Edit {name}',
+  newKey: 'New key',
+  disable: 'Disable',
+  enable: 'Enable',
+  confirmDisable:
+    'Disable {name}? Its queued and running runs are cancelled and its keys stop working.',
+  keys: {
+    title: 'Keys',
+    empty: 'No keys. A runner needs one.',
+    /** {prefix} is the start of the key, {time} like "3 hours ago" */
+    used: '{prefix}… · last used {time}',
+    unused: '{prefix}… · never used',
+    revoke: 'Revoke',
+    confirmRevoke: 'Revoke the key "{name}"? Runners using it stop.',
+    name: 'What is it for?',
+    namePlaceholder: 'homelab runner',
+    create: 'Create key',
+  },
+  form: {
+    label: 'Agent',
+    new: 'New agent',
+    edit: 'Edit agent',
+    name: 'Name',
+    namePlaceholder: 'Claude',
+    teams: 'Teams it works in',
+    teamsHint: 'It sees and can be assigned issues of these teams only.',
+    instructions: 'Instructions',
+    instructionsHint:
+      'Added to every run’s prompt: how your team works, what to check before a pull request.',
+    instructionsPlaceholder: 'Run the tests before opening a pull request. Never push to main.',
+    concurrency: 'Runs at once',
+    concurrencyHint: 'Across all of its runners.',
+    pickTeam: 'Pick at least one team.',
+  },
+  token: {
+    title: 'Agent key',
+    body: "Copy it now: it isn't shown again. Start a runner with it:",
+    fileHint: 'Or put it in a runner file (with the key in a .env file next to it):',
+  },
+  runs: {
+    title: 'Agent runs',
+    runAgain: 'Run again',
+    /** On a run waiting for an answer: requeue it without one. */
+    resume: 'Resume',
+    /** Above the agent's question on a waiting run. Replying on the issue resumes it. */
+    asked: 'Asked · reply on the issue to continue',
+    cancel: 'Cancel',
+    session: 'Open session',
+    /** {runner} is the runner's name, e.g. jonas-laptop/claude */
+    on: 'on {runner}',
+    attempt: 'attempt {count}',
+    empty: 'Not picked up yet.',
+    status: {
+      queued: 'queued',
+      claimed: 'claimed',
+      running: 'running',
+      waiting: 'waiting for an answer',
+      succeeded: 'done',
+      failed: 'failed',
+      cancelled: 'cancelled',
+    },
+    queued: 'Queued for {name}',
+  },
+  repositories: {
+    adminsOnly: 'Only admins can manage repositories.',
+    title: 'Repositories',
+    description:
+      'Where your code lives. Projects list their repositories and teams pick a default, so an agent’s runner knows what to check out. Ordo keeps only the address: runners bring their own git credentials.',
+    empty: '// no repositories yet',
+    add: 'Add repository',
+    edit: 'Edit {name}',
+    delete: 'Delete {name}',
+    confirmDelete: 'Delete the repository {name}? Projects and teams using it lose it.',
+    /** {branch} is the default branch, e.g. main */
+    branch: 'default branch {branch}',
+    form: {
+      label: 'Repository',
+      new: 'New repository',
+      edit: 'Edit repository',
+      name: 'Name',
+      url: 'Clone URL',
+      urlHint: 'https://…, ssh://…, git@host:owner/repo.git, or a path on the runner.',
+      defaultBranch: 'Default branch',
+    },
+    project: 'Repositories',
+    projectHint: 'Where agents work on this project’s issues.',
+    teamDefault: 'Default repository',
+    teamDefaultHint: 'For agents working on issues that aren’t in a project with repositories.',
+    none: 'None',
+    manage: 'Manage repositories',
+  },
+};

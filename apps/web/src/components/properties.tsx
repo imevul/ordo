@@ -48,13 +48,21 @@ export const priorityOptions = (): Option[] =>
 
 export const assigneeOptions = (ws: WorkspaceData): Option[] => [
   { value: 'none', label: t('issues.none.assignee'), icon: <EmptyAvatar size={16} /> },
+  // You first, then people, then agents (assigning one hands the issue to its runner).
   ...[...ws.members]
-    .sort((a, b) => (a.id === ws.me.id ? -1 : b.id === ws.me.id ? 1 : a.name.localeCompare(b.name)))
+    .sort((a, b) =>
+      a.id === ws.me.id
+        ? -1
+        : b.id === ws.me.id
+          ? 1
+          : Number(a.kind === 'agent') - Number(b.kind === 'agent') || a.name.localeCompare(b.name),
+    )
     .map((m) => ({
       value: m.id,
       label: m.id === ws.me.id ? t('issues.props.you', { name: m.name }) : m.name,
       keywords: `${m.username} ${m.email}`,
       icon: <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={16} />,
+      ...(m.kind === 'agent' && { hint: t('agents.agentTag') }),
     })),
 ];
 

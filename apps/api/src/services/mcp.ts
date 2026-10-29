@@ -19,6 +19,7 @@ import { z } from 'zod';
 import { users } from '../db/schema.ts';
 import { badRequest, parse } from '../lib/errors.ts';
 import type { Access } from './access.ts';
+import { askQuestion, cancelRun, heldRuns, listRuns, reportRun, requestRun } from './agents.ts';
 import { createComment, listComments } from './comments.ts';
 import type { Ctx } from './context.ts';
 import { listCycles } from './cycles.ts';
@@ -36,6 +37,8 @@ import { listMembers } from './workspaces.ts';
 
 export interface McpCaller {
   app: FastifyInstance;
+  /** The key belongs to an agent: its own-run tools are available. */
+  agent?: boolean;
   access: Access;
   workspace: { id: string; slug: string; name: string };
   /** Runs a change as the caller (source `mcp`), like `mutate` does for a request. */
@@ -349,6 +352,8 @@ function handlers(c: McpCaller): Handlers {
           name: m.name,
           email: m.email || undefined,
           role: m.role,
+          // Assigning an issue to an agent hands it to the agent's runner.
+          agent: m.kind === 'agent' || undefined,
           me: m.id === c.access.userId || undefined,
         }));
     },
@@ -459,6 +464,97 @@ function handlers(c: McpCaller): Handlers {
       return issueResult(c, dir, current.id, false);
     },
 
+    list_agents: async () => {
+      const teams = await dir.teams();
+      return (await dir.members())
+        .filter((m) => m.kind === 'agent' && !m.suspended)
+        .map((m) => ({
+          username: m.username,
+          name: m.name,
+          teams: teams.filter((t) => t.memberIds.includes(m.id)).map((t) => t.key),
+          me: m.id === c.access.userId || undefined,
+        }));
+    },
+
+    assign_to_agent: async ({ issue, agent, note }) => {
+      const agentId = await dir.person(agent);
+      const member = (await dir.members()).find((m) => m.id === agentId);
+      if (member?.kind !== 'agent')
+        throw badRequest(`${member?.name ?? agent} is a person, not an agent. See list_agents.`);
+      const target = await getIssue(c.app.db, c.access, issue);
+      await c.run(async (ctx) => {
+        // The note first, so the run it queues already sees it.
+        if (note) await createComment(ctx, target.id, { body: note });
+        if (target.assigneeId === agentId) await requestRun(ctx, target.id);
+        else await updateIssue(ctx, target.id, { assigneeId: agentId });
+      });
+      return agentRunsResult(c, dir, target.id);
+    },
+
+    agent_runs: async ({ issue }) => agentRunsResult(c, dir, issue),
+
+    rerun_agent: async ({ issue, note }) => {
+      const target = await getIssue(c.app.db, c.access, issue);
+      await c.run(async (ctx) => {
+        if (note) await createComment(ctx, target.id, { body: note });
+        await requestRun(ctx, target.id);
+      });
+      return agentRunsResult(c, dir, target.id);
+    },
+
+    cancel_agent_run: async ({ issue }) => {
+      const target = await getIssue(c.app.db, c.access, issue);
+      const open = (await listRuns(c.app.db, c.access, target.id)).filter((r) =>
+        ['queued', 'claimed', 'running'].includes(r.status),
+      );
+      if (!open.length) throw badRequest(`No agent is working on ${target.identifier}.`);
+      await c.run(async (ctx) => {
+        for (const r of open) await cancelRun(ctx, r.id);
+      });
+      return agentRunsResult(c, dir, target.id);
+    },
+
+    current_run: async () => {
+      requireAgent(c);
+      const runs = await heldRuns(c.app.db, c.access.userId);
+      return Promise.all(
+        runs.map(async (r) => {
+          const i = await getIssue(c.app.db, c.access, r.issueId);
+          return {
+            run: r.id,
+            issue: i.identifier,
+            title: i.title,
+            url: `${c.app.env.publicUrl}/${c.workspace.slug}/issue/${i.identifier}`,
+            status: r.status,
+            attempt: r.attempts,
+            runner: r.runnerName,
+            startedAt: r.startedAt,
+            question: r.question,
+          };
+        }),
+      );
+    },
+
+    report_run: async ({ run, ...report }) => {
+      requireAgent(c);
+      const runId = run ?? (await onlyHeldRun(c));
+      if (!Object.values(report).some((v) => v !== undefined))
+        throw badRequest('Nothing to report');
+      const saved = await c.run((ctx) => reportRun(ctx, runId, report));
+      return { run: saved.id, status: saved.status, sessionUrl: saved.sessionUrl };
+    },
+
+    ask_question: async ({ question, run }) => {
+      requireAgent(c);
+      const runId = run ?? (await onlyHeldRun(c));
+      const saved = await c.run((ctx) => askQuestion(ctx, runId, question));
+      return {
+        run: saved.id,
+        status: saved.status,
+        next: 'Stop working now. The run resumes when someone replies on the issue.',
+      };
+    },
+
     add_comment: async ({ issue, body, replyTo }) => {
       const input = parse(createCommentSchema, { body, parentId: replyTo });
       const target = await getIssue(c.app.db, c.access, issue);
@@ -473,9 +569,49 @@ function handlers(c: McpCaller): Handlers {
   };
 }
 
-/** The `tools/list` entries. */
-export function mcpToolList() {
-  return MCP_TOOLS.map((t) => ({
+/** The caller's only held run, for tools that take `run` optionally. */
+async function onlyHeldRun(c: McpCaller) {
+  const held = await heldRuns(c.app.db, c.access.userId);
+  if (held.length !== 1)
+    throw badRequest(
+      held.length
+        ? `You hold ${held.length} runs; say which (see current_run).`
+        : 'You hold no run right now.',
+    );
+  return held[0]!.id;
+}
+
+function requireAgent(c: McpCaller) {
+  if (!c.agent) throw badRequest('Only an agent has runs; this key belongs to a person.');
+}
+
+/** An issue's runs, as an agent's or an assistant's caller reads them. */
+async function agentRunsResult(c: McpReader, dir: Directory, ref: string) {
+  const issue = await getIssue(c.app.db, c.access, ref);
+  const runs = await listRuns(c.app.db, c.access, issue.id);
+  const names = await dir.people(runs.map((r) => r.agentId));
+  return {
+    issue: issue.identifier,
+    assignee:
+      (issue.assigneeId && (await dir.people([issue.assigneeId])).get(issue.assigneeId)) || null,
+    runs: runs.map((r) => ({
+      agent: names.get(r.agentId) ?? null,
+      status: r.status,
+      runner: r.runnerName,
+      attempt: r.attempts,
+      sessionUrl: r.sessionUrl,
+      question: r.question,
+      summary: r.summary,
+      error: r.error,
+      createdAt: r.createdAt,
+      finishedAt: r.finishedAt,
+    })),
+  };
+}
+
+/** The `tools/list` entries, without agent-only tools for people's keys. */
+export function mcpToolList(agent = false) {
+  return MCP_TOOLS.filter((t) => agent || t.audience !== 'agent').map((t) => ({
     name: t.name,
     title: t.title,
     description: t.description,
@@ -484,7 +620,7 @@ export function mcpToolList() {
       title: t.title,
       readOnlyHint: t.readOnly,
       destructiveHint: false,
-      idempotentHint: t.readOnly || t.name === 'update_issue',
+      idempotentHint: t.readOnly || t.name === 'update_issue' || t.name === 'cancel_agent_run',
       openWorldHint: false,
     },
   }));

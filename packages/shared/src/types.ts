@@ -1,4 +1,5 @@
 import type {
+  AgentRunStatus,
   AuditAction,
   ChatEventKind,
   DomainEventType,
@@ -70,6 +71,8 @@ export interface PlaceholderSummary {
 }
 
 export interface Member extends User {
+  /** Agents are members a runner works for (see `Agent`); they never sign in. */
+  kind: 'human' | 'agent';
   role: MemberRole;
   joinedAt: string;
   suspended: boolean;
@@ -111,6 +114,8 @@ export interface Team {
   /** Directory groups (SCIM) that decide who is on the team; empty when people join by hand. */
   managedBy: string[];
   states: WorkflowState[];
+  /** Where agents work on issues outside a project with repositories. */
+  defaultRepositoryId: string | null;
 }
 
 export const TRIAGE_SOURCES = ['web', 'api', 'mcp', 'integration', 'email'] as const;
@@ -240,6 +245,26 @@ export interface Project {
   /** In order: by target date, then as arranged. */
   milestones: Milestone[];
   initiativeId: string | null;
+  /** Where the project's code lives, for agents (see `Repository`). */
+  repositoryIds: string[];
+  /** Who its new issues go to: the workspace's default, nobody, or a member's id. */
+  defaultAssignee: ProjectDefaultAssignee;
+}
+
+export type ProjectDefaultAssignee = 'workspace' | 'none' | (string & {});
+
+/**
+ * Who a new issue goes to when it doesn't say: its project's choice, else the workspace's
+ * default. Callers still check that the person can work in the issue's team.
+ */
+export function defaultAssigneeFor(
+  workspaceDefault: string | null | undefined,
+  project: { defaultAssignee: ProjectDefaultAssignee } | null | undefined,
+): string | null {
+  const choice = project?.defaultAssignee ?? 'workspace';
+  if (choice === 'none') return null;
+  if (choice === 'workspace') return workspaceDefault ?? null;
+  return choice;
 }
 
 /** An organisation that asks for things; requests tie what they asked to issues. */
@@ -543,6 +568,7 @@ export interface Bootstrap {
   bots: Bot[];
   /** People from imports who aren't members (yet): shown on what they did and were assigned. */
   placeholders: User[];
+  repositories: Repository[];
   teams: Team[];
   labels: Label[];
   templates: IssueTemplate[];
@@ -834,6 +860,8 @@ export interface WorkspaceSettings {
   scimDefaultRole: 'member' | 'guest';
   /** A directory group links itself to the team with the same name. */
   scimMatchGroupsByName: boolean;
+  /** Who new issues go to when they don't say; projects can override it. */
+  defaultAssigneeId: string | null;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -849,6 +877,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   aiSource: 'instance',
   scimDefaultRole: 'member',
   scimMatchGroupsByName: false,
+  defaultAssigneeId: null,
 };
 
 export interface WorkspaceDomain {
@@ -1080,4 +1109,96 @@ export interface Integration {
   /** Where the provider should send events, when it pushes them. */
   inboundUrl: string | null;
   createdAt: string;
+}
+
+/** A git repository work happens in. Ordo keeps only where it is; runners bring credentials. */
+export interface Repository {
+  id: string;
+  name: string;
+  /** What `git clone` takes: https or ssh. */
+  url: string;
+  defaultBranch: string;
+  /** The forge integration and repo ("owner/name") that pull requests come from, if any. */
+  integrationId: string | null;
+  externalRepo: string | null;
+  createdAt: string;
+}
+
+/** An agent as admins manage it. Its member entry (name, avatar, teams) is in the bootstrap. */
+export interface Agent {
+  id: string;
+  name: string;
+  username: string;
+  avatarColor: string;
+  teamIds: string[];
+  /** Standing instructions, added to every run's prompt. Markdown. */
+  instructions: string;
+  /** Runs one agent works on at once, across all its runners. */
+  concurrency: number;
+  disabled: boolean;
+  keys: {
+    id: string;
+    name: string;
+    prefix: string;
+    lastUsedAt: string | null;
+    createdAt: string;
+  }[];
+  createdAt: string;
+}
+
+/** One pickup of an issue by an agent. */
+export interface AgentRun {
+  id: string;
+  issueId: string;
+  agentId: string;
+  status: AgentRunStatus;
+  attempts: number;
+  /** What the runner calls itself (host/label). */
+  runnerName: string | null;
+  sessionUrl: string | null;
+  /** Markdown, from the runner when it finished. */
+  summary: string | null;
+  /** What the agent asked when it last paused (the run is `waiting` until a person answers). */
+  question: string | null;
+  /** Opaque to Ordo: what the runner needs to continue the agent's session on the next pickup. */
+  resume: string | null;
+  error: string | null;
+  requestedById: string | null;
+  leaseExpiresAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+}
+
+/** A repository as a run sees it: where to clone and which branch to work on. */
+export interface AgentRunRepository extends Repository {
+  suggestedBranch: string;
+}
+
+/**
+ * Everything a runner needs for one run: what `POST /agent/claim` returns. Versioned, because
+ * runners outside this repository depend on it.
+ */
+export interface AgentRunContext {
+  protocolVersion: number;
+  run: AgentRun;
+  workspace: { id: string; slug: string; name: string };
+  agent: { id: string; name: string; username: string; instructions: string };
+  issue: IssueDetail & { url: string; team: { id: string; key: string; name: string } };
+  comments: (Comment & { author: string | null })[];
+  project: { id: string; name: string; description: string | null } | null;
+  repositories: AgentRunRepository[];
+  /** The issue's team workflow, so the runner can move the issue along. */
+  states: { id: string; name: string; type: StateType }[];
+  /** All of the above as one Markdown prompt, for tools that just want text. */
+  prompt: string;
+}
+
+/** The agent behind an API key, as `GET /agent/me` describes it. */
+export interface AgentIdentity {
+  id: string;
+  name: string;
+  username: string;
+  workspace: { id: string; slug: string; name: string };
+  teams: { id: string; key: string; name: string }[];
 }
