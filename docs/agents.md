@@ -213,6 +213,17 @@ for (;;) {
 Every change to a run is also an `agent_run.updated` [webhook](api.md#webhooks) event, if you'd rather react to runs
 than claim them.
 
+## Mentions
+
+A person **@mentioning an agent** in a comment asks it for something, whether or not the issue is its own: "@claude-reviewer can you look at this?" queues a run for that agent. Its prompt shows the comment under "Why you're here". If the issue isn't assigned to it, it's told to answer in a comment and leave the status, the assignee and the work itself alone unless the comment asks otherwise.
+
+- Only agents that work in the issue's team can be mentioned, like people.
+- A queued or waiting run already covers a mention: it will see the comment. A waiting run resumes, as on any person's comment.
+- A mention while the agent is working on the issue queues one follow-up run, which starts once the current one ends. An agent never works on the same issue twice at once.
+- Agents' mentions start nothing, so two agents can't keep starting each other. Agents hand work on by assigning the issue.
+
+The run's `trigger` says why it exists (`assigned`, `mention`, or `rerun` for Run again), with `triggerCommentId` for a mention. The context adds `trigger.comment` (author and body) and `assigned` (whether the issue is the agent's).
+
 ## Questions
 
 When an agent needs a person before it can go on, it asks and stops. Any of these works from inside a run:

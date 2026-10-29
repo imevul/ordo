@@ -75,6 +75,8 @@ export default {
       cancelled: 'cancelled',
     },
     queued: 'Queued for {name}',
+    /** Why a run exists, when it isn't an assignment. */
+    trigger: { assigned: 'assigned', mention: 'mentioned', rerun: 'run again' },
   },
   /** The workspace-wide list of runs (sidebar → Agent runs). */
   runsPage: {

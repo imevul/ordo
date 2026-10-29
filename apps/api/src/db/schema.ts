@@ -1,5 +1,6 @@
 import type {
   AgentRunStatus,
+  AgentRunTrigger,
   AuditAction,
   CycleAutomation,
   DomainEventType,
@@ -1720,6 +1721,11 @@ export const agentRuns = pgTable(
     sessionUrl: text('session_url'),
     summary: text('summary'),
     error: text('error'),
+    /** Why it was queued: assignment, a person's @mention, or Run again. */
+    trigger: text('trigger').$type<AgentRunTrigger>().notNull().default('assigned'),
+    triggerCommentId: uuid('trigger_comment_id').references(() => comments.id, {
+      onDelete: 'set null',
+    }),
     /** The agent's last question; set while `waiting`, kept after it resumes. */
     question: text('question'),
     /** Opaque to Ordo: the runner's handle on the agent's session, returned on the next pickup. */

@@ -101,6 +101,11 @@ function RunRow({ run, onCancel }: { run: AgentRun; onCancel: () => void }) {
           aria-expanded={open}
         >
           {agent?.name ?? t('shell.actor.someone')}
+          {run.trigger !== 'assigned' && (
+            <span className="tag ml-2 flex-none font-mono">
+              {t(`agents.runs.trigger.${run.trigger}`)}
+            </span>
+          )}
           {run.runnerName && (
             <span className="ml-2 font-mono text-[11px] text-index">
               {t('agents.runs.on', { runner: run.runnerName })}

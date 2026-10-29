@@ -1,5 +1,5 @@
 {
-  "id": "7942d408-e907-476b-9e1b-2296e1e84d6e",
+  "id": "32ef8fcd-ca29-4690-9cde-59499c2463f0",
   "prevId": "c4bccf29-323d-41b5-87f1-e9071774fa9b",
   "version": "7",
   "dialect": "postgresql",
@@ -74,6 +74,19 @@
         "error": {
           "name": "error",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'assigned'"
+        },
+        "trigger_comment_id": {
+          "name": "trigger_comment_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": false
         },
@@ -219,6 +232,19 @@
             "user_id"
           ],
           "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "agent_runs_trigger_comment_id_comments_id_fk": {
+          "name": "agent_runs_trigger_comment_id_comments_id_fk",
+          "tableFrom": "agent_runs",
+          "tableTo": "comments",
+          "columnsFrom": [
+            "trigger_comment_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "agent_runs_requested_by_id_users_id_fk": {
@@ -3237,7 +3263,7 @@
           "name": "workspace_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "token": {
           "name": "token",
@@ -3264,13 +3290,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'[]'::jsonb"
-        },
-        "can_create_workspaces": {
-          "name": "can_create_workspaces",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "created_by": {
           "name": "created_by",
@@ -8065,19 +8084,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": false
-        },
-        "can_create_workspaces": {
-          "name": "can_create_workspaces",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
-        },
-        "site_invited_at": {
-          "name": "site_invited_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         },
         "email_verified_at": {
           "name": "email_verified_at",
