@@ -162,7 +162,7 @@ async function fetchClientMetadata(app: FastifyInstance, clientId: string) {
   try {
     const res = await safeFetch(clientId, {
       allowPrivate,
-      timeoutMs: 5000,
+      timeoutMs: 10_000,
       maxBytes: 5 * 1024,
       maxRedirects: 0,
       headers: { accept: 'application/json' },
