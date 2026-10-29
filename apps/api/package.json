@@ -2,6 +2,7 @@
   "name": "@ordo/api",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "ORDO_PUBLIC_URL=${ORDO_PUBLIC_URL-http://localhost:5173} ORDO_SMTP_URL=${ORDO_SMTP_URL-smtp://localhost:1025} ORDO_SMTP_FROM=${ORDO_SMTP_FROM-'Ordo dev <ordo@localhost>'} tsx watch --clear-screen=false src/index.ts",
