@@ -6,6 +6,7 @@ import {
   Link2,
   MessageSquare,
   Plus,
+  Ticket,
   X,
 } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
@@ -23,6 +24,7 @@ const KIND_ICONS: Record<IssueLinkKind, typeof Link2> = {
   commit: GitCommitHorizontal,
   message: MessageSquare,
   link: Link2,
+  external_issue: Ticket,
 };
 
 /** Chip colours for the states forges report. */

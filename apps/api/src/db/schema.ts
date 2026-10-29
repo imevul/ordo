@@ -1483,6 +1483,31 @@ export const workspaceAiProviders = pgTable('workspace_ai_providers', {
   updatedAt: updatedAt(),
 });
 
+/**
+ * What an integration keeps in sync: one of its remote objects (a Jira issue, a Jira comment) and
+ * the Ordo row it's paired with. `data` holds the remote values as of the last sync, so only real
+ * changes travel, in either direction, and nothing echoes back and forth.
+ */
+export const integrationRefs = pgTable(
+  'integration_refs',
+  {
+    id: pk(),
+    integrationId: uuid('integration_id')
+      .notNull()
+      .references(() => integrations.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<'issue' | 'comment'>().notNull(),
+    externalId: text('external_id').notNull(),
+    localId: uuid('local_id').notNull(),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex('integration_refs_external_idx').on(t.integrationId, t.kind, t.externalId),
+    uniqueIndex('integration_refs_local_idx').on(t.integrationId, t.kind, t.localId),
+  ],
+);
+
 /** An account at an outside service (GitHub login, Slack user…) mapped to an Ordo user. */
 export const externalAccounts = pgTable(
   'external_accounts',

@@ -113,6 +113,9 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - ✅ Workspace export: JSON of the whole workspace, CSV of issues that imports back; kept a week, audited
 - ✅ Settings → Import & export: imports with mapping, dry runs, progress and reports; merging placeholders;
   exports
+- ✅ Jira integration (Cloud and Data Center), one of three modes: links with status and backlinks, a Jira → Ordo
+  mirror, or two-way sync of title, description, status, priority, assignee and comments; webhooks or polling;
+  adopts issues the Jira importer brought in
 
 ### Phase 10 — Product depth
 

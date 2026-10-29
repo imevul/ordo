@@ -30,6 +30,7 @@ export default {
     webhooks: 'webhooks',
     polling: 'polling',
     sync: 'synk',
+    jiraModes: { links: 'lenker', mirror: 'speiling', sync: 'toveis synk' },
     channels: { one: '{count} kanal', other: '{count} kanaler' },
     delivery: {
       events: 'Events API',
@@ -217,6 +218,49 @@ export default {
     webhookAfterConnect: 'Webhook-URL-en vises når integrasjonen er koblet til.',
     issuesGoTo: 'Saker havner i {team}.',
   },
+  jira: {
+    connected: 'Jira tilkoblet',
+    intro:
+      'Jira Cloud eller Data Center. Cloud logger inn med Atlassian-e-posten din og et API-token, Data Center med et personlig tilgangstoken.',
+    siteUrl: 'Jira-adresse',
+    email: 'E-post for Atlassian-kontoen',
+    emailHint: 'Bare Jira Cloud. La stå tomt for Data Center.',
+    token: 'API-token eller personlig tilgangstoken',
+    modeTitle: 'Hva den gjør',
+    modes: {
+      links: 'Bare lenker',
+      linksHint:
+        'Jira-nøkler og -adresser i Ordo-saker og kommentarer blir lenker som viser Jira-statusen, med en lenke tilbake i Jira.',
+      mirror: 'Speil Jira i Ordo',
+      mirrorHint:
+        'Saker i prosjektene nedenfor dukker opp i sitt team og følger Jira: tittel, beskrivelse, status, prioritet, ansvarlig og kommentarer. Ordo skriver ingenting til Jira.',
+      sync: 'Toveis synk',
+      syncHint:
+        'Som speilingen, og endringer i Ordo går til Jira også. Nye Ordo-saker kan opprettes i Jira.',
+    },
+    projects: 'Jira-prosjekter',
+    projectsHintLinks:
+      'Valgfritt: hvilke prosjekters nøkler (PROJ-123) som gjenkjennes. Tomt betyr alle prosjekter tokenet ser. Adresser fungerer alltid.',
+    projectsHintSync: 'Hvert prosjekts saker havner i teamet som er valgt for det.',
+    projectKey: 'Prosjektnøkkel',
+    team: 'Team',
+    issueType: 'Sakstype',
+    issueTypeHint: 'For saker Ordo oppretter i Jira',
+    createInOrdo: 'Nye Jira-saker dukker opp i Ordo',
+    createInJira: 'Nye saker i teamet opprettes i Jira',
+    addProject: 'Legg til prosjekt',
+    removeProject: 'Fjern prosjekt',
+    backlinks: 'Legg til en lenke tilbake til Ordo på Jira-saker',
+    deliveryTitle: 'Hvordan Ordo får vite om endringer',
+    webhook: 'Webhook',
+    webhookHint:
+      'En administrator legger til en webhook i Jira (System → WebHooks) med adressen som vises etter tilkoblingen. Jira må nå denne serveren.',
+    poll: 'Spørring (annethvert minutt)',
+    pollHint: 'Ordo spør Jira hva som er endret. Fungerer bak NAT og brannmurer.',
+    webhookSecret: 'Webhook-hemmelighet',
+    webhookSecretHint:
+      'Valgfritt. Skriv inn samme hemmelighet i Jiras webhook; da godtar Ordo bare signerte leveranser.',
+  },
   gitAccounts: {
     title: 'Git-brukernavn',
     description:
@@ -258,6 +302,7 @@ export default {
     telegram:
       'Legg ut saksaktivitet i grupper, send varsler som meldinger og opprett saker fra meldinger.',
     email: 'Gjør e-post til en adresse om til saker i triage, knyttet til avsenderens kunde.',
+    jira: 'Lenk Jira-saker, speil Jira-prosjekter inn i team, eller hold saker synkronisert begge veier.',
   },
   providerNames: {
     email: 'E-post',

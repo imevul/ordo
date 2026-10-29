@@ -30,6 +30,7 @@ export default {
     webhooks: 'webhooks',
     polling: 'avfrågning',
     sync: 'synk',
+    jiraModes: { links: 'länkar', mirror: 'spegling', sync: 'tvåvägssynk' },
     channels: { one: '{count} kanal', other: '{count} kanaler' },
     delivery: {
       events: 'Events API',
@@ -217,6 +218,49 @@ export default {
     webhookAfterConnect: 'Webhook-URL:en visas när integrationen är ansluten.',
     issuesGoTo: 'Ärenden hamnar i {team}.',
   },
+  jira: {
+    connected: 'Jira anslutet',
+    intro:
+      'Jira Cloud eller Data Center. Cloud loggar in med din Atlassian-e-post och en API-token, Data Center med en personlig åtkomsttoken.',
+    siteUrl: 'Jira-adress',
+    email: 'E-post för Atlassian-kontot',
+    emailHint: 'Bara Jira Cloud. Lämna tomt för Data Center.',
+    token: 'API-token eller personlig åtkomsttoken',
+    modeTitle: 'Vad den gör',
+    modes: {
+      links: 'Bara länkar',
+      linksHint:
+        'Jira-nycklar och -adresser i Ordo-ärenden och kommentarer blir länkar som visar Jira-statusen, med en länk tillbaka i Jira.',
+      mirror: 'Spegla Jira i Ordo',
+      mirrorHint:
+        'Ärenden i projekten nedan dyker upp i sitt team och följer Jira: titel, beskrivning, status, prioritet, ansvarig och kommentarer. Ordo skriver inget till Jira.',
+      sync: 'Tvåvägssynk',
+      syncHint:
+        'Som speglingen, och ändringar i Ordo går till Jira också. Nya Ordo-ärenden kan skapas i Jira.',
+    },
+    projects: 'Jira-projekt',
+    projectsHintLinks:
+      'Valfritt: vilka projekts nycklar (PROJ-123) som känns igen. Tomt betyder alla projekt som token ser. Adresser fungerar alltid.',
+    projectsHintSync: 'Varje projekts ärenden hamnar i teamet som valts för det.',
+    projectKey: 'Projektnyckel',
+    team: 'Team',
+    issueType: 'Ärendetyp',
+    issueTypeHint: 'För ärenden som Ordo skapar i Jira',
+    createInOrdo: 'Nya Jira-ärenden dyker upp i Ordo',
+    createInJira: 'Nya ärenden i teamet skapas i Jira',
+    addProject: 'Lägg till projekt',
+    removeProject: 'Ta bort projekt',
+    backlinks: 'Lägg till en länk tillbaka till Ordo på Jira-ärenden',
+    deliveryTitle: 'Hur Ordo får veta om ändringar',
+    webhook: 'Webhook',
+    webhookHint:
+      'En administratör lägger till en webhook i Jira (System → WebHooks) med adressen som visas efter anslutningen. Jira måste nå den här servern.',
+    poll: 'Avfrågning (varannan minut)',
+    pollHint: 'Ordo frågar Jira vad som har ändrats. Fungerar bakom NAT och brandväggar.',
+    webhookSecret: 'Webhook-hemlighet',
+    webhookSecretHint:
+      'Valfritt. Ange samma hemlighet i Jiras webhook; då tar Ordo bara emot signerade leveranser.',
+  },
   gitAccounts: {
     title: 'Git-användarnamn',
     description:
@@ -258,6 +302,7 @@ export default {
     telegram:
       'Posta ärendeaktivitet i grupper, skicka notiser som meddelanden och skapa ärenden från meddelanden.',
     email: 'Gör e-post till en adress till ärenden i triage, kopplade till avsändarens kund.',
+    jira: 'Länka Jira-ärenden, spegla Jira-projekt till team eller håll ärenden synkade åt båda hållen.',
   },
   providerNames: {
     email: 'E-post',

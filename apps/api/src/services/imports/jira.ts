@@ -40,7 +40,7 @@ interface JiraSecrets extends Record<string, string> {
 const cfg = (sctx: SourceContext) => sctx.row.config as unknown as JiraConfig;
 const PAGE_SIZE = 100;
 
-const authorization = (s: { token: string; email?: string }) =>
+export const authorization = (s: { token: string; email?: string }) =>
   s.email
     ? `Basic ${Buffer.from(`${s.email}:${s.token}`).toString('base64')}`
     : `Bearer ${s.token}`;
@@ -78,7 +78,7 @@ const call = <T>(sctx: SourceContext, path: string) =>
 
 // ─── the issues we read ───────────────────────────────────────────────────
 
-interface JiraUser {
+export interface JiraUser {
   accountId?: string;
   name?: string;
   key?: string;
@@ -86,20 +86,20 @@ interface JiraUser {
   emailAddress?: string;
 }
 
-interface JiraType {
+export interface JiraType {
   name: string;
   subtask?: boolean;
   hierarchyLevel?: number;
 }
 
-interface JiraComment {
+export interface JiraComment {
   id: string;
   body: string;
   created: string;
   author?: JiraUser;
 }
 
-interface JiraIssue {
+export interface JiraIssue {
   id: string;
   key: string;
   fields: Record<string, unknown> & {
@@ -188,11 +188,12 @@ async function allIssues(sctx: SourceContext, fields: string[]) {
 
 const userId = (u: JiraUser | null | undefined) => u && (u.accountId ?? u.name ?? u.key);
 const labelKey = (name: string) => `label:${name.trim().toLowerCase()}`;
-const isEpic = (t: JiraType | undefined) => !!t && (t.hierarchyLevel === 1 || t.name === 'Epic');
+export const isEpic = (t: JiraType | undefined) =>
+  !!t && (t.hierarchyLevel === 1 || t.name === 'Epic');
 const teamOf = (key: string) => key.slice(0, key.lastIndexOf('-'));
 
 /** Jira writes offsets without a colon ("+0000"), which not every parser takes. */
-function date(value: string | null | undefined) {
+export function date(value: string | null | undefined) {
   if (!value) return undefined;
   const d = new Date(value.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
   return Number.isNaN(d.getTime()) ? undefined : d.toISOString();
@@ -204,7 +205,7 @@ const CATEGORY_TYPES: Record<string, StateType> = {
   done: 'completed',
 };
 
-function stateType(status: JiraIssue['fields']['status']): StateType | null {
+export function stateType(status: JiraIssue['fields']['status']): StateType | null {
   return guessStateType(status.name) ?? CATEGORY_TYPES[status.statusCategory?.key ?? ''] ?? null;
 }
 
