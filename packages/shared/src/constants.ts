@@ -335,6 +335,9 @@ export const AGENT_RUN_OPEN: readonly AgentRunStatus[] = [
   'running',
   'waiting',
 ];
+/** Why a run exists: its agent was assigned the issue, a person @mentioned it, or Run again. */
+export const AGENT_RUN_TRIGGERS = ['assigned', 'mention', 'rerun'] as const;
+export type AgentRunTrigger = (typeof AGENT_RUN_TRIGGERS)[number];
 /** The runner protocol's version, in every claimed run's context. */
 export const AGENT_PROTOCOL_VERSION = 1;
 

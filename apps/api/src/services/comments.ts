@@ -191,8 +191,8 @@ export async function createComment(
     },
     { teamIds: [issue.teamId] },
   );
-  // A person's reply answers an agent that's waiting on this issue.
-  if (!imported) await onComment(ctx, issue.id, authorId);
+  // A person's reply answers an agent that's waiting on this issue; a mention asks one for help.
+  if (!imported) await onComment(ctx, issue.id, authorId, { id: comment!.id, mentioned });
   return { ...comment!, reactions: [] } satisfies Comment;
 }
 

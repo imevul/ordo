@@ -165,6 +165,11 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
         <span className="flex min-w-0 items-center gap-2 text-[13px]">
           {agent && <Avatar name={agent.name} color={agent.avatarColor} size={16} />}
           <span className="truncate">{agent?.name ?? t('shell.actor.someone')}</span>
+          {run.trigger !== 'assigned' && (
+            <span className="tag ml-2 flex-none font-mono">
+              {t(`agents.runs.trigger.${run.trigger}`)}
+            </span>
+          )}
         </span>
         <span className="truncate font-mono text-[11.5px] text-index">
           {run.runnerName ?? '—'}
