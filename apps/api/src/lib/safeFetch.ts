@@ -1,11 +1,14 @@
 import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
+import { lookup as dnsLookupAll } from 'node:dns/promises';
 import { BlockList, isIP } from 'node:net';
 import { Agent, fetch as undiciFetch } from 'undici';
+import { proxyAgent, proxyFor } from './proxy.ts';
 
 /**
  * Outbound HTTP for URLs that admins type in (IdP issuers, forge and chat base URLs, webhooks).
  * Blocks loopback/private/link-local targets unless allowed, checks every redirect hop, and
- * validates the address at connect time, so DNS rebinding can't slip past the check.
+ * validates the address at connect time, so DNS rebinding can't slip past the check. Honours
+ * HTTPS_PROXY / HTTP_PROXY / NO_PROXY (see `proxy.ts`).
  */
 
 const blocked = new BlockList();
@@ -80,6 +83,19 @@ function agentFor(allowPrivate: boolean): Agent {
   return agent;
 }
 
+/** Every address `host` resolves to must be public. Fails closed when it can't be resolved. */
+async function assertPublicHost(host: string) {
+  let addresses: LookupAddress[];
+  try {
+    addresses = await dnsLookupAll(host, { all: true });
+  } catch (err) {
+    throw new Error(
+      `Couldn't resolve ${host} to check it before going through the proxy (${(err as NodeJS.ErrnoException).code ?? (err as Error).message}). An instance admin can allow private network targets to skip this check.`,
+    );
+  }
+  if (addresses.some((a) => isPrivateAddress(a.address))) throw new BlockedTargetError(host);
+}
+
 export interface SafeFetchOptions {
   method?: string;
   headers?: Record<string, string>;
@@ -123,13 +139,18 @@ export async function safeFetch(input: string, opts: SafeFetchOptions = {}): Pro
     const host = url.hostname.replace(/^\[|\]$/g, '');
     if (!allowPrivate && isIP(host) && isPrivateAddress(host)) throw new BlockedTargetError(host);
 
+    // Through a proxy the proxy connects, so the address can't be checked at connect time:
+    // check it beforehand instead (a DNS answer that changes in between can still slip through).
+    const proxy = proxyFor(url);
+    if (proxy && !allowPrivate && !isIP(host)) await assertPublicHost(host);
+
     const res = await undiciFetch(url, {
       method,
       headers: opts.headers,
       body,
       redirect: 'manual',
       signal,
-      dispatcher: agentFor(allowPrivate),
+      dispatcher: proxy ? proxyAgent(proxy) : agentFor(allowPrivate),
     });
 
     if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {

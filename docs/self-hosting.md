@@ -150,11 +150,12 @@ works the same way. Sticky sessions are not required.
 
 ## Troubleshooting
 
-| Symptom                                           | Fix                                                                          |
-| ------------------------------------------------- | ---------------------------------------------------------------------------- |
-| `set POSTGRES_PASSWORD in .env`                   | Create `.env` (`make up` does it) or set the variable.                       |
-| Port 3000 already in use                          | Set `ORDO_PORT` in `.env`.                                                   |
-| Sidebar says **offline**                          | Your proxy isn't forwarding WebSocket upgrades on `/api/ws`.                 |
-| Invite links point at `localhost`                 | Set `ORDO_PUBLIC_URL`.                                                       |
-| Logged out right after logging in over plain HTTP | `ORDO_PUBLIC_URL` is `https://` but you're using `http://`; fix one of them. |
-| App container restarts                            | `make logs` — usually the database is unreachable or a migration failed.     |
+| Symptom                                                                                    | Fix                                                                                                         |
+| ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `set POSTGRES_PASSWORD in .env`                                                            | Create `.env` (`make up` does it) or set the variable.                                                      |
+| Port 3000 already in use                                                                   | Set `ORDO_PORT` in `.env`.                                                                                  |
+| Sidebar says **offline**                                                                   | Your proxy isn't forwarding WebSocket upgrades on `/api/ws`.                                                |
+| Invite links point at `localhost`                                                          | Set `ORDO_PUBLIC_URL`.                                                                                      |
+| Logged out right after logging in over plain HTTP                                          | `ORDO_PUBLIC_URL` is `https://` but you're using `http://`; fix one of them.                                |
+| App container restarts                                                                     | `make logs` — usually the database is unreachable or a migration failed.                                    |
+| `The operation was aborted due to timeout` connecting an MCP client, SSO or an integration | The server can't reach the internet directly: set `HTTPS_PROXY` (and `NO_PROXY`) in `.env`, then `make up`. |

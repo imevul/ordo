@@ -43,6 +43,7 @@ VOLUME /data
 
 USER node
 EXPOSE 3000
+# -Y off: never through HTTP_PROXY, even when one is set for outgoing requests.
 HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1
+  CMD wget -Y off -qO- http://127.0.0.1:3000/api/health >/dev/null || exit 1
 CMD ["node", "--enable-source-maps", "server.mjs"]
