@@ -3,10 +3,11 @@
 COMPOSE      ?= docker compose
 DEV_COMPOSE  ?= docker compose -f docker-compose.dev.yml
 BACKUP_DIR   ?= backups
+IMAGE_REPO   ?= git.imevul.com/haxnet/ordo
 
 .DEFAULT_GOAL := help
 .PHONY: help up down restart update logs ps status seed backup restore psql ensure-secret admin reset-password \
-        dev dev-db dev-down install build test typecheck lint format db-generate check-bundle clean
+        publish dev dev-db dev-down install build test typecheck lint format db-generate check-bundle clean
 
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "\n\033[1mOrdo\033[0m — make <target>\n\n"} \
@@ -44,6 +45,19 @@ down: ## Stop Ordo (data is kept)
 restart: ## Restart the running containers
 	$(COMPOSE) restart
 	@$(COMPOSE) ps
+
+publish: ## Build and push git.imevul.com/haxnet/ordo:<git sha> and :latest
+	@dirty=$$(git status --porcelain -- Dockerfile .dockerignore package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json apps packages); \
+		if [ -n "$$dirty" ]; then \
+			echo "Commit image inputs before publish so the tag matches what was built:" >&2; \
+			printf '%s\n' "$$dirty" >&2; \
+			exit 1; \
+		fi
+	@sha=$$(git rev-parse HEAD); \
+		docker build -t $(IMAGE_REPO):$$sha -t $(IMAGE_REPO):latest . && \
+		docker push $(IMAGE_REPO):$$sha && \
+		docker push $(IMAGE_REPO):latest && \
+		echo "Pushed $(IMAGE_REPO):$$sha"
 
 update: .env ensure-secret ## Pull the latest code, rebuild and restart (migrations run on boot)
 	@if git rev-parse --is-inside-work-tree >/dev/null 2>&1 && git remote | grep -q .; then \
