@@ -402,4 +402,40 @@ describe('ordo agent', () => {
     });
     await owner.patch(`${ws}/issues/${issue.id}`, { assigneeId: null });
   });
+
+  it("says so when Ordo doesn't take the final report", async () => {
+    const issue = await assign('Cancelled while running');
+    const running = ordo(
+      [
+        'agent',
+        'run',
+        '--once',
+        '-w',
+        slug,
+        '--url',
+        url,
+        '--repos',
+        join(dir, 'repos'),
+        '--',
+        'sh',
+        '-c',
+        'sleep 1; echo done',
+      ],
+      { ORDO_AGENT_KEY: keys.Claude },
+    );
+    // Cancel it in Ordo while the command is still going.
+    for (let i = 0; i < 50; i++) {
+      const [r] = await runsOf(issue.id);
+      if (r && r.status !== 'queued') {
+        await owner.post(`${ws}/agent-runs/${r.id}/cancel`);
+        break;
+      }
+      await new Promise((ok) => setTimeout(ok, 50));
+    }
+    const res = await running;
+    expect(res.stdout).toContain(
+      `${issue.identifier} finished (succeeded), but Ordo didn't take the report: This run is cancelled`,
+    );
+    expect(res.stdout).not.toContain(`${issue.identifier} succeeded`);
+  });
 });

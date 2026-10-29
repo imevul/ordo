@@ -1,5 +1,6 @@
 import type {
   AgentRunStatus,
+  AgentRunTrigger,
   AuditAction,
   ChatEventKind,
   DomainEventType,
@@ -1185,6 +1186,9 @@ export interface AgentRun {
   sessionUrl: string | null;
   /** Markdown, from the runner when it finished. */
   summary: string | null;
+  trigger: AgentRunTrigger;
+  /** For `mention`: the comment that mentioned the agent. */
+  triggerCommentId: string | null;
   /** What the agent asked when it last paused (the run is `waiting` until a person answers). */
   question: string | null;
   /** Opaque to Ordo: what the runner needs to continue the agent's session on the next pickup. */
@@ -1220,6 +1224,13 @@ export interface AgentRunContext {
   comments: (Comment & { author: string | null })[];
   project: { id: string; name: string; description: string | null } | null;
   repositories: AgentRunRepository[];
+  /** Why the agent is here; for a mention, the comment that asked for it. */
+  trigger: {
+    kind: AgentRunTrigger;
+    comment: { id: string; author: string | null; body: string } | null;
+  };
+  /** Whether the issue is the agent's (assigned to it), or it was only asked to help. */
+  assigned: boolean;
   /** The issue's team workflow, so the runner can move the issue along. */
   states: { id: string; name: string; type: StateType }[];
   /** All of the above as one Markdown prompt, for tools that just want text. */

@@ -5,6 +5,7 @@ import {
   type AgentIdentity,
   type AgentRun,
   type AgentRunContext,
+  type AgentRunTrigger,
   type AgentRunWithIssue,
   AVATAR_COLORS,
   branchName,
@@ -308,6 +309,8 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
   error: r.error,
   question: r.question,
   resume: r.resume,
+  trigger: r.trigger,
+  triggerCommentId: r.triggerCommentId,
   requestedById: r.requestedById,
   leaseExpiresAt: r.leaseExpiresAt,
   startedAt: r.startedAt,
@@ -341,8 +344,19 @@ async function isActiveAgent(tx: DbOrTx, workspaceId: string, userId: string) {
   return !!row;
 }
 
-async function queueRun(ctx: Ctx, issueId: string, agentId: string) {
-  const [open] = await ctx.tx
+/**
+ * A run for the agent on the issue, unless one already covers it: a queued or waiting run will
+ * see whatever prompted this. A run that's working right now covers it too, except for a
+ * `followUp` (a mention made meanwhile), which queues one more to start after it.
+ */
+async function queueRun(
+  ctx: Ctx,
+  issueId: string,
+  agentId: string,
+  trigger: { kind: AgentRunTrigger; commentId?: string } = { kind: 'assigned' },
+  opts: { followUp?: boolean } = {},
+) {
+  const open = await ctx.tx
     .select()
     .from(agentRuns)
     .where(
@@ -352,10 +366,19 @@ async function queueRun(ctx: Ctx, issueId: string, agentId: string) {
         inArray(agentRuns.status, [...AGENT_RUN_OPEN]),
       ),
     );
-  if (open) return open;
+  const pending = open.find((r) => r.status === 'queued' || r.status === 'waiting');
+  if (pending) return pending;
+  if (open[0] && !opts.followUp) return open[0];
   const [run] = await ctx.tx
     .insert(agentRuns)
-    .values({ workspaceId: ctx.workspaceId, issueId, agentId, requestedById: ctx.userId })
+    .values({
+      workspaceId: ctx.workspaceId,
+      issueId,
+      agentId,
+      requestedById: ctx.userId,
+      trigger: trigger.kind,
+      triggerCommentId: trigger.commentId ?? null,
+    })
     .returning();
   await changed(ctx, run!);
   return run!;
@@ -390,7 +413,13 @@ export async function onAssigneeChanged(
   if (prev)
     await cancelOpenRuns(
       ctx,
-      and(eq(agentRuns.issueId, issueId), eq(agentRuns.agentId, prev))!,
+      and(
+        eq(agentRuns.issueId, issueId),
+        eq(agentRuns.agentId, prev),
+        // An agent handing the issue on itself is still finishing the run it does that from;
+        // let it report. Anything else it had queued or waiting there stops.
+        prev === ctx.userId ? inArray(agentRuns.status, ['queued', 'waiting']) : undefined,
+      )!,
       'Unassigned',
     );
   if (next && (await isActiveAgent(ctx.tx, ctx.workspaceId, next)))
@@ -402,7 +431,7 @@ export async function requestRun(ctx: Ctx, issueIdOrIdentifier: string): Promise
   const issue = await getIssue(ctx.tx, ctx.access, issueIdOrIdentifier);
   if (!issue.assigneeId || !(await isActiveAgent(ctx.tx, ctx.workspaceId, issue.assigneeId)))
     throw badRequest('Assign the issue to an agent first');
-  const run = await queueRun(ctx, issue.id, issue.assigneeId);
+  const run = await queueRun(ctx, issue.id, issue.assigneeId, { kind: 'rerun' });
   // A run waiting on a question resumes, answered or not.
   if (run.status === 'waiting')
     return toAgentRun((await resumeRuns(ctx, eq(agentRuns.id, run.id)))[0]!);
@@ -424,20 +453,37 @@ async function resumeRuns(ctx: Ctx, where: ReturnType<typeof eq>) {
  * Called after every comment: a person's comment answers whatever the issue's agents asked, so
  * their waiting runs go back in the queue. Agents' and integrations' comments don't.
  */
-export async function onComment(ctx: Ctx, issueId: string, authorId: string | null) {
+export async function onComment(
+  ctx: Ctx,
+  issueId: string,
+  authorId: string | null,
+  comment: { id: string; mentioned: string[] },
+) {
   if (!authorId) return;
   const [waiting] = await ctx.tx
     .select({ id: agentRuns.id })
     .from(agentRuns)
     .where(and(eq(agentRuns.issueId, issueId), eq(agentRuns.status, 'waiting')))
     .limit(1);
-  if (!waiting) return;
+  const mentioned = comment.mentioned.filter((id) => id !== authorId);
+  if (!waiting && mentioned.length === 0) return;
   const [author] = await ctx.tx
     .select({ kind: users.kind })
     .from(users)
     .where(eq(users.id, authorId));
+  // Agents mentioning agents would start each other forever; they hand work on by assigning.
   if (author?.kind !== 'human') return;
-  await resumeRuns(ctx, eq(agentRuns.issueId, issueId));
+  if (waiting) await resumeRuns(ctx, eq(agentRuns.issueId, issueId));
+  // A person @mentioning an agent asks it for something, whether or not the issue is its own.
+  for (const id of mentioned)
+    if (await isActiveAgent(ctx.tx, ctx.workspaceId, id))
+      await queueRun(
+        ctx,
+        issueId,
+        id,
+        { kind: 'mention', commentId: comment.id },
+        { followUp: true },
+      );
 }
 
 /**
@@ -594,7 +640,14 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
   const [next] = await ctx.tx
     .select({ id: agentRuns.id })
     .from(agentRuns)
-    .where(and(eq(agentRuns.agentId, ctx.userId), eq(agentRuns.status, 'queued')))
+    .where(
+      and(
+        eq(agentRuns.agentId, ctx.userId),
+        eq(agentRuns.status, 'queued'),
+        // One run per issue at a time: a follow-up waits for the agent's run there to finish.
+        sql`not exists (select 1 from agent_runs busy where busy.issue_id = "agent_runs"."issue_id" and busy.agent_id = "agent_runs"."agent_id" and busy.status in ('claimed', 'running'))`,
+      ),
+    )
     .orderBy(asc(agentRuns.createdAt))
     .limit(1);
   if (!next) return null;
@@ -922,6 +975,16 @@ async function runContext(
     project: project ?? null,
     repositories,
     states,
+    trigger: {
+      kind: run.trigger,
+      comment: (() => {
+        const c = run.triggerCommentId
+          ? commentRows.find((x) => x.id === run.triggerCommentId)
+          : undefined;
+        return c ? { id: c.id, author: c.author, body: c.body } : null;
+      })(),
+    },
+    assigned: detail.assigneeId === run.agentId,
   };
   const stateName = states.find((s) => s.id === detail.stateId)?.name ?? '';
   return {
@@ -942,8 +1005,11 @@ export function renderPrompt(
 ): string {
   const { issue } = c;
   const out: string[] = [];
+  const intro = `You are ${c.agent.name} (@${c.agent.username}), an agent on the ${c.workspace.name} workspace in Ordo, an issue tracker.`;
   out.push(
-    `You are ${c.agent.name} (@${c.agent.username}), an agent on the ${c.workspace.name} workspace in Ordo, an issue tracker. You have been assigned ${issue.identifier}. Work on it, and report back on the issue.`,
+    c.assigned
+      ? `${intro} You have been assigned ${issue.identifier}. Work on it, and report back on the issue.`
+      : `${intro} Someone asked for your help on ${issue.identifier}, which isn't assigned to you.`,
   );
   out.push(`# ${issue.identifier}: ${issue.title}`);
   const meta = [
@@ -982,6 +1048,18 @@ export function renderPrompt(
   if (c.project?.description?.trim())
     out.push(`## About the project\n${c.project.description.trim()}`);
   if (c.agent.instructions.trim()) out.push(`## Instructions\n${c.agent.instructions.trim()}`);
+  const asked = c.trigger.kind === 'mention' ? c.trigger.comment : null;
+  if (asked)
+    out.push(
+      `## Why you're here\n${asked.author ?? 'Someone'} mentioned you in a comment:\n\n${asked.body
+        .split('\n')
+        .map((l) => `> ${l}`)
+        .join('\n')}\n\n${
+        c.assigned
+          ? 'Do what it asks as part of your work on the issue.'
+          : "Do what it asks and answer in a comment. The issue isn't yours: don't change its status or assignee, or take on the work itself, unless the comment asks you to."
+      }`,
+    );
   if (c.run.question)
     out.push(
       `## You asked\n${c.run.question}\n\nThe answer is in the comments after your question. Continue from there.`,
