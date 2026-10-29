@@ -32,8 +32,9 @@ import { listInitiatives } from '../services/initiatives.ts';
 import { workspaceBots } from '../services/integrations.ts';
 import { listLabels } from '../services/labels.ts';
 import { workspacePlaceholders } from '../services/placeholders.ts';
-import { listProjects } from '../services/projects.ts';
+import { assertProjectLead, listProjects } from '../services/projects.ts';
 import { listRecurring } from '../services/recurring.ts';
+import { listRepositories } from '../services/repositories.ts';
 import { toView } from '../services/serialize.ts';
 import { publishChanges } from '../services/sync.ts';
 import { listTeams } from '../services/teams.ts';
@@ -60,6 +61,7 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
     unread,
     bots,
     placeholders,
+    repositories,
   ] = await Promise.all([
     db.select().from(workspaces).where(eq(workspaces.id, ws.id)),
     listMembers(db, access),
@@ -93,6 +95,7 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
       ),
     workspaceBots(db, ws.id),
     workspacePlaceholders(db, ws.id),
+    listRepositories(db, ws.id),
   ]);
   // Favorites only for things still visible.
   const visibleTarget = (kind: string, id: string) =>
@@ -112,6 +115,7 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
     })),
     bots: bots.map((b) => ({ ...b, email: '', avatarUrl: null })),
     placeholders,
+    repositories,
     teams: teamList,
     labels: labelRows,
     templates,
@@ -165,6 +169,8 @@ export async function workspaceRoutes(app: FastifyInstance) {
           if (team.private)
             throw badRequest('The default team must be public').as('default_team_public');
         }
+        if (input.settings?.defaultAssigneeId)
+          await assertProjectLead(ctx, input.settings.defaultAssigneeId, 'Default assignee');
         const [row] = await ctx.tx
           .update(workspaces)
           .set({

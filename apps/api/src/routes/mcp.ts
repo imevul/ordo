@@ -197,13 +197,14 @@ export async function mcpRoutes(app: FastifyInstance) {
       case 'ping':
         return {};
       case 'tools/list':
-        return { tools: mcpToolList() };
+        return { tools: mcpToolList(user.kind === 'agent') };
       case 'tools/call': {
         const name = msg.params?.name;
         if (!isMcpTool(name))
           throw new RpcError(INVALID_PARAMS, `Unknown tool: ${String(name)}`, 200);
         const caller: McpCaller = {
           app,
+          agent: user.kind === 'agent',
           access: ws.access,
           workspace: ws,
           run: (fn) =>

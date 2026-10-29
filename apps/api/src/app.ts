@@ -23,6 +23,7 @@ import { createStorage, type Storage } from './lib/storage/index.ts';
 import { Realtime } from './realtime.ts';
 import { accountRoutes } from './routes/account.ts';
 import { adminRoutes } from './routes/admin.ts';
+import { agentRoutes } from './routes/agents.ts';
 import { aiRoutes } from './routes/ai.ts';
 import { attachmentDownloadRoutes, attachmentRoutes } from './routes/attachments.ts';
 import { authRoutes } from './routes/auth.ts';
@@ -49,6 +50,7 @@ import { placeholderRoutes } from './routes/placeholders.ts';
 import { projectRoutes } from './routes/projects.ts';
 import { pushRoutes } from './routes/push.ts';
 import { realtimeRoutes } from './routes/realtime.ts';
+import { repositoryRoutes } from './routes/repositories.ts';
 import { scimAdminRoutes, scimRoutes } from './routes/scim.ts';
 import { searchRoutes } from './routes/search.ts';
 import { slackCallbackRoutes, slackWorkspaceRoutes } from './routes/slack.ts';
@@ -178,6 +180,9 @@ export async function buildApp(
     const auth = await resolveUser(db, req);
     // OAuth tokens are issued for the MCP endpoint (RFC 8707); anywhere else they're no one.
     if (auth?.oauth && req.routeOptions.url !== MCP_ROUTE) return;
+    // Agents work in their workspace and nowhere else: no account, admin or workspace-creation
+    // routes. Who-am-I stays, so the CLI and SDK work the same with an agent's key.
+    if (auth?.user.kind === 'agent' && !isAgentRoute(req)) return;
     if (auth) {
       req.user = auth.user;
       req.sessionId = auth.sessionId;
@@ -253,6 +258,8 @@ export async function buildApp(
       await w.register(mcpRoutes);
       await w.register(graphqlRoutes);
       await w.register(aiRoutes);
+      await w.register(agentRoutes);
+      await w.register(repositoryRoutes);
     },
     { prefix: '/api/w/:ws' },
   );
@@ -284,6 +291,10 @@ export async function buildApp(
 }
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const WORKSPACE_PREFIX = '/api/w/:ws/';
+const isAgentRoute = (req: FastifyRequest) =>
+  req.routeOptions.url?.startsWith(WORKSPACE_PREFIX) ||
+  (req.method === 'GET' && req.routeOptions.url === '/api/auth/me');
 const MCP_ROUTE = '/api/w/:ws/mcp';
 
 /**

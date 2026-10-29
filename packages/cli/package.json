@@ -6,7 +6,8 @@
   "description": "The ordo command: Ordo issues from the terminal",
   "type": "module",
   "exports": {
-    ".": "./src/main.ts"
+    ".": "./src/main.ts",
+    "./agent": "./src/agent.ts"
   },
   "bin": {
     "ordo": "./dist/ordo.mjs"
@@ -18,7 +19,9 @@
   },
   "dependencies": {
     "@ordo/sdk": "workspace:*",
-    "@ordo/shared": "workspace:*"
+    "@ordo/shared": "workspace:*",
+    "yaml": "2.9.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "26.6.5",

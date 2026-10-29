@@ -15,6 +15,16 @@ import {
   type UpdateIssueInput,
 } from '@ordo/shared';
 import {
+  type AgentSpec,
+  agentClients,
+  defaultReposDir,
+  loadRunnerFile,
+  parseDuration,
+  RunnerConfigError,
+  runnerFilePath,
+  serveAgent,
+} from './agent.ts';
+import {
   type Config,
   configPath,
   effectiveConfig,
@@ -36,6 +46,8 @@ export interface Io {
   color: boolean;
   width: number;
   fetch?: typeof fetch;
+  /** Aborted on Ctrl-C: long-running commands (`agent run`) stop taking new work. */
+  signal?: AbortSignal;
 }
 
 /** A mistake in how the command was called; prints the usage hint. */
@@ -69,6 +81,13 @@ Issues
   issue branch <id>        The git branch name for the issue
   teams                    Teams with their keys and statuses
   search <words>           Issues and projects
+
+Agents (docs/agents.md)
+  agent run -- <command…>  Work on an agent's runs: --key (or ORDO_AGENT_KEY), --repos <dir>,
+                           --concurrency <n>, --timeout <30m>, --name, --once, --verbose
+  agent run --file <yaml>  The agents and commands in a runner file (repeatable; --only a,b)
+  agent check --file <yaml>  Validate a runner file and its keys without claiming anything
+  agent ask <question>     Inside a run: ask a person and pause it (- reads stdin)
 
 Anything else
   api <method> <path>      Call the REST API (path relative to /api); --data <json|@file|->
@@ -106,7 +125,7 @@ export async function run(argv: string[], io: Io): Promise<number> {
       io.stderr(`${s.error('error:')} ${err.message}${hint}\n`);
       return 1;
     }
-    if (err instanceof NameError) {
+    if (err instanceof NameError || err instanceof RunnerConfigError) {
       io.stderr(`${s.error('error:')} ${err.message}\n`);
       return 1;
     }
@@ -181,6 +200,15 @@ async function dispatch(argv: string[], io: Io, s: Style) {
       return search(ctx, rest);
     case 'api':
       return api(ctx, rest);
+    case 'agent': {
+      const [sub, ...args] = rest;
+      if (sub === 'run') return agentRun(ctx, args);
+      if (sub === 'check') return agentRun(ctx, args, { check: true });
+      if (sub === 'ask') return agentAsk(ctx, args);
+      throw new UsageError(
+        sub ? `unknown agent command "${sub}"` : 'which agent command? run or check',
+      );
+    }
     default:
       throw new UsageError(`unknown command "${command}"`);
   }
@@ -695,4 +723,132 @@ async function api(ctx: Context, args: string[]) {
   const p = path.startsWith('/') ? path : `/${path}`;
   const result = await ctx.ordo.request(method.toUpperCase(), p.replace(/^\/api(?=\/)/, ''), body);
   ctx.json(result);
+}
+
+// ─── Agents ──────────────────────────────────────────────────────────
+
+async function agentSpecs(
+  ctx: Context,
+  args: string[],
+  check: boolean,
+): Promise<{ specs: AgentSpec[]; values: Record<string, unknown> }> {
+  const { values, positionals } = parse(args, {
+    file: { type: 'string', short: 'f', multiple: true },
+    only: { type: 'string' },
+    key: { type: 'string' },
+    url: { type: 'string' },
+    repos: { type: 'string' },
+    concurrency: { type: 'string' },
+    timeout: { type: 'string' },
+    name: { type: 'string' },
+    once: { type: 'boolean' },
+    verbose: { type: 'boolean', short: 'v' },
+  });
+  const { io, config } = ctx;
+  const fallback = {
+    url: (values.url as string | undefined) ?? config.url,
+    workspace: (values.workspace as string | undefined) ?? config.workspace,
+  };
+  let specs: AgentSpec[] = [];
+  const files = (values.file as string[] | undefined) ?? [];
+  if (files.length) {
+    if (positionals.length)
+      throw new UsageError('give the command in the runner file, not after --file');
+    for (const f of files) {
+      const loaded = await loadRunnerFile(runnerFilePath(f, io.env), io.env, fallback);
+      for (const w of loaded.warnings) io.stderr(`${ctx.s.error('warning:')} ${w}\n`);
+      specs.push(...loaded.agents);
+    }
+    const labels = specs.map((a) => a.label);
+    const dupe = labels.find((l, i) => labels.indexOf(l) !== i);
+    if (dupe)
+      throw new UsageError(`two agents are labelled "${dupe}"; labels must be unique across files`);
+  } else {
+    const key = (values.key as string | undefined) ?? io.env.ORDO_AGENT_KEY;
+    if (!key)
+      throw new UsageError(
+        "give the agent's key: --key, ORDO_AGENT_KEY, or a runner file with --file",
+      );
+    if (!positionals.length && !check)
+      throw new UsageError('what should run? "ordo agent run --key … -- claude -p"');
+    if (!fallback.url) throw new UsageError('where is Ordo? --url, ORDO_URL, or "ordo login"');
+    if (!fallback.workspace) throw new UsageError('which workspace? -w <slug> or ORDO_WORKSPACE');
+    const concurrency = Number(values.concurrency ?? 1);
+    if (!Number.isInteger(concurrency) || concurrency < 1)
+      throw new UsageError('--concurrency takes a whole number');
+    specs = [
+      {
+        label: 'agent',
+        url: fallback.url.replace(/\/+$/, ''),
+        workspace: fallback.workspace,
+        key,
+        command: positionals.length ? positionals : '',
+        repos: (values.repos as string | undefined) ?? defaultReposDir(io.env),
+        concurrency,
+        timeoutMs: parseDuration(values.timeout as string | undefined),
+        env: {},
+        cwd: 'worktree',
+        checkout: true,
+        baseDir: process.cwd(),
+        instructions: '',
+      },
+    ];
+  }
+  if (values.only) {
+    const only = (values.only as string).split(',').map((x) => x.trim());
+    const unknown = only.filter((l) => !specs.some((a) => a.label === l));
+    if (unknown.length) throw new UsageError(`no agent labelled ${unknown.join(', ')}`);
+    specs = specs.filter((a) => only.includes(a.label));
+  }
+  return { specs, values };
+}
+
+async function agentRun(ctx: Context, args: string[], opts: { check?: boolean } = {}) {
+  const { specs, values } = await agentSpecs(ctx, args, !!opts.check);
+  const { io, s } = ctx;
+  const stop = new AbortController();
+  io.signal?.addEventListener('abort', () => stop.abort());
+  // Who each key belongs to, before anything is claimed: a wrong key fails here, not later.
+  for (const spec of specs) {
+    const { ws } = agentClients(spec, { fetch: io.fetch, signal: stop.signal });
+    const me = await ws.agent.me().catch((err: Error) => {
+      throw new RunnerConfigError(`${spec.label}: ${err.message}`);
+    });
+    const command = typeof spec.command === 'string' ? spec.command : spec.command.join(' ');
+    io.stdout(
+      `${s.bold(spec.label)} → ${me.name} (@${me.username}) in ${me.workspace.slug}: ${me.teams.map((t) => t.key).join(', ') || 'no teams'}${opts.check ? `\n  runs: ${command}` : ''}\n`,
+    );
+  }
+  if (opts.check) return;
+  if (!values.once) io.stdout(s.dim('Waiting for work. Ctrl-C stops taking new runs.\n'));
+  const log = (line: string) =>
+    io.stdout(`${s.dim(new Date().toTimeString().slice(0, 8))} ${line}\n`);
+  await Promise.all(
+    specs.map((spec) =>
+      serveAgent(spec, {
+        once: !!values.once,
+        runnerName: values.name
+          ? `${values.name as string}${specs.length > 1 ? `/${spec.label}` : ''}`
+          : undefined,
+        log,
+        signal: stop.signal,
+        fetch: io.fetch,
+        verbose: !!values.verbose,
+      }),
+    ),
+  );
+}
+
+/** Inside a run (`ORDO_RUN_ID`, the agent's key in `ORDO_TOKEN`): asks a person and pauses it. */
+async function agentAsk(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, { run: { type: 'string' } });
+  const runId = (values.run as string | undefined) ?? ctx.io.env.ORDO_RUN_ID;
+  if (!runId) throw new UsageError('no run: use it inside a run (ORDO_RUN_ID) or pass --run <id>');
+  const text = positionals.join(' ');
+  const question = (text === '-' ? await ctx.io.readStdin() : text).trim();
+  if (!question) throw new UsageError('what do you want to ask? "ordo agent ask <question>"');
+  const ws = await ctx.workspace(values.workspace as string | undefined);
+  const run = await ws.agent.ask(runId, question);
+  if (values.json) return ctx.json(run);
+  ctx.io.stdout('Asked. Stop working now: the run resumes when someone replies on the issue.\n');
 }

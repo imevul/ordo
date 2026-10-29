@@ -1,5 +1,6 @@
 import {
   type CreateIssueInput,
+  defaultAssigneeFor,
   type HistoryChange,
   ISSUE_IDENTIFIER_PATTERN,
   type Issue,
@@ -44,6 +45,7 @@ import {
   teamKeyAliases,
   teams,
   workflowStates,
+  workspaces,
 } from '../db/schema.ts';
 import { badRequest, conflict, notFound } from '../lib/errors.ts';
 import {
@@ -53,6 +55,7 @@ import {
   teamScope,
   usersWithTeamAccess,
 } from './access.ts';
+import { onAssigneeChanged } from './agents.ts';
 import { claimAttachments, listAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { requestsOnIssue } from './customers.ts';
@@ -61,6 +64,7 @@ import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 import { isWorkspacePlaceholder } from './placeholders.ts';
 import { anyWordQuery, matchingIssueIds, textQuery, textRank } from './search.ts';
+import { toProject } from './serialize.ts';
 import { applyTriageRules } from './triage.ts';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -471,6 +475,29 @@ async function defaultState(ctx: Ctx, team: typeof teams.$inferSelect) {
 }
 
 /** Assignees must be able to see the issue's team; imports may also assign their placeholders. */
+/**
+ * The default assignee for a new issue in this team and project (the project's choice, else the
+ * workspace's), or null when there is none or they can't work in the team.
+ */
+async function defaultAssignee(ctx: Ctx, teamId: string, projectId: string | null) {
+  const [[ws], [project]] = await Promise.all([
+    ctx.tx
+      .select({ settings: workspaces.settings })
+      .from(workspaces)
+      .where(eq(workspaces.id, ctx.workspaceId)),
+    projectId
+      ? ctx.tx.select().from(projects).where(eq(projects.id, projectId))
+      : Promise.resolve([]),
+  ]);
+  const userId = defaultAssigneeFor(
+    ws?.settings?.defaultAssigneeId,
+    project ? toProject(project, []) : null,
+  );
+  if (!userId) return null;
+  const [ok] = await usersWithTeamAccess(ctx.tx, ctx.workspaceId, teamId, [userId]);
+  return ok ?? null;
+}
+
 export async function assertAssignee(ctx: Ctx, teamId: string, userId: string, imported = false) {
   const [ok] = await usersWithTeamAccess(ctx.tx, ctx.workspaceId, teamId, [userId]);
   if (ok || (imported && (await isWorkspacePlaceholder(ctx.tx, ctx.workspaceId, userId)))) return;
@@ -662,6 +689,12 @@ export async function createIssue(
     input.milestoneId,
   );
   if (input.cycleId) await assertCycle(ctx, team.id, input.cycleId);
+  // Leaving the assignee out means "the usual person"; null means nobody. Imports and triage
+  // keep what they were given: triage is where someone decides who takes it.
+  const assigneeId =
+    input.assigneeId !== undefined || imported || state.type === 'triage'
+      ? (input.assigneeId ?? null)
+      : await defaultAssignee(ctx, team.id, placed.projectId ?? null);
   if (input.parentId) await assertParent(ctx, null, input.parentId);
   const labelIds = [...new Set(input.labelIds ?? [])];
   const cycleId =
@@ -706,7 +739,7 @@ export async function createIssue(
       description: input.description ?? '',
       stateId: state.id,
       priority: input.priority ?? 0,
-      assigneeId: input.assigneeId ?? null,
+      assigneeId,
       creatorId,
       projectId: placed.projectId ?? null,
       milestoneId: placed.milestoneId ?? null,
@@ -730,16 +763,16 @@ export async function createIssue(
   await claimAttachments(ctx, id, input.description);
   if (labelIds.length)
     await ctx.tx.insert(issueLabels).values(labelIds.map((labelId) => ({ issueId: id, labelId })));
-  await subscribe(ctx, id, [creatorId, input.assigneeId]);
+  await subscribe(ctx, id, [creatorId, assigneeId]);
   await recordHistory(
     ctx,
     id,
     [{ field: 'created', from: null, to: null }],
     imported ? { actorId: creatorId, createdAt: imported.createdAt } : {},
   );
-  if (input.assigneeId)
-    await notify(ctx, { userIds: [input.assigneeId], type: 'issue_assigned', issueId: id });
+  if (assigneeId) await notify(ctx, { userIds: [assigneeId], type: 'issue_assigned', issueId: id });
   emit(ctx, { kind: 'issue', action: 'created', id, teamId: team.id });
+  if (assigneeId && !imported) await onAssigneeChanged(ctx, id, null, assigneeId);
   if (input.parentId)
     emit(ctx, { kind: 'issue', action: 'updated', id: input.parentId, teamId: team.id });
   const created = await getIssue(ctx.tx, ctx.access, id);
@@ -922,6 +955,7 @@ export async function updateIssue(
       await notify(ctx, { userIds: [set.assigneeId], type: 'issue_assigned', issueId });
     if (current.assigneeId)
       await notify(ctx, { userIds: [current.assigneeId], type: 'issue_unassigned', issueId });
+    await onAssigneeChanged(ctx, issueId, current.assigneeId, set.assigneeId);
   }
   if (set.stateId && set.stateId !== current.stateId) {
     await notify(ctx, {

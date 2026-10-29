@@ -26,7 +26,7 @@ import { t } from '../i18n/index.ts';
 import { healthLabel, projectStatusLabel } from '../i18n/labels.ts';
 import { relativeTime, shortDate } from '../lib/format.ts';
 import { burnUp, isoDay } from '../lib/insights.ts';
-import { useWorkspace } from '../lib/workspace.tsx';
+import { memberChoices, useWorkspace } from '../lib/workspace.tsx';
 
 const HEALTH_COLOR: Record<ProjectHealth, string> = {
   on_track: 'var(--color-success)',
@@ -644,6 +644,28 @@ function ProjectOverview({ project }: { project: Project }) {
               ))}
             </select>
           </label>
+          <label className="block text-index" title={t('projects.overview.defaultAssigneeHint')}>
+            {t('projects.overview.defaultAssignee')}
+            <select
+              className="input mt-1 h-8"
+              value={project.defaultAssignee}
+              onChange={(e) => save.mutate({ defaultAssignee: e.target.value })}
+            >
+              <option value="workspace">
+                {t('projects.overview.workspaceDefault', {
+                  name:
+                    ws.memberById.get(ws.workspace.settings.defaultAssigneeId ?? '')?.name ??
+                    t('projects.overview.noAssignee'),
+                })}
+              </option>
+              <option value="none">{t('issues.none.assignee')}</option>
+              {memberChoices(ws).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="text-index">
             {t('projects.overview.teams')}
             <div className="mt-1 flex flex-wrap gap-1.5">
@@ -668,6 +690,34 @@ function ProjectOverview({ project }: { project: Project }) {
               })}
             </div>
           </div>
+          {(ws.repositories.length > 0 || project.repositoryIds.length > 0) && (
+            <div className="text-index" title={t('agents.repositories.projectHint')}>
+              {t('agents.repositories.project')}
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {ws.repositories.map((repo) => {
+                  const on = project.repositoryIds.includes(repo.id);
+                  return (
+                    <button
+                      type="button"
+                      key={repo.id}
+                      className={`prop font-mono ${on ? 'text-text shadow-[inset_0_0_0_1px_var(--color-primary)]' : ''}`}
+                      onClick={() =>
+                        save.mutate({
+                          repositoryIds: on
+                            ? project.repositoryIds.filter((x) => x !== repo.id)
+                            : [...project.repositoryIds, repo.id],
+                        })
+                      }
+                      aria-pressed={on}
+                      title={repo.url}
+                    >
+                      {repo.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div className="text-index">
             {t('projects.overview.color')}
             <div className="mt-1 flex flex-wrap gap-1">

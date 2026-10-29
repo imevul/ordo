@@ -353,6 +353,28 @@ export function TeamSettings({ team }: { team: Team }) {
               onChange={(e) => save.mutate({ cyclesEnabled: e.target.checked })}
             />
           </label>
+          {ws.repositories.length > 0 && (
+            <label className="flex items-center justify-between gap-3 border-b border-border-soft py-3 text-[13.5px]">
+              <span>
+                {t('agents.repositories.teamDefault')}
+                <span className="block text-[12px] text-index">
+                  {t('agents.repositories.teamDefaultHint')}
+                </span>
+              </span>
+              <select
+                className="input h-8 w-48"
+                value={team.defaultRepositoryId ?? ''}
+                onChange={(e) => save.mutate({ defaultRepositoryId: e.target.value || null })}
+              >
+                <option value="">{t('agents.repositories.none')}</option>
+                {ws.repositories.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="flex items-center justify-between gap-3 border-b border-border-soft py-3 text-[13.5px]">
             <span>
               {t('teams.settings.autoArchive')}

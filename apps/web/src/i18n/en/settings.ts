@@ -45,6 +45,8 @@ export default {
     aiAssistance: 'AI assistance',
     integrations: 'Integrations',
     webhooks: 'Webhooks',
+    agents: 'Agents',
+    repositories: 'Repositories',
     importExport: 'Import & export',
     auditLog: 'Audit log',
     yourTeams: 'Your teams',
