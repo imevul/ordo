@@ -99,9 +99,21 @@ export default {
     join: 'Bli med i arbeidsområdet',
     createAccount: 'Opprett konto',
     haveAccount: 'Jeg har allerede en konto',
+    titleSite: 'Bli med i Ordo.',
+    site: 'Du er invitert til å opprette en konto på denne instansen.',
+    siteCanCreate:
+      'Du er invitert til å opprette en konto på denne instansen, der du kan starte egne arbeidsområder.',
+    alreadySignedUp:
+      'Du er allerede logget inn som <b>{email}</b>. Invitasjonen gjelder en ny konto, så det er ingenting å godta.',
+    continue: 'Fortsett til Ordo',
   },
   onboarding: {
     kicker: 'nytt arbeidsområde',
+    waitKicker: 'ikke noe arbeidsområde ennå',
+    waitTitle: 'Nesten ferdig.',
+    waitBody:
+      'Kontoen din er klar, men du er ikke med i noe arbeidsområde ennå. Be en administrator om å legge deg til i et. Det dukker opp her når de har gjort det.',
+    checkAgain: 'Sjekk igjen',
     title: 'Opprett et arbeidsområde.',
     orJoin: 'Eller bli med i teamet ditt',
     members: { one: '{count} medlem', other: '{count} medlemmer' },

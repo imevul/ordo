@@ -115,6 +115,36 @@ export function inviteEmail(
   };
 }
 
+/** A site invite: an account on the instance, no workspace attached. */
+export function siteInviteEmail(
+  locale: Locale,
+  opts: { inviter: string; instance: string; url: string; canCreateWorkspaces: boolean },
+): Email {
+  const t = serverT(locale);
+  return {
+    subject: t('email.siteInvite.subject', { inviter: opts.inviter, instance: opts.instance }),
+    html: layout({
+      kicker: t('email.siteInvite.kicker'),
+      title: t('email.siteInvite.title', { instance: esc(opts.instance) }),
+      body: p(
+        rich(
+          t(opts.canCreateWorkspaces ? 'email.siteInvite.bodyCreate' : 'email.siteInvite.body', {
+            inviter: esc(opts.inviter),
+            instance: esc(opts.instance),
+          }),
+        ),
+      ),
+      cta: { label: t('email.siteInvite.cta'), url: opts.url },
+      footer: t('email.footer'),
+    }),
+    text: t('email.siteInvite.text', {
+      inviter: opts.inviter,
+      instance: opts.instance,
+      url: opts.url,
+    }),
+  };
+}
+
 export type SecurityNotice =
   | 'twoFactorOn'
   | 'twoFactorOff'

@@ -18,6 +18,7 @@ export default {
     invite_other_email: 'Invitasjonen ble sendt til en annen e-postadresse',
     invite_required: 'Du trenger en invitasjon for å registrere deg på denne instansen',
     invite_needed: 'Du trenger en invitasjon for å bli med i arbeidsområdet',
+    invite_already_signed_up: 'Du har allerede en konto på denne instansen. Logg inn i stedet.',
     account_disabled: 'Kontoen er deaktivert. Kontakt administratoren din.',
     email_taken: 'En annen konto bruker allerede den e-postadressen',
     same_email: 'Det er allerede e-postadressen din',

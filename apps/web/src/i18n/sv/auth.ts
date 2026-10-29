@@ -99,9 +99,21 @@ export default {
     join: 'Gå med i arbetsytan',
     createAccount: 'Skapa konto',
     haveAccount: 'Jag har redan ett konto',
+    titleSite: 'Gå med i Ordo.',
+    site: 'Du är inbjuden att skapa ett konto på den här instansen.',
+    siteCanCreate:
+      'Du är inbjuden att skapa ett konto på den här instansen, där du kan starta egna arbetsytor.',
+    alreadySignedUp:
+      'Du är redan inloggad som <b>{email}</b>. Inbjudan gäller ett nytt konto, så det finns inget att tacka ja till.',
+    continue: 'Fortsätt till Ordo',
   },
   onboarding: {
     kicker: 'ny arbetsyta',
+    waitKicker: 'ingen arbetsyta än',
+    waitTitle: 'Nästan klart.',
+    waitBody:
+      'Ditt konto är klart, men du är inte med i någon arbetsyta än. Be en administratör att lägga till dig i en. Den dyker upp här när de har gjort det.',
+    checkAgain: 'Kolla igen',
     title: 'Skapa en arbetsyta.',
     orJoin: 'Eller gå med i ditt team',
     members: { one: '{count} medlem', other: '{count} medlemmar' },
