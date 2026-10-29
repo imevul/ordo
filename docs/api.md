@@ -406,21 +406,22 @@ Ordo if an admin chose to send them.
 
 Agents are members a runner works for; see [agents.md](agents.md) for the idea and the runner protocol.
 
-| Method         | Path                            | What                                                                                                                     |
-| -------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| GET / POST     | `/agents`                       | _Admin._ List / create `{ name, teamIds, instructions?, concurrency?, username? }`                                       |
-| PATCH          | `/agents/:id`                   | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, disabled? }`                                                   |
-| POST           | `/agents/:id/keys`              | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                           |
-| DELETE         | `/agents/:id/keys/:keyId`       | _Admin._ Revoke a key                                                                                                    |
-| GET / POST     | `/issues/:id/agent-runs`        | The issue's runs / queue a new one for its agent ("Run again")                                                           |
-| POST           | `/agent-runs/:id/cancel`        | Cancel a run; its runner hears it on the next heartbeat                                                                  |
-| GET            | `/agent/me`                     | _Agent key._ The agent and its teams                                                                                     |
-| POST           | `/agent/claim?wait=30&runner=…` | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)            |
-| POST           | `/agent/runs/:id/heartbeat`     | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                  |
-| PATCH          | `/agent/runs/:id`               | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, resume?, sessionUrl?, summary?, error? }` |
-| GET            | `/repositories`                 | The workspace's repositories (also in the bootstrap)                                                                     |
-| POST           | `/repositories`                 | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo? }`                                                  |
-| PATCH / DELETE | `/repositories/:id`             | _Admin._ Update / delete                                                                                                 |
+| Method         | Path                                                       | What                                                                                                                     |
+| -------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| GET / POST     | `/agents`                                                  | _Admin._ List / create `{ name, teamIds, instructions?, concurrency?, username? }`                                       |
+| PATCH          | `/agents/:id`                                              | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, disabled? }`                                                   |
+| POST           | `/agents/:id/keys`                                         | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                           |
+| DELETE         | `/agents/:id/keys/:keyId`                                  | _Admin._ Revoke a key                                                                                                    |
+| GET / POST     | `/issues/:id/agent-runs`                                   | The issue's runs / queue a new one for its agent ("Run again")                                                           |
+| GET            | `/agent-runs?status=active\|finished\|all&agentId=&limit=` | Runs across the workspace on issues you can see, latest change first (≤ 500)                                             |
+| POST           | `/agent-runs/:id/cancel`                                   | Cancel a run; its runner hears it on the next heartbeat                                                                  |
+| GET            | `/agent/me`                                                | _Agent key._ The agent and its teams                                                                                     |
+| POST           | `/agent/claim?wait=30&runner=…`                            | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)            |
+| POST           | `/agent/runs/:id/heartbeat`                                | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                  |
+| PATCH          | `/agent/runs/:id`                                          | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, resume?, sessionUrl?, summary?, error? }` |
+| GET            | `/repositories`                                            | The workspace's repositories (also in the bootstrap)                                                                     |
+| POST           | `/repositories`                                            | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo? }`                                                  |
+| PATCH / DELETE | `/repositories/:id`                                        | _Admin._ Update / delete                                                                                                 |
 
 Projects take `repositoryIds` (in order) on create and update; teams take `defaultRepositoryId`.
 

@@ -1,4 +1,5 @@
 import {
+  agentRunsQuerySchema,
   createAgentSchema,
   createApiKeySchema,
   reportAgentRunSchema,
@@ -18,6 +19,7 @@ import {
   heartbeat,
   listAgents,
   listRuns,
+  listWorkspaceRuns,
   reportRun,
   requestRun,
   revokeAgentKey,
@@ -89,6 +91,11 @@ export async function agentRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     return mutate(app, req, (ctx) => requestRun(ctx, id));
   });
+
+  // Every run in the workspace the caller can see: the Agent runs page.
+  app.get('/agent-runs', async (req) =>
+    listWorkspaceRuns(db, requireAccess(req), parse(agentRunsQuerySchema, req.query)),
+  );
 
   app.post('/agent-runs/:id/cancel', async (req) => {
     const { id } = req.params as { id: string };

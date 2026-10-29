@@ -510,3 +510,42 @@ describe('questions', () => {
     expect((await runsOf(i.id))[0]!.status).toBe('cancelled');
   });
 });
+
+describe('the workspace run list', () => {
+  type Listed = AgentRun & { issue: { identifier: string; teamId: string } };
+  const list = async (who: Client, query = '') =>
+    (await who.get(`${ws}/agent-runs${query}`)).data as Listed[];
+
+  it('lists runs on visible issues, newest change first, filtered by status and agent', async () => {
+    const all = await list(owner);
+    expect(all.length).toBeGreaterThan(5);
+    expect(all[0]!.issue.identifier).toMatch(/^ENG-\d+$/);
+    const times = all.map((r) => r.id);
+    expect(new Set(times).size).toBe(times.length);
+
+    const active = await list(owner, '?status=active');
+    expect(
+      active.every((r) => ['queued', 'claimed', 'running', 'waiting'].includes(r.status)),
+    ).toBe(true);
+    const finished = await list(owner, '?status=finished');
+    expect(finished.every((r) => ['succeeded', 'failed', 'cancelled'].includes(r.status))).toBe(
+      true,
+    );
+    expect(active.length + finished.length).toBe(all.length);
+
+    const mine = await list(owner, `?agentId=${agentId}`);
+    expect(mine.length).toBeGreaterThan(0);
+    expect(mine.every((r) => r.agentId === agentId)).toBe(true);
+    expect((await list(owner, '?limit=2')).length).toBe(2);
+    expect((await owner.get(`${ws}/agent-runs?status=nope`)).statusCode).toBe(400);
+  });
+
+  it("leaves out runs on issues the caller can't see", async () => {
+    // "Moving away" ended up in the private team; a plain member doesn't see it.
+    const ownerView = await list(owner);
+    const memberView = await list(member);
+    expect(ownerView.some((r) => r.issue.teamId === prv)).toBe(true);
+    expect(memberView.some((r) => r.issue.teamId === prv)).toBe(false);
+    expect(memberView.length).toBe(ownerView.filter((r) => r.issue.teamId !== prv).length);
+  });
+});

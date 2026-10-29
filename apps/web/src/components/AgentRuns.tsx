@@ -12,7 +12,7 @@ import { Markdown } from './Markdown.tsx';
 export const agentRunsKey = (slug: string, issueId: string) =>
   ['ws', slug, 'agentRuns', issueId] as const;
 
-const STATUS_COLOR: Record<AgentRunStatus, string> = {
+export const RUN_STATUS_COLOR: Record<AgentRunStatus, string> = {
   queued: 'var(--color-index)',
   claimed: 'var(--color-warning)',
   running: 'var(--color-primary)',
@@ -22,7 +22,7 @@ const STATUS_COLOR: Record<AgentRunStatus, string> = {
   cancelled: 'var(--color-muted)',
 };
 
-const isOpen = (r: AgentRun) =>
+export const isOpenRun = (r: AgentRun) =>
   r.status === 'queued' ||
   r.status === 'claimed' ||
   r.status === 'running' ||
@@ -52,7 +52,7 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
     { invalidate: [[...key]] },
   );
   if (!assignedToAgent && runs.length === 0) return null;
-  const busy = runs.some(isOpen);
+  const busy = runs.some(isOpenRun);
   // Waiting on an answer: a reply resumes it, and so does this, without one.
   const waiting = runs.some((r) => r.status === 'waiting');
 
@@ -83,9 +83,11 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
 
 function RunRow({ run, onCancel }: { run: AgentRun; onCancel: () => void }) {
   const ws = useWorkspace();
-  const [open, setOpen] = useState(run.status === 'waiting');
+  // A question shows by itself (also when a run starts waiting while open) until toggled.
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  const open = toggled ?? run.status === 'waiting';
   const agent = ws.memberById.get(run.agentId);
-  const color = STATUS_COLOR[run.status];
+  const color = RUN_STATUS_COLOR[run.status];
   const detail = run.status === 'waiting' ? run.question : (run.summary ?? run.error);
   return (
     <div className="border-b border-border-soft/60">
@@ -95,7 +97,7 @@ function RunRow({ run, onCancel }: { run: AgentRun; onCancel: () => void }) {
           type="button"
           className="min-w-0 flex-1 truncate text-left text-[13.5px]"
           disabled={!detail}
-          onClick={() => setOpen(!open)}
+          onClick={() => setToggled(!open)}
           aria-expanded={open}
         >
           {agent?.name ?? t('shell.actor.someone')}
@@ -128,7 +130,7 @@ function RunRow({ run, onCancel }: { run: AgentRun; onCancel: () => void }) {
             <ExternalLink size={13} />
           </a>
         )}
-        {isOpen(run) && (
+        {isOpenRun(run) && (
           <button
             type="button"
             className="flex h-6 w-6 flex-none items-center justify-center text-index hover:text-text"

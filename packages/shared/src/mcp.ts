@@ -114,6 +114,14 @@ export const mcpToolSchemas = {
       .describe('Markdown, posted as a comment first so the agent reads it'),
   }),
   agent_runs: z.object({ issue }),
+  list_agent_runs: z.object({
+    agent: ref('Only this agent: username, name or id').optional(),
+    status: z
+      .enum(['active', 'finished', 'all'])
+      .default('active')
+      .describe('active: queued, working or waiting for an answer (default); finished; or all'),
+    limit: limit(200, 50),
+  }),
   rerun_agent: z.object({
     issue,
     note: z
@@ -258,6 +266,13 @@ export const MCP_TOOLS: {
     title: 'Agent runs',
     description:
       "An issue's agent runs: status, runner, session link, summary or error, newest first.",
+    readOnly: true,
+  },
+  {
+    name: 'list_agent_runs',
+    title: 'List agent runs',
+    description:
+      'What agents are doing across the workspace: active runs (queued, working, waiting for an answer) by default, or finished ones.',
     readOnly: true,
   },
   {

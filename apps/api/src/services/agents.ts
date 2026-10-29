@@ -5,6 +5,7 @@ import {
   type AgentIdentity,
   type AgentRun,
   type AgentRunContext,
+  type AgentRunWithIssue,
   AVATAR_COLORS,
   branchName,
   type createAgentSchema,
@@ -12,7 +13,7 @@ import {
   type RealtimeEvent,
   type updateAgentSchema,
 } from '@ordo/shared';
-import { and, asc, desc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lt, not, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
 import type { DbOrTx } from '../db/client.ts';
@@ -516,6 +517,50 @@ export async function listRuns(db: DbOrTx, access: Access, issueIdOrIdentifier: 
     .orderBy(desc(agentRuns.createdAt))
     .limit(50);
   return rows.map(toAgentRun);
+}
+
+/**
+ * Runs across the workspace, on issues `access` can read: active ones (open, waiting included)
+ * first by when they last changed, or finished ones, newest first.
+ */
+export async function listWorkspaceRuns(
+  db: DbOrTx,
+  access: Access,
+  opts: { status: 'active' | 'finished' | 'all'; agentId?: string; limit: number },
+): Promise<AgentRunWithIssue[]> {
+  const open = inArray(agentRuns.status, [...AGENT_RUN_OPEN]);
+  const rows = await db
+    .select({
+      run: agentRuns,
+      number: issues.number,
+      title: issues.title,
+      stateId: issues.stateId,
+      teamId: issues.teamId,
+      teamKey: teams.key,
+    })
+    .from(agentRuns)
+    .innerJoin(issues, eq(issues.id, agentRuns.issueId))
+    .innerJoin(teams, eq(teams.id, issues.teamId))
+    .where(
+      and(
+        eq(agentRuns.workspaceId, access.workspaceId),
+        teamScope(access, issues.teamId),
+        opts.agentId ? eq(agentRuns.agentId, opts.agentId) : undefined,
+        opts.status === 'active' ? open : opts.status === 'finished' ? not(open) : undefined,
+      ),
+    )
+    .orderBy(desc(agentRuns.updatedAt))
+    .limit(opts.limit);
+  return rows.map((r) => ({
+    ...toAgentRun(r.run),
+    issue: {
+      id: r.run.issueId,
+      identifier: `${r.teamKey}-${r.number}`,
+      title: r.title,
+      stateId: r.stateId,
+      teamId: r.teamId,
+    },
+  }));
 }
 
 /** The runs an agent holds now (claimed or running), oldest first. */

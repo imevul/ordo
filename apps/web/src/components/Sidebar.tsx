@@ -2,6 +2,7 @@ import type { Favorite } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
+  Bot,
   Building2,
   ChartGantt,
   ChevronRight,
@@ -243,6 +244,13 @@ export function Sidebar({
             <Link to="/$slug/customers" params={p} className="nav-item">
               <Building2 size={15} />
               {t('shell.nav.customers')}
+            </Link>
+          )}
+          {/* Only once there are agents: otherwise there's nothing to show. */}
+          {ws.members.some((m) => m.kind === 'agent') && (
+            <Link to="/$slug/agent-runs" params={p} className="nav-item">
+              <Bot size={15} />
+              {t('agents.runsPage.nav')}
             </Link>
           )}
           <Link to="/$slug/views" params={p} className="nav-item">

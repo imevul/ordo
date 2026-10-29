@@ -40,7 +40,9 @@ There are three parts:
 4. To ask for changes, comment on the issue and click **Run again**. The next run sees the whole thread.
 5. **Cancel** stops a run: its runner hears about it on its next heartbeat and stops the command. Unassigning the
    agent cancels its open runs too.
-6. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
+6. **Agent runs** in the sidebar (shown once the workspace has an agent) lists what every agent is doing across the
+   workspace: active runs (queued, working, waiting for an answer) or finished ones, by agent, with Resume and Cancel.
+7. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
    queue for another runner. After three claims it is marked failed, with a comment on the issue.
 
 ## `ordo agent run`

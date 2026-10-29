@@ -478,4 +478,13 @@ describe('agents', () => {
     await tool('add_comment', { issue: issue.identifier, body: 'Spaces.' });
     expect((await tool('agent_runs', { issue: issue.identifier })).runs[0].status).toBe('queued');
   });
+
+  it('lists what agents are doing across the workspace', async () => {
+    const active = await tool('list_agent_runs');
+    expect(active.length).toBeGreaterThan(0);
+    expect(active[0]).toMatchObject({ agent: { username: 'robo' } });
+    expect(active.every((r: { status: string }) => r.status !== 'succeeded')).toBe(true);
+    const finished = await tool('list_agent_runs', { status: 'finished', agent: 'robo' });
+    expect(finished.map((r: { status: string }) => r.status)).toContain('succeeded');
+  });
 });
