@@ -183,6 +183,17 @@ export const deleteWorkspaceSchema = z.object({ confirmSlug: z.string() });
 export const adminUpdateUserSchema = z.object({
   disabled: z.boolean().optional(),
   isInstanceAdmin: z.boolean().optional(),
+  canCreateWorkspaces: z.boolean().optional(),
+});
+
+/** A site invite: an account on the instance without a workspace (instance admins only). */
+export const createSiteInviteSchema = z.object({
+  /** One invite per address (emailed when SMTP is set up). Omit for a single shareable link. */
+  emails: z.array(z.email()).max(100).optional(),
+  email: z.email().optional(),
+  /** Lets the new account create workspaces even when the instance turns that off. */
+  canCreateWorkspaces: z.boolean().default(false),
+  expiresInDays: z.number().int().min(1).max(90).default(14),
 });
 
 export const adminSettingsSchema = z.object({

@@ -4,7 +4,7 @@ import {
   type Workspace,
   type WorkspaceSettings,
 } from '@ordo/shared';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import { teamMembers, teams, users, workspaceMembers, workspaces } from '../db/schema.ts';
@@ -56,6 +56,24 @@ export async function listMembers(db: DbOrTx, access: Access) {
     suspended: !!suspendedAt,
     email: access.isGuest && m.id !== access.userId ? '' : m.email,
   }));
+}
+
+/**
+ * Whether POST /workspaces lets this person create one. With creation off, anyone may still make
+ * their first workspace, except people who came in through a site invite that didn't grant it.
+ */
+export async function mayCreateWorkspace(app: FastifyInstance, userId: string) {
+  if (app.settings.get('allowWorkspaceCreation')) return true;
+  const [row] = await app.db
+    .select({
+      canCreateWorkspaces: users.canCreateWorkspaces,
+      siteInvitedAt: users.siteInvitedAt,
+      memberships: sql<number>`(select count(*)::int from workspace_members m where m.user_id = "users"."id")`,
+    })
+    .from(users)
+    .where(eq(users.id, userId));
+  if (!row) return false;
+  return row.canCreateWorkspaces || (row.memberships === 0 && !row.siteInvitedAt);
 }
 
 export async function memberRole(tx: DbOrTx, workspaceId: string, userId: string) {

@@ -51,6 +51,7 @@ import {
 } from '../services/passkeys.ts';
 import { publishChanges } from '../services/sync.ts';
 import { createToken } from '../services/tokens.ts';
+import { mayCreateWorkspace } from '../services/workspaces.ts';
 
 /** Sessions are identified to the user by a prefix of their hash; never by the cookie token. */
 const publicSessionId = (hash: string) => hash.slice(0, 16);
@@ -97,6 +98,7 @@ export async function accountRoutes(app: FastifyInstance) {
       avatarUrl: signedFileUrl(app, user.avatarFileId),
       isInstanceAdmin: user.isInstanceAdmin,
       workspaces: memberships,
+      canCreateWorkspace: await mayCreateWorkspace(app, user.id),
       emailVerified: !!user.emailVerifiedAt,
       hasPassword: !!user.passwordHash,
       twoFactorEnabled: await hasSecondFactor(db, user),
