@@ -591,8 +591,10 @@ async function work(
       opts.log(`${id} heartbeat failed: ${(err as Error).message}`);
     }
   }, 60_000);
+  let refused: string | null = null;
   const report = (input: Parameters<WorkspaceClient['agent']['report']>[1]) =>
     ws.agent.report(runId, input).catch((err: Error) => {
+      refused = err.message;
       opts.log(`${id} report failed: ${err.message}`);
       return undefined;
     });
@@ -636,6 +638,10 @@ async function work(
     });
     // The agent asked a question: the run waits for a reply, whatever the command's exit said.
     if (saved?.status === 'waiting') opts.log(`${id} is waiting for an answer`);
+    else if (!saved)
+      opts.log(
+        `${id} finished (${result.status}), but Ordo didn't take the report: ${refused ?? 'unknown error'}`,
+      );
     else
       opts.log(`${id} ${result.status}${result.error ? `: ${result.error.split('\n')[0]}` : ''}`);
   } finally {

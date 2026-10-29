@@ -511,6 +511,43 @@ describe('questions', () => {
   });
 });
 
+describe('handing an issue to another agent', () => {
+  it("keeps the run the agent hands it on from, and cancels only what's left", async () => {
+    const triage = (await owner.post(`${ws}/agents`, { name: 'Triager', teamIds: [eng] })).data;
+    const coder = (await owner.post(`${ws}/agents`, { name: 'Builder', teamIds: [eng] })).data;
+    const triageKey = (await owner.post(`${ws}/agents/${triage.id}/keys`, { name: 't' })).data
+      .token;
+    const i = await issue('Hand me on', { assigneeId: triage.id });
+    const run = (await bearer(triageKey, 'POST', `${ws}/agent/claim`)).data as AgentRunContext;
+    expect(run.issue.id).toBe(i.id);
+
+    // The triage agent assigns it onward while still working on it.
+    const moved = await bearer(triageKey, 'PATCH', `${ws}/issues/${i.id}`, {
+      assigneeId: coder.id,
+    });
+    expect(moved.statusCode).toBe(200);
+    const runs = await runsOf(i.id);
+    expect(runs.find((r) => r.agentId === coder.id)?.status).toBe('queued');
+    expect(runs.find((r) => r.agentId === triage.id)?.status).toBe('claimed');
+
+    // So its report still lands, summary and all.
+    const done = await bearer(triageKey, 'PATCH', `${ws}/agent/runs/${run.run.id}`, {
+      status: 'succeeded',
+      summary: 'Triaged; over to Builder.',
+    });
+    expect(done.data.status).toBe('succeeded');
+    const comments = (await owner.get(`${ws}/issues/${i.id}/comments`)).data as Comment[];
+    expect(comments.at(-1)).toMatchObject({
+      authorId: triage.id,
+      body: 'Triaged; over to Builder.',
+    });
+
+    // A person taking it away still stops the agent that's working on it.
+    await owner.patch(`${ws}/issues/${i.id}`, { assigneeId: null });
+    expect((await runsOf(i.id)).find((r) => r.agentId === coder.id)?.status).toBe('cancelled');
+  });
+});
+
 describe('the workspace run list', () => {
   type Listed = AgentRun & { issue: { identifier: string; teamId: string } };
   const list = async (who: Client, query = '') =>

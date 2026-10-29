@@ -390,7 +390,13 @@ export async function onAssigneeChanged(
   if (prev)
     await cancelOpenRuns(
       ctx,
-      and(eq(agentRuns.issueId, issueId), eq(agentRuns.agentId, prev))!,
+      and(
+        eq(agentRuns.issueId, issueId),
+        eq(agentRuns.agentId, prev),
+        // An agent handing the issue on itself is still finishing the run it does that from;
+        // let it report. Anything else it had queued or waiting there stops.
+        prev === ctx.userId ? inArray(agentRuns.status, ['queued', 'waiting']) : undefined,
+      )!,
       'Unassigned',
     );
   if (next && (await isActiveAgent(ctx.tx, ctx.workspaceId, next)))
