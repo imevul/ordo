@@ -1170,6 +1170,11 @@ export interface AgentRun {
   createdAt: string;
 }
 
+/** A run with the issue it's about, for workspace-wide run lists. */
+export interface AgentRunWithIssue extends AgentRun {
+  issue: IssueRef;
+}
+
 /** A repository as a run sees it: where to clone and which branch to work on. */
 export interface AgentRunRepository extends Repository {
   suggestedBranch: string;

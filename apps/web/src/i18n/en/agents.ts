@@ -76,6 +76,28 @@ export default {
     },
     queued: 'Queued for {name}',
   },
+  /** The workspace-wide list of runs (sidebar → Agent runs). */
+  runsPage: {
+    nav: 'Agent runs',
+    kicker: 'agent runs',
+    title: 'Agent runs',
+    agent: 'Agent',
+    allAgents: 'All agents',
+    status: { active: 'Active', finished: 'Finished', all: 'All' },
+    columns: {
+      status: 'Status',
+      issue: 'Issue',
+      agent: 'Agent',
+      runner: 'Runner',
+      updated: 'Updated',
+    },
+    more: 'more',
+    less: 'less',
+    emptyActive: 'No agent is working on anything right now',
+    emptyTitle: 'No runs yet',
+    emptyBody: 'Assign an issue to an agent and its run shows up here.',
+    noAgents: 'Add an agent under Settings → Agents, then assign it an issue.',
+  },
   repositories: {
     adminsOnly: 'Only admins can manage repositories.',
     title: 'Repositories',

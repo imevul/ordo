@@ -19,7 +19,15 @@ import { z } from 'zod';
 import { users } from '../db/schema.ts';
 import { badRequest, parse } from '../lib/errors.ts';
 import type { Access } from './access.ts';
-import { askQuestion, cancelRun, heldRuns, listRuns, reportRun, requestRun } from './agents.ts';
+import {
+  askQuestion,
+  cancelRun,
+  heldRuns,
+  listRuns,
+  listWorkspaceRuns,
+  reportRun,
+  requestRun,
+} from './agents.ts';
 import { createComment, listComments } from './comments.ts';
 import type { Ctx } from './context.ts';
 import { listCycles } from './cycles.ts';
@@ -492,6 +500,22 @@ function handlers(c: McpCaller): Handlers {
     },
 
     agent_runs: async ({ issue }) => agentRunsResult(c, dir, issue),
+
+    list_agent_runs: async ({ agent, status, limit }) => {
+      const agentId = agent ? await dir.person(agent) : undefined;
+      const runs = await listWorkspaceRuns(c.app.db, c.access, { status, agentId, limit });
+      const names = await dir.people(runs.map((r) => r.agentId));
+      return runs.map((r) => ({
+        issue: r.issue.identifier,
+        title: r.issue.title,
+        agent: names.get(r.agentId) ?? null,
+        status: r.status,
+        runner: r.runnerName,
+        question: r.status === 'waiting' ? r.question : undefined,
+        sessionUrl: r.sessionUrl,
+        updatedAt: r.finishedAt ?? r.startedAt ?? r.createdAt,
+      }));
+    },
 
     rerun_agent: async ({ issue, note }) => {
       const target = await getIssue(c.app.db, c.access, issue);

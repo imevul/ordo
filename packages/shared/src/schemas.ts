@@ -1035,3 +1035,10 @@ export const reportAgentRunSchema = z
     message: 'Say what you are asking (question)',
     path: ['question'],
   });
+
+/** `GET /agent-runs`: active runs, finished ones, or both, optionally of one agent. */
+export const agentRunsQuerySchema = z.object({
+  status: z.enum(['active', 'finished', 'all']).default('all'),
+  agentId: id.optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(100),
+});
