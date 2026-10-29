@@ -2,8 +2,8 @@ import type { Member } from '@ordo/shared';
 import { t } from '../../i18n/index.ts';
 
 /**
- * A member, a bot (which may belong to an integration that's since been removed), or a
- * placeholder for someone an import brought along.
+ * A member (a person or an agent), a bot (which may belong to an integration that's since been
+ * removed), or a placeholder for someone an import brought along.
  */
 export type Person = Member & { bot?: boolean; removed?: boolean; placeholder?: boolean };
 
@@ -31,6 +31,14 @@ export function ActorName({
           title={t('shell.actor.removedHint')}
         >
           {t('shell.actor.removed')}
+        </span>
+      )}
+      {person.kind === 'agent' && (
+        <span
+          className="ml-1 cursor-help align-[1px] font-mono text-[9.5px] tracking-[0.1em] text-index uppercase"
+          title={t('agents.agentHint')}
+        >
+          {t('agents.agentTag')}
         </span>
       )}
       {person.placeholder && (

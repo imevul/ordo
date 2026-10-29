@@ -1,5 +1,5 @@
-import type { MemberRole } from '@ordo/shared';
-import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import type { MemberRole, UserKind } from '@ordo/shared';
+import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Db } from '../db/client.ts';
 import {
@@ -33,6 +33,8 @@ export interface AuthUser {
   avatarColor: string;
   avatarFileId: string | null;
   isInstanceAdmin: boolean;
+  /** `human`, or `agent` for an agent's API key (workspace routes only; see app.ts). */
+  kind: UserKind;
 }
 
 export interface WorkspaceCtx {
@@ -84,10 +86,13 @@ const userColumns = {
   avatarColor: users.avatarColor,
   avatarFileId: users.avatarFileId,
   isInstanceAdmin: users.isInstanceAdmin,
+  kind: users.kind,
 };
 
 /** Only enabled, human accounts can authenticate. Bots and placeholders exist for attribution only. */
 const canSignIn = and(isNull(users.disabledAt), eq(users.kind, 'human'));
+/** Agents act through API keys, and only through them: they have no sessions, OAuth grants or SSO. */
+const canUseApiKey = and(isNull(users.disabledAt), inArray(users.kind, ['human', 'agent']));
 
 // last_seen_at is a hint for the sessions list, so write it at most this often.
 const LAST_SEEN_RESOLUTION = 5 * 60_000;
@@ -186,7 +191,7 @@ export async function resolveUser(
       .select({ user: userColumns, keyId: apiKeys.id })
       .from(apiKeys)
       .innerJoin(users, eq(users.id, apiKeys.userId))
-      .where(and(eq(apiKeys.tokenHash, sha256(token)), canSignIn));
+      .where(and(eq(apiKeys.tokenHash, sha256(token)), canUseApiKey));
     if (!row) return null;
     db.update(apiKeys)
       .set({ lastUsedAt: new Date().toISOString() })
@@ -320,7 +325,9 @@ export async function authorizeWorkspace(
     .innerJoin(users, and(eq(users.id, workspaceMembers.userId), isNull(users.disabledAt)))
     .where(typeof ref === 'string' ? eq(workspaces.slug, ref) : eq(workspaces.id, ref.id));
   if (!row) throw notFound('Workspace');
-  if (row.settings?.requireSso && !auth.ignoreSso) await assertSso(db, row, auth);
+  // An agent's keys are issued by the workspace's admins, so require-SSO has nothing to add.
+  if (row.settings?.requireSso && !auth.ignoreSso && user.kind !== 'agent')
+    await assertSso(db, row, auth);
   const { settings: _settings, ...ws } = row;
   return { ...ws, access: await computeAccess(db, user.id, row.id, row.role) };
 }

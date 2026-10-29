@@ -1,5 +1,5 @@
 import type { Bootstrap, Cycle, Label, Me, Project, Team, View, WorkflowState } from '@ordo/shared';
-import { accentVariables, isAdminRole } from '@ordo/shared';
+import { accentVariables, defaultAssigneeFor, isAdminRole } from '@ordo/shared';
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react';
 import type { Person } from '../components/ui/ActorName.tsx';
 import { t } from '../i18n/index.ts';
@@ -55,11 +55,19 @@ export function WorkspaceProvider({
       // Bots and placeholders aren't members (no pickers, no seats) but render where they appear.
       memberById: byId([
         ...(data.bots ?? []).map(
-          (b): Person => ({ ...b, role: 'member', joinedAt: '', suspended: false, bot: true }),
+          (b): Person => ({
+            ...b,
+            kind: 'human',
+            role: 'member',
+            joinedAt: '',
+            suspended: false,
+            bot: true,
+          }),
         ),
         ...(data.placeholders ?? []).map(
           (p): Person => ({
             ...p,
+            kind: 'human',
             role: 'member',
             joinedAt: '',
             suspended: false,
@@ -107,6 +115,38 @@ export function upcomingCycles(
   today = new Date().toISOString().slice(0, 10),
 ) {
   return cycles.filter((c) => c.teamId === teamId && c.endsAt > today);
+}
+
+/** Members for a plain select: people by name, then agents (labelled as such). */
+export function memberChoices(ws: WorkspaceData) {
+  return [...ws.members]
+    .filter((m) => !m.suspended)
+    .sort(
+      (a, b) =>
+        Number(a.kind === 'agent') - Number(b.kind === 'agent') || a.name.localeCompare(b.name),
+    )
+    .map((m) => ({
+      id: m.id,
+      label: m.kind === 'agent' ? `${m.name} (${t('agents.agentTag')})` : m.name,
+    }));
+}
+
+/**
+ * Who a new issue in this team and project goes to by default, if they can work in the team
+ * (agents and private teams need membership). Mirrors the server's choice for issues created
+ * without an assignee.
+ */
+export function defaultAssigneeOf(ws: WorkspaceData, teamId: string, projectId: string | null) {
+  const id = defaultAssigneeFor(
+    ws.workspace.settings.defaultAssigneeId,
+    projectId ? ws.projectById.get(projectId) : null,
+  );
+  const member = id ? ws.members.find((m) => m.id === id && !m.suspended) : null;
+  const team = ws.teamById.get(teamId);
+  if (!member || !team) return null;
+  const needsMembership = member.kind === 'agent' || member.role === 'guest' || team.private;
+  const isAdmin = member.role === 'owner' || member.role === 'admin';
+  return !needsMembership || isAdmin || team.memberIds.includes(member.id) ? member.id : null;
 }
 
 export const cycleName = (c: Cycle) => c.name || t('common.cycleNumber', { number: c.number });

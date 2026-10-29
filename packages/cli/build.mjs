@@ -12,7 +12,10 @@ await build({
   target: 'node22',
   minify: false,
   legalComments: 'none',
-  banner: { js: '#!/usr/bin/env node' },
+  // Some dependencies (yaml) are CommonJS and require Node built-ins; ESM output needs a `require`.
+  banner: {
+    js: "#!/usr/bin/env node\nimport { createRequire as __ordoRequire } from 'node:module';\nconst require = __ordoRequire(import.meta.url);",
+  },
   logLevel: 'warning',
 });
 await chmod(outfile, 0o755);

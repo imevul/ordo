@@ -14,6 +14,11 @@ export default {
     description:
       "New members (except guests) join this team automatically, and it's preselected for new issues.",
   },
+  defaultAssignee: {
+    title: 'Default assignee',
+    description:
+      'New issues go to them unless whoever creates the issue picks someone else (or nobody). Projects can choose their own. Issues created in triage are left for triage.',
+  },
   accent: {
     title: 'Accent colour',
     description:
@@ -305,6 +310,13 @@ export default {
       accountUpdated: 'changed an account',
       accountDeleted: 'deleted an account',
       settingsUpdated: 'changed instance settings',
+      agentCreated: 'added the agent {name}',
+      agentUpdated: 'changed an agent',
+      agentDisabled: 'disabled an agent',
+      agentKeyCreated: 'created the agent key "{name}"',
+      repositoryCreated: 'added the repository {name}',
+      repositoryUpdated: 'changed a repository',
+      repositoryDeleted: 'removed the repository {name}',
     },
   },
 };

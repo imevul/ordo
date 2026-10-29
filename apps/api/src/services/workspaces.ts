@@ -41,6 +41,7 @@ export async function listMembers(db: DbOrTx, access: Access) {
       email: users.email,
       avatarColor: users.avatarColor,
       avatarFileId: users.avatarFileId,
+      kind: users.kind,
       role: workspaceMembers.role,
       joinedAt: workspaceMembers.joinedAt,
       suspendedAt: workspaceMembers.suspendedAt,
@@ -49,8 +50,9 @@ export async function listMembers(db: DbOrTx, access: Access) {
     .innerJoin(users, eq(users.id, workspaceMembers.userId))
     .where(eq(workspaceMembers.workspaceId, access.workspaceId))
     .orderBy(asc(users.name));
-  return rows.map(({ suspendedAt, ...m }) => ({
+  return rows.map(({ suspendedAt, kind, ...m }) => ({
     ...m,
+    kind: kind === 'agent' ? ('agent' as const) : ('human' as const),
     suspended: !!suspendedAt,
     email: access.isGuest && m.id !== access.userId ? '' : m.email,
   }));

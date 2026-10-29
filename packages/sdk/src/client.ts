@@ -1,4 +1,7 @@
 import type {
+  AgentIdentity,
+  AgentRun,
+  AgentRunContext,
   Bootstrap,
   Comment,
   CreateCommentInput,
@@ -242,5 +245,61 @@ export class WorkspaceClient {
 
     link: (idOrIdentifier: string, link: { url: string; title?: string }) =>
       this.request('POST', `/issues/${encodeURIComponent(idOrIdentifier)}/links`, link),
+  };
+
+  /**
+   * The runner protocol, for an agent's API key (docs/agents.md): claim a run, keep it alive,
+   * report how it went.
+   */
+  readonly agent = {
+    /** The agent the key belongs to, and the teams it works in. */
+    me: () => this.request<AgentIdentity>('GET', '/agent/me'),
+
+    /**
+     * The next run, leased to this runner; null when none came within `wait` seconds (≤ 60).
+     * `instructions` are the runner's own, put before the agent's in the run's prompt.
+     */
+    claim: async (opts: { wait?: number; runner?: string; instructions?: string } = {}) => {
+      const q = new URLSearchParams({ wait: String(opts.wait ?? 0) });
+      if (opts.runner) q.set('runner', opts.runner);
+      return (
+        (await this.request<AgentRunContext | null>(
+          'POST',
+          `/agent/claim?${q}`,
+          opts.instructions ? { instructions: opts.instructions } : undefined,
+        )) ?? null
+      );
+    },
+
+    /** Extends the lease (5 minutes). `cancelled`: someone stopped the run; stop working on it. */
+    heartbeat: (runId: string) =>
+      this.request<{ cancelled: boolean; waiting?: boolean; status: AgentRun['status'] }>(
+        'POST',
+        `/agent/runs/${encodeURIComponent(runId)}/heartbeat`,
+      ),
+
+    /**
+     * Started (`running`), finished (a summary is posted on the issue), or `waiting` with a
+     * `question`. `resume` is handed back on the next pickup. Once a run is waiting, other
+     * reports change nothing but `sessionUrl` and `resume`.
+     */
+    report: (
+      runId: string,
+      input: {
+        status?: 'running' | 'waiting' | 'succeeded' | 'failed';
+        sessionUrl?: string | null;
+        summary?: string | null;
+        error?: string | null;
+        question?: string;
+        resume?: string | null;
+      },
+    ) => this.request<AgentRun>('PATCH', `/agent/runs/${encodeURIComponent(runId)}`, input),
+
+    /** Asks a person and pauses the run; a reply on the issue puts it back in the queue. */
+    ask: (runId: string, question: string) =>
+      this.request<AgentRun>('PATCH', `/agent/runs/${encodeURIComponent(runId)}`, {
+        status: 'waiting',
+        question,
+      }),
   };
 }

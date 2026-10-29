@@ -101,6 +101,56 @@ export const mcpToolSchemas = {
     body: z.string().trim().min(1).max(50_000).describe('Markdown; @username mentions notify'),
     replyTo: z.uuid().optional().describe('Id of the comment to reply to'),
   }),
+  list_agents: z.object({}),
+  assign_to_agent: z.object({
+    issue,
+    agent: ref('The agent: username, name or id (see list_agents)'),
+    note: z
+      .string()
+      .trim()
+      .min(1)
+      .max(50_000)
+      .optional()
+      .describe('Markdown, posted as a comment first so the agent reads it'),
+  }),
+  agent_runs: z.object({ issue }),
+  rerun_agent: z.object({
+    issue,
+    note: z
+      .string()
+      .trim()
+      .min(1)
+      .max(50_000)
+      .optional()
+      .describe('Markdown, posted as a comment first so the agent reads it'),
+  }),
+  cancel_agent_run: z.object({ issue }),
+  current_run: z.object({}),
+  report_run: z.object({
+    run: z.uuid().optional().describe('The run (default: your only open run)'),
+    status: z.enum(['running', 'succeeded', 'failed']).optional(),
+    sessionUrl: z.url().max(2000).optional().describe('A link to where the work can be followed'),
+    summary: z
+      .string()
+      .max(50_000)
+      .optional()
+      .describe('Markdown; when finishing, it is posted on the issue'),
+    error: z.string().max(10_000).optional().describe('Why it failed'),
+    resume: z
+      .string()
+      .max(2000)
+      .optional()
+      .describe('Anything you need to continue this session later; handed back on the next pickup'),
+  }),
+  ask_question: z.object({
+    question: z
+      .string()
+      .trim()
+      .min(1)
+      .max(10_000)
+      .describe('Markdown; posted on the issue, mentioning whoever asked for the work'),
+    run: z.uuid().optional().describe('The run (default: your only open run)'),
+  }),
 };
 
 export type McpToolName = keyof typeof mcpToolSchemas;
@@ -112,6 +162,8 @@ export const MCP_TOOLS: {
   title: string;
   description: string;
   readOnly: boolean;
+  /** `agent`: only listed for an agent's key (it is about the agent's own runs). */
+  audience?: 'agent';
 }[] = [
   {
     name: 'list_teams',
@@ -186,5 +238,62 @@ export const MCP_TOOLS: {
     title: 'Add comment',
     description: 'Comment on an issue (Markdown, @mentions notify people).',
     readOnly: false,
+  },
+  {
+    name: 'list_agents',
+    title: 'List agents',
+    description:
+      'Agents in the workspace: members that are not people. Assigning an issue to one hands it to its runner.',
+    readOnly: true,
+  },
+  {
+    name: 'assign_to_agent',
+    title: 'Assign to agent',
+    description:
+      'Hand an issue to an agent, optionally with a note for it. If the agent already has it, it runs again.',
+    readOnly: false,
+  },
+  {
+    name: 'agent_runs',
+    title: 'Agent runs',
+    description:
+      "An issue's agent runs: status, runner, session link, summary or error, newest first.",
+    readOnly: true,
+  },
+  {
+    name: 'rerun_agent',
+    title: 'Run agent again',
+    description:
+      "Ask the issue's agent to work on it again, optionally with a note (e.g. review feedback).",
+    readOnly: false,
+  },
+  {
+    name: 'cancel_agent_run',
+    title: 'Cancel agent run',
+    description: "Stop the agent's queued or running work on an issue.",
+    readOnly: false,
+  },
+  {
+    name: 'current_run',
+    title: 'Current run',
+    description: 'For agents: the runs you are working on now, with their issues.',
+    readOnly: true,
+    audience: 'agent',
+  },
+  {
+    name: 'report_run',
+    title: 'Report run',
+    description:
+      'For agents: report on a run you hold. Add a session link, mark it running, or finish it (succeeded or failed) with a summary that is posted on the issue.',
+    readOnly: false,
+    audience: 'agent',
+  },
+  {
+    name: 'ask_question',
+    title: 'Ask a question',
+    description:
+      'For agents: ask a person something you need before you can continue, then stop. The question is posted on the issue, the run pauses, and it resumes when someone replies.',
+    readOnly: false,
+    audience: 'agent',
   },
 ];
