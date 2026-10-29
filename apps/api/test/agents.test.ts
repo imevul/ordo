@@ -548,6 +548,78 @@ describe('handing an issue to another agent', () => {
   });
 });
 
+describe('mentions', () => {
+  it("ask an agent for help on an issue that isn't its own", async () => {
+    const helper = (
+      await owner.post(`${ws}/agents`, { name: 'Helper', teamIds: [eng], concurrency: 3 })
+    ).data;
+    const quiet = (await owner.post(`${ws}/agents`, { name: 'Quiet', teamIds: [eng] })).data;
+    const hidden = (await owner.post(`${ws}/agents`, { name: 'Hidden', teamIds: [prv] })).data;
+    const helperKey = (await owner.post(`${ws}/agents/${helper.id}/keys`, { name: 'h' })).data
+      .token;
+    const as = (method: string, url: string, body?: unknown) =>
+      bearer(helperKey, method, url, body);
+    const i = await issue('Slow dashboard');
+
+    const asked = (
+      await member.post(`${ws}/issues/${i.id}/comments`, {
+        body: '@helper can you find out why this is slow? @hidden too',
+      })
+    ).data;
+    const runs = await runsOf(i.id);
+    // Only agents who can work in the issue's team are asked.
+    expect(runs).toEqual([
+      expect.objectContaining({
+        agentId: helper.id,
+        status: 'queued',
+        trigger: 'mention',
+        triggerCommentId: asked.id,
+      }),
+    ]);
+    expect(runs.some((r) => r.agentId === hidden.id)).toBe(false);
+
+    const first = (await as('POST', `${ws}/agent/claim`)).data as AgentRunContext;
+    expect(first.assigned).toBe(false);
+    expect(first.trigger).toMatchObject({
+      kind: 'mention',
+      comment: { id: asked.id, author: 'Max Member' },
+    });
+    expect(first.prompt).toContain("isn't assigned to you");
+    expect(first.prompt).toContain("## Why you're here\nMax Member mentioned you in a comment:");
+    expect(first.prompt).toContain('> @helper can you find out why this is slow?');
+
+    // A mention while it's working queues one follow-up, which waits for this run to end.
+    await member.post(`${ws}/issues/${i.id}/comments`, { body: '@helper also check the API' });
+    await member.post(`${ws}/issues/${i.id}/comments`, { body: '@helper and the database' });
+    expect((await runsOf(i.id)).map((r) => r.status)).toEqual(['queued', 'claimed']);
+    expect((await as('POST', `${ws}/agent/claim`)).statusCode).toBe(204);
+    await as('PATCH', `${ws}/agent/runs/${first.run.id}`, {
+      status: 'succeeded',
+      summary: 'Found it.',
+    });
+    const second = (await as('POST', `${ws}/agent/claim`)).data as AgentRunContext;
+    expect(second.issue.id).toBe(i.id);
+    expect(second.trigger.comment?.body).toBe('@helper also check the API');
+    // It sees everything said meanwhile, including the mention that didn't need its own run.
+    expect(second.comments.map((c) => c.body)).toEqual(
+      expect.arrayContaining(['@helper and the database', 'Found it.']),
+    );
+    await as('PATCH', `${ws}/agent/runs/${second.run.id}`, { status: 'succeeded' });
+
+    // Agents mentioning agents start nothing (they hand work on by assigning).
+    await as('POST', `${ws}/issues/${i.id}/comments`, { body: '@quiet over to you' });
+    expect((await runsOf(i.id)).some((r) => r.agentId === quiet.id)).toBe(false);
+
+    // Assigned: the mention is part of its own work, and Run again says so.
+    await owner.patch(`${ws}/issues/${i.id}`, { assigneeId: helper.id });
+    const third = (await as('POST', `${ws}/agent/claim`)).data as AgentRunContext;
+    expect(third).toMatchObject({ assigned: true, trigger: { kind: 'assigned' } });
+    expect(third.prompt).toContain('You have been assigned');
+    await as('PATCH', `${ws}/agent/runs/${third.run.id}`, { status: 'succeeded' });
+    expect((await member.post(`${ws}/issues/${i.id}/agent-runs`)).data.trigger).toBe('rerun');
+  });
+});
+
 describe('the workspace run list', () => {
   type Listed = AgentRun & { issue: { identifier: string; teamId: string } };
   const list = async (who: Client, query = '') =>
