@@ -694,6 +694,23 @@ describe('route inventory', () => {
     'POST /ai/issues/:id/triage':
       "getIssue and similarIssues with the caller's access (ai.test.ts)",
     'POST /ai/draft': 'assertTeamAccess write on the team (ai.test.ts)',
+    'GET /agents': 'workspace admins only (agents.test.ts)',
+    'POST /agents': 'workspace admins only (agents.test.ts)',
+    'PATCH /agents/:id': 'workspace admins only (agents.test.ts)',
+    'POST /agents/:id/keys': 'workspace admins only (agents.test.ts)',
+    'DELETE /agents/:id/keys/:keyId': 'workspace admins only',
+    'GET /issues/:id/agent-runs': "getIssue with the caller's access (agents.test.ts)",
+    'POST /issues/:id/agent-runs': "getIssue with the caller's access (agents.test.ts)",
+    'POST /agent-runs/:id/cancel': "loadRun is scoped to the caller's teams (agents.test.ts)",
+    'GET /agent/me': "the calling agent's own teams (agents.test.ts)",
+    'POST /agent/claim':
+      "the calling agent's runs; the issue is loaded with its access, else the run is cancelled (agents.test.ts)",
+    'POST /agent/runs/:id/heartbeat': "the calling agent's own runs (agents.test.ts)",
+    'PATCH /agent/runs/:id': "the calling agent's own runs (agents.test.ts)",
+    'GET /repositories': 'names and URLs, workspace-wide like the bootstrap (agents.test.ts)',
+    'POST /repositories': 'workspace admins only (agents.test.ts)',
+    'PATCH /repositories/:id': 'workspace admins only',
+    'DELETE /repositories/:id': 'workspace admins only',
   };
 
   it('accounts for every workspace route', () => {

@@ -18,8 +18,10 @@ import {
   assertProjectLead,
   assertProjectTeams,
   createProject,
+  defaultAssigneeColumns,
   listProjects,
 } from '../services/projects.ts';
+import { setProjectRepositories } from '../services/repositories.ts';
 
 /** A project the caller can see and change: visible through one of its teams, and not a guest. */
 async function loadProject(ctx: Ctx, id: string) {
@@ -56,7 +58,9 @@ export async function projectRoutes(app: FastifyInstance) {
       await loadProject(ctx, id);
       await assertProjectLead(ctx, input.leadId);
       await assertInitiative(ctx, input.initiativeId);
-      const { teamIds, ...rest } = input;
+      const { teamIds, repositoryIds, defaultAssignee, ...rest } = input;
+      if (repositoryIds) await setProjectRepositories(ctx, id, repositoryIds);
+      const assignee = await defaultAssigneeColumns(ctx, defaultAssignee);
       if (teamIds) {
         await assertProjectTeams(ctx, teamIds);
         await ctx.tx.delete(projectTeams).where(eq(projectTeams.projectId, id));
@@ -66,7 +70,7 @@ export async function projectRoutes(app: FastifyInstance) {
       }
       await ctx.tx
         .update(projects)
-        .set({ ...rest, updatedAt: new Date().toISOString() })
+        .set({ ...rest, ...assignee, updatedAt: new Date().toISOString() })
         .where(eq(projects.id, id));
       emit(ctx, { kind: 'project', action: 'updated', id });
       const [project] = await listProjects(ctx.tx, ctx.access, id);

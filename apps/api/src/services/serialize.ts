@@ -27,6 +27,7 @@ export const toProject = (
   progress?: Progress,
   health?: ProjectHealth | null,
   milestones: Milestone[] = [],
+  repositoryIds: string[] = [],
 ): Project => ({
   id: p.id,
   name: p.name,
@@ -44,6 +45,12 @@ export const toProject = (
   health: health ?? null,
   milestones,
   initiativeId: p.initiativeId,
+  repositoryIds,
+  // A chosen member whose account is gone falls back to the workspace's default.
+  defaultAssignee:
+    p.defaultAssigneeMode === 'member'
+      ? (p.defaultAssigneeId ?? 'workspace')
+      : p.defaultAssigneeMode,
 });
 
 export const toMilestone = (

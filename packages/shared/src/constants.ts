@@ -120,8 +120,11 @@ export const isAdminRole = (role: string) => role === 'owner' || role === 'admin
 export const TEAM_ROLES = ['admin', 'member'] as const;
 export type TeamRole = (typeof TEAM_ROLES)[number];
 
-/** Only humans sign in. Bots act for integrations; placeholders stand in for unmapped imported people. */
-export const USER_KINDS = ['human', 'bot', 'placeholder'] as const;
+/**
+ * Only humans sign in. Agents are assignable members that act through an API key (a runner does
+ * their work). Bots act for integrations; placeholders stand in for unmapped imported people.
+ */
+export const USER_KINDS = ['human', 'agent', 'bot', 'placeholder'] as const;
 export type UserKind = (typeof USER_KINDS)[number];
 
 export const AUDIT_ACTIONS = [
@@ -190,6 +193,13 @@ export const AUDIT_ACTIONS = [
   'team.member_removed',
   'team.member_role_changed',
   'settings.updated',
+  'agent.created',
+  'agent.updated',
+  'agent.disabled',
+  'agent.key_created',
+  'repository.created',
+  'repository.updated',
+  'repository.deleted',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -199,7 +209,7 @@ export const AUDIT_CATEGORIES = {
   members: ['member.', 'invite.', 'placeholder.', 'admin.'],
   teams: ['team.'],
   workspace: ['workspace.', 'settings.'],
-  integrations: ['integration.', 'webhook.', 'chat_account.'],
+  integrations: ['integration.', 'webhook.', 'chat_account.', 'agent.', 'repository.'],
   imports: ['import.'],
 } as const satisfies Record<string, readonly string[]>;
 export type AuditCategory = keyof typeof AUDIT_CATEGORIES;
@@ -290,6 +300,7 @@ export const DOMAIN_EVENT_TYPES = [
   'cycle.created',
   'cycle.updated',
   'cycle.deleted',
+  'agent_run.updated',
 ] as const;
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
 
@@ -302,6 +313,30 @@ export const CHAT_EVENT_KINDS = [
   'project_update.created',
 ] as const;
 export type ChatEventKind = (typeof CHAT_EVENT_KINDS)[number];
+
+/**
+ * queued: waiting for a runner. claimed: a runner took it and holds the lease. running: the
+ * runner said it started. waiting: the agent asked a question; a person's comment requeues it.
+ * The rest are final.
+ */
+export const AGENT_RUN_STATUSES = [
+  'queued',
+  'claimed',
+  'running',
+  'waiting',
+  'succeeded',
+  'failed',
+  'cancelled',
+] as const;
+export type AgentRunStatus = (typeof AGENT_RUN_STATUSES)[number];
+export const AGENT_RUN_OPEN: readonly AgentRunStatus[] = [
+  'queued',
+  'claimed',
+  'running',
+  'waiting',
+];
+/** The runner protocol's version, in every claimed run's context. */
+export const AGENT_PROTOCOL_VERSION = 1;
 
 export const ISSUE_LINK_KINDS = [
   'pull_request',

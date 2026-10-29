@@ -1,7 +1,7 @@
 import type { MemberRole } from '@ordo/shared';
 import { and, eq, inArray } from 'drizzle-orm';
-import { teamMembers, teams, workspaceMembers } from '../db/schema.ts';
-import { notFound } from '../lib/errors.ts';
+import { teamMembers, teams, users, workspaceMembers } from '../db/schema.ts';
+import { badRequest, notFound } from '../lib/errors.ts';
 import { auditCtx } from './audit.ts';
 import { type Ctx, emit } from './context.ts';
 import { assertNotLastOwner, memberRole } from './workspaces.ts';
@@ -21,6 +21,9 @@ const via = (ctx: Ctx) => (ctx.source === 'scim' ? { via: 'scim' } : {});
 async function current(ctx: Ctx, userId: string) {
   const role = await memberRole(ctx.tx, ctx.workspaceId, userId);
   if (!role) throw notFound('Member');
+  // Agents stay guests of their own teams; they're managed (and disabled) as agents.
+  const [user] = await ctx.tx.select({ kind: users.kind }).from(users).where(eq(users.id, userId));
+  if (user?.kind === 'agent') throw badRequest('Agents are managed in Settings → Agents');
   return role;
 }
 

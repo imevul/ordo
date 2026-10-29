@@ -115,7 +115,18 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       update_issue:
         'Change an issue: title, description, status, priority, assignee, labels, project, cycle, parent, estimate or due date.',
       add_comment: 'Comment on an issue (Markdown, @mentions notify people).',
+      list_agents: 'Agents in the workspace and the teams they work in.',
+      assign_to_agent:
+        'Hand an issue to an agent, optionally with a note. If it already has it, it runs again.',
+      agent_runs: "An issue's agent runs: status, runner, session link, summary or error.",
+      rerun_agent: "Ask the issue's agent to work on it again, optionally with a note.",
+      cancel_agent_run: "Stop the agent's queued or running work on an issue.",
+      current_run: 'The runs the agent is working on now.',
+      report_run: 'Report on a run: a session link, started, or finished with a summary.',
+      ask_question: 'Ask a person something and pause; a reply on the issue resumes the run.',
     },
+    /** Tag on tools only an agent's key sees. */
+    agentsOnly: 'agents only',
   },
   apps: {
     title: 'Connected apps',

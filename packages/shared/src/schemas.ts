@@ -156,6 +156,7 @@ export const updateWorkspaceSchema = z.object({
       aiSource: z.enum(['instance', 'workspace']).optional(),
       scimDefaultRole: z.enum(['member', 'guest']).optional(),
       scimMatchGroupsByName: z.boolean().optional(),
+      defaultAssigneeId: id.nullable().optional(),
     })
     .optional(),
 });
@@ -257,6 +258,7 @@ export const updateTeamSchema = z.object({
   cyclesEnabled: z.boolean().optional(),
   private: z.boolean().optional(),
   defaultStateId: id.nullish(),
+  defaultRepositoryId: id.nullish(),
   gitAutomation: z.partialRecord(z.enum(GIT_EVENTS), z.union([id, z.literal('none')])).optional(),
   slaHours: z
     .partialRecord(
@@ -525,6 +527,9 @@ export const createProjectSchema = z.object({
   targetDate: isoDate.nullish(),
   teamIds: z.array(id).min(1),
   initiativeId: id.nullish(),
+  repositoryIds: z.array(id).max(20).optional(),
+  /** `workspace`: the workspace's default assignee; `none`: nobody; else a member's id. */
+  defaultAssignee: z.union([z.enum(['workspace', 'none']), id]).optional(),
 });
 
 const domain = z
@@ -964,3 +969,69 @@ export const passkeyLoginSchema = z.object({
 export const renamePasskeySchema = z.object({ name: z.string().trim().min(1).max(100) });
 
 export const removePasskeySchema = z.object({ password: z.string().max(200).optional() });
+
+/** What `git clone` accepts: http(s), ssh://, scp-style `git@host:path`, or a path on the runner. */
+const gitUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .regex(
+    /^(https?:\/\/|ssh:\/\/|git:\/\/|file:\/\/|\/|[\w.-]+@[\w.-]+:)\S+$/,
+    'Expected a clone URL like https://… or git@host:owner/repo.git',
+  );
+const branch = z
+  .string()
+  .trim()
+  .min(1)
+  .max(200)
+  .regex(/^[^\s~^:?*[\\]+$/, 'Not a valid branch name');
+
+const repositoryFields = {
+  name: name,
+  url: gitUrl,
+  defaultBranch: branch,
+  integrationId: id.nullish(),
+  externalRepo: z.string().trim().max(300).nullish(),
+};
+export const createRepositorySchema = z.object({
+  ...repositoryFields,
+  defaultBranch: branch.default('main'),
+});
+export const updateRepositorySchema = z.object(repositoryFields).partial();
+
+const agentFields = {
+  name: name,
+  avatarColor: color,
+  teamIds: z.array(id).min(1).max(100),
+  instructions: z.string().max(20_000),
+  concurrency: z.number().int().min(1).max(20),
+};
+export const createAgentSchema = z.object({
+  ...agentFields,
+  username: z.string().regex(USERNAME_PATTERN, 'Lowercase letters, digits, . _ -').optional(),
+  avatarColor: agentFields.avatarColor.optional(),
+  instructions: agentFields.instructions.default(''),
+  concurrency: agentFields.concurrency.default(1),
+});
+// No defaults here: in Zod 4 `.partial()` keeps them, and a PATCH would reset what it didn't send.
+export const updateAgentSchema = z
+  .object(agentFields)
+  .partial()
+  .extend({ disabled: z.boolean().optional() });
+
+/** Runner protocol: what a runner reports about a run it holds. */
+export const reportAgentRunSchema = z
+  .object({
+    status: z.enum(['running', 'waiting', 'succeeded', 'failed']).optional(),
+    sessionUrl: z.url().max(2000).nullish(),
+    summary: z.string().max(50_000).nullish(),
+    error: z.string().max(10_000).nullish(),
+    /** With `waiting`: what the agent asks. Posted on the issue; a person's reply resumes the run. */
+    question: z.string().trim().min(1).max(10_000).optional(),
+    /** Opaque: handed back on the next pickup so the runner can continue the agent's session. */
+    resume: z.string().max(2000).nullish(),
+  })
+  .refine((r) => r.status !== 'waiting' || !!r.question, {
+    message: 'Say what you are asking (question)',
+    path: ['question'],
+  });

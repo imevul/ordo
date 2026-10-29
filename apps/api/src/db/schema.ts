@@ -1,4 +1,5 @@
 import type {
+  AgentRunStatus,
   AuditAction,
   CycleAutomation,
   DomainEventType,
@@ -78,7 +79,10 @@ export const users = pgTable('users', {
   /** Null for accounts that only sign in through SSO, and for bot/placeholder users. */
   passwordHash: text('password_hash'),
   avatarColor: text('avatar_color').notNull().default('#ff1493'),
-  /** human: a person; bot: acts for an integration; placeholder: an unmapped imported person. Only humans log in. */
+  /**
+   * human: a person; agent: an assignable member that acts through API keys (see `agents`); bot:
+   * acts for an integration; placeholder: an unmapped imported person. Only humans log in.
+   */
   kind: text('kind').$type<UserKind>().notNull().default('human'),
   isInstanceAdmin: boolean('is_instance_admin').notNull().default(false),
   emailVerifiedAt: ts('email_verified_at'),
@@ -89,7 +93,7 @@ export const users = pgTable('users', {
   totpEnabledAt: ts('totp_enabled_at'),
   preferences: jsonb('preferences').$type<Partial<UserPreferences>>().notNull().default({}),
   /**
-   * For bots: the workspace they act in (outlives the integration, so its history keeps a name).
+   * For bots and agents: the workspace they act in (outlives the integration, so its history keeps a name).
    * For placeholders: the workspace whose import made them.
    */
   botWorkspaceId: uuid('bot_workspace_id').references((): AnyPgColumn => workspaces.id, {
@@ -200,6 +204,11 @@ export const teams = pgTable(
     private: boolean('private').notNull().default(false),
     cyclesEnabled: boolean('cycles_enabled').notNull().default(true),
     defaultStateId: uuid('default_state_id'),
+    /** Where agents work on the team's issues that aren't in a project with repositories. */
+    defaultRepositoryId: uuid('default_repository_id').references(
+      (): AnyPgColumn => repositories.id,
+      { onDelete: 'set null' },
+    ),
     gitAutomation: jsonb('git_automation').$type<GitAutomation>().notNull().default({}),
     autoArchiveMonths: integer('auto_archive_months'),
     slaHours: jsonb('sla_hours').$type<SlaHours>().notNull().default({}),
@@ -435,6 +444,14 @@ export const projects = pgTable(
     targetDate: date('target_date', { mode: 'string' }),
     initiativeId: uuid('initiative_id').references(() => initiatives.id, { onDelete: 'set null' }),
     sortOrder: doublePrecision('sort_order').notNull().default(0),
+    /** Who new issues in the project go to: the workspace's default, nobody, or `defaultAssigneeId`. */
+    defaultAssigneeMode: text('default_assignee_mode')
+      .$type<'workspace' | 'none' | 'member'>()
+      .notNull()
+      .default('workspace'),
+    defaultAssigneeId: uuid('default_assignee_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1611,4 +1628,103 @@ export const workspaceExports = pgTable(
     completedAt: ts('completed_at'),
   },
   (t) => [index('workspace_exports_workspace_idx').on(t.workspaceId)],
+);
+
+/** A git repository work happens in. Only where it is: runners bring their own credentials. */
+export const repositories = pgTable(
+  'repositories',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    url: text('url').notNull(),
+    defaultBranch: text('default_branch').notNull().default('main'),
+    /** The forge integration and its repo ("owner/name") that pull requests come from. */
+    integrationId: uuid('integration_id').references(() => integrations.id, {
+      onDelete: 'set null',
+    }),
+    externalRepo: text('external_repo'),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('repositories_workspace_idx').on(t.workspaceId)],
+);
+
+export const projectRepositories = pgTable(
+  'project_repositories',
+  {
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    repositoryId: uuid('repository_id')
+      .notNull()
+      .references(() => repositories.id, { onDelete: 'cascade' }),
+    position: integer('position').notNull().default(0),
+  },
+  (t) => [
+    primaryKey({ columns: [t.projectId, t.repositoryId] }),
+    index('project_repositories_repository_idx').on(t.repositoryId),
+  ],
+);
+
+/** What makes a `kind: 'agent'` user an agent: its settings. The user row is its identity. */
+export const agents = pgTable('agents', {
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  workspaceId: uuid('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  /** Markdown added to every run's prompt. */
+  instructions: text('instructions').notNull().default(''),
+  /** Runs it works on at once, across its runners. */
+  concurrency: integer('concurrency').notNull().default(1),
+  createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/**
+ * One pickup of an issue by an agent. Runners claim queued runs with a lease they keep alive by
+ * heartbeat; a lapsed lease puts the run back in the queue (see services/agents.ts).
+ */
+export const agentRuns = pgTable(
+  'agent_runs',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agents.userId, { onDelete: 'cascade' }),
+    status: text('status').$type<AgentRunStatus>().notNull().default('queued'),
+    /** Claims so far; each lapsed lease counts. */
+    attempts: integer('attempts').notNull().default(0),
+    leaseExpiresAt: ts('lease_expires_at'),
+    runnerName: text('runner_name'),
+    sessionUrl: text('session_url'),
+    summary: text('summary'),
+    error: text('error'),
+    /** The agent's last question; set while `waiting`, kept after it resumes. */
+    question: text('question'),
+    /** Opaque to Ordo: the runner's handle on the agent's session, returned on the next pickup. */
+    resume: text('resume'),
+    requestedById: uuid('requested_by_id').references(() => users.id, { onDelete: 'set null' }),
+    startedAt: ts('started_at'),
+    finishedAt: ts('finished_at'),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('agent_runs_agent_status_idx').on(t.agentId, t.status, t.createdAt),
+    index('agent_runs_issue_idx').on(t.issueId),
+    index('agent_runs_lease_idx').on(t.leaseExpiresAt),
+  ],
 );

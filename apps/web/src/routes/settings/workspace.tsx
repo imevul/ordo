@@ -37,7 +37,7 @@ import { t, tx } from '../../i18n/index.ts';
 import { roleLabel } from '../../i18n/labels.ts';
 import { relativeTime, shortDate } from '../../lib/format.ts';
 import { useTheme } from '../../lib/theme.ts';
-import { useWorkspace } from '../../lib/workspace.tsx';
+import { memberChoices, useWorkspace } from '../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from './ui.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
@@ -166,6 +166,33 @@ export function WorkspaceSection() {
                 {team.name}
               </option>
             ))}
+        </select>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t('workspaceSettings.defaultAssignee.title')}
+        description={t('workspaceSettings.defaultAssignee.description')}
+      >
+        <select
+          className="input w-72"
+          value={ws.workspace.settings.defaultAssigneeId ?? 'none'}
+          onChange={async (e) => {
+            try {
+              await api.patch(wsPath(ws.slug, '/'), {
+                settings: { defaultAssigneeId: e.target.value === 'none' ? null : e.target.value },
+              });
+              refresh();
+            } catch (err) {
+              toast.error(errMsg(err));
+            }
+          }}
+        >
+          <option value="none">{t('issues.none.assignee')}</option>
+          {memberChoices(ws).map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+            </option>
+          ))}
         </select>
       </SettingsCard>
 
@@ -665,12 +692,14 @@ export function MembersSection() {
     },
   );
 
+  // Agents are members too, but they're managed under Settings → Agents.
+  const people = ws.members.filter((m) => m.kind !== 'agent');
   return (
     <>
       {canInvite && <InviteForm />}
       {canInvite && <PendingInvites />}
-      <SettingsCard title={t('workspaceSettings.members.title', { count: ws.members.length })}>
-        {ws.members.map((m) => (
+      <SettingsCard title={t('workspaceSettings.members.title', { count: people.length })}>
+        {people.map((m) => (
           <div
             key={m.id}
             className={`flex h-12 items-center gap-3 border-b border-border-soft ${m.suspended ? 'opacity-60' : ''}`}

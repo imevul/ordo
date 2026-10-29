@@ -21,7 +21,9 @@ export type EntityKind =
   | 'favorite'
   | 'notification'
   | 'import'
-  | 'export';
+  | 'export'
+  | 'repository'
+  | 'agentRun';
 
 export interface RealtimeEvent {
   kind: EntityKind;

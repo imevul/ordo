@@ -547,6 +547,20 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
       return a('accountDeleted');
     case 'settings.updated':
       return a('settingsUpdated');
+    case 'agent.created':
+      return a('agentCreated', { name: str(d.name) });
+    case 'agent.updated':
+      return a('agentUpdated');
+    case 'agent.disabled':
+      return a('agentDisabled');
+    case 'agent.key_created':
+      return a('agentKeyCreated', { name: str(d.name) });
+    case 'repository.created':
+      return a('repositoryCreated', { name: str(d.name) });
+    case 'repository.updated':
+      return a('repositoryUpdated');
+    case 'repository.deleted':
+      return a('repositoryDeleted', { name: str(d.name) });
     default:
       return e.action;
   }

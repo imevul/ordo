@@ -56,6 +56,11 @@ export default {
     targetDate: 'Target date',
     initiative: 'Initiative',
     teams: 'Teams',
+    defaultAssignee: 'Default assignee',
+    defaultAssigneeHint: 'Who new issues in this project go to.',
+    /** {name} is the workspace's default assignee, or "no assignee" */
+    workspaceDefault: 'Workspace default ({name})',
+    noAssignee: 'no assignee',
     color: 'Color',
     colorLabel: 'Color {color}',
   },

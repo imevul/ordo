@@ -13,6 +13,7 @@ import {
   PushCard,
   SecuritySection,
 } from './account.tsx';
+import { AgentsSection, RepositoriesSection } from './agents.tsx';
 import { AiSection } from './ai.tsx';
 import { AuditSection } from './audit.tsx';
 import { ChatAccountsCard } from './chat.tsx';
@@ -52,6 +53,8 @@ const SECTIONS: {
     { key: 'authentication', message: 'authentication', group: 'workspace', admin: true },
     { key: 'integrations', message: 'integrations', group: 'workspace', admin: true },
     { key: 'ai', message: 'aiAssistance', group: 'workspace', admin: true },
+    { key: 'agents', message: 'agents', group: 'workspace', admin: true },
+    { key: 'repositories', message: 'repositories', group: 'workspace', admin: true },
     { key: 'webhooks', message: 'webhooks', group: 'workspace', admin: true },
     { key: 'import', message: 'importExport', group: 'workspace', admin: true },
     { key: 'audit', message: 'auditLog', group: 'workspace', admin: true },
@@ -180,6 +183,10 @@ export function SettingsPage() {
       <AuthenticationSection />
     ) : section === 'ai' ? (
       <AiSection />
+    ) : section === 'agents' ? (
+      <AgentsSection />
+    ) : section === 'repositories' ? (
+      <RepositoriesSection />
     ) : section === 'audit' ? (
       <AuditSection />
     ) : section === 'labels' ? (

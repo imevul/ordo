@@ -34,6 +34,7 @@ import { mutate } from '../lib/mutate.ts';
 import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
 import { type Ctx, emit } from '../services/context.ts';
+import { assertRepositories } from '../services/repositories.ts';
 import { bumpEpoch } from '../services/sync.ts';
 import {
   addTeamMember,
@@ -139,6 +140,7 @@ export async function teamRoutes(app: FastifyInstance) {
             .where(eq(workflowStates.id, input.defaultStateId));
           if (state?.teamId !== teamId) throw badRequest('Default status must belong to the team');
         }
+        await assertRepositories(ctx, [input.defaultRepositoryId]);
         const set = { ...input } as Partial<typeof teams.$inferInsert>;
         if (input.cycleAutomation) {
           const was = cycleAutomationOf(before.cycleAutomation);

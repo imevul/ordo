@@ -1,0 +1,134 @@
+import {
+  createAgentSchema,
+  createApiKeySchema,
+  reportAgentRunSchema,
+  updateAgentSchema,
+} from '@ordo/shared';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+import { z } from 'zod';
+import { requireAccess, requireAdmin, requireUser } from '../lib/auth.ts';
+import { forbidden, parse } from '../lib/errors.ts';
+import { mutate } from '../lib/mutate.ts';
+import {
+  cancelRun,
+  claimRun,
+  createAgent,
+  createAgentKey,
+  describeAgent,
+  heartbeat,
+  listAgents,
+  listRuns,
+  reportRun,
+  requestRun,
+  revokeAgentKey,
+  updateAgent,
+  waitForRuns,
+} from '../services/agents.ts';
+
+/** Optional body: instructions from the runner's own configuration, added to the agent's. */
+const claimBody = z.object({ instructions: z.string().max(20_000).optional() });
+
+const claimQuery = z.object({
+  /** Seconds to wait for work before answering 204. */
+  wait: z.coerce.number().int().min(0).max(60).default(0),
+  runner: z.string().trim().max(200).optional(),
+});
+
+/** Runner endpoints answer only an agent's own API key. */
+function requireAgent(req: FastifyRequest) {
+  if (requireUser(req).kind !== 'agent') throw forbidden('Only an agent’s API key can do this');
+  return requireAccess(req);
+}
+
+export async function agentRoutes(app: FastifyInstance) {
+  const { db } = app;
+
+  // ─── managing agents (admins) ─────────────────────────────────────────
+
+  app.get('/agents', async (req) => {
+    const ws = requireAdmin(req);
+    return listAgents(db, ws.id);
+  });
+
+  app.post('/agents', async (req) => {
+    requireAdmin(req);
+    const input = parse(createAgentSchema, req.body);
+    return mutate(app, req, (ctx) => createAgent(ctx, input));
+  });
+
+  app.patch('/agents/:id', async (req) => {
+    requireAdmin(req);
+    const { id } = req.params as { id: string };
+    const input = parse(updateAgentSchema, req.body);
+    return mutate(app, req, (ctx) => updateAgent(ctx, id, input));
+  });
+
+  app.post('/agents/:id/keys', async (req) => {
+    requireAdmin(req);
+    const { id } = req.params as { id: string };
+    const { name } = parse(createApiKeySchema, req.body);
+    // The plaintext token is returned exactly once.
+    return mutate(app, req, (ctx) => createAgentKey(ctx, id, name));
+  });
+
+  app.delete('/agents/:id/keys/:keyId', async (req) => {
+    requireAdmin(req);
+    const { id, keyId } = req.params as { id: string; keyId: string };
+    await mutate(app, req, (ctx) => revokeAgentKey(ctx, id, keyId));
+    return { ok: true };
+  });
+
+  // ─── runs on an issue (anyone who can see it) ─────────────────────────
+
+  app.get('/issues/:id/agent-runs', async (req) => {
+    const { id } = req.params as { id: string };
+    return listRuns(db, requireAccess(req), id);
+  });
+
+  app.post('/issues/:id/agent-runs', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => requestRun(ctx, id));
+  });
+
+  app.post('/agent-runs/:id/cancel', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => cancelRun(ctx, id));
+  });
+
+  // ─── the runner protocol (agent keys) ─────────────────────────────────
+
+  app.get('/agent/me', async (req) => describeAgent(db, requireAgent(req)));
+
+  /**
+   * The next run, leased to the caller, or 204 when there's none within `wait` seconds. Waiting
+   * listens for run events, so a newly assigned issue is handed out at once.
+   */
+  app.post('/agent/claim', async (req, reply) => {
+    const access = requireAgent(req);
+    const { wait, runner } = parse(claimQuery, req.query);
+    const { instructions } = parse(claimBody, req.body ?? {});
+    const deadline = Date.now() + wait * 1000;
+    const gone = new AbortController();
+    reply.raw.on('close', () => gone.abort());
+    for (;;) {
+      const context = await claimRun(app, access, runner ?? null, instructions);
+      if (context) return context;
+      const left = deadline - Date.now();
+      if (left <= 0 || gone.signal.aborted) return reply.status(204).send();
+      await waitForRuns(app, access, left, gone.signal);
+    }
+  });
+
+  app.post('/agent/runs/:id/heartbeat', async (req) => {
+    requireAgent(req);
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => heartbeat(ctx, id));
+  });
+
+  app.patch('/agent/runs/:id', async (req) => {
+    requireAgent(req);
+    const { id } = req.params as { id: string };
+    const input = parse(reportAgentRunSchema, req.body);
+    return mutate(app, req, (ctx) => reportRun(ctx, id, input));
+  });
+}

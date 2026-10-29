@@ -98,6 +98,7 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     triageEnabled: t.triageEnabled,
     cyclesEnabled: t.cyclesEnabled,
     defaultStateId: t.defaultStateId,
+    defaultRepositoryId: t.defaultRepositoryId,
     private: t.private,
     gitAutomation: t.gitAutomation,
     cycleAutomation: cycleAutomationOf(t.cycleAutomation),

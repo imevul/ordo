@@ -51,8 +51,16 @@ export function useRealtime(slug: string): RealtimeStatus {
       if (kinds.has('projectUpdate')) inv(['ws', slug, 'projectUpdates']);
       if (kinds.has('import')) inv(['ws', slug, 'imports']);
       if (kinds.has('export')) inv(['ws', slug, 'exports']);
+      if (kinds.has('agentRun')) inv(['ws', slug, 'agentRuns']);
       // Most entity kinds live in the bootstrap payload (and progress counts change with issues).
-      const outsideBootstrap = ['comment', 'projectUpdate', 'import', 'export', 'document'];
+      const outsideBootstrap = [
+        'comment',
+        'projectUpdate',
+        'import',
+        'export',
+        'document',
+        'agentRun',
+      ];
       if ([...kinds].some((k) => !outsideBootstrap.includes(k))) inv(keys.bootstrap(slug));
       if (kinds.has('member') || kinds.has('workspace')) inv(keys.me);
     };

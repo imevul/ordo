@@ -43,6 +43,9 @@ In a checkout of the Ordo repository, `pnpm ordo <command>` runs the CLI from so
 | `ordo issue branch <id>`         | Print the git branch name (the workspace's branch format)                                                 |
 | `ordo search <words>`            | Issues and projects                                                                                       |
 | `ordo api <method> <path>`       | Call any [REST endpoint](api.md); path relative to `/api`; `--data <json \| @file \| ->`                  |
+| `ordo agent run …`               | Work on an agent's runs: launch a command of yours for each one (see [agents](agents.md))                 |
+| `ordo agent check --file <yaml>` | Validate a runner file and its keys without claiming anything                                             |
+| `ordo agent ask <question>`      | Inside a run: ask a person and pause the run until they reply (`-` reads stdin)                           |
 
 Every command takes `-w, --workspace <slug>`, `--json` (machine-readable output, the API's own shapes) and
 `-h, --help`.
