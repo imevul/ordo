@@ -3,7 +3,13 @@ name: ordo
 
 services:
   app:
-    build: .
+    build:
+      context: .
+      # Proxies for the build (pnpm install); unset ones fall back to Docker's own proxy config.
+      args:
+        - HTTP_PROXY
+        - HTTPS_PROXY
+        - NO_PROXY
     image: ordo:${ORDO_VERSION:-latest}
     restart: unless-stopped
     depends_on:
@@ -36,6 +42,10 @@ services:
       ORDO_S3_SECRET_ACCESS_KEY: ${ORDO_S3_SECRET_ACCESS_KEY:-}
       ORDO_S3_FORCE_PATH_STYLE: ${ORDO_S3_FORCE_PATH_STYLE:-true}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Outgoing HTTP(S) proxy (OAuth/SSO, webhooks, integrations, AI). Passed through only when set.
+      HTTP_PROXY:
+      HTTPS_PROXY:
+      NO_PROXY:
     volumes:
       - ordo-data:/data
     # Lets Ordo reach services on the host, such as a local Ollama for AI assistance.

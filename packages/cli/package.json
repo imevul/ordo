@@ -2,6 +2,7 @@
   "name": "@ordo/cli",
   "version": "0.1.0",
   "private": true,
+  "license": "Apache-2.0",
   "description": "The ordo command: Ordo issues from the terminal",
   "type": "module",
   "exports": {
