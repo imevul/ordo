@@ -226,6 +226,7 @@ describe('ordo agent', () => {
         'set -e',
         'cat > "$ORDO_RUNNER_DIR/prompt-copy.md"',
         'cp "$ORDO_RUN_FILE" "$ORDO_RUNNER_DIR/run-copy.json"',
+        'cp "$ORDO_MCP_CONFIG" "$ORDO_RUNNER_DIR/mcp-copy.json"',
         'echo "$ORDO_ISSUE $ORDO_WORKSPACE $(git rev-parse --abbrev-ref HEAD)" > "$ORDO_RUNNER_DIR/env-copy.txt"',
         'echo hello > greeting.txt',
         'echo "ORDO_SESSION_URL=https://agents.example.com/s/42"',
@@ -262,6 +263,13 @@ describe('ordo agent', () => {
     );
     const ctx = JSON.parse(readFileSync(join(dir, 'run-copy.json'), 'utf8')) as AgentRunContext;
     expect(ctx.run.id).toBe(runRow!.id);
+    // A ready MCP config: the workspace's MCP endpoint with the agent's key.
+    const mcp = JSON.parse(readFileSync(join(dir, 'mcp-copy.json'), 'utf8'));
+    expect(mcp.mcpServers.ordo).toEqual({
+      type: 'http',
+      url: `${url}/api/w/${slug}/mcp`,
+      headers: { Authorization: `Bearer ${keys.Claude}` },
+    });
     const branch = ctx.repositories[0]!.suggestedBranch;
     expect(branch).toMatch(/^runner-claude\/eng-\d+-add-a-greeting$/);
     expect(readFileSync(join(dir, 'env-copy.txt'), 'utf8').trim()).toBe(
@@ -303,6 +311,28 @@ describe('ordo agent', () => {
     expect(runRow!.error).toContain('it broke');
     expect(runRow!.error).toContain('exit code 3');
     expect((await lastComment(issue.id))!.body).toContain('This run failed');
+
+    // Silent on stderr: what it said on stdout is the error instead.
+    const quiet = await assign('Not logged in');
+    await ordo(
+      [
+        'agent',
+        'run',
+        '--once',
+        '-w',
+        slug,
+        '--url',
+        url,
+        '--repos',
+        join(dir, 'repos'),
+        '--',
+        'sh',
+        '-c',
+        'echo "Please log in first"; exit 1',
+      ],
+      { ORDO_AGENT_KEY: keys.Claude },
+    );
+    expect((await runsOf(quiet.id))[0]!.error).toBe('Please log in first\n(exit code 1)');
   });
 
   it('works without a repository when checkout is off', async () => {
