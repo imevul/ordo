@@ -645,6 +645,7 @@ describe('route inventory', () => {
     'POST /integrations': 'workspace admins only',
     'PATCH /integrations/:id': 'workspace admins only',
     'DELETE /integrations/:id': 'workspace admins only',
+    'GET /integrations/:id/repositories': 'workspace admins only (forges.test.ts)',
     'POST /issues/:id/links': "getIssue with the caller's access",
     'DELETE /issue-links/:id': 'deleteIssueLink checks the issue team',
     'POST /attachments': "getIssue with the caller's access (attachments.test.ts)",

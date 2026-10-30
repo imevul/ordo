@@ -1,4 +1,4 @@
-import type { IntegrationProviderInfo, WebhookPayload } from '@ordo/shared';
+import type { ForgeRepository, IntegrationProviderInfo, WebhookPayload } from '@ordo/shared';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import type { integrations } from '../db/schema.ts';
 import type { Ctx } from '../services/context.ts';
@@ -145,6 +145,12 @@ export interface IntegrationProvider extends IntegrationProviderInfo {
    * they can claim them under Account → Connected accounts and get credit for their work.
    */
   accountHost?(integration: IntegrationRow): string;
+
+  /**
+   * For forges: repositories the integration's credentials can see, matching `query` (a
+   * substring of owner/name) when given, so admins can pick one instead of typing its URL.
+   */
+  listRepositories?(ictx: IntegrationContext, query?: string): Promise<ForgeRepository[]>;
 
   /**
    * A long-lived connection (a socket, a long poll) for services that can't reach this instance.

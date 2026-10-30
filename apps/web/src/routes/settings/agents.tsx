@@ -1,6 +1,12 @@
-import type { Agent, Repository } from '@ordo/shared';
+import type {
+  Agent,
+  ForgeRepository,
+  Integration,
+  IntegrationProviderInfo,
+  Repository,
+} from '@ordo/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Copy, KeyRound, Pencil, Plus, Power, Trash2 } from 'lucide-react';
+import { Copy, KeyRound, Pencil, Plus, Power, Search, Trash2 } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
@@ -417,11 +423,36 @@ function Snippet({ text }: { text: string }) {
 
 // ─── Repositories ────────────────────────────────────────────────────
 
+/** Forge providers whose integrations can list the repositories they see. */
+const BROWSABLE = new Set(['github', 'forgejo']);
+
+/** What picking a forge repository fills into the new-repository form. */
+interface RepositoryDraft {
+  name: string;
+  url: string;
+  defaultBranch: string;
+  integrationId: string;
+  externalRepo: string;
+}
+
 /** Settings → Repositories: where code lives, for projects and team defaults to point at. */
 export function RepositoriesSection() {
   const ws = useWorkspace();
   const qc = useQueryClient();
   const [editing, setEditing] = useState<Repository | 'new' | null>(null);
+  const [draft, setDraft] = useState<RepositoryDraft | undefined>();
+  const [browsing, setBrowsing] = useState(false);
+  const { data: connected } = useQuery({
+    queryKey: ['ws', ws.slug, 'integrations'],
+    queryFn: () =>
+      api.get<{ providers: IntegrationProviderInfo[]; integrations: Integration[] }>(
+        wsPath(ws.slug, '/integrations'),
+      ),
+    enabled: ws.isAdmin,
+  });
+  const forges = (connected?.integrations ?? []).filter(
+    (i) => BROWSABLE.has(i.provider) && i.status !== 'disabled',
+  );
   const reload = () => qc.invalidateQueries({ queryKey: queryKeys.bootstrap(ws.slug) });
   if (!ws.isAdmin) return <p className="text-muted">{t('agents.repositories.adminsOnly')}</p>;
   return (
@@ -469,12 +500,40 @@ export function RepositoriesSection() {
         {ws.repositories.length === 0 && (
           <p className="font-mono text-[12px] text-index">{t('agents.repositories.empty')}</p>
         )}
-        <button type="button" className="btn btn-primary mt-4" onClick={() => setEditing('new')}>
-          <Plus size={13} /> {t('agents.repositories.add')}
-        </button>
+        <div className="mt-4 flex gap-2">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              setDraft(undefined);
+              setEditing('new');
+            }}
+          >
+            <Plus size={13} /> {t('agents.repositories.add')}
+          </button>
+          {forges.length > 0 && (
+            <button type="button" className="btn btn-ghost" onClick={() => setBrowsing(true)}>
+              <Search size={13} /> {t('agents.repositories.browse')}
+            </button>
+          )}
+        </div>
       </SettingsCard>
+      {/* Mounted only while open, so each visit starts fresh. */}
+      {browsing && (
+        <BrowseRepositoriesModal
+          forges={forges}
+          onClose={() => setBrowsing(false)}
+          onPick={(picked) => {
+            setBrowsing(false);
+            setDraft(picked);
+            setEditing('new');
+          }}
+        />
+      )}
       <RepositoryModal
         repository={editing}
+        draft={draft}
+        forges={forges}
         onClose={() => setEditing(null)}
         onSaved={() => {
           setEditing(null);
@@ -485,12 +544,167 @@ export function RepositoriesSection() {
   );
 }
 
+/** Repositories already added use one URL style; offer the same for new ones. */
+function preferredUrlStyle(repositories: Repository[]): 'ssh' | 'https' {
+  const https = repositories.filter((r) => /^https?:\/\//.test(r.url)).length;
+  return https > repositories.length - https ? 'https' : 'ssh';
+}
+
+/** Pick a connected forge, then one of the repositories it can see. */
+function BrowseRepositoriesModal({
+  forges,
+  onClose,
+  onPick,
+}: {
+  forges: Integration[];
+  onClose: () => void;
+  onPick: (draft: RepositoryDraft) => void;
+}) {
+  const ws = useWorkspace();
+  const [integrationId, setIntegrationId] = useState(forges[0]?.id ?? '');
+  const [query, setQuery] = useState('');
+  const [style, setStyle] = useState(() => preferredUrlStyle(ws.repositories));
+  const {
+    data: repos,
+    error,
+    isFetching,
+  } = useQuery({
+    queryKey: ['ws', ws.slug, 'integrations', integrationId, 'repositories'],
+    queryFn: () =>
+      api.get<ForgeRepository[]>(wsPath(ws.slug, `/integrations/${integrationId}/repositories`)),
+    enabled: !!integrationId,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const needle = query.trim().toLowerCase();
+  const matches = (repos ?? []).filter((r) => r.fullName.toLowerCase().includes(needle));
+  const added = new Set(
+    ws.repositories.flatMap((r) => [
+      r.url,
+      ...(r.integrationId && r.externalRepo ? [`${r.integrationId}:${r.externalRepo}`] : []),
+    ]),
+  );
+  const isAdded = (r: ForgeRepository) =>
+    added.has(r.sshUrl) || added.has(r.cloneUrl) || added.has(`${integrationId}:${r.fullName}`);
+  const pick = (r: ForgeRepository) =>
+    onPick({
+      name: r.fullName.split('/').at(-1) ?? r.fullName,
+      url: style === 'ssh' ? r.sshUrl : r.cloneUrl,
+      defaultBranch: r.defaultBranch,
+      integrationId,
+      externalRepo: r.fullName,
+    });
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      width={600}
+      label={t('agents.repositories.picker.label')}
+      align="center"
+    >
+      <div className="flex min-h-0 flex-col p-6">
+        <div className="section-label mb-4">{t('agents.repositories.picker.label')}</div>
+        {forges.length > 1 && (
+          <FormRow label={t('agents.repositories.picker.integration')}>
+            <select
+              className="input"
+              value={integrationId}
+              onChange={(e) => setIntegrationId(e.target.value)}
+            >
+              {forges.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.name}
+                </option>
+              ))}
+            </select>
+          </FormRow>
+        )}
+        <div className="mb-3 flex items-center gap-3">
+          <input
+            className="input flex-1"
+            autoFocus
+            placeholder={t('agents.repositories.picker.search')}
+            aria-label={t('agents.repositories.picker.search')}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && matches[0]) {
+                e.preventDefault();
+                pick(matches[0]);
+              }
+            }}
+          />
+          <fieldset className="flex items-center gap-3 text-[12px] text-muted">
+            <legend className="sr-only">{t('agents.repositories.picker.cloneWith')}</legend>
+            {(['ssh', 'https'] as const).map((s) => (
+              <label key={s} className="flex items-center gap-1.5">
+                <input
+                  type="radio"
+                  className="accent-primary"
+                  name="clone-style"
+                  checked={style === s}
+                  onChange={() => setStyle(s)}
+                />
+                {s === 'ssh' ? 'SSH' : 'HTTPS'}
+              </label>
+            ))}
+          </fieldset>
+        </div>
+        <div className="min-h-[8rem] flex-1 overflow-y-auto border border-border-soft">
+          {error ? (
+            <p className="p-3 text-[12.5px] text-error">{errMsg(error)}</p>
+          ) : !repos && isFetching ? (
+            <div className="p-3">
+              <Spinner />
+            </div>
+          ) : matches.length === 0 ? (
+            <p className="p-3 font-mono text-[12px] text-index">
+              {t('agents.repositories.picker.empty')}
+            </p>
+          ) : (
+            matches.map((r) => (
+              <button
+                key={r.fullName}
+                type="button"
+                className="menu-item"
+                disabled={isAdded(r)}
+                onClick={() => pick(r)}
+              >
+                <span className="min-w-0 flex-1 truncate text-left font-mono text-[12.5px]">
+                  {r.fullName}
+                </span>
+                {r.private && (
+                  <span className="tag">{t('agents.repositories.picker.private')}</span>
+                )}
+                {isAdded(r) && (
+                  <span className="tag font-mono">{t('agents.repositories.picker.added')}</span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+        <div className="mt-4 flex justify-end">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            {t('common.cancel')}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function RepositoryModal({
   repository,
+  draft,
+  forges,
   onClose,
   onSaved,
 }: {
   repository: Repository | 'new' | null;
+  /** Filled in from a forge repository picked in the browser. */
+  draft?: RepositoryDraft;
+  forges: Integration[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -502,14 +716,24 @@ function RepositoryModal({
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!repository) return;
-    setName(existing?.name ?? '');
-    setUrl(existing?.url ?? '');
-    setDefaultBranch(existing?.defaultBranch ?? 'main');
-  }, [repository, existing]);
+    setName(existing?.name ?? draft?.name ?? '');
+    setUrl(existing?.url ?? draft?.url ?? '');
+    setDefaultBranch(existing?.defaultBranch ?? draft?.defaultBranch ?? 'main');
+  }, [repository, existing, draft]);
+  const link = existing ?? (repository === 'new' ? draft : undefined);
+  const linkedTo = link?.integrationId
+    ? forges.find((f) => f.id === link.integrationId)?.name
+    : undefined;
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    const body = { name, url, defaultBranch };
+    const body = {
+      name,
+      url,
+      defaultBranch,
+      ...(!existing &&
+        draft && { integrationId: draft.integrationId, externalRepo: draft.externalRepo }),
+    };
     try {
       if (existing) await api.patch(wsPath(ws.slug, `/repositories/${existing.id}`), body);
       else await api.post(wsPath(ws.slug, '/repositories'), body);
@@ -567,6 +791,14 @@ function RepositoryModal({
             onChange={(e) => setDefaultBranch(e.target.value)}
           />
         </FormRow>
+        {link?.externalRepo && linkedTo && (
+          <p className="text-[11.5px] text-index">
+            {t('agents.repositories.form.linked', {
+              repo: link.externalRepo,
+              integration: linkedTo,
+            })}
+          </p>
+        )}
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             {t('common.cancel')}

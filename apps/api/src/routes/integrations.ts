@@ -194,6 +194,23 @@ export async function integrationRoutes(app: FastifyInstance) {
     });
   });
 
+  /** Repositories a forge integration can see, for picking one when adding a workspace repository. */
+  app.get('/integrations/:id/repositories', async (req) => {
+    const ws = requireAdmin(req);
+    const { id } = req.params as { id: string };
+    const { q } = parse(z.object({ q: z.string().max(200).optional() }), req.query);
+    const row = await loadIntegration(db, ws.id, id);
+    const provider = getProvider(row.provider);
+    if (!provider?.listRepositories) throw badRequest(`${row.name} can't list repositories`);
+    if (row.status === 'disabled') throw badRequest(`${row.name} is turned off`);
+    try {
+      return await provider.listRepositories(integrationContext(app, row), q);
+    } catch (err) {
+      // The forge's answer (bad token, unreachable host) is the admin's to fix.
+      throw badRequest(err instanceof Error ? err.message : String(err));
+    }
+  });
+
   // ─── links people add by hand ─────────────────────────────────────────
 
   app.post('/issues/:id/links', async (req) => {
