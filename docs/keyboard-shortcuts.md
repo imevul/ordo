@@ -24,6 +24,9 @@ fire while you're typing in a field, except the ones marked _(anywhere)_.
 | `G` then `V` | Views                    |
 | `G` then `S` | Settings                 |
 
+`G` then a key always navigates, even on pages where that key alone does something else (`I` on an issue
+list assigns to you, `G` then `I` opens the inbox). Opening or closing a dialog cancels a pending `G`.
+
 ## Issue lists and boards
 
 | Keys                       | Action                          |
