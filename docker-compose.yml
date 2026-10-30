@@ -17,6 +17,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-ordo}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-ordo}
+      DATABASE_POOL_SIZE: ${DATABASE_POOL_SIZE:-}
       ORDO_PUBLIC_URL: ${ORDO_PUBLIC_URL:-http://localhost:3000}
       ORDO_SECRET_KEY: ${ORDO_SECRET_KEY:?Run `make update` to add ORDO_SECRET_KEY to .env}
       ORDO_SECRET_KEY_PREVIOUS: ${ORDO_SECRET_KEY_PREVIOUS:-}
@@ -24,6 +25,8 @@ services:
       ORDO_SIGNUP_MODE: ${ORDO_SIGNUP_MODE:-}
       ORDO_ALLOW_WORKSPACE_CREATION: ${ORDO_ALLOW_WORKSPACE_CREATION:-}
       ORDO_ALLOW_PRIVATE_NETWORK_TARGETS: ${ORDO_ALLOW_PRIVATE_NETWORK_TARGETS:-}
+      ORDO_MAX_ATTACHMENT_MB: ${ORDO_MAX_ATTACHMENT_MB:-}
+      ORDO_OFFLINE_SYNC: ${ORDO_OFFLINE_SYNC:-}
       ORDO_TRUST_PROXY: ${ORDO_TRUST_PROXY:-true}
       # Outgoing mail; leave empty to configure it in Admin → Settings instead.
       ORDO_SMTP_URL: ${ORDO_SMTP_URL:-}
@@ -33,6 +36,10 @@ services:
       ORDO_AI_MODEL: ${ORDO_AI_MODEL:-}
       ORDO_AI_BASE_URL: ${ORDO_AI_BASE_URL:-}
       ORDO_AI_API_KEY: ${ORDO_AI_API_KEY:-}
+      ORDO_WORKSPACE_AI: ${ORDO_WORKSPACE_AI:-}
+      # GitHub Enterprise Server; empty means github.com.
+      ORDO_GITHUB_URL: ${ORDO_GITHUB_URL:-}
+      ORDO_GITHUB_API_URL: ${ORDO_GITHUB_API_URL:-}
       # Uploads: local (the ordo-data volume) or s3.
       ORDO_STORAGE: ${ORDO_STORAGE:-local}
       ORDO_S3_ENDPOINT: ${ORDO_S3_ENDPOINT:-}
