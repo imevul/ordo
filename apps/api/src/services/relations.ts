@@ -73,8 +73,15 @@ export async function createRelation(
     if (target && target.id !== issue.stateId)
       await updateIssue(ctx, issue.id, { stateId: target.id });
   }
-  emit(ctx, { kind: 'issue', action: 'updated', id: issue.id, teamId: issue.teamId });
-  emit(ctx, { kind: 'issue', action: 'updated', id: other.id, teamId: other.teamId });
+  // Marking a duplicate goes through updateIssue, which says for itself what it changed.
+  for (const end of [issue, other])
+    emit(ctx, {
+      kind: 'issue',
+      action: 'updated',
+      id: end.id,
+      teamId: end.teamId,
+      bootstrapUnchanged: true,
+    });
   record(
     ctx,
     'relation.created',
@@ -100,7 +107,13 @@ export async function deleteRelation(ctx: Ctx, id: string) {
   }
   await ctx.tx.delete(issueRelations).where(eq(issueRelations.id, id));
   for (const end of ends)
-    emit(ctx, { kind: 'issue', action: 'updated', id: end.id, teamId: end.teamId });
+    emit(ctx, {
+      kind: 'issue',
+      action: 'updated',
+      id: end.id,
+      teamId: end.teamId,
+      bootstrapUnchanged: true,
+    });
   record(
     ctx,
     'relation.deleted',

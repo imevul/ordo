@@ -50,7 +50,14 @@ export async function createAttachment(
       })
       .returning({ id: attachments.id }),
   );
-  if (issue) emit(ctx, { kind: 'issue', action: 'updated', id: issue.id, teamId: issue.teamId });
+  if (issue)
+    emit(ctx, {
+      kind: 'issue',
+      action: 'updated',
+      id: issue.id,
+      teamId: issue.teamId,
+      bootstrapUnchanged: true,
+    });
   return (await getAttachment(ctx.tx, row.id))!;
 }
 
@@ -127,7 +134,13 @@ export async function deleteAttachment(ctx: Ctx, id: string): Promise<string> {
     );
   await ctx.tx.delete(attachments).where(eq(attachments.id, id));
   if (row.issueId && row.teamId)
-    emit(ctx, { kind: 'issue', action: 'updated', id: row.issueId, teamId: row.teamId });
+    emit(ctx, {
+      kind: 'issue',
+      action: 'updated',
+      id: row.issueId,
+      teamId: row.teamId,
+      bootstrapUnchanged: true,
+    });
   return row.fileId;
 }
 

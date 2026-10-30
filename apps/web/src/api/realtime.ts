@@ -7,6 +7,26 @@ import { keys } from './queries.ts';
 
 export type RealtimeStatus = 'connecting' | 'live' | 'offline';
 
+/** Kinds the bootstrap payload holds nothing of. */
+const OUTSIDE_BOOTSTRAP = new Set<RealtimeEvent['kind']>([
+  'comment',
+  'projectUpdate',
+  'import',
+  'export',
+  'document',
+  'agentRun',
+]);
+
+/**
+ * Whether an event can change the bootstrap. Most kinds live in it; issues only when the server
+ * says the change may have moved progress counts or the like, and notifications for the unread
+ * count (they're only sent to their recipient).
+ */
+export function changesBootstrap(e: Pick<RealtimeEvent, 'kind' | 'bootstrapUnchanged'>) {
+  if (OUTSIDE_BOOTSTRAP.has(e.kind)) return false;
+  return !(e.kind === 'issue' && e.bootstrapUnchanged);
+}
+
 /**
  * Keeps a WebSocket open for the active workspace and turns change events into
  * React Query invalidations. Reconnects with backoff and refetches on reconnect.
@@ -25,13 +45,16 @@ export function useRealtime(slug: string): RealtimeStatus {
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let pending = new Set<string>();
+    let pendingBootstrap = false;
     let flushTimer: ReturnType<typeof setTimeout> | undefined;
 
     // Coalesce bursts (bulk edits) into one round of invalidations.
     const flush = () => {
       flushTimer = undefined;
       const kinds = pending;
+      const bootstrapStale = pendingBootstrap;
       pending = new Set();
+      pendingBootstrap = false;
       const inv = (key: readonly unknown[]) => qc.invalidateQueries({ queryKey: key });
       if (kinds.has('issue') || kinds.has('comment')) {
         // Lists the local copy answers are disabled queries, which this leaves alone; the
@@ -52,16 +75,7 @@ export function useRealtime(slug: string): RealtimeStatus {
       if (kinds.has('import')) inv(['ws', slug, 'imports']);
       if (kinds.has('export')) inv(['ws', slug, 'exports']);
       if (kinds.has('agentRun')) inv(['ws', slug, 'agentRuns']);
-      // Most entity kinds live in the bootstrap payload (and progress counts change with issues).
-      const outsideBootstrap = [
-        'comment',
-        'projectUpdate',
-        'import',
-        'export',
-        'document',
-        'agentRun',
-      ];
-      if ([...kinds].some((k) => !outsideBootstrap.includes(k))) inv(keys.bootstrap(slug));
+      if (bootstrapStale) inv(keys.bootstrap(slug));
       if (kinds.has('member') || kinds.has('workspace')) inv(keys.me);
     };
 
@@ -89,6 +103,7 @@ export function useRealtime(slug: string): RealtimeStatus {
         // The local copy catches up from the change log when the event is ahead of it.
         engine.current?.notify(e);
         pending.add(e.kind);
+        if (changesBootstrap(e)) pendingBootstrap = true;
         flushTimer ??= setTimeout(flush, 60);
       };
       socket.onclose = (ev) => {

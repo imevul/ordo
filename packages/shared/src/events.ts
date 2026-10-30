@@ -38,6 +38,11 @@ export interface RealtimeEvent {
   userId?: string;
   /** User who caused the change, so clients can skip echoing their own optimistic edits. */
   actorId?: string;
+  /**
+   * Issue events: set when the change can't move anything the bootstrap holds (progress, customer
+   * counts, former assignees), so clients needn't refetch it. Unset means it may have.
+   */
+  bootstrapUnchanged?: true;
   /** Where the change sits in the workspace's change log (sync clients fetch up to here). */
   seq?: number;
   epoch?: number;
