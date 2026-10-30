@@ -258,6 +258,22 @@ describe('users', () => {
     expect(logged!.data).toMatchObject({ from: email, via: 'scim' });
   });
 
+  it('moves a provisioned user onto an address an unverified account squats', async () => {
+    const { user } = await provision('mover');
+    const email = `moved-${++n}@${domain}`;
+    const squatter = await signup(app, 'Squatter Person');
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    await squatter.client.post('/api/me/email', { email, password: 'correct horse battery' });
+    const res = await scim('PATCH', `/Users/${user.id}`, {
+      schemas: [PATCH],
+      Operations: [{ op: 'replace', path: 'userName', value: email }],
+    });
+    expect(res.statusCode).toBe(200);
+    expect(json(res).userName).toBe(email);
+    const [after] = await app.db.select().from(users).where(eq(users.id, squatterId));
+    expect(after!.email).toMatch(/\.invalid$/);
+  });
+
   it("lists members at the workspace's domains, but not others", async () => {
     const all = json(await scim('GET', '/Users?count=200'));
     const names = all.Resources.map((r: { userName: string }) => r.userName);

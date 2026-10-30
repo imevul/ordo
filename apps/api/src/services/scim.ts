@@ -510,7 +510,12 @@ export async function updateScimUser(
         'Email addresses change only between verified domains of this workspace',
         'invalidValue',
       );
-    const [taken] = await ctx.tx.select({ id: users.id }).from(users).where(eq(users.email, email));
+    const taken = await claimableUser(
+      ctx.tx,
+      email,
+      { workspaceId: ctx.workspaceId, actorId: ctx.userId, via: 'scim' },
+      ctx.meta,
+    );
     if (taken) throw new ScimError(409, 'Another account uses that address', 'uniqueness');
     await ctx.tx
       .update(users)
