@@ -20,6 +20,7 @@ import { auditCtx } from './audit.ts';
 import type { Ctx } from './context.ts';
 import type { EventRow } from './events.ts';
 import { toPayloads } from './events.ts';
+import { integrationAppSecretsAad, integrationSecretsAad } from './secretKey.ts';
 
 /**
  * Integrations: per-workspace connections to outside services. Providers (in `integrations/`)
@@ -29,24 +30,22 @@ import { toPayloads } from './events.ts';
  * `source: integration:<id>`, so it never receives its own echoes.
  */
 
-export const integrationSecretAad = (id: string) => `integrations:${id}:secrets`;
-
 export function readSecrets(app: FastifyInstance, row: IntegrationRow): Secrets {
   return row.secrets
-    ? JSON.parse(app.keyring.decrypt(row.secrets, integrationSecretAad(row.id)))
+    ? JSON.parse(app.keyring.decrypt(row.secrets, integrationSecretsAad(row.id)))
     : {};
 }
-
-export const appSecretAad = (id: string) => `integration_apps:${id}:secrets`;
 
 type AppRow = typeof integrationApps.$inferSelect;
 
 export function readAppSecrets(app: FastifyInstance, row: AppRow): Secrets {
-  return row.secrets ? JSON.parse(app.keyring.decrypt(row.secrets, appSecretAad(row.id))) : {};
+  return row.secrets
+    ? JSON.parse(app.keyring.decrypt(row.secrets, integrationAppSecretsAad(row.id)))
+    : {};
 }
 
 export const sealAppSecrets = (app: FastifyInstance, id: string, secrets: Secrets) =>
-  app.keyring.encrypt(JSON.stringify(secrets), appSecretAad(id));
+  app.keyring.encrypt(JSON.stringify(secrets), integrationAppSecretsAad(id));
 
 /** An integration's secrets, plus its app's (e.g. the GitHub App's webhook secret and key). */
 export async function allSecrets(app: FastifyInstance, row: IntegrationRow): Promise<Secrets> {
@@ -60,7 +59,7 @@ export async function allSecrets(app: FastifyInstance, row: IntegrationRow): Pro
 
 export function sealSecrets(app: FastifyInstance, id: string, secrets: Secrets) {
   return Object.keys(secrets).length
-    ? app.keyring.encrypt(JSON.stringify(secrets), integrationSecretAad(id))
+    ? app.keyring.encrypt(JSON.stringify(secrets), integrationSecretsAad(id))
     : null;
 }
 

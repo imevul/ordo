@@ -12,13 +12,13 @@ import { requireAdmin } from '../lib/auth.ts';
 import { badRequest, conflict, notFound, one, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { auditCtx } from '../services/audit.ts';
-import { secretAad } from '../services/oidc.ts';
 import {
   certificateInfo,
   fetchIdpMetadata,
   normalizeCertificate,
   parseIdpMetadata,
 } from '../services/saml.ts';
+import { authProviderSecretAad } from '../services/secretKey.ts';
 
 const toProvider = (p: typeof authProviders.$inferSelect): AuthProvider => ({
   id: p.id,
@@ -103,7 +103,9 @@ export async function authProviderRoutes(app: FastifyInstance) {
       // The secret is bound to the row id, so encrypt once the id exists.
       const [saved] = await ctx.tx
         .update(authProviders)
-        .set({ clientSecret: app.keyring.encrypt(input.clientSecret, secretAad(row.id)) })
+        .set({
+          clientSecret: app.keyring.encrypt(input.clientSecret, authProviderSecretAad(row.id)),
+        })
         .where(eq(authProviders.id, row.id))
         .returning();
       await auditCtx(ctx, {
@@ -137,7 +139,7 @@ export async function authProviderRoutes(app: FastifyInstance) {
             ...rest,
             issuer: rest.issuer?.trim(),
             clientSecret: clientSecret
-              ? app.keyring.encrypt(clientSecret, secretAad(id))
+              ? app.keyring.encrypt(clientSecret, authProviderSecretAad(id))
               : undefined,
             saml: saml ? cleanSaml(saml) : undefined,
             updatedAt: new Date().toISOString(),

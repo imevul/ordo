@@ -7,13 +7,8 @@ import { badRequest, notFound, one, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { auditCtx } from '../services/audit.ts';
 import type { Ctx } from '../services/context.ts';
-import {
-  newWebhookSecret,
-  queueDelivery,
-  toDelivery,
-  toWebhook,
-  webhookSecretAad,
-} from '../services/webhooks.ts';
+import { webhookSecretAad } from '../services/secretKey.ts';
+import { newWebhookSecret, queueDelivery, toDelivery, toWebhook } from '../services/webhooks.ts';
 
 /** Outgoing webhooks, managed by workspace admins. */
 export async function webhookRoutes(app: FastifyInstance) {
