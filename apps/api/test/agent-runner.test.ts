@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { type Io, run } from '@ordo/cli';
 import { expandVars, launch, loadRunnerFile, parseDotenv, pruneWorktrees } from '@ordo/cli/agent';
 import { Ordo } from '@ordo/sdk';
@@ -179,6 +179,37 @@ describe('runner files', () => {
     // Instructions add up: the defaults', then the agent's own.
     expect(a!.instructions).toBe('Keep pull requests small.');
     expect(b!.instructions).toBe('Keep pull requests small.\n\nOnly touch docs/.\n');
+  });
+
+  it('leave ${VAR} in command and instructions for the run', async () => {
+    const file = write(
+      'later.yaml',
+      [
+        'url: https://ordo.example.com',
+        'workspace: acme',
+        'instructions: Top ${NOPE}.',
+        'defaults:',
+        '  command: claude --mcp-config "${ORDO_MCP_CONFIG}"',
+        'agents:',
+        '  a:',
+        '    key: ${A_KEY}',
+        '    instructions: Read ${ORDO_RUN_FILE}.',
+        '  b:',
+        '    key: ${A_KEY}',
+        '    command: [run, "${ORDO_ISSUE}"]',
+      ].join('\n'),
+    );
+    const {
+      agents: [a, b],
+    } = await loadRunnerFile(file, { A_KEY: 'k' });
+    expect(a).toMatchObject({
+      key: 'k',
+      command: 'claude --mcp-config "${ORDO_MCP_CONFIG}"',
+      instructions: 'Top ${NOPE}.\n\nRead ${ORDO_RUN_FILE}.',
+    });
+    expect(b!.command).toEqual(['run', '${ORDO_ISSUE}']);
+    // Everything else still expands when the file loads.
+    await expect(loadRunnerFile(file, {})).rejects.toThrow('agents.a.key: ${A_KEY} is not set');
   });
 
   it('name the field that is wrong', async () => {
@@ -442,6 +473,44 @@ describe('ordo agent', () => {
       { ORDO_AGENT_KEY: keys.Claude },
     );
     expect((await runsOf(quiet.id))[0]!.error).toBe('Please log in first\n(exit code 1)');
+  });
+
+  it('resolves a relative --repos against the current directory', async () => {
+    const issue = await assign('Relative repos');
+    const res = await ordo(
+      [
+        'agent',
+        'run',
+        '--once',
+        '-w',
+        slug,
+        '--url',
+        url,
+        '--repos',
+        relative(process.cwd(), join(dir, 'repos')),
+        '--',
+        'sh',
+        '-c',
+        'echo "$ORDO_WORKDIR"',
+      ],
+      { ORDO_AGENT_KEY: keys.Claude },
+    );
+    expect(res.code).toBe(0);
+    const [runRow] = await runsOf(issue.id);
+    expect(runRow!.status).toBe('succeeded');
+    // Not nested inside the clone, where git would put a relative path.
+    expect(dirname(dirname(runRow!.summary!))).toBe(join(dir, 'repos'));
+    expect(runRow!.summary).toContain(`${issue.identifier.toLowerCase()}-relative-repos`);
+  });
+
+  it("won't take per-agent flags with --file", async () => {
+    const file = write(
+      'flags.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Docs}\ncommand: 'true'\n`,
+    );
+    const res = await ordo(['agent', 'check', '--file', file, '--repos', 'x', '--timeout', '1m']);
+    expect(res.code).not.toBe(0);
+    expect(res.stderr).toContain("--repos, --timeout can't be combined with --file");
   });
 
   it('works without a repository when checkout is off', async () => {

@@ -181,8 +181,25 @@ export async function loadRunnerFile(
   }
   for (const [k, v] of Object.entries(env)) if (v !== undefined) vars[k] = v;
 
-  const data = expandVars(shape.data, vars) as z.infer<typeof fileSchema>;
-  const { agents, defaults = {}, env_file: _, ...top } = data;
+  // `command` and `instructions` are kept as written: `${ORDO_MCP_CONFIG}` and the rest of the
+  // launch contract only exist when a run starts, so the shell expands them then.
+  type Fields = z.infer<typeof fieldsSchema>;
+  const expandFields = <T extends Fields>(fields: T, where: string): T => {
+    const { command, instructions, ...rest } = fields;
+    return {
+      ...(expandVars(rest, vars, where) as T),
+      ...(command !== undefined && { command }),
+      ...(instructions !== undefined && { instructions }),
+    };
+  };
+  const { agents: rawAgents, defaults: rawDefaults, env_file: _, ...rawTop } = shape.data;
+  const top = expandFields(rawTop, '');
+  const defaults = rawDefaults ? expandFields(rawDefaults, 'defaults') : {};
+  const agents =
+    rawAgents &&
+    Object.fromEntries(
+      Object.entries(rawAgents).map(([l, f]) => [l, expandFields(f, `agents.${l}`)]),
+    );
   const entries: [string, z.infer<typeof fieldsSchema>][] = agents
     ? Object.entries(agents)
     : [[basename(file).replace(/\.ya?ml$/i, '') || 'agent', {}]];
@@ -852,6 +869,6 @@ async function work(
   }
 }
 
-/** For `--file` relative to the current directory and `~`. */
+/** For `--file` and `--repos`: relative to the current directory, and `~`. */
 export const runnerFilePath = (p: string, env: Record<string, string | undefined>) =>
   isAbsolute(p) ? p : resolve(expandHome(p, env));

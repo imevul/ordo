@@ -1,7 +1,7 @@
 import { mkdtempSync, writeFileSync } from 'node:fs';
-import { readFile, stat } from 'node:fs/promises';
+import { chmod, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { type Io, run } from '@ordo/cli';
 import { NameError, Names, Ordo, OrdoError, parsePriority } from '@ordo/sdk';
 import type { Bootstrap } from '@ordo/shared';
@@ -126,6 +126,12 @@ describe('cli', () => {
     expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ url, token, workspace: 'kit' });
     expect((await stat(file)).mode & 0o777).toBe(0o600);
     expect((await ordo(['whoami'])).stdout).toContain('Ada Lovelace (@cli-ada)');
+    // A file and directory others can already read are locked down on the next write.
+    await chmod(file, 0o644);
+    await chmod(dirname(file), 0o755);
+    expect((await ordo(['login', url, '--token', token])).code).toBe(0);
+    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    expect((await stat(dirname(file))).mode & 0o777).toBe(0o700);
   });
 
   it("prints a command's own usage for --help", async () => {

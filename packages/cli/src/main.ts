@@ -968,6 +968,14 @@ async function agentSpecs(
   if (files.length) {
     if (positionals.length)
       throw new UsageError('give the command in the runner file, not after --file');
+    // A runner file sets these per agent; taking the flag silently would run something else.
+    const clash = (['key', 'repos', 'concurrency', 'timeout'] as const).filter(
+      (k) => values[k] !== undefined,
+    );
+    if (clash.length)
+      throw new UsageError(
+        `--${clash.join(', --')} can't be combined with --file; set ${clash.join(', ')} in the runner file`,
+      );
     for (const f of files) {
       const loaded = await loadRunnerFile(runnerFilePath(f, io.env), io.env, fallback);
       for (const w of loaded.warnings) io.stderr(`${ctx.s.error('warning:')} ${w}\n`);
@@ -997,7 +1005,11 @@ async function agentSpecs(
         workspace: fallback.workspace,
         key,
         command: positionals.length ? positionals : '',
-        repos: (values.repos as string | undefined) ?? defaultReposDir(io.env),
+        // Absolute: git and the command run in other directories, where a relative path means
+        // something else.
+        repos: values.repos
+          ? runnerFilePath(values.repos as string, io.env)
+          : defaultReposDir(io.env),
         concurrency,
         timeoutMs: parseDuration(values.timeout as string | undefined),
         env: {},
