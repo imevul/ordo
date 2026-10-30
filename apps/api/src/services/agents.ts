@@ -1,4 +1,5 @@
 import {
+  AGENT_BRANCH_FORMAT,
   AGENT_PROTOCOL_VERSION,
   AGENT_RUN_OPEN,
   type Agent,
@@ -11,7 +12,6 @@ import {
   AVATAR_COLORS,
   branchName,
   type createAgentSchema,
-  DEFAULT_BRANCH_FORMAT,
   type RealtimeEvent,
   type updateAgentSchema,
 } from '@ordo/shared';
@@ -24,6 +24,7 @@ import {
   agents,
   apiKeys,
   comments,
+  issueLinks,
   issues,
   labels,
   projects,
@@ -35,7 +36,7 @@ import {
 } from '../db/schema.ts';
 import { API_KEY_PREFIX } from '../lib/auth.ts';
 import { randomToken, sha256 } from '../lib/crypto.ts';
-import { badRequest, conflict, notFound } from '../lib/errors.ts';
+import { badRequest, conflict, notFound, one } from '../lib/errors.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import { type Access, teamScope } from './access.ts';
 import { auditCtx } from './audit.ts';
@@ -43,7 +44,7 @@ import { createComment } from './comments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { getIssue, getIssueDetail } from './issues.ts';
 import { repositoriesForIssue } from './repositories.ts';
-import { joinWorkspace } from './workspaces.ts';
+import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 
 /**
  * Agents: members that aren't people. An agent is a `kind: 'agent'` user, a guest of its workspace
@@ -144,20 +145,22 @@ export async function createAgent(ctx: Ctx, input: CreateAgentInput): Promise<Ag
       .toLowerCase()
       .replace(/[^a-z0-9]/g, '')}`.slice(0, 32);
   }
-  const [user] = await ctx.tx
-    .insert(users)
-    .values({
-      kind: 'agent',
-      botWorkspaceId: ctx.workspaceId,
-      email: `agent-${randomToken(12).toLowerCase()}@bots.ordo.invalid`,
-      name: input.name,
-      username,
-      passwordHash: null,
-      avatarColor:
-        input.avatarColor ?? AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
-    })
-    .returning({ id: users.id });
-  const id = user!.id;
+  const user = one(
+    await ctx.tx
+      .insert(users)
+      .values({
+        kind: 'agent',
+        botWorkspaceId: ctx.workspaceId,
+        email: `agent-${randomToken(12).toLowerCase()}@bots.ordo.invalid`,
+        name: input.name,
+        username,
+        passwordHash: null,
+        avatarColor:
+          input.avatarColor ?? AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
+      })
+      .returning({ id: users.id }),
+  );
+  const id = user.id;
   // Guests see only the teams they're on, which is exactly an agent's reach.
   await joinWorkspace(ctx.tx, ctx.workspaceId, id, 'guest', input.teamIds);
   await ctx.tx.insert(agents).values({
@@ -243,17 +246,19 @@ export async function updateAgent(ctx: Ctx, agentId: string, input: UpdateAgentI
 export async function createAgentKey(ctx: Ctx, agentId: string, name: string) {
   await getAgent(ctx.tx, ctx.workspaceId, agentId);
   const token = `${API_KEY_PREFIX}${randomToken(24)}`;
-  const [row] = await ctx.tx
-    .insert(apiKeys)
-    .values({ userId: agentId, name, tokenHash: sha256(token), prefix: token.slice(0, 12) })
-    .returning({ id: apiKeys.id });
+  const row = one(
+    await ctx.tx
+      .insert(apiKeys)
+      .values({ userId: agentId, name, tokenHash: sha256(token), prefix: token.slice(0, 12) })
+      .returning({ id: apiKeys.id }),
+  );
   await auditCtx(ctx, {
     action: 'agent.key_created',
     targetType: 'user',
     targetId: agentId,
-    data: { name, keyId: row!.id },
+    data: { name, keyId: row.id },
   });
-  return { id: row!.id, token };
+  return { id: row.id, token };
 }
 
 export async function revokeAgentKey(ctx: Ctx, agentId: string, keyId: string) {
@@ -384,20 +389,22 @@ export async function queueRun(
   const pending = open.find((r) => r.status === 'queued' || r.status === 'waiting');
   if (pending) return pending;
   if (open[0] && !opts.followUp) return open[0];
-  const [run] = await ctx.tx
-    .insert(agentRuns)
-    .values({
-      workspaceId: ctx.workspaceId,
-      issueId,
-      agentId,
-      requestedById: ctx.userId,
-      trigger: trigger.kind,
-      triggerCommentId: trigger.commentId ?? null,
-      triggerDetail: trigger.pullRequest ?? null,
-    })
-    .returning();
-  await changed(ctx, run!);
-  return run!;
+  const run = one(
+    await ctx.tx
+      .insert(agentRuns)
+      .values({
+        workspaceId: ctx.workspaceId,
+        issueId,
+        agentId,
+        requestedById: ctx.userId,
+        trigger: trigger.kind,
+        triggerCommentId: trigger.commentId ?? null,
+        triggerDetail: trigger.pullRequest ?? null,
+      })
+      .returning(),
+  );
+  await changed(ctx, run);
+  return run;
 }
 
 async function cancelOpenRuns(ctx: Ctx, where: ReturnType<typeof eq>, reason: string) {
@@ -656,6 +663,8 @@ export async function heldRuns(db: DbOrTx, agentId: string) {
  * the caller. The agent's row is locked meanwhile, so concurrent claims count each other's runs.
  */
 async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | null> {
+  const [ws] = await ctx.tx.select().from(workspaces).where(eq(workspaces.id, ctx.workspaceId));
+  if (workspaceSettings(ws!).agentRunsPaused) return null;
   const [agent] = await ctx.tx
     .select({ concurrency: agents.concurrency })
     .from(agents)
@@ -695,7 +704,8 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
     })
     .where(eq(agentRuns.id, next.id))
     .returning();
-  return run!;
+  // Deleted since the select (its issue went away): nothing to claim this time.
+  return run ?? null;
 }
 
 /**
@@ -916,7 +926,8 @@ export function waitForRuns(
       access,
       send: (data) => {
         const e = JSON.parse(data) as RealtimeEvent;
-        if (e.kind === 'agentRun') done();
+        // A workspace change may be the pause lifting.
+        if (e.kind === 'agentRun' || e.kind === 'workspace') done();
       },
     });
   });
@@ -981,11 +992,17 @@ async function runContext(
         .from(projects)
         .where(eq(projects.id, detail.projectId))
     : [];
-  const branch = branchName(DEFAULT_BRANCH_FORMAT, {
+  const branch = branchName(AGENT_BRANCH_FORMAT, {
     identifier: detail.identifier,
     title: detail.title,
     username: agent!.username,
   });
+  // Branches already pushed for the issue, newest first: the work continues there.
+  const pushed = await ctx.tx
+    .select({ externalId: issueLinks.externalId, data: issueLinks.data })
+    .from(issueLinks)
+    .where(and(eq(issueLinks.issueId, run.issueId), eq(issueLinks.kind, 'branch')))
+    .orderBy(desc(issueLinks.updatedAt));
   const pullRequests = detail.links
     .filter((l) => l.kind === 'pull_request' && l.pullRequest)
     .map((l) => ({ ...l.pullRequest!, url: l.url, title: l.title, state: l.state }))
@@ -996,9 +1013,18 @@ async function runContext(
   const prBranch = (externalRepo: string | null) =>
     open.find((p) => externalRepo && p.repo === externalRepo)?.branch ??
     (repoList.length === 1 && open.length === 1 ? open[0]!.branch : null);
+  const pushedBranch = (externalRepo: string | null) => {
+    const found = pushed.find(
+      (b) =>
+        (externalRepo && (b.data as { repo?: string }).repo === externalRepo) ||
+        (repoList.length === 1 && pushed.length === 1),
+    );
+    // externalId is "<repo>:<branch>"; repos have no ":".
+    return found ? found.externalId.slice(found.externalId.indexOf(':') + 1) : null;
+  };
   const repositories = repoList.map((r) => ({
     ...r,
-    suggestedBranch: prBranch(r.externalRepo) ?? branch,
+    suggestedBranch: prBranch(r.externalRepo) ?? pushedBranch(r.externalRepo) ?? branch,
   }));
   const url = `${app.env.publicUrl}/${ws!.slug}/issue/${detail.identifier}`;
   const context: Omit<AgentRunContext, 'prompt'> = {

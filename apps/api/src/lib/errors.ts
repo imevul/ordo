@@ -36,6 +36,18 @@ export const notFound = (what = 'Resource') =>
   new HttpError(404, `${what} not found`, 'not_found').as('not_found');
 export const conflict = (message: string) => new HttpError(409, message, 'conflict');
 
+/**
+ * The first row of a query that must return one, e.g. `one(await tx.insert(…).returning())`.
+ * With `what`, a missing row is a 404 for it; without, it's a bug (`.returning()` after an insert),
+ * so it throws a plain error the handler logs and answers with a 500.
+ */
+export function one<T>(rows: readonly T[], what?: string): T {
+  const row = rows[0];
+  if (row !== undefined) return row;
+  if (what) throw notFound(what);
+  throw new Error('Expected a row, got none');
+}
+
 export function parse<S extends ZodType>(schema: S, data: unknown): z.infer<S> {
   const result = schema.safeParse(data ?? {});
   if (!result.success) throw validationError(result.error);

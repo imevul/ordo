@@ -7,7 +7,7 @@ import type {
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { customerRequests, customers } from '../db/schema.ts';
-import { forbidden, notFound } from '../lib/errors.ts';
+import { forbidden, notFound, one } from '../lib/errors.ts';
 import { type Access, assertCan } from './access.ts';
 import { type Ctx, emit } from './context.ts';
 import { getIssue } from './issues.ts';
@@ -114,12 +114,14 @@ async function loadCustomer(ctx: Ctx, id: string) {
 export async function createCustomer(ctx: Ctx, input: CreateCustomerInput) {
   assertCan(ctx.access, 'projects.create', 'Guests cannot manage customers');
   await assertProjectLead(ctx, input.ownerId);
-  const [row] = await ctx.tx
-    .insert(customers)
-    .values({ ...input, workspaceId: ctx.workspaceId })
-    .returning({ id: customers.id });
-  emit(ctx, { kind: 'customer', action: 'created', id: row!.id });
-  return row!.id;
+  const row = one(
+    await ctx.tx
+      .insert(customers)
+      .values({ ...input, workspaceId: ctx.workspaceId })
+      .returning({ id: customers.id }),
+  );
+  emit(ctx, { kind: 'customer', action: 'created', id: row.id });
+  return row.id;
 }
 
 export async function updateCustomer(ctx: Ctx, id: string, input: Partial<CreateCustomerInput>) {
@@ -190,21 +192,23 @@ export async function addCustomerRequest(
 ) {
   const issue = await getIssue(ctx.tx, ctx.access, issueIdOrIdentifier);
   await loadCustomer(ctx, input.customerId);
-  const [row] = await ctx.tx
-    .insert(customerRequests)
-    .values({
-      workspaceId: ctx.workspaceId,
-      customerId: input.customerId,
-      issueId: issue.id,
-      body: input.body ?? '',
-      contact: input.contact ?? null,
-      source,
-      createdById: ctx.userId,
-    })
-    .returning();
+  const row = one(
+    await ctx.tx
+      .insert(customerRequests)
+      .values({
+        workspaceId: ctx.workspaceId,
+        customerId: input.customerId,
+        issueId: issue.id,
+        body: input.body ?? '',
+        contact: input.contact ?? null,
+        source,
+        createdById: ctx.userId,
+      })
+      .returning(),
+  );
   emit(ctx, { kind: 'issue', action: 'updated', id: issue.id, teamId: issue.teamId });
   emit(ctx, { kind: 'customer', action: 'updated', id: input.customerId });
-  return toRequest(row!);
+  return toRequest(row);
 }
 
 export async function deleteCustomerRequest(ctx: Ctx, id: string) {
@@ -249,15 +253,17 @@ export async function customerForEmail(ctx: Ctx, email: string, displayName?: st
   const parts = host.split('.');
   const sld = parts.length >= 3 && parts.at(-1)!.length === 2 && SECOND_LEVEL.has(parts.at(-2)!);
   const name = parts.at(sld ? -3 : -2) ?? host;
-  const [row] = await ctx.tx
-    .insert(customers)
-    .values({
-      workspaceId: ctx.workspaceId,
-      name: personal ? address : name.charAt(0).toUpperCase() + name.slice(1),
-      domains: personal ? [] : [host],
-      notes: displayName ? `First contact: ${displayName} <${address}>` : null,
-    })
-    .returning({ id: customers.id });
-  emit(ctx, { kind: 'customer', action: 'created', id: row!.id });
-  return row!.id;
+  const row = one(
+    await ctx.tx
+      .insert(customers)
+      .values({
+        workspaceId: ctx.workspaceId,
+        name: personal ? address : name.charAt(0).toUpperCase() + name.slice(1),
+        domains: personal ? [] : [host],
+        notes: displayName ? `First contact: ${displayName} <${address}>` : null,
+      })
+      .returning({ id: customers.id }),
+  );
+  emit(ctx, { kind: 'customer', action: 'created', id: row.id });
+  return row.id;
 }

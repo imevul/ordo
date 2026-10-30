@@ -1,11 +1,19 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: runner files spell variables as ${VAR}
 import { execFileSync, spawn } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { type Io, run } from '@ordo/cli';
-import { expandVars, launch, loadRunnerFile, parseDotenv } from '@ordo/cli/agent';
-import type { AgentRun, AgentRunContext, Comment } from '@ordo/shared';
+import { expandVars, launch, loadRunnerFile, parseDotenv, pruneWorktrees } from '@ordo/cli/agent';
+import { Ordo } from '@ordo/sdk';
+import type { AgentRun, AgentRunContext, Bootstrap, Comment } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Client, signup, testApp } from './helpers.ts';
@@ -15,6 +23,7 @@ let owner: Client;
 let url: string;
 let dir: string;
 let eng: string;
+let team: Bootstrap['teams'][number];
 const keys: Record<string, string> = {};
 const agents: Record<string, string> = {};
 const slug = 'runner';
@@ -71,7 +80,8 @@ beforeAll(async () => {
 
   owner = (await signup(app, 'Rita Runner')).client;
   await owner.post('/api/workspaces', { name: 'Runner', slug, teamName: 'Eng', teamKey: 'ENG' });
-  eng = (await owner.get(`${ws}/bootstrap`)).data.teams[0].id;
+  team = (await owner.get(`${ws}/bootstrap`)).data.teams[0];
+  eng = team.id;
   const repo = (await owner.post(`${ws}/repositories`, { name: 'app', url: bare })).data;
   await owner.patch(`${ws}/teams/${eng}`, { defaultRepositoryId: repo.id });
   for (const name of ['Claude', 'Docs']) {
@@ -183,6 +193,44 @@ describe('runner files', () => {
 });
 
 describe('ordo agent', () => {
+  it('waits for Ordo to come back when it starts during a deploy', async () => {
+    let calls = 0;
+    // Two 503s, as a restarting server or proxy answers, then the real thing.
+    const flaky: typeof fetch = (input, init) =>
+      ++calls <= 2
+        ? Promise.resolve(new Response('Service Unavailable', { status: 503 }))
+        : fetch(input, init);
+    const file = write(
+      'flaky.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Claude}\ncheckout: false\ncommand: 'true'\n`,
+    );
+    let stderr = '';
+    let stdout = '';
+    const io: Io = {
+      env: { XDG_CONFIG_HOME: join(dir, 'config'), HOME: dir },
+      stdout: (t) => {
+        stdout += t;
+      },
+      stderr: (t) => {
+        stderr += t;
+      },
+      readStdin: async () => '',
+      prompt: async () => '',
+      openUrl: () => {},
+      color: false,
+      width: 120,
+      fetch: flaky,
+    };
+    expect(await run(['agent', 'run', '--file', file, '--once'], io)).toBe(0);
+    expect(stderr).toMatch(/trying again in 1s[\s\S]*trying again in 2s/);
+    expect(stdout).toContain('Runner Claude');
+    // `check` says what's wrong right away instead.
+    calls = 0;
+    stderr = '';
+    expect(await run(['agent', 'check', '--file', file], io)).not.toBe(0);
+    expect(stderr).not.toContain('trying again');
+  });
+
   it('checks a runner file against Ordo, and runs a subset with --only', async () => {
     write('.env', `CLAUDE_KEY=${keys.Claude}\nDOCS_KEY=${keys.Docs}\n`);
     const file = write(
@@ -271,18 +319,57 @@ describe('ordo agent', () => {
       headers: { Authorization: `Bearer ${keys.Claude}` },
     });
     const branch = ctx.repositories[0]!.suggestedBranch;
-    expect(branch).toMatch(/^runner-claude\/eng-\d+-add-a-greeting$/);
+    // One branch per issue, whichever agent works on it.
+    expect(branch).toMatch(/^eng-\d+-add-a-greeting$/);
     expect(readFileSync(join(dir, 'env-copy.txt'), 'utf8').trim()).toBe(
       `${issue.identifier} ${slug} ${branch}`,
     );
     // The work stays in the worktree, on the run's branch.
-    const tree = join(
-      dir,
-      'repos',
-      `app-${ctx.repositories[0]!.id.slice(0, 8)}.worktrees`,
-      branch.replace('/', '_'),
-    );
+    const tree = join(dir, 'repos', `app-${ctx.repositories[0]!.id.slice(0, 8)}.worktrees`, branch);
     expect(existsSync(join(tree, 'greeting.txt'))).toBe(true);
+
+    // Handed on to another agent, the work continues in the same worktree.
+    await owner.patch(`${ws}/issues/${issue.id}`, { assigneeId: agents.Docs });
+    const docs = write(
+      'docs-continue.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Docs}\ncommand: 'test -f greeting.txt && echo "found it on $(git rev-parse --abbrev-ref HEAD)"'\nrepos: ./repos\n`,
+    );
+    expect((await ordo(['agent', 'run', '--file', docs, '--once'])).code).toBe(0);
+    const [latest] = (await runsOf(issue.id)).filter((r) => r.agentId === agents.Docs);
+    expect(latest).toMatchObject({ status: 'succeeded', summary: `found it on ${branch}` });
+
+    // Done issues lose their worktree; open ones keep it.
+    const open = await assign('Still open');
+    expect((await ordo(['agent', 'run', '--file', file, '--once'])).code).toBe(0);
+    const openTree = join(dirname(tree), `${open.identifier.toLowerCase()}-still-open`);
+    expect(existsSync(openTree)).toBe(true);
+    const done = team.states.find((s) => s.type === 'completed')!.id;
+    await owner.patch(`${ws}/issues/${issue.id}`, { stateId: done });
+    const lines: string[] = [];
+    const client = new Ordo({ url, token: keys.Claude }).workspace(slug);
+    // Agents of one runner sweep the same directory: once is enough, without errors.
+    const [first, second] = await Promise.all([
+      pruneWorktrees(client, join(dir, 'repos'), (l) => lines.push(l)),
+      pruneWorktrees(client, join(dir, 'repos'), (l) => lines.push(l)),
+    ]);
+    expect([first, second]).toEqual([1, 1]);
+    expect(lines).toHaveLength(1);
+    expect(existsSync(tree)).toBe(false);
+    expect(existsSync(openTree)).toBe(true);
+    expect(lines[0]).toContain(`removed the worktree of ${issue.identifier} (done)`);
+  });
+
+  it('carries on with a branch named the old way, per agent', async () => {
+    const issue = await assign('Legacy work');
+    const clone = readdirSync(join(dir, 'repos')).find((d) => !d.endsWith('.worktrees'))!;
+    const legacy = `runner-claude/${issue.identifier.toLowerCase()}-legacy-work`;
+    git(join(dir, 'repos', clone), 'branch', legacy, 'origin/main');
+    const file = write(
+      'legacy.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Claude}\ncommand: 'git rev-parse --abbrev-ref HEAD'\nrepos: ./repos\n`,
+    );
+    expect((await ordo(['agent', 'run', '--file', file, '--once'])).code).toBe(0);
+    expect((await runsOf(issue.id))[0]).toMatchObject({ status: 'succeeded', summary: legacy });
   });
 
   it('reports a failing command with the end of its stderr', async () => {

@@ -7,6 +7,7 @@ import type {
   CommentReaction,
   CreateIssueInput,
   HistoryEntry,
+  InboxFilter,
   InstanceConfig,
   Invite,
   Issue,
@@ -14,6 +15,7 @@ import type {
   IssueFilter,
   Me,
   Notification,
+  NotificationType,
   OAuthGrant,
   ProjectUpdate,
   SearchResults,
@@ -21,7 +23,13 @@ import type {
   UpdateIssueInput,
 } from '@ordo/shared';
 import type { Engine } from '@ordo/sync';
-import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  keepPreviousData,
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { t } from '../i18n/index.ts';
@@ -245,11 +253,32 @@ export const useHistory = (slug: string, issueId: string | undefined) =>
     enabled: !!issueId,
   });
 
-export const useNotifications = (slug: string, snoozed = false) =>
+/** An inbox filter as `GET /notifications` query parameters. */
+export function inboxQuery(f: InboxFilter, snoozed = false) {
+  const q = new URLSearchParams();
+  if (snoozed) q.set('snoozed', '1');
+  for (const k of ['types', 'teams', 'actors', 'priorities', 'reasons'] as const)
+    if (f[k]?.length) q.set(k, f[k].join(','));
+  if (f.from) q.set('from', f.from);
+  if (f.unread) q.set('unread', '1');
+  const s = q.toString();
+  return s ? `?${s}` : '';
+}
+
+export const useNotifications = (slug: string, snoozed = false, filter: InboxFilter = {}) =>
   useQuery({
-    queryKey: [...keys.notifications(slug), snoozed ? 'snoozed' : 'inbox'],
+    queryKey: [...keys.notifications(slug), snoozed ? 'snoozed' : 'inbox', filter],
     queryFn: () =>
-      api.get<Notification[]>(wsPath(slug, `/notifications${snoozed ? '?snoozed=1' : ''}`)),
+      api.get<Notification[]>(wsPath(slug, `/notifications${inboxQuery(filter, snoozed)}`)),
+    placeholderData: keepPreviousData,
+  });
+
+/** Unread notifications in the inbox per type, for the quick filters. */
+export const useNotificationCounts = (slug: string) =>
+  useQuery({
+    queryKey: [...keys.notifications(slug), 'counts'],
+    queryFn: () =>
+      api.get<Partial<Record<NotificationType, number>>>(wsPath(slug, '/notifications/counts')),
   });
 
 // Under the 'agentRuns' key so realtime agentRun events refetch it.

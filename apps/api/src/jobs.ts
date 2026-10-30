@@ -25,6 +25,7 @@ import { runPush } from './services/push.ts';
 import { runRecurring } from './services/recurring.ts';
 import { announceSlaBreaches } from './services/sla.ts';
 import { purgeExpiredStates } from './services/sso.ts';
+import { expireStatuses } from './services/status.ts';
 import { pruneChanges } from './services/sync.ts';
 import { purgeExpiredTokens } from './services/tokens.ts';
 import { deliverWebhook } from './services/webhooks.ts';
@@ -42,6 +43,8 @@ export function registerJobs(app: FastifyInstance) {
   jobs.define<{ notificationId: string }>('push.notify', (p) => runPush(app, p));
   jobs.every('notifications.wake', 60);
   jobs.every('notifications.email', 60);
+  jobs.define('users.statusExpire', () => expireStatuses(app));
+  jobs.every('users.statusExpire', 60);
   jobs.define('agents.leases', () => reapLeases(app));
   jobs.every('agents.leases', 60);
 

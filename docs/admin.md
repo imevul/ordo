@@ -47,8 +47,9 @@ example after it may have leaked:
 
 1. In `.env`, move the current value of `ORDO_SECRET_KEY` to `ORDO_SECRET_KEY_PREVIOUS`.
 2. Put a new key in `ORDO_SECRET_KEY` (`head -c 32 /dev/urandom | base64`).
-3. `make up` (not `make restart`, which keeps the old environment). New secrets are encrypted with the new key; existing ones still decrypt with the previous key.
-   Signed file links handed out before the restart stop working; reloading the page gets new ones.
+3. `make up` (not `make restart`, which keeps the old environment). New secrets are encrypted with the new key;
+   existing ones still decrypt with the previous key. Signed file links handed out before the restart stop working;
+   reloading the page gets new ones.
 4. `docker compose exec app node cli.mjs rotate-key`. It re-encrypts two-factor secrets and the SMTP settings with
    the new key.
 5. **Leave `ORDO_SECRET_KEY_PREVIOUS` set.** `rotate-key` doesn't yet re-encrypt the other stored secrets: SSO client

@@ -1,7 +1,8 @@
 # Keyboard shortcuts
 
 Press `?` anywhere in Ordo to see this list. `Mod` is `⌘` on macOS and `Ctrl` elsewhere. Shortcuts don't
-fire while you're typing in a field, except the ones marked _(anywhere)_.
+fire while you're typing in a field, except the ones marked _(anywhere)_. `Mod Shift .` means the key itself, so it
+works the same on layouts where Shift+`.` types `:` (Swedish, Norwegian, Danish, Finnish, German).
 
 ## General
 
@@ -54,7 +55,7 @@ These apply to the selected issues, or the focused one if nothing is selected, o
 | `Shift C`          | Cycle                                                             |
 | `E`                | Estimate                                                          |
 | `Mod ⌫` / `Delete` | Move to trash (undo from the toast)                               |
-| `Mod Shift .`      | Copy the open issue's git branch name                             |
+| `Mod Shift .`      | Copy the open issue's git branch name (the `.` key on any layout) |
 | `1`–`9`            | In a property menu: pick the nth option                           |
 | `⌫`                | In a property menu with an empty filter: back to the command menu |
 
@@ -84,9 +85,12 @@ In the rich text editor, Markdown typed at the start of a line or around a word 
 
 ## Inbox
 
-| Keys      | Action                        |
-| --------- | ----------------------------- |
-| `J` / `K` | Next / previous notification  |
-| `U`       | Toggle read                   |
-| `H`       | Snooze (or, in Snoozed, wake) |
-| `⌫`       | Delete notification           |
+| Keys        | Action                                              |
+| ----------- | --------------------------------------------------- |
+| `J` / `K`   | Next / previous notification                        |
+| `U`         | Toggle read                                         |
+| `H`         | Snooze (or, in Snoozed, wake)                       |
+| `⌫`         | Delete notification                                 |
+| `1` – `4`   | Quick filter: All, Mentions, Assigned, Comments     |
+| `5`         | Unread only, on or off                              |
+| `Shift` `F` | More filters (kind, why, who, team, issue priority) |

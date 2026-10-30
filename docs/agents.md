@@ -46,6 +46,9 @@ There are three parts:
    workspace: active runs (queued, working, waiting for an answer) or finished ones, by agent, with Resume and Cancel.
 7. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
    queue for another runner. After three claims it is marked failed, with a comment on the issue.
+8. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
+   while it's paused: queued runs wait, and runs already going finish. **Resume runs** picks up the queue again. (It's
+   the workspace setting `agentRunsPaused`.)
 
 ## `ordo agent run`
 
@@ -58,14 +61,25 @@ ordo agent run --key "$AGENT_KEY" -w acme -- ./my-factory.sh
 ```
 
 For each run it clones the run's repositories (once, under `~/.cache/ordo/repos`, fetched before every run), checks
-out a worktree on the run's branch, and starts your command there. An existing local branch is reused, so a second
-run continues where the first left off. Then it waits for the next run.
+out a worktree on the run's branch, and starts your command there. Then it waits for the next run.
 
 Ctrl-C stops taking new runs and lets the running commands finish; a second Ctrl-C kills them and quits (their leases
 lapse and Ordo queues the runs again). Each command runs in its own process group, so stopping a run — cancelled in
 Ordo, or over `--timeout` — stops everything it started too (shells, `pnpm`, browsers): SIGTERM to the group, then
 SIGKILL ten seconds later. Stopping the runner itself with SIGTERM or SIGHUP (`kill`, a closed terminal) sends
 SIGTERM to the commands' groups first. On Windows only the command itself is signalled.
+
+A runner started while Ordo is restarting (a deploy, a proxy switching over) waits for it, trying again for up to five
+minutes; `ordo agent check` reports the error right away.
+
+There is **one branch per issue**, whichever agent works on it: the issue's open pull request's branch, else a branch
+already pushed for the issue, else `eng-42-short-title`. An existing local branch is reused, so a second run, or
+another agent the issue was handed to, continues where the last one left off, in the same worktree. (Branches from
+before this, named per agent like `claude-coder/eng-42-…`, are picked up too.)
+
+Every half hour, and when it starts, the runner removes the worktrees of issues that are done or canceled, so
+checkouts don't pile up. Branches stay in the clone; worktrees in use, and those of issues the agent can't see, are
+left alone. Set `prune: false` in a runner file to keep them.
 
 | Option                     | What it does                                                                      |
 | -------------------------- | --------------------------------------------------------------------------------- |
@@ -181,7 +195,7 @@ your `ordo login`.
 - `command` is a list (run directly; a leading `./` is relative to the file) or a string (run with `sh -c` in the
   worktree).
 - Per agent: `key`, `command`, `repos`, `concurrency`, `timeout` (`90s`, `30m`, `2h`), `env`, `cwd` (`worktree` or
-  `tmp`), `checkout` (`true` or `false`) and `instructions`. Unknown fields are errors.
+  `tmp`), `checkout` (`true` or `false`), `prune` (`true` or `false`) and `instructions`. Unknown fields are errors.
 - `instructions` add up instead of replacing each other: the top level's, then `defaults`', then the agent's own,
   followed by the agent's instructions from Ordo. They go into the run's prompt (and `agent.instructions` in the run
   file), so a runner can describe its machine or its tools without changing the agent for everyone else. Ordo
