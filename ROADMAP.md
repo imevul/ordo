@@ -144,6 +144,10 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [ ] ⬜ Desktop app
 - [ ] ⬜ Mobile apps
 
+### Project
+
+- [ ] ⬜ Contributor agreement (CLA, or DCO with a relicensing clause) before accepting outside pull requests
+
 ## Known limitations
 
 - Board grouped by **label** shows multi-label issues in several columns; dragging is disabled there.

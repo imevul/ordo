@@ -111,4 +111,16 @@ Early (v0.1). The core tracker is complete and tested; integrations, imports, SS
 
 ## License
 
-Ordo is licensed under the [Apache License 2.0](LICENSE).
+Ordo is source-available under the [Functional Source License 1.1, Apache 2.0 Future License](LICENSE.md)
+(FSL-1.1-ALv2).
+
+- **You can** self-host it for yourself or your organisation, change it, and contribute back.
+- **You can't** offer Ordo, or a substantially similar product, to others as a commercial product or service.
+- **Each release becomes Apache 2.0** two years after it is published.
+
+Code up to the tag `apache-2.0-final` was released under the Apache License 2.0 and stays available under it.
+
+## Contributing
+
+By contributing, you license your contribution under the project's license and agree that the maintainer may
+relicense it in future versions.
