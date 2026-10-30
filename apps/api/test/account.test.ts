@@ -13,6 +13,8 @@ const PASSWORD = 'correct horse battery';
 
 beforeAll(async () => {
   app = await testApp({
+    // As behind one reverse proxy, so the throttling tests can tell a proxied client from a direct one.
+    trustProxy: 1,
     settingsFromEnv: {
       signupMode: 'open',
       smtp: { url: 'smtp://mail.test:25', from: 'Ordo <ordo@test>' },
@@ -192,8 +194,29 @@ describe('sign-in throttling', () => {
     expect(rows.map((r) => r.ip)).toEqual(['7.7.7.7', '8.8.8.8']);
   });
 
+  it('believes no X-Forwarded-For by default, even from a private address', async () => {
+    const direct = await testApp({ trustProxy: proxyTrust(undefined) });
+    try {
+      const email = `nobody-${Date.now()}@example.com`;
+      await direct.inject({
+        method: 'POST',
+        url: '/api/auth/login',
+        remoteAddress: '172.17.0.1',
+        headers: { 'x-forwarded-for': '6.6.6.6' },
+        payload: { email, password: 'x' },
+      });
+      const rows = await direct.db.execute<{ ip: string }>(
+        sql`select ip from audit_log where action = 'auth.login_failed' and data->>'email' = ${email}`,
+      );
+      expect(rows.map((r) => r.ip)).toEqual(['172.17.0.1']);
+    } finally {
+      await direct.close();
+    }
+  });
+
   it('reads ORDO_TRUST_PROXY as a hop count, never as "trust everything"', () => {
-    expect(proxyTrust(undefined)).toBe(1);
+    expect(proxyTrust(undefined)).toBe(false);
+    expect(proxyTrust('')).toBe(false);
     expect(proxyTrust('true')).toBe(1);
     expect(proxyTrust('false')).toBe(false);
     expect(proxyTrust('2')).toBe(2);

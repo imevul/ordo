@@ -51,6 +51,11 @@ This runs `git pull --ff-only` (when a git remote is configured), rebuilds the i
 and recreates the containers. Database migrations run automatically when the app starts, inside a transaction;
 if one fails the app refuses to start and the previous data is untouched. **Take a backup before updating.**
 
+**Behind a reverse proxy?** `ORDO_TRUST_PROXY` used to default to `true`; it now defaults to `false`. If your `.env`
+doesn't set it (an `.env` copied from an older `.env.example` already has `ORDO_TRUST_PROXY=true`), add
+`ORDO_TRUST_PROXY=true` before updating, or every request is counted under the proxy's address. See
+[HTTPS and reverse proxies](#https-and-reverse-proxies).
+
 ## Email
 
 Set `ORDO_SMTP_URL` and `ORDO_SMTP_FROM` in `.env` (see [configuration](configuration.md#email)) and `make up`.
@@ -131,9 +136,19 @@ with `pg_dump` / `psql` and the files under `ORDO_DATA_DIR`; see [Running withou
 
 ## HTTPS and reverse proxies
 
-Run Ordo behind a TLS-terminating proxy and set `ORDO_PUBLIC_URL=https://ordo.example.com` in `.env` (then
-`make up` again). Bind the app to localhost with `ORDO_BIND=127.0.0.1` if the proxy runs on the same host. The
-proxy must forward WebSocket upgrades for `/api/ws`. HTTPS is also what lets browsers install Ordo as an app and receive
+Run Ordo behind a TLS-terminating proxy and tell it about the proxy in `.env` (then `make up` again):
+
+```bash
+ORDO_PUBLIC_URL=https://ordo.example.com
+ORDO_TRUST_PROXY=true    # one proxy in front; 2 behind two (a CDN and nginx), or list their addresses
+ORDO_BIND=127.0.0.1      # the proxy runs on this host; otherwise firewall port 3000 to the proxy
+```
+
+`ORDO_TRUST_PROXY` makes Ordo take the client IP (per-IP sign-in limits, the audit log) from the proxy's
+`X-Forwarded-For` instead of the connection. It's off by default, because anyone who can reach Ordo directly could then
+write any IP they like there: when you turn it on, make sure only the proxy can connect. Left off behind a proxy, every
+request seems to come from the proxy, so one person's failed sign-ins throttle everyone's. The proxy must forward
+WebSocket upgrades for `/api/ws`. HTTPS is also what lets browsers install Ordo as an app and receive
 push notifications (Ordo makes its own VAPID keys for push on first use; the push services it posts to —
 Google's, Mozilla's, Apple's — must be reachable from the server).
 
@@ -281,6 +296,8 @@ ORDO_DATA_DIR=/var/lib/ordo
 
 DATABASE_URL=postgres://ordo:…@localhost:5432/ordo
 ORDO_PUBLIC_URL=https://ordo.example.com
+# A reverse proxy on this host terminates TLS (HOST=127.0.0.1 keeps everyone else out).
+ORDO_TRUST_PROXY=true
 # head -c 32 /dev/urandom | base64 — back it up with the database.
 ORDO_SECRET_KEY=…
 ```
