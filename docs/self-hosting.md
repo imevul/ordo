@@ -406,7 +406,7 @@ After changing either variable, run `make up` with Docker (`make restart` keeps 
 
 - put it back as `ORDO_SECRET_KEY`; or
 - keep the new key and set the old one as `ORDO_SECRET_KEY_PREVIOUS`, which is a
-  [key rotation](configuration.md#key-rotation): secrets saved under either key work again.
+  [key rotation](admin.md#rotating-the-secret-key): secrets saved under either key work again.
 
 **Recover without it.** The stored secrets are gone for good. Make sure a key is set
 (`head -c 32 /dev/urandom | base64`), keep a copy with your backups, and enter the secrets again:

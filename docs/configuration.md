@@ -11,7 +11,7 @@ repository root (created from `.env.example` by `make up`).
 | `ORDO_BIND`                  | `0.0.0.0`               | Host interface to bind. Use `127.0.0.1` when a reverse proxy runs on the same host.                                                                                                                                                                                                                    |
 | `ORDO_PUBLIC_URL`            | `http://localhost:3000` | The URL people use to reach Ordo. Used for invite links. An `https://` URL turns on `Secure` cookies. Passkeys belong to its hostname: they work only at this address (https, or localhost), and changing the hostname later leaves existing passkeys behind.                                          |
 | `ORDO_SECRET_KEY`            | generated               | Encrypts secrets Ordo stores (SSO client secrets, integration tokens). `make up` / `make update` generate it. **Back it up with your database**: without it, stored secrets can't be decrypted.                                                                                                        |
-| `ORDO_SECRET_KEY_PREVIOUS`   | empty                   | During a key rotation, the old key; values encrypted with it still decrypt.                                                                                                                                                                                                                            |
+| `ORDO_SECRET_KEY_PREVIOUS`   | empty                   | During a [key rotation](admin.md#rotating-the-secret-key), the old key; values encrypted with it still decrypt.                                                                                                                                                                                        |
 | `POSTGRES_USER`              | `ordo`                  | Database user for the bundled Postgres.                                                                                                                                                                                                                                                                |
 | `POSTGRES_PASSWORD`          | random                  | Database password. `make up` generates one if `.env` doesn't exist. **Required.**                                                                                                                                                                                                                      |
 | `POSTGRES_DB`                | `ordo`                  | Database name.                                                                                                                                                                                                                                                                                         |
@@ -79,14 +79,8 @@ Files are served through Ordo with short-lived signed URLs; the bucket never nee
 
 ## Key rotation
 
-1. Move the current value of `ORDO_SECRET_KEY` to `ORDO_SECRET_KEY_PREVIOUS`.
-2. Put a new key in `ORDO_SECRET_KEY` (`head -c 32 /dev/urandom | base64`).
-3. `make up` (not `make restart`, which keeps the old environment). Existing secrets keep working through the
-   previous key.
-4. `docker compose exec app node cli.mjs rotate-key` re-encrypts the authenticator (2FA) secrets and the SMTP
-   settings with the new key. Everything else (SSO client secrets, integration tokens, webhook secrets, AI keys, push
-   keys) moves to the new key only when it's saved again, so **keep `ORDO_SECRET_KEY_PREVIOUS` set** until you've
-   saved each of those again, or for good.
+To replace `ORDO_SECRET_KEY`, follow [Rotating the secret key](admin.md#rotating-the-secret-key) in the
+administration guide.
 
 Lost the old key, or started with the wrong one? See
 [Missing or wrong secret key](self-hosting.md#missing-or-wrong-secret-key).

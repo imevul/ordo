@@ -34,6 +34,7 @@ import { mutate } from '../lib/mutate.ts';
 import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
 import { type Ctx, emit } from '../services/context.ts';
+import { bulkUpdateIssues } from '../services/issues.ts';
 import { assertRepositories } from '../services/repositories.ts';
 import { bumpEpoch } from '../services/sync.ts';
 import {
@@ -362,12 +363,20 @@ export async function teamRoutes(app: FastifyInstance) {
         siblings.find((s) => s.id === team.defaultStateId) ??
         siblings[0];
       if (!target) throw badRequest('Cannot delete the only status').as('only_status');
-      await ctx.tx.update(issues).set({ stateId: target.id }).where(eq(issues.stateId, state.id));
+      const inState = await ctx.tx
+        .select({ id: issues.id })
+        .from(issues)
+        .where(eq(issues.stateId, state.id));
+      await bulkUpdateIssues(
+        ctx,
+        state.teamId,
+        inState.map((r) => r.id),
+        { stateId: target.id },
+      );
       if (team.defaultStateId === state.id)
         await ctx.tx.update(teams).set({ defaultStateId: target.id }).where(eq(teams.id, team.id));
       await ctx.tx.delete(workflowStates).where(eq(workflowStates.id, state.id));
       emit(ctx, { kind: 'state', action: 'deleted', id: state.id, teamId: state.teamId });
-      emit(ctx, { kind: 'issue', action: 'updated', id: state.id, teamId: state.teamId });
       return { ok: true };
     });
   });
