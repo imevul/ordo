@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import * as oidc from 'openid-client';
 import { authProviders, authStates } from '../db/schema.ts';
+import { secretAad } from '../lib/encryptedColumns.ts';
 import { badRequest } from '../lib/errors.ts';
 import { safeFetch } from '../lib/safeFetch.ts';
 import { type Provider, type SsoClaims, STATE_TTL_MS, safeRedirect, takeState } from './sso.ts';
@@ -13,7 +14,6 @@ import { type Provider, type SsoClaims, STATE_TTL_MS, safeRedirect, takeState } 
  */
 
 export const CALLBACK_PATH = '/api/auth/oidc/callback';
-export const secretAad = (id: string) => `auth_providers:${id}:client_secret`;
 
 const configs = new Map<string, { config: oidc.Configuration; at: number }>();
 
@@ -51,7 +51,7 @@ export async function providerConfig(
     oidc.discovery(
       new URL(issuer),
       clientId,
-      app.keyring.decrypt(clientSecret, secretAad(provider.id)),
+      app.keyring.decrypt(clientSecret, secretAad.ssoClientSecret(provider.id)),
       undefined,
       {
         [oidc.customFetch]: customFetch,

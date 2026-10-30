@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import { webhookDeliveries, webhooks } from '../db/schema.ts';
+import { secretAad } from '../lib/encryptedColumns.ts';
 import { enqueue, type JobContext } from '../lib/jobs/index.ts';
 import { safeFetch } from '../lib/safeFetch.ts';
 import { audit } from './audit.ts';
@@ -20,7 +21,6 @@ const RESPONSE_LIMIT = 2000;
 type WebhookRow = typeof webhooks.$inferSelect;
 type DeliveryRow = typeof webhookDeliveries.$inferSelect;
 
-export const webhookSecretAad = (id: string) => `webhooks:${id}:secret`;
 export const newWebhookSecret = () => `whsec_${randomBytes(24).toString('base64url')}`;
 
 export const toWebhook = (w: WebhookRow): Webhook => ({
@@ -104,7 +104,7 @@ export async function deliverWebhook(
   }
 
   const body = JSON.stringify(delivery.payload);
-  const secret = app.keyring.decrypt(hook.secret, webhookSecretAad(hook.id));
+  const secret = app.keyring.decrypt(hook.secret, secretAad.webhookSecret(hook.id));
   const started = Date.now();
   let status: number | null = null;
   let text: string | null = null;

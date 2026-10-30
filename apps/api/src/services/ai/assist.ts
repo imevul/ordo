@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { workspaceAiProviders, workspaces } from '../../db/schema.ts';
+import { secretAad } from '../../lib/encryptedColumns.ts';
 import { forbidden, HttpError } from '../../lib/errors.ts';
 import { assertTeamAccess } from '../access.ts';
 import { getIssue, similarIssues } from '../issues.ts';
@@ -26,16 +27,13 @@ import { type AiModel, aiModel, parseAnswer } from './providers.ts';
  */
 
 export const decryptAiKey = (app: FastifyInstance, key: string | null) =>
-  key?.startsWith('v1.') ? app.keyring.decrypt(key, 'instance_settings:ai:apiKey') : key;
+  key?.startsWith('v1.') ? app.keyring.decrypt(key, secretAad.aiApiKey()) : key;
 
 /** The instance's model, built from settings; null when AI isn't set up. */
 export function instanceModel(app: FastifyInstance, settings?: AiSettings | null): AiModel | null {
   const ai = settings === undefined ? app.settings.get('ai') : settings;
   return ai ? aiModel(ai, decryptAiKey(app, ai.apiKey)) : null;
 }
-
-export const workspaceAiKeyAad = (workspaceId: string) =>
-  `workspace_ai_providers:${workspaceId}:apiKey`;
 
 /** A workspace's own model settings (key decrypted), if it has any. */
 export async function ownAiProvider(app: FastifyInstance, workspaceId: string) {
@@ -49,7 +47,9 @@ export async function ownAiProvider(app: FastifyInstance, workspaceId: string) {
     model: row.model,
     // The Claude API can't be pointed elsewhere from a workspace: its client isn't SSRF-guarded.
     baseUrl: row.provider === 'openai' ? row.baseUrl : null,
-    apiKey: row.apiKey ? app.keyring.decrypt(row.apiKey, workspaceAiKeyAad(workspaceId)) : null,
+    apiKey: row.apiKey
+      ? app.keyring.decrypt(row.apiKey, secretAad.workspaceAiKey(workspaceId))
+      : null,
   } satisfies AiSettings;
 }
 

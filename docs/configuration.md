@@ -81,8 +81,11 @@ Files are served through Ordo with short-lived signed URLs; the bucket never nee
 
 1. Move the current value of `ORDO_SECRET_KEY` to `ORDO_SECRET_KEY_PREVIOUS`.
 2. Put a new key in `ORDO_SECRET_KEY` (`head -c 32 /dev/urandom | base64`).
-3. `make restart`. Existing secrets keep working through the previous key; they are re-encrypted with the new key
-   as they're saved again.
+3. `make restart`. Existing secrets keep working through the previous key.
+4. `docker compose exec app node cli.mjs rotate-key` re-encrypts every stored secret with the new key: TOTP and
+   SSO client secrets, webhook and integration secrets, AI keys, VAPID keys, the Matrix crypto store, import
+   credentials and the SMTP URL. It's safe to run again.
+5. Once every instance runs with the new key, remove `ORDO_SECRET_KEY_PREVIOUS` and `make restart`.
 
 ## Application variables
 

@@ -9,25 +9,19 @@
  * In Docker: `make admin EMAIL=…`, `make reset-password EMAIL=…`, or
  * `docker compose exec app node cli.mjs <command>`.
  */
-import { eq, isNotNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createDb } from './db/client.ts';
 import { runMigrations } from './db/migrate.ts';
 import { passkeys, recoveryCodes, users } from './db/schema.ts';
 import { loadEnv } from './env.ts';
+import { rotateSecrets } from './lib/encryptedColumns.ts';
 import { Keyring } from './lib/secrets.ts';
 import { audit } from './services/audit.ts';
-import { Settings } from './services/settings.ts';
 import { createToken } from './services/tokens.ts';
 
 const [command, arg] = process.argv.slice(2);
 const env = loadEnv();
 const { db, sql } = createDb(env.databaseUrl);
-const silentLog = {
-  error: console.error,
-  warn: () => {},
-  info: () => {},
-  debug: () => {},
-} as never;
 
 async function findUser(email: string | undefined) {
   if (!email) throw new Error('Pass an email address');
@@ -85,28 +79,9 @@ async function main() {
     case 'rotate-key': {
       const keyring = new Keyring(env.secretKey, env.previousSecretKey);
       if (!keyring.available) throw new Error('ORDO_SECRET_KEY is not set');
-      let n = 0;
-      for (const u of await db.select().from(users).where(isNotNull(users.totpSecret))) {
-        const aad = `users:${u.id}:totp_secret`;
-        if (!keyring.needsRotation(u.totpSecret!)) continue;
-        await db
-          .update(users)
-          .set({ totpSecret: keyring.encrypt(keyring.decrypt(u.totpSecret!, aad), aad) })
-          .where(eq(users.id, u.id));
-        n++;
-      }
-      const settings = new Settings(db, sql, {}, silentLog);
-      await settings.reload();
-      const smtp = settings.get('smtp');
-      if (smtp?.url.startsWith('v1.') && keyring.needsRotation(smtp.url)) {
-        const aad = 'instance_settings:smtp:url';
-        await settings.set(
-          'smtp',
-          { ...smtp, url: keyring.encrypt(keyring.decrypt(smtp.url, aad), aad) },
-          null,
-        );
-        n++;
-      }
+      const counts = await rotateSecrets(db, keyring);
+      for (const c of counts) if (c.rotated) console.log(`  ${c.name}: ${c.rotated}`);
+      const n = counts.reduce((sum, c) => sum + c.rotated, 0);
       console.log(
         `Re-encrypted ${n} secret(s). You can remove ORDO_SECRET_KEY_PREVIOUS once every instance runs with the new key.`,
       );

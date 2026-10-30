@@ -4,10 +4,10 @@ import { Secret, TOTP } from 'otpauth';
 import type { DbOrTx } from '../db/client.ts';
 import { passkeys, recoveryCodes, users } from '../db/schema.ts';
 import { sha256 } from '../lib/crypto.ts';
+import { secretAad } from '../lib/encryptedColumns.ts';
 import type { Keyring } from '../lib/secrets.ts';
 
 const ISSUER = 'Ordo';
-const aad = (userId: string) => `users:${userId}:totp_secret`;
 
 function totp(secret: string, label: string) {
   return new TOTP({
@@ -25,7 +25,7 @@ export async function beginTotp(db: DbOrTx, keyring: Keyring, user: { id: string
   const secret = new Secret({ size: 20 }).base32;
   await db
     .update(users)
-    .set({ totpSecret: keyring.encrypt(secret, aad(user.id)) })
+    .set({ totpSecret: keyring.encrypt(secret, secretAad.totpSecret(user.id)) })
     .where(eq(users.id, user.id));
   return { secret, uri: totp(secret, user.email).toString() };
 }
@@ -45,7 +45,7 @@ function totpStep(
   code: string,
 ) {
   if (!user.totpSecret) return null;
-  const secret = keyring.decrypt(user.totpSecret, aad(user.id));
+  const secret = keyring.decrypt(user.totpSecret, secretAad.totpSecret(user.id));
   const generator = totp(secret, user.email);
   // One step either side tolerates a little clock drift.
   const delta = generator.validate({ token: code.replace(/\s/g, ''), window: 1 });

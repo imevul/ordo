@@ -5,6 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { importItems, imports } from '../db/schema.ts';
 import { requireAdmin, requireUser } from '../lib/auth.ts';
+import { secretAad } from '../lib/encryptedColumns.ts';
 import { badRequest, conflict, notFound, parse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from '../services/audit.ts';
@@ -17,7 +18,6 @@ import {
   startRun,
   suggestMapping,
 } from '../services/imports/engine.ts';
-import { importSecretsAad } from '../services/imports/secrets.ts';
 import type { StartedImport } from '../services/imports/types.ts';
 import { startUndo } from '../services/imports/undo.ts';
 import { publishChanges } from '../services/sync.ts';
@@ -168,7 +168,7 @@ export async function importRoutes(app: FastifyInstance) {
         source: input.source,
         name: started.name.slice(0, 200),
         config: started.config,
-        secrets: app.keyring.encrypt(JSON.stringify(started.secrets), importSecretsAad(id)),
+        secrets: app.keyring.encrypt(JSON.stringify(started.secrets), secretAad.importSecrets(id)),
         createdById: user.id,
       })
       .returning();

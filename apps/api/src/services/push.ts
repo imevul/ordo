@@ -13,6 +13,7 @@ import {
   workspaces,
 } from '../db/schema.ts';
 import { localeOf } from '../i18n/index.ts';
+import { secretAad } from '../lib/encryptedColumns.ts';
 import { enqueue } from '../lib/jobs/index.ts';
 import { safeFetch } from '../lib/safeFetch.ts';
 import {
@@ -28,10 +29,11 @@ let cached: VapidKeys | null = null;
 /** The instance's VAPID key pair, made (and stored encrypted) the first time it's needed. */
 export async function vapidKeys(app: FastifyInstance): Promise<VapidKeys> {
   if (cached) return cached;
-  const aad = 'instance_keys:vapid:value';
   const read = async () => {
     const [row] = await app.db.select().from(instanceKeys).where(eq(instanceKeys.key, 'vapid'));
-    return row ? (JSON.parse(app.keyring.decrypt(row.value, aad)) as VapidKeys) : null;
+    return row
+      ? (JSON.parse(app.keyring.decrypt(row.value, secretAad.instanceKey('vapid'))) as VapidKeys)
+      : null;
   };
   let keys = await read();
   if (!keys) {
@@ -39,7 +41,10 @@ export async function vapidKeys(app: FastifyInstance): Promise<VapidKeys> {
     // Two servers racing: the first insert wins and both read it back.
     await app.db
       .insert(instanceKeys)
-      .values({ key: 'vapid', value: app.keyring.encrypt(JSON.stringify(fresh), aad) })
+      .values({
+        key: 'vapid',
+        value: app.keyring.encrypt(JSON.stringify(fresh), secretAad.instanceKey('vapid')),
+      })
       .onConflictDoNothing();
     keys = (await read())!;
   }

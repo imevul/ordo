@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { workspaceAiProviders, workspaces } from '../db/schema.ts';
 import { requireAdmin, requireWorkspace } from '../lib/auth.ts';
+import { secretAad } from '../lib/encryptedColumns.ts';
 import { badRequest, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import {
@@ -18,7 +19,6 @@ import {
   ownModel,
   summarizeIssue,
   triageIssue,
-  workspaceAiKeyAad,
   workspaceModel,
 } from '../services/ai/assist.ts';
 import { auditCtx } from '../services/audit.ts';
@@ -103,7 +103,8 @@ export async function aiRoutes(app: FastifyInstance) {
       const apiKey =
         input.apiKey === ''
           ? (current?.apiKey ?? null)
-          : input.apiKey && app.keyring.encrypt(input.apiKey, workspaceAiKeyAad(ctx.workspaceId));
+          : input.apiKey &&
+            app.keyring.encrypt(input.apiKey, secretAad.workspaceAiKey(ctx.workspaceId));
       if (input.provider === 'anthropic' && !apiKey)
         throw badRequest('Enter an API key for the Claude API');
       if (input.provider === 'openai' && !input.baseUrl)

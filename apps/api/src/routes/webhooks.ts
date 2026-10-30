@@ -3,17 +3,12 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { webhookDeliveries, webhooks, workspaces } from '../db/schema.ts';
 import { requireAdmin } from '../lib/auth.ts';
+import { secretAad } from '../lib/encryptedColumns.ts';
 import { badRequest, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { auditCtx } from '../services/audit.ts';
 import type { Ctx } from '../services/context.ts';
-import {
-  newWebhookSecret,
-  queueDelivery,
-  toDelivery,
-  toWebhook,
-  webhookSecretAad,
-} from '../services/webhooks.ts';
+import { newWebhookSecret, queueDelivery, toDelivery, toWebhook } from '../services/webhooks.ts';
 
 /** Outgoing webhooks, managed by workspace admins. */
 export async function webhookRoutes(app: FastifyInstance) {
@@ -61,7 +56,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         .returning();
       const [saved] = await ctx.tx
         .update(webhooks)
-        .set({ secret: app.keyring.encrypt(secret, webhookSecretAad(row!.id)) })
+        .set({ secret: app.keyring.encrypt(secret, secretAad.webhookSecret(row!.id)) })
         .where(eq(webhooks.id, row!.id))
         .returning();
       await auditCtx(ctx, {
@@ -122,7 +117,7 @@ export async function webhookRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     return mutate(app, req, async (ctx) => {
       const row = await load(ctx, id);
-      return { secret: app.keyring.decrypt(row.secret, webhookSecretAad(id)) };
+      return { secret: app.keyring.decrypt(row.secret, secretAad.webhookSecret(id)) };
     });
   });
 
@@ -135,7 +130,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       await ctx.tx
         .update(webhooks)
         .set({
-          secret: app.keyring.encrypt(secret, webhookSecretAad(id)),
+          secret: app.keyring.encrypt(secret, secretAad.webhookSecret(id)),
           updatedAt: new Date().toISOString(),
         })
         .where(eq(webhooks.id, id));

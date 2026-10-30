@@ -13,6 +13,7 @@ import type {
   Secrets,
 } from '../integrations/types.ts';
 import { randomToken, sha256 } from '../lib/crypto.ts';
+import { secretAad } from '../lib/encryptedColumns.ts';
 import { notFound } from '../lib/errors.ts';
 import { enqueue, type JobContext } from '../lib/jobs/index.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
@@ -29,24 +30,22 @@ import { toPayloads } from './events.ts';
  * `source: integration:<id>`, so it never receives its own echoes.
  */
 
-export const integrationSecretAad = (id: string) => `integrations:${id}:secrets`;
-
 export function readSecrets(app: FastifyInstance, row: IntegrationRow): Secrets {
   return row.secrets
-    ? JSON.parse(app.keyring.decrypt(row.secrets, integrationSecretAad(row.id)))
+    ? JSON.parse(app.keyring.decrypt(row.secrets, secretAad.integrationSecrets(row.id)))
     : {};
 }
-
-export const appSecretAad = (id: string) => `integration_apps:${id}:secrets`;
 
 type AppRow = typeof integrationApps.$inferSelect;
 
 export function readAppSecrets(app: FastifyInstance, row: AppRow): Secrets {
-  return row.secrets ? JSON.parse(app.keyring.decrypt(row.secrets, appSecretAad(row.id))) : {};
+  return row.secrets
+    ? JSON.parse(app.keyring.decrypt(row.secrets, secretAad.appSecrets(row.id)))
+    : {};
 }
 
 export const sealAppSecrets = (app: FastifyInstance, id: string, secrets: Secrets) =>
-  app.keyring.encrypt(JSON.stringify(secrets), appSecretAad(id));
+  app.keyring.encrypt(JSON.stringify(secrets), secretAad.appSecrets(id));
 
 /** An integration's secrets, plus its app's (e.g. the GitHub App's webhook secret and key). */
 export async function allSecrets(app: FastifyInstance, row: IntegrationRow): Promise<Secrets> {
@@ -60,7 +59,7 @@ export async function allSecrets(app: FastifyInstance, row: IntegrationRow): Pro
 
 export function sealSecrets(app: FastifyInstance, id: string, secrets: Secrets) {
   return Object.keys(secrets).length
-    ? app.keyring.encrypt(JSON.stringify(secrets), integrationSecretAad(id))
+    ? app.keyring.encrypt(JSON.stringify(secrets), secretAad.integrationSecrets(id))
     : null;
 }
 

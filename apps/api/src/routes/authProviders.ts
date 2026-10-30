@@ -9,10 +9,10 @@ import { and, asc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { authProviders } from '../db/schema.ts';
 import { requireAdmin } from '../lib/auth.ts';
+import { secretAad } from '../lib/encryptedColumns.ts';
 import { badRequest, conflict, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { auditCtx } from '../services/audit.ts';
-import { secretAad } from '../services/oidc.ts';
 import {
   certificateInfo,
   fetchIdpMetadata,
@@ -99,7 +99,9 @@ export async function authProviderRoutes(app: FastifyInstance) {
       // The secret is bound to the row id, so encrypt once the id exists.
       const [saved] = await ctx.tx
         .update(authProviders)
-        .set({ clientSecret: app.keyring.encrypt(input.clientSecret, secretAad(row!.id)) })
+        .set({
+          clientSecret: app.keyring.encrypt(input.clientSecret, secretAad.ssoClientSecret(row!.id)),
+        })
         .where(eq(authProviders.id, row!.id))
         .returning();
       await auditCtx(ctx, {
@@ -131,7 +133,9 @@ export async function authProviderRoutes(app: FastifyInstance) {
         .set({
           ...rest,
           issuer: rest.issuer?.trim(),
-          clientSecret: clientSecret ? app.keyring.encrypt(clientSecret, secretAad(id)) : undefined,
+          clientSecret: clientSecret
+            ? app.keyring.encrypt(clientSecret, secretAad.ssoClientSecret(id))
+            : undefined,
           saml: saml ? cleanSaml(saml) : undefined,
           updatedAt: new Date().toISOString(),
         })

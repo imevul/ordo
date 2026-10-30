@@ -37,6 +37,7 @@ import {
 import { localeForEmail, localeOf } from '../i18n/index.ts';
 import { requireUser } from '../lib/auth.ts';
 import { randomToken } from '../lib/crypto.ts';
+import { secretAad } from '../lib/encryptedColumns.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
@@ -532,7 +533,7 @@ export async function adminRoutes(app: FastifyInstance) {
       return e;
     });
   const decryptSmtp = (url: string) =>
-    url.startsWith('v1.') ? app.keyring.decrypt(url, 'instance_settings:smtp:url') : url;
+    url.startsWith('v1.') ? app.keyring.decrypt(url, secretAad.smtpUrl()) : url;
 
   app.get('/settings', async () => describeSettings());
 
@@ -576,8 +577,7 @@ export async function adminRoutes(app: FastifyInstance) {
         const apiKey =
           input.ai.apiKey === ''
             ? (current?.apiKey ?? null)
-            : input.ai.apiKey &&
-              app.keyring.encrypt(input.ai.apiKey, 'instance_settings:ai:apiKey');
+            : input.ai.apiKey && app.keyring.encrypt(input.ai.apiKey, secretAad.aiApiKey());
         if (input.ai.provider === 'anthropic' && !apiKey)
           throw badRequest('Enter an API key for the Claude API');
         if (input.ai.provider === 'openai' && !input.ai.baseUrl)
