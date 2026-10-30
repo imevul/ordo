@@ -2,7 +2,6 @@ import {
   type ChatChannel,
   type ChatEventKind,
   type ChatService,
-  chatChannelsSchema,
   DEFAULT_ACCENT,
   type UserPreferences,
 } from '@ordo/shared';
@@ -54,17 +53,7 @@ import { consumeToken, createToken } from './tokens.ts';
 
 // ─── configuration ────────────────────────────────────────────────────────
 
-/** Validates `config.channels` in a provider's `configure`. */
-export function parseChannels(value: unknown): ChatChannel[] {
-  if (value == null || value === '') return [];
-  const parsed = chatChannelsSchema.safeParse(value);
-  if (!parsed.success) {
-    throw new Error(`Channels: ${parsed.error.issues[0]?.message ?? 'invalid'}`);
-  }
-  const seen = new Set<string>();
-  return parsed.data.filter((c) => !seen.has(c.id) && seen.add(c.id));
-}
-
+/** `config.channels`, as the provider's settings schema made it (shared integrations.ts). */
 export const channelsOf = (row: IntegrationRow) =>
   ((row.config.channels as ChatChannel[] | undefined) ?? []).filter((c) => c.id);
 

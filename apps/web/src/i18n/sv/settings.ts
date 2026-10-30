@@ -165,11 +165,14 @@ export default {
     off: 'Av för den här enheten.',
   },
   notifications: {
-    title: 'E-postnotiser',
+    title: 'Notiser',
     description:
-      'Allt hamnar alltid i din inkorg. Välj vad som även ska mejlas och hur ofta. Det du läser i appen först mejlas inte.',
-    descriptionNoEmail:
-      'E-post är inte konfigurerat på den här instansen, så inställningarna har ingen effekt än.',
+      'Välj vad som hamnar i din inkorg och vad som även ska plinga. Push går till enheterna där du slagit på det, chatt till chattkonton du kopplat och tillåtit direktmeddelanden på. Det du läser i appen först mejlas inte.',
+    descriptionNoEmail: 'E-post är inte konfigurerat på den här instansen, så inget mejlas.',
+    channels: { inbox: 'Inkorg', push: 'Push', email: 'E-post', chat: 'Chatt' },
+    cellLabel: '{type}: {channel}',
+    channelsHint:
+      'Stänger du av Inkorg får du inte den sortens notis alls, i någon kanal. Reaktioner hamnar bara i inkorgen.',
     sendEmails: 'Skicka mejl',
     digest: {
       instant: 'Inom några minuter',

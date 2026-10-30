@@ -22,6 +22,7 @@ import type {
   IssueLinkKind,
   MemberRole,
   NotificationType,
+  NotifyPauseMode,
   ProjectHealth,
   ProjectStatus,
   PullRequestScope,
@@ -35,6 +36,7 @@ import type {
   TriageConditions,
   UserKind,
   UserPreferences,
+  UserStatusKind,
   WebhookPayload,
   WorkspaceSettings,
 } from '@ordo/shared';
@@ -104,6 +106,14 @@ export const users = pgTable('users', {
   /** The last 30-second step a code was accepted for; each step's code works once. */
   totpLastStep: integer('totp_last_step'),
   preferences: jsonb('preferences').$type<Partial<UserPreferences>>().notNull().default({}),
+  /** Status others see (`UserStatus`); account-wide, read as cleared once `status_until` passed. */
+  statusKind: text('status_kind').$type<UserStatusKind>(),
+  statusEmoji: text('status_emoji'),
+  statusText: text('status_text'),
+  statusUntil: ts('status_until'),
+  /** Pings held back (`NotifyPause`), private; null until: until turned off. */
+  notifyPause: text('notify_pause').$type<NotifyPauseMode>(),
+  notifyPauseUntil: ts('notify_pause_until'),
   /**
    * For bots and agents: the workspace they act in (outlives the integration, so its history keeps a name).
    * For placeholders: the workspace whose import made them.

@@ -1,5 +1,4 @@
 import type { Favorite } from '@ordo/shared';
-import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   Bot,
@@ -13,11 +12,9 @@ import {
   Inbox,
   Layers,
   Lock,
-  LogOut,
   Plus,
   RefreshCcw,
   Search,
-  Settings,
   Shield,
   SquarePen,
   Star,
@@ -29,10 +26,10 @@ import { useState } from 'react';
 import { useActiveAgentRunCount } from '../api/queries.ts';
 import type { RealtimeStatus } from '../api/realtime.ts';
 import { t } from '../i18n/index.ts';
-import { signOut } from '../lib/signOut.ts';
 import { readPref, ui, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { OrdoMark, ProjectIcon, TeamIcon } from './icons.tsx';
+import { ProfileMenu } from './ProfileMenu.tsx';
 import { SyncStatus } from './SyncStatus.tsx';
 import { Popover } from './ui/Popover.tsx';
 
@@ -91,7 +88,6 @@ export function Sidebar({
   onNavigate?: () => void;
 }) {
   const ws = useWorkspace();
-  const qc = useQueryClient();
   const navigate = useNavigate();
   const [closedTeams, setClosedTeams] = useState<string[]>(() =>
     readPref('sidebar:closedTeams', []),
@@ -108,8 +104,6 @@ export function Sidebar({
   // Only once there are agents: otherwise there's nothing to show.
   const hasAgents = ws.members.some((m) => m.kind === 'agent');
   const { data: activeRuns } = useActiveAgentRunCount(ws.slug, hasAgents);
-
-  const logout = () => signOut(qc);
 
   return (
     <nav
@@ -159,14 +153,7 @@ export function Sidebar({
               >
                 <Plus size={14} /> {t('shell.sidebar.createWorkspace')}
               </button>
-              <div className="my-1 h-px bg-border-soft" />
-              <Link
-                to="/$slug/settings/$section"
-                params={{ ...p, section: 'account' }}
-                className="menu-item"
-              >
-                <Settings size={14} /> {t('common.settings')}
-              </Link>
+              {(isAdmin || ws.me.isInstanceAdmin) && <div className="my-1 h-px bg-border-soft" />}
               {isAdmin && (
                 <Link
                   to="/$slug/settings/$section"
@@ -181,9 +168,6 @@ export function Sidebar({
                   <Shield size={14} /> {t('shell.sidebar.instanceAdmin')}
                 </Link>
               )}
-              <button type="button" className="menu-item" onClick={logout}>
-                <LogOut size={14} /> {t('common.logOut')}
-              </button>
             </div>
           )}
         </Popover>
@@ -354,6 +338,9 @@ export function Sidebar({
         })}
       </div>
 
+      <div className="flex-none border-t border-border-soft">
+        <ProfileMenu />
+      </div>
       <div className="flex h-9 flex-none items-center gap-2 border-t border-border-soft px-3 font-mono text-[10.5px] tracking-[0.12em] text-index uppercase">
         <span
           className={`h-[7px] w-[7px] ${status === 'live' ? 'bg-success shadow-[0_0_10px_var(--color-success)]' : status === 'connecting' ? 'bg-warning' : 'bg-error'}`}

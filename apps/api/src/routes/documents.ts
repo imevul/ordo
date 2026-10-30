@@ -3,7 +3,7 @@ import { and, asc, eq, max } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { projectDocuments } from '../db/schema.ts';
 import { requireAccess } from '../lib/auth.ts';
-import { conflict, forbidden, notFound, parse } from '../lib/errors.ts';
+import { conflict, forbidden, notFound, one, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import type { Access } from '../services/access.ts';
 import { type Ctx, emit } from '../services/context.ts';
@@ -76,19 +76,21 @@ export async function documentRoutes(app: FastifyInstance) {
         .select({ last: max(projectDocuments.sortOrder) })
         .from(projectDocuments)
         .where(eq(projectDocuments.projectId, id))) as [{ last: number | null }];
-      const [row] = await ctx.tx
-        .insert(projectDocuments)
-        .values({
-          ...input,
-          workspaceId: ctx.workspaceId,
-          projectId: id,
-          sortOrder: (last ?? 0) + 1024,
-          createdById: ctx.userId,
-          updatedById: ctx.userId,
-        })
-        .returning();
-      emit(ctx, { kind: 'document', action: 'created', id: row!.id });
-      return toDocument(row!);
+      const row = one(
+        await ctx.tx
+          .insert(projectDocuments)
+          .values({
+            ...input,
+            workspaceId: ctx.workspaceId,
+            projectId: id,
+            sortOrder: (last ?? 0) + 1024,
+            createdById: ctx.userId,
+            updatedById: ctx.userId,
+          })
+          .returning(),
+      );
+      emit(ctx, { kind: 'document', action: 'created', id: row.id });
+      return toDocument(row);
     });
   });
 
@@ -103,13 +105,16 @@ export async function documentRoutes(app: FastifyInstance) {
         throw conflict('Someone else saved this document while you were editing').as(
           'document_conflict',
         );
-      const [row] = await ctx.tx
-        .update(projectDocuments)
-        .set({ ...input, updatedById: ctx.userId, updatedAt: new Date().toISOString() })
-        .where(eq(projectDocuments.id, id))
-        .returning();
+      const row = one(
+        await ctx.tx
+          .update(projectDocuments)
+          .set({ ...input, updatedById: ctx.userId, updatedAt: new Date().toISOString() })
+          .where(eq(projectDocuments.id, id))
+          .returning(),
+        'Document',
+      );
       emit(ctx, { kind: 'document', action: 'updated', id });
-      return toDocument(row!);
+      return toDocument(row);
     });
   });
 
