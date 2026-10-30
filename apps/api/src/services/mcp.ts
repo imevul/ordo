@@ -31,6 +31,7 @@ import {
 } from './agents.ts';
 import { createComment, listComments } from './comments.ts';
 import type { Ctx } from './context.ts';
+import { workspaceToday } from './cycle-automation.ts';
 import { listCycles } from './cycles.ts';
 import { createIssue, getIssue, getIssueDetail, queryIssues, updateIssue } from './issues.ts';
 import { listLabels } from './labels.ts';
@@ -78,6 +79,8 @@ class Directory {
   projects = once(() => listProjects(this.db, this.c.access));
   cycles = once(() => listCycles(this.db, this.c.access));
   members = once(() => listMembers(this.db, this.c.access));
+  /** "Today" as cycle automation sees it, so "current" means the same cycle everywhere. */
+  today = once(() => workspaceToday(this.db, this.c.access.workspaceId));
 
   async team(ref: string): Promise<Team> {
     const teams = await this.teams();
@@ -149,7 +152,7 @@ class Directory {
 
   /** Cycles matching `ref`: "current", a number, a name or an id, within one team or all. */
   async cycleIds(ref: string, teamId?: string): Promise<string[]> {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = await this.today();
     const cycles = (await this.cycles()).filter((c) => !teamId || c.teamId === teamId);
     const match = (c: Cycle) =>
       ref === 'current'
@@ -411,7 +414,7 @@ function handlers(c: McpCaller): Handlers {
 
     list_cycles: async ({ team, includePast }) => {
       const teamId = team ? (await dir.team(team)).id : undefined;
-      const today = new Date().toISOString().slice(0, 10);
+      const today = await dir.today();
       const teams = await dir.teams();
       return (await dir.cycles())
         .filter((x) => (!teamId || x.teamId === teamId) && (includePast || x.endsAt > today))

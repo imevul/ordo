@@ -22,6 +22,7 @@ import {
   USER_STATUSES,
   USERNAME_PATTERN,
 } from './constants.ts';
+import { isTimeZone } from './dates.ts';
 import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
 import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
 import { HEX_COLOR } from './theme.ts';
@@ -164,6 +165,7 @@ export const updateWorkspaceSchema = z.object({
       scimMatchGroupsByName: z.boolean().optional(),
       defaultAssigneeId: id.nullable().optional(),
       agentRunsPaused: z.boolean().optional(),
+      timezone: z.string().max(64).refine(isTimeZone, 'Unknown time zone').nullable().optional(),
     })
     .optional(),
 });
@@ -1170,4 +1172,26 @@ export const agentRunsQuerySchema = z.object({
   status: z.enum(['active', 'finished', 'all']).default('all'),
   agentId: id.optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+
+/** `GET /search?q=`. The route trims the term and keeps its first 200 characters. */
+export const searchQuerySchema = z.object({ q: z.string().default('') });
+
+/** `GET /notifications`: the inbox, or with `?snoozed=1` the snoozed notifications. */
+export const notificationsQuerySchema = z.object({ snoozed: z.enum(['0', '1']).optional() });
+
+/** `GET /webhooks/:id/deliveries`, newest first. */
+export const webhookDeliveriesQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+});
+
+/** `POST /attachments?issueId=`: an issue id or identifier. Without one, the upload waits for a description. */
+export const attachmentUploadQuerySchema = z.object({
+  issueId: z.string().max(200).optional(),
+});
+
+/** `GET /admin/users`: matched against name, email and username, 50 at a time. */
+export const adminUsersQuerySchema = z.object({
+  q: z.string().default(''),
+  offset: z.coerce.number().int().min(0).default(0),
 });

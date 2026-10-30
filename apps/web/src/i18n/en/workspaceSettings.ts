@@ -19,6 +19,12 @@ export default {
     description:
       'New issues go to them unless whoever creates the issue picks someone else (or nobody). Projects can choose their own. Issues created in triage are left for triage.',
   },
+  timeZone: {
+    title: 'Time zone',
+    description:
+      'When a day starts for cycle automation: cycles that end today close, and new ones are planned from today, in this time zone.',
+    utc: 'UTC',
+  },
   accent: {
     title: 'Accent colour',
     description:

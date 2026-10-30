@@ -1,12 +1,13 @@
-import type { SearchResults } from '@ordo/shared';
+import { type SearchResults, searchQuerySchema } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { requireAccess } from '../lib/auth.ts';
+import { parse } from '../lib/errors.ts';
 import { queryIssues } from '../services/issues.ts';
 import { listProjects } from '../services/projects.ts';
 
 export async function searchRoutes(app: FastifyInstance) {
   app.get('/search', async (req): Promise<SearchResults> => {
-    const { q = '' } = req.query as { q?: string };
+    const { q } = parse(searchQuerySchema, req.query);
     const term = q.trim().slice(0, 200);
     if (!term) return { issues: [], projects: [] };
     const access = requireAccess(req);

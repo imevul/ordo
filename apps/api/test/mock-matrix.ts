@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { Json } from './helpers.ts';
 
 /**
  * A tiny Matrix homeserver for end-to-end encryption tests: accounts by token, device keys,
@@ -40,7 +41,7 @@ export async function startMockMatrix() {
     method: string,
     parts: string[],
     query: URLSearchParams,
-    body: any,
+    body: Json,
   ) {
     const route = parts.join('/');
     if (method === 'GET' && route === 'account/whoami')

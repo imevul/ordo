@@ -15,14 +15,34 @@ import {
   webhooks,
   workspaceAiProviders,
 } from '../db/schema.ts';
-import { inviteTokenAad } from '../lib/invites.ts';
 import type { Keyring } from '../lib/secrets.ts';
 import type { Settings } from './settings.ts';
 
 /**
+ * The associated data each secret is encrypted under. Call sites and the lists below both use
+ * these, so `rotate-key` decrypts with exactly what the code encrypted with. Never change a string:
+ * existing ciphertexts only decrypt under the AAD they were written with.
+ */
+export const totpSecretAad = (userId: string) => `users:${userId}:totp_secret`;
+export const authProviderSecretAad = (id: string) => `auth_providers:${id}:client_secret`;
+export const webhookSecretAad = (id: string) => `webhooks:${id}:secret`;
+export const integrationAppSecretsAad = (id: string) => `integration_apps:${id}:secrets`;
+export const integrationSecretsAad = (id: string) => `integrations:${id}:secrets`;
+export const matrixCryptoStoreAad = (integrationId: string) =>
+  `matrix_crypto_stores:${integrationId}:data`;
+export const workspaceAiKeyAad = (workspaceId: string) =>
+  `workspace_ai_providers:${workspaceId}:apiKey`;
+export const importSecretsAad = (importId: string) => `imports:${importId}:secrets`;
+export const instanceKeyAad = (key: string) => `instance_keys:${key}:value`;
+export const inviteTokenAad = (inviteId: string) => `invites:${inviteId}:token`;
+export const SMTP_URL_AAD = 'instance_settings:smtp:url';
+export const AI_API_KEY_AAD = 'instance_settings:ai:apiKey';
+
+/**
  * Every column that holds a `keyring.encrypt` value, with the associated data it was encrypted
  * under. `rotate-key` walks this list, and `test/secret-key.test.ts` fails when a source file
- * encrypts under an AAD that isn't here, so new secrets can't be forgotten in a rotation.
+ * encrypts or decrypts with anything but the helpers above, so new secrets can't be forgotten in
+ * a rotation.
  */
 export const ENCRYPTED_COLUMNS: {
   table: PgTable;
@@ -30,57 +50,47 @@ export const ENCRYPTED_COLUMNS: {
   column: PgColumn;
   aad: (id: string) => string;
 }[] = [
-  { table: users, id: users.id, column: users.totpSecret, aad: (id) => `users:${id}:totp_secret` },
+  { table: users, id: users.id, column: users.totpSecret, aad: totpSecretAad },
   {
     table: authProviders,
     id: authProviders.id,
     column: authProviders.clientSecret,
-    aad: (id) => `auth_providers:${id}:client_secret`,
+    aad: authProviderSecretAad,
   },
-  {
-    table: webhooks,
-    id: webhooks.id,
-    column: webhooks.secret,
-    aad: (id) => `webhooks:${id}:secret`,
-  },
+  { table: webhooks, id: webhooks.id, column: webhooks.secret, aad: webhookSecretAad },
   {
     table: integrationApps,
     id: integrationApps.id,
     column: integrationApps.secrets,
-    aad: (id) => `integration_apps:${id}:secrets`,
+    aad: integrationAppSecretsAad,
   },
   {
     table: integrations,
     id: integrations.id,
     column: integrations.secrets,
-    aad: (id) => `integrations:${id}:secrets`,
+    aad: integrationSecretsAad,
   },
   {
     table: matrixCryptoStores,
     id: matrixCryptoStores.integrationId,
     column: matrixCryptoStores.data,
-    aad: (id) => `matrix_crypto_stores:${id}:data`,
+    aad: matrixCryptoStoreAad,
   },
   {
     table: workspaceAiProviders,
     id: workspaceAiProviders.workspaceId,
     column: workspaceAiProviders.apiKey,
-    aad: (id) => `workspace_ai_providers:${id}:apiKey`,
+    aad: workspaceAiKeyAad,
   },
-  { table: imports, id: imports.id, column: imports.secrets, aad: (id) => `imports:${id}:secrets` },
+  { table: imports, id: imports.id, column: imports.secrets, aad: importSecretsAad },
   { table: invites, id: invites.id, column: invites.tokenEncrypted, aad: inviteTokenAad },
-  {
-    table: instanceKeys,
-    id: instanceKeys.key,
-    column: instanceKeys.value,
-    aad: (key) => `instance_keys:${key}:value`,
-  },
+  { table: instanceKeys, id: instanceKeys.key, column: instanceKeys.value, aad: instanceKeyAad },
 ];
 
 /** Encrypted fields inside instance settings (jsonb). Values set by env variables are plain. */
 export const ENCRYPTED_SETTINGS = [
-  { key: 'smtp', field: 'url', aad: 'instance_settings:smtp:url' },
-  { key: 'ai', field: 'apiKey', aad: 'instance_settings:ai:apiKey' },
+  { key: 'smtp', field: 'url', aad: SMTP_URL_AAD },
+  { key: 'ai', field: 'apiKey', aad: AI_API_KEY_AAD },
 ] as const;
 
 const isEncrypted = (v: unknown): v is string => typeof v === 'string' && v.startsWith('v1.');

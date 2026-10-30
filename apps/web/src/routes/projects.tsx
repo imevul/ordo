@@ -427,7 +427,7 @@ function ProjectOverview({ project }: { project: Project }) {
     ws.slug,
     (body: object) => api.post(wsPath(ws.slug, `/projects/${project.id}/updates`), body),
     {
-      invalidate: [keys.projectUpdates(ws.slug, project.id) as unknown as unknown[]],
+      invalidate: [keys.projectUpdates(ws.slug, project.id)],
     },
   );
   const [name, setName] = useState(project.name);

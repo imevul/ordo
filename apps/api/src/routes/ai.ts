@@ -18,12 +18,12 @@ import {
   ownModel,
   summarizeIssue,
   triageIssue,
-  workspaceAiKeyAad,
   workspaceModel,
 } from '../services/ai/assist.ts';
 import { auditCtx } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import type { McpReader } from '../services/mcp.ts';
+import { workspaceAiKeyAad } from '../services/secretKey.ts';
 
 const maskKey = (key: string) => (key.length > 12 ? `${key.slice(0, 7)}…${key.slice(-4)}` : '••••');
 
