@@ -59,6 +59,11 @@ export class Keyring {
   needsRotation(value: string): boolean {
     return value.split('.')[1] !== this.keys[0]?.kid;
   }
+
+  /** Ids of the keys this keyring can decrypt with: current first, then previous. */
+  get keyIds(): string[] {
+    return this.keys.map((k) => k.kid);
+  }
 }
 
 export class SecretKeyMissingError extends Error {
