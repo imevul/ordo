@@ -22,7 +22,7 @@ import type {
   SessionInfo,
   UpdateIssueInput,
 } from '@ordo/shared';
-import type { Engine } from '@ordo/sync';
+import { type Engine, patchIssue, toggleReaction } from '@ordo/sync';
 import {
   keepPreviousData,
   type QueryClient,
@@ -329,26 +329,16 @@ export const useSearch = (slug: string, q: string) =>
 
 // ─── issue mutations with optimistic cache updates ─────────────────────
 
-function applyPatch(issue: Issue, patch: UpdateIssueInput): Issue {
-  const next = { ...issue } as Issue & Record<string, unknown>;
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined || k === 'addLabelIds' || k === 'removeLabelIds' || k === 'teamId')
-      continue;
-    next[k] = v;
-  }
-  if (patch.addLabelIds) next.labelIds = [...new Set([...next.labelIds, ...patch.addLabelIds])];
-  if (patch.removeLabelIds)
-    next.labelIds = next.labelIds.filter((l) => !patch.removeLabelIds!.includes(l));
-  return next;
-}
-
 function patchCaches(qc: QueryClient, slug: string, ids: string[], patch: UpdateIssueInput) {
   const idSet = new Set(ids);
+  const now = new Date().toISOString();
   qc.setQueriesData<Issue[]>({ queryKey: ['ws', slug, 'issues'] }, (list) =>
-    list?.map((i) => (idSet.has(i.id) ? applyPatch(i, patch) : i)),
+    list?.map((i) => (idSet.has(i.id) ? patchIssue(i, patch, now) : i)),
   );
   qc.setQueriesData<IssueDetail>({ queryKey: keys.issue(slug) }, (d) =>
-    d && idSet.has(d.id) ? ({ ...applyPatch(d, patch), subIssues: d.subIssues } as IssueDetail) : d,
+    d && idSet.has(d.id)
+      ? ({ ...patchIssue(d, patch, now), subIssues: d.subIssues } as IssueDetail)
+      : d,
   );
 }
 
@@ -456,17 +446,7 @@ export function useToggleReaction(slug: string, issueId: string, userId: string)
     onMutate: async ({ commentId, emoji, on }) => {
       await qc.cancelQueries({ queryKey: key });
       const before = qc.getQueryData<Comment[]>(key);
-      apply(commentId, (reactions) => {
-        const rest = reactions.map((r) =>
-          r.emoji === emoji ? { ...r, userIds: r.userIds.filter((u) => u !== userId) } : r,
-        );
-        const next = on
-          ? rest.some((r) => r.emoji === emoji)
-            ? rest.map((r) => (r.emoji === emoji ? { ...r, userIds: [...r.userIds, userId] } : r))
-            : [...rest, { emoji, userIds: [userId] }]
-          : rest;
-        return next.filter((r) => r.userIds.length > 0);
-      });
+      apply(commentId, (reactions) => toggleReaction(reactions, emoji, userId, on));
       return { before };
     },
     // Queued (offline) leaves the optimistic version showing.
