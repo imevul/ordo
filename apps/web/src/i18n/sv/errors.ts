@@ -81,7 +81,7 @@ export default {
     team_managed: 'Teamets medlemmar kommer från kataloggruppen ”{group}”. Ändra dem där.',
     resync: 'Enhetens kopia av arbetsytan är inaktuell. Läser in den igen.',
     id_taken: 'Det id:t används redan',
-    reauth_needed: 'Logga in igen för att ändra dina lösennycklar',
+    reauth_needed: 'Logga in igen för att göra den här ändringen',
     ai_off_workspace: 'AI-hjälp är avstängd i den här arbetsytan',
     ai_off: 'AI-hjälp är avstängd',
     ai_empty: 'Modellen skickade ett tomt svar',

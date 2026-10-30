@@ -81,7 +81,7 @@ export default {
     team_managed: 'Teamets medlemmer kommer fra kataloggruppen «{group}». Endre dem der.',
     resync: 'Enhetens kopi av arbeidsområdet er utdatert. Laster det inn på nytt.',
     id_taken: 'Den ID-en er allerede i bruk',
-    reauth_needed: 'Logg inn på nytt for å endre tilgangsnøklene dine',
+    reauth_needed: 'Logg inn på nytt for å gjøre denne endringen',
     ai_off_workspace: 'KI-hjelp er slått av i dette arbeidsområdet',
     ai_off: 'KI-hjelp er slått av',
     ai_empty: 'Modellen sendte et tomt svar',

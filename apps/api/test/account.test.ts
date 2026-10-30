@@ -2,7 +2,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { Secret, TOTP } from 'otpauth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { issues, jobs, notifications, schedules, users } from '../src/db/schema.ts';
+import { issues, jobs, notifications, schedules, sessions, users } from '../src/db/schema.ts';
 import { proxyTrust } from '../src/env.ts';
 import { enqueue } from '../src/lib/jobs/index.ts';
 import { Client, captureMail, linkIn, signup, testApp } from './helpers.ts';
@@ -106,6 +106,52 @@ describe('email change', () => {
     const account = (await client.get('/api/me/account')).data;
     expect(account).toMatchObject({ email: next, emailVerified: true });
     expect(lastMailTo(email, /changed/i)).toBeDefined();
+  });
+});
+
+describe('email change and two-factor setup', () => {
+  const withKey = (token: string, url: string, payload: object) =>
+    app.inject({ method: 'POST', url, payload, headers: { authorization: `Bearer ${token}` } });
+
+  it('need a recent sign-in on accounts without a password', async () => {
+    const { client } = await signup(app, 'Sid Sso');
+    const id = (await client.get('/api/auth/me')).data.id as string;
+    await app.db.update(users).set({ passwordHash: null }).where(eq(users.id, id));
+    await app.db
+      .update(sessions)
+      .set({ createdAt: new Date(Date.now() - 3_600_000).toISOString() })
+      .where(eq(sessions.userId, id));
+    const next = `sid-new-${Date.now()}@example.com`;
+    const email = await client.post('/api/me/email', { email: next });
+    expect(email.statusCode).toBe(403);
+    expect(email.data.messageKey).toBe('reauth_needed');
+    const totp = await client.post('/api/me/2fa/setup', {});
+    expect(totp.statusCode).toBe(403);
+    expect(totp.data.messageKey).toBe('reauth_needed');
+
+    await app.db
+      .update(sessions)
+      .set({ createdAt: new Date().toISOString() })
+      .where(eq(sessions.userId, id));
+    expect((await client.post('/api/me/email', { email: next })).data).toEqual({ pending: true });
+    expect((await client.post('/api/me/2fa/setup', {})).data.uri).toMatch(/^otpauth:/);
+  });
+
+  it("can't be done with an API key, with or without a password", async () => {
+    for (const sso of [false, true]) {
+      const { client } = await signup(app, sso ? 'Kim Keyless' : 'Kit Key');
+      const id = (await client.get('/api/auth/me')).data.id as string;
+      const token = (await client.post('/api/me/api-keys', { name: 'cli' })).data.token as string;
+      if (sso) await app.db.update(users).set({ passwordHash: null }).where(eq(users.id, id));
+      const body = sso ? {} : { password: PASSWORD };
+      const email = await withKey(token, '/api/me/email', {
+        ...body,
+        email: `key-${sso}-${Date.now()}@example.com`,
+      });
+      expect(email.json().message).toBe('Use a browser session for this');
+      const totp = await withKey(token, '/api/me/2fa/setup', body);
+      expect(totp.json().message).toBe('Use a browser session for this');
+    }
   });
 });
 
