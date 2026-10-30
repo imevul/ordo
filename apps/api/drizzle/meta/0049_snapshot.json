@@ -1,5 +1,5 @@
 {
-  "id": "2ebfcaaf-ba2f-425a-bb32-678b0fee2b75",
+  "id": "c26d84c0-ff22-4732-9b90-0440e7a923ff",
   "prevId": "1a281e21-efcc-45b2-82d1-021398b50635",
   "version": "7",
   "dialect": "postgresql",
@@ -3284,18 +3284,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "token_encrypted": {
-          "name": "token_encrypted",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "email": {
           "name": "email",
           "type": "text",
@@ -3391,13 +3379,6 @@
           "nullsNotDistinct": false,
           "columns": [
             "token"
-          ]
-        },
-        "invites_token_hash_unique": {
-          "name": "invites_token_hash_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "token_hash"
           ]
         }
       },
@@ -8205,6 +8186,42 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'{}'::jsonb"
+        },
+        "status_kind": {
+          "name": "status_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status_emoji": {
+          "name": "status_emoji",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status_text": {
+          "name": "status_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status_until": {
+          "name": "status_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notify_pause": {
+          "name": "notify_pause",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "notify_pause_until": {
+          "name": "notify_pause_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
         },
         "bot_workspace_id": {
           "name": "bot_workspace_id",

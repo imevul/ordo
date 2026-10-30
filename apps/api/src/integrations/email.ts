@@ -1,4 +1,5 @@
 import { lookup } from 'node:dns/promises';
+import { type EmailConfig, emailSettingsSchema } from '@ordo/shared';
 import { and, eq, inArray } from 'drizzle-orm';
 import { ImapFlow } from 'imapflow';
 import { type AddressObject, simpleParser } from 'mailparser';
@@ -11,7 +12,7 @@ import { addCustomerRequest, customerForEmail } from '../services/customers.ts';
 import { saveFile } from '../services/files.ts';
 import { createIssue } from '../services/issues.ts';
 import { upsertIssueLink } from '../services/links.ts';
-import type { IntegrationContext, IntegrationProvider, IntegrationRow, Secrets } from './types.ts';
+import { configOf, type IntegrationContext, type IntegrationProvider } from './types.ts';
 
 /**
  * Email intake: mail sent to an address becomes an issue in a team's triage, filed under the
@@ -20,20 +21,7 @@ import type { IntegrationContext, IntegrationProvider, IntegrationRow, Secrets }
  * the raw message, e.g. an email worker or a mail server's pipe).
  */
 
-interface EmailConfig {
-  delivery: 'imap' | 'webhook';
-  teamId: string;
-  /** The address people write to; shown in Ordo only. */
-  address?: string;
-  host?: string;
-  port?: number;
-  secure?: boolean;
-  username?: string;
-  mailbox?: string;
-}
-
-const cfg = (row: IntegrationRow) => row.config as unknown as EmailConfig;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const cfg = configOf<EmailConfig>();
 
 /** Message ids as they appear in headers: "<abc@host>" → "abc@host". */
 const ids = (value: string | string[] | undefined) =>
@@ -215,33 +203,7 @@ export const emailProvider: IntegrationProvider = {
   description: 'Turn email to an address into triage issues, filed under the sender’s customer.',
   category: 'other',
 
-  configure({ config, secrets }) {
-    const teamId = String(config.teamId ?? '');
-    if (!UUID.test(teamId)) throw new Error('Pick the team that receives the issues');
-    const delivery = config.delivery === 'imap' ? 'imap' : 'webhook';
-    const out: EmailConfig = {
-      delivery,
-      teamId,
-      address: String(config.address ?? '').trim() || undefined,
-    };
-    if (delivery === 'imap') {
-      const host = String(config.host ?? '').trim();
-      const username = String(config.username ?? '').trim();
-      if (!/^[a-z0-9.-]+$/i.test(host))
-        throw new Error('Enter the IMAP server, e.g. imap.example.com');
-      if (!username) throw new Error('Enter the mailbox user name');
-      if (!secrets.password) throw new Error('Enter the mailbox password');
-      out.host = host;
-      out.username = username;
-      out.port = Number(config.port) || 993;
-      out.secure = config.secure !== false;
-      out.mailbox = String(config.mailbox ?? '').trim() || 'INBOX';
-    }
-    return {
-      config: out as unknown as Record<string, unknown>,
-      secrets: (delivery === 'imap' ? { password: String(secrets.password) } : {}) as Secrets,
-    };
-  },
+  settings: emailSettingsSchema,
 
   async install(ictx) {
     // Fail now, with the server's answer, rather than on the first poll.

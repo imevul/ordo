@@ -28,6 +28,8 @@ export default {
     slaBreached: 'gick ut för {time} sedan',
     slaLeft: '{time} kvar',
     moveToTeam: 'Flytta till team…',
+    teamUnavailable: 'Teamet är inte tillgängligt',
+    teamUnavailableTitle: 'Du kan inte se ärendets team, eller så har det inte laddats än',
     movedTo: 'Flyttat till {identifier}',
     setParent: 'Välj överordnat ärende',
     removeParent: 'Ta bort överordnat ärende',

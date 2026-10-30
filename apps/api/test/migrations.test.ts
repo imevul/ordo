@@ -146,7 +146,7 @@ describe('migrations', { timeout: 60_000 }, () => {
     const { db, sql } = createDb(url);
     cleanup.push(() => sql.end());
 
-    const before = folderUpTo(entryIndex('0049_invite_token_hash'));
+    const before = folderUpTo(entryIndex('0050_invite_token_hash'));
     cleanup.push(() => rmSync(before, { recursive: true, force: true }));
     await migrate(db, { migrationsFolder: before });
     const [invite] = await sql<{ id: string }[]>`insert into invites (token, expires_at)
@@ -173,7 +173,7 @@ describe('migrations', { timeout: 60_000 }, () => {
     const { db, sql } = createDb(url);
     cleanup.push(() => sql.end());
 
-    const before = folderUpTo(entryIndex('0049_invite_token_hash'));
+    const before = folderUpTo(entryIndex('0050_invite_token_hash'));
     cleanup.push(() => rmSync(before, { recursive: true, force: true }));
     await migrate(db, { migrationsFolder: before });
     await sql`insert into invites (token, expires_at) values ('legacy-token', now() + interval '1 day')`;

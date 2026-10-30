@@ -28,7 +28,7 @@ export function migrationsFolder() {
  * names. They must be idempotent: they also run on databases that already went past that point.
  */
 const BEFORE: Record<string, (db: Db, keyring: Keyring) => Promise<void>> = {
-  '0051_drop_invite_token': encryptInviteTokens,
+  '0052_drop_invite_token': encryptInviteTokens,
 };
 
 /** Applies pending migrations, pausing for the code backfills in `BEFORE`. */
@@ -58,7 +58,7 @@ function defaultKeyring() {
 
 /**
  * Invites used to keep their token in plain text. Encrypts what's left of it so admins can still
- * copy and resend those links; `0050` already stored the hash that sign-ups look it up by. Without
+ * copy and resend those links; `0051` already stored the hash that sign-ups look it up by. Without
  * a key the links keep working, but can't be shown again.
  */
 async function encryptInviteTokens(db: Db, keyring: Keyring) {

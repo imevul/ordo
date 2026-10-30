@@ -27,6 +27,8 @@ export default {
     slaBreached: 'ran out {time} ago',
     slaLeft: '{time} left',
     moveToTeam: 'Move to team…',
+    teamUnavailable: 'Team unavailable',
+    teamUnavailableTitle: "You can't see this issue's team, or it hasn't loaded yet",
     movedTo: 'Moved to {identifier}',
     setParent: 'Set parent',
     removeParent: 'Remove parent',

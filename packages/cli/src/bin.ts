@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import { signalRunning } from './agent.ts';
 import { type Io, run } from './main.ts';
 
 async function readStdin() {
@@ -38,13 +39,26 @@ function openUrl(url: string) {
     .unref();
 }
 
-// `ordo agent run` winds down on the first Ctrl-C (no new runs) and quits on the second.
+// `ordo agent run` winds down on the first Ctrl-C: no new runs, and the running commands (in
+// their own process groups, out of the terminal's reach) finish. The second Ctrl-C kills them
+// and quits; their leases lapse and Ordo queues the runs again.
 const interrupted = new AbortController();
-if (process.argv[2] === 'agent')
+if (process.argv[2] === 'agent') {
   process.on('SIGINT', () => {
     if (interrupted.signal.aborted) process.exit(130);
     interrupted.abort();
   });
+  // Stopped from outside (kill, a closed terminal): stop the commands too, or they'd be orphaned.
+  for (const [sig, code] of [
+    ['SIGTERM', 143],
+    ['SIGHUP', 129],
+  ] as const)
+    process.on(sig, () => {
+      signalRunning('SIGTERM');
+      process.exit(code);
+    });
+  process.on('exit', () => signalRunning('SIGKILL'));
+}
 
 const io: Io = {
   env: process.env,

@@ -9,7 +9,7 @@ import {
   teams,
   workspaceMembers,
 } from '../db/schema.ts';
-import { badRequest, forbidden } from '../lib/errors.ts';
+import { badRequest, forbidden, one } from '../lib/errors.ts';
 import { type Access, assertCan, canReadTeam } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { assertInitiative } from './initiatives.ts';
@@ -97,25 +97,27 @@ export async function createProject(ctx: Ctx, input: CreateProjectInput): Promis
     .where(eq(projects.workspaceId, ctx.workspaceId))) as [{ first: number | null }];
   const { teamIds, repositoryIds, defaultAssignee, pullRequestAgentId, pullRequestScope, ...rest } =
     input;
-  const [row] = await ctx.tx
-    .insert(projects)
-    .values({
-      ...rest,
-      ...(await defaultAssigneeColumns(ctx, defaultAssignee)),
-      workspaceId: ctx.workspaceId,
-      createdBy: ctx.userId,
-      sortOrder: (first ?? 0) - 1024,
-    })
-    .returning({ id: projects.id });
+  const row = one(
+    await ctx.tx
+      .insert(projects)
+      .values({
+        ...rest,
+        ...(await defaultAssigneeColumns(ctx, defaultAssignee)),
+        workspaceId: ctx.workspaceId,
+        createdBy: ctx.userId,
+        sortOrder: (first ?? 0) - 1024,
+      })
+      .returning({ id: projects.id }),
+  );
   await ctx.tx
     .insert(projectTeams)
-    .values(teamIds.map((teamId) => ({ projectId: row!.id, teamId })));
-  if (repositoryIds?.length) await setProjectRepositories(ctx, row!.id, repositoryIds);
-  await setPullRequestAgent(ctx, row!.id, { pullRequestAgentId, pullRequestScope });
-  emit(ctx, { kind: 'project', action: 'created', id: row!.id });
-  const [project] = await listProjects(ctx.tx, ctx.access, row!.id);
+    .values(teamIds.map((teamId) => ({ projectId: row.id, teamId })));
+  if (repositoryIds?.length) await setProjectRepositories(ctx, row.id, repositoryIds);
+  await setPullRequestAgent(ctx, row.id, { pullRequestAgentId, pullRequestScope });
+  emit(ctx, { kind: 'project', action: 'created', id: row.id });
+  const [project] = await listProjects(ctx.tx, ctx.access, row.id);
   record(ctx, 'project.created', project!, { teamIds: project!.teamIds });
-  return row!.id;
+  return row.id;
 }
 
 /**

@@ -10,7 +10,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '../db/schema.ts';
-import { notFound } from '../lib/errors.ts';
+import { notFound, one } from '../lib/errors.ts';
 import { auditCtx } from './audit.ts';
 import type { Ctx } from './context.ts';
 import { SCIM_SCHEMA, ScimError, UUID, visible } from './scim.ts';
@@ -270,17 +270,19 @@ async function applyGroupChanges(ctx: Ctx, group: GroupRow, changes: GroupChange
 
 export async function createScimGroup(ctx: Ctx, baseUrl: string, body: unknown) {
   const changes = groupResourceChanges(body);
-  const [row] = await ctx.tx
-    .insert(scimGroups)
-    .values({
-      workspaceId: ctx.workspaceId,
-      displayName: changes.displayName!,
-      externalId: changes.externalId ?? null,
-    })
-    .returning();
-  await applyGroupChanges(ctx, row!, changes);
-  if (!row!.teamId) await matchByName(ctx, row!);
-  return getScimGroup(ctx, baseUrl, row!.id);
+  const row = one(
+    await ctx.tx
+      .insert(scimGroups)
+      .values({
+        workspaceId: ctx.workspaceId,
+        displayName: changes.displayName!,
+        externalId: changes.externalId ?? null,
+      })
+      .returning(),
+  );
+  await applyGroupChanges(ctx, row, changes);
+  if (!row.teamId) await matchByName(ctx, row);
+  return getScimGroup(ctx, baseUrl, row.id);
 }
 
 export async function updateScimGroup(

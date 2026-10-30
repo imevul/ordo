@@ -1,6 +1,6 @@
-import { execFile, spawn } from 'node:child_process';
+import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, hostname, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -38,6 +38,8 @@ export interface AgentSpec {
   cwd: 'worktree' | 'tmp';
   /** Clone and check out the run's repositories. Off: the command does it from the run file. */
   checkout: boolean;
+  /** Remove worktrees of done and canceled issues every half hour. */
+  prune: boolean;
   /** The runner file's directory; relative paths resolve against it. */
   baseDir: string;
   /** Added before the agent's own instructions (from Ordo) in every run's prompt. */
@@ -64,6 +66,7 @@ const fieldsSchema = z
     env: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()]).transform(String)),
     cwd: z.enum(['worktree', 'tmp']),
     checkout: z.boolean(),
+    prune: z.boolean(),
     instructions: z.string().max(20_000),
   })
   .partial()
@@ -226,6 +229,7 @@ export async function loadRunnerFile(
       ),
       cwd: merged.cwd ?? 'worktree',
       checkout: merged.checkout ?? true,
+      prune: merged.prune ?? true,
       baseDir,
       // Instructions add up rather than override: shared conventions first, then this agent's.
       instructions: [top.instructions, defaults.instructions, own.instructions]
@@ -277,6 +281,26 @@ async function refExists(clone: string, ref: string) {
 const safeName = (s: string) => s.replace(/[^\w.-]+/g, '_');
 
 /**
+ * Before one branch per issue, each agent had its own (`claude-coder/eng-5-…`). The newest such
+ * local branch for this issue's branch name, so work in flight carries on where it was.
+ */
+async function legacyBranch(clone: string, branch: string) {
+  const { stdout } = await git(
+    [
+      'for-each-ref',
+      '--sort=-committerdate',
+      '--format=%(refname:short)',
+      `refs/heads/*/${branch}`,
+    ],
+    clone,
+  );
+  return stdout.split('\n').find(Boolean) ?? null;
+}
+
+/** Worktree paths a run on this machine is using right now; pruning leaves them alone. */
+const inUse = new Set<string>();
+
+/**
  * A worktree of each repository on the run's branch: an existing local branch is reused (a
  * second run continues the first's work), then the remote's, else a new one from the default
  * branch. Clones live in `reposDir` and are fetched before each run.
@@ -289,12 +313,23 @@ export async function checkout(
   const out: { name: string; path: string }[] = [];
   for (const repo of repos) {
     const clone = join(reposDir, `${safeName(repo.name)}-${repo.id.slice(0, 8)}`);
-    const branch = repo.suggestedBranch;
-    const tree = join(`${clone}.worktrees`, safeName(branch));
+    let branch = repo.suggestedBranch;
+    let tree = join(`${clone}.worktrees`, safeName(branch));
     await locked(clone, async () => {
       if (!existsSync(join(clone, '.git'))) await git(['clone', '--quiet', repo.url, clone]);
       else await git(['fetch', '--quiet', '--prune', 'origin'], clone);
       if (existsSync(tree)) return;
+      if (
+        !(await refExists(clone, `refs/heads/${branch}`)) &&
+        !(await refExists(clone, `refs/remotes/origin/${branch}`))
+      ) {
+        const legacy = await legacyBranch(clone, branch);
+        if (legacy) {
+          branch = legacy;
+          tree = join(`${clone}.worktrees`, safeName(branch));
+          if (existsSync(tree)) return;
+        }
+      }
       await git(['worktree', 'prune'], clone);
       if (await refExists(clone, `refs/heads/${branch}`))
         await git(['worktree', 'add', '--quiet', tree, branch], clone);
@@ -331,6 +366,30 @@ export interface LaunchResult {
 }
 
 const tail = (s: string, n: number) => (s.length > n ? s.slice(-n) : s);
+
+// Commands run in their own process group (POSIX), so the terminal's Ctrl-C reaches only the
+// runner, and stopping a run stops everything it started (shells, pnpm, browsers).
+const groups = process.platform !== 'win32';
+const running = new Set<ChildProcess>();
+
+/** Signals a command and everything it started; false when nothing was left to signal. */
+function signalGroup(child: ChildProcess, sig: NodeJS.Signals | 0) {
+  if (!child.pid) return false;
+  try {
+    if (groups) process.kill(-child.pid, sig);
+    else if (sig) child.kill(sig);
+    else return child.exitCode === null && child.signalCode === null;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Signals every running command's process group (for a forced stop of the runner). */
+export function signalRunning(sig: NodeJS.Signals) {
+  for (const child of running) signalGroup(child, sig);
+}
+
 const SESSION_LINE = /^ORDO_SESSION_URL=(\S+)\s*$/;
 const RESUME_LINE = /^ORDO_RESUME=(\S+)\s*$/;
 
@@ -352,6 +411,8 @@ export async function launch(
     onOutput?: (line: string, stream: 'stdout' | 'stderr') => void;
     /** Resolves when the run should stop (cancelled in Ordo). */
     cancelled?: Promise<void>;
+    /** How long a stopped command gets between SIGTERM and SIGKILL (default 10s). */
+    graceMs?: number;
   },
 ): Promise<LaunchResult> {
   const dir = await mkdtemp(join(tmpdir(), 'ordo-run-'));
@@ -410,7 +471,13 @@ export async function launch(
       typeof spec.command === 'string'
         ? ['sh', ['-c', spec.command]]
         : [spec.command[0]!, spec.command.slice(1)];
-    const child = spawn(cmd, args, { cwd: workdir, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(cmd, args, {
+      cwd: workdir,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: groups,
+    });
+    running.add(child);
     opts.onStart?.(child.pid);
     child.stdin.on('error', () => {}); // commands that don't read stdin close it early
     child.stdin.end(context.prompt);
@@ -445,12 +512,15 @@ export async function launch(
     child.stdout.on('data', lines('stdout'));
     child.stderr.on('data', lines('stderr'));
 
+    let closed = false;
     let stopped: 'cancelled' | 'timeout' | null = null;
+    let force: NodeJS.Timeout | undefined;
     const kill = (why: 'cancelled' | 'timeout') => {
-      if (stopped || child.exitCode !== null) return;
+      if (stopped || closed) return;
       stopped = why;
-      child.kill('SIGTERM');
-      setTimeout(() => child.exitCode === null && child.kill('SIGKILL'), 10_000).unref();
+      signalGroup(child, 'SIGTERM');
+      // The whole group, even if the command itself is already gone: what it started may not be.
+      force = setTimeout(() => signalGroup(child, 'SIGKILL'), opts.graceMs ?? 10_000);
     };
     const timer = spec.timeoutMs ? setTimeout(() => kill('timeout'), spec.timeoutMs) : undefined;
     void opts.cancelled?.then(() => kill('cancelled'));
@@ -462,7 +532,11 @@ export async function launch(
       });
       child.on('close', (c) => resolveExit(c));
     });
+    closed = true;
+    running.delete(child);
     clearTimeout(timer);
+    // Nothing left in the group: no SIGKILL to send (and nothing to hold the runner for).
+    if (!signalGroup(child, 0)) clearTimeout(force);
 
     let summary: string | null = null;
     try {
@@ -501,7 +575,7 @@ export interface ServeOptions {
   /** What the runner calls itself in Ordo (default host/label). */
   runnerName?: string;
   log: (line: string) => void;
-  /** Stop claiming; running commands finish (or are interrupted with the runner). */
+  /** Stop claiming; running commands finish (or are killed if the runner is forced to quit). */
   signal: AbortSignal;
   fetch?: typeof fetch;
   /** Echo the command's output into the log. */
@@ -517,6 +591,38 @@ const sleep = (ms: number, signal: AbortSignal) =>
     });
   });
 
+/** Ordo restarting or unreachable for a moment (a deploy, a proxy), as opposed to a real answer. */
+export const isTransient = (err: unknown) =>
+  !(err instanceof OrdoError) || [429, 502, 503, 504].includes(err.status);
+
+/**
+ * Calls `fn` until it answers, while failures are transient (see `isTransient`), backing off
+ * from one second to `maxDelayMs`, for at most `forMs`. Other errors, and the last transient one,
+ * are thrown.
+ */
+export async function untilAvailable<T>(
+  fn: () => Promise<T>,
+  opts: {
+    signal: AbortSignal;
+    onRetry?: (err: Error, delayMs: number) => void;
+    forMs?: number;
+    maxDelayMs?: number;
+  },
+): Promise<T> {
+  const until = Date.now() + (opts.forMs ?? 5 * 60_000);
+  let delay = 1000;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isTransient(err) || Date.now() + delay > until || opts.signal.aborted) throw err;
+      opts.onRetry?.(err as Error, delay);
+      await sleep(delay, opts.signal);
+      delay = Math.min(delay * 2, opts.maxDelayMs ?? 30_000);
+    }
+  }
+}
+
 /** Clients for one agent: one whose claims are cut off by the stop signal, one that isn't. */
 export function agentClients(spec: AgentSpec, opts: Pick<ServeOptions, 'fetch' | 'signal'>) {
   const base = opts.fetch ?? globalThis.fetch;
@@ -529,11 +635,84 @@ export function agentClients(spec: AgentSpec, opts: Pick<ServeOptions, 'fetch' |
   return { ws, claims };
 }
 
+/** How often a long-running runner clears out worktrees of finished issues. */
+const PRUNE_EVERY_MS = 30 * 60_000;
+const ISSUE_IN_BRANCH = /(?:^|\/)([a-z][a-z0-9]{0,6}-\d+)(?:-|$)/i;
+
+/**
+ * Removes worktrees whose issue is done or canceled, so they don't pile up (each is a full
+ * checkout, often with installed dependencies). Branches stay; worktrees in use, of issues this
+ * agent can't see, or whose branch names no issue are left alone.
+ */
+export function pruneWorktrees(
+  ws: Pick<WorkspaceClient, 'issues'>,
+  reposDir: string,
+  log: (line: string) => void,
+): Promise<number> {
+  // Agents of one runner usually share a repos directory: one sweep at a time does for all.
+  const running = sweeps.get(reposDir);
+  if (running) return running;
+  const sweep = sweepWorktrees(ws, reposDir, log).finally(() => sweeps.delete(reposDir));
+  sweeps.set(reposDir, sweep);
+  return sweep;
+}
+
+const sweeps = new Map<string, Promise<number>>();
+
+async function sweepWorktrees(
+  ws: Pick<WorkspaceClient, 'issues'>,
+  reposDir: string,
+  log: (line: string) => void,
+) {
+  if (!existsSync(reposDir)) return 0;
+  let removed = 0;
+  for (const entry of await readdir(reposDir)) {
+    if (!entry.endsWith('.worktrees')) continue;
+    const clone = join(reposDir, entry.slice(0, -'.worktrees'.length));
+    if (!existsSync(join(clone, '.git'))) continue;
+    for (const name of await readdir(join(reposDir, entry))) {
+      const tree = join(reposDir, entry, name);
+      if (inUse.has(tree)) continue;
+      let branch: string;
+      try {
+        branch = (await git(['rev-parse', '--abbrev-ref', 'HEAD'], tree)).stdout.trim();
+      } catch {
+        continue;
+      }
+      const identifier = branch.match(ISSUE_IN_BRANCH)?.[1]?.toUpperCase();
+      if (!identifier) continue;
+      const issue = await ws.issues.get(identifier).catch(() => null);
+      if (!issue || (!issue.completedAt && !issue.canceledAt)) continue;
+      await locked(clone, async () => {
+        if (inUse.has(tree) || !existsSync(tree)) return false;
+        await git(['worktree', 'remove', '--force', tree], clone);
+        return true;
+      }).then(
+        (done) => {
+          if (!done) return;
+          removed++;
+          log(
+            `removed the worktree of ${identifier} (${issue.completedAt ? 'done' : 'canceled'}): ${tree}`,
+          );
+        },
+        (err: Error) => log(`couldn't remove ${tree}: ${err.message}`),
+      );
+    }
+  }
+  return removed;
+}
+
 /** Claims and works on one agent's runs until stopped (or, with `once`, until the queue is empty). */
 export async function serveAgent(spec: AgentSpec, opts: ServeOptions) {
   const { ws, claims } = agentClients(spec, opts);
   const runner = opts.runnerName ?? `${hostname()}/${spec.label}`;
   const log = (line: string) => opts.log(`[${spec.label}] ${line}`);
+  if (spec.checkout && spec.prune && !opts.once) {
+    const sweep = () => pruneWorktrees(ws, spec.repos, log).catch(() => 0);
+    void sweep();
+    const timer = setInterval(sweep, PRUNE_EVERY_MS);
+    opts.signal.addEventListener('abort', () => clearInterval(timer));
+  }
   const worker = async () => {
     let backoff = 1000;
     while (!opts.signal.aborted) {
@@ -598,11 +777,16 @@ async function work(
       opts.log(`${id} report failed: ${err.message}`);
       return undefined;
     });
+  const held: string[] = [];
   try {
     let repoPaths: { name: string; path: string }[] = [];
     if (spec.checkout && context.repositories.length) {
       try {
         repoPaths = await checkout(context.repositories, spec.repos);
+        for (const r of repoPaths) {
+          inUse.add(r.path);
+          held.push(r.path);
+        }
       } catch (err) {
         const message = (err as { stderr?: string }).stderr?.trim() || (err as Error).message;
         opts.log(`${id} checkout failed: ${message}`);
@@ -646,6 +830,7 @@ async function work(
       opts.log(`${id} ${result.status}${result.error ? `: ${result.error.split('\n')[0]}` : ''}`);
   } finally {
     clearInterval(beat);
+    for (const path of held) inUse.delete(path);
   }
 }
 
