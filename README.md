@@ -1,127 +1,142 @@
+<div align="center">
+
 # Ordo
 
-**A self-hostable issue tracker for software teams.**
-Keyboard-first, realtime, opinionated about workflow — and it runs on your own box with one command.
+**The issue tracker you run yourself.**
 
-```
+Keyboard-first, realtime and opinionated about workflow: issues, cycles, projects and an inbox that keeps up with
+your team, on your own server, with one command.
+
+[Quick start](#quick-start) · [Features](#features) · [Documentation](docs/README.md) · [Roadmap](ROADMAP.md) ·
+[License](#license)
+
+![The issue list of a team, grouped by status](docs/screenshots/list.png)
+
+</div>
+
+## Quick start
+
+You need Docker with Compose v2 and `make`.
+
+```bash
+git clone https://github.com/imevul/ordo.git && cd ordo
 make up
 ```
 
-Then open <http://localhost:3000>. The first person to sign up becomes the admin.
+`make up` writes a `.env` with fresh secrets, builds the image, starts Ordo and Postgres, and waits until they're
+healthy. Open <http://localhost:3000> and sign up: the first account becomes the instance admin.
 
----
+Want something to click around in first? `make seed` adds a demo workspace (`demo@ordo.test` /
+`ordo-demo-password`).
 
-## What you get
+Before you put it on the internet, set `ORDO_PUBLIC_URL` and serve it over HTTPS. The
+[self-hosting guide](docs/self-hosting.md) has Caddy and nginx examples, plus backups, upgrades, monitoring and
+running without Docker.
 
-- **Issues** with team identifiers (`ENG-42`), statuses, priorities, assignees, labels, estimates, due dates,
-  sub-issues, relations (blocks / blocked by / related / duplicate), markdown descriptions, comments with
-  threads and `@mentions`, a full change history, and a trash you can restore from.
-- **Teams** with their own workflow (customizable statuses grouped into triage, backlog, unstarted, started,
-  completed, canceled), estimate scale, optional triage inbox and cycles.
-- **List and board layouts** with grouping (status, priority, assignee, project, cycle, label), ordering,
-  filters, drag-and-drop, multi-select and bulk edits.
-- **Cycles** — time-boxed iterations per team with progress tracking.
-- **Projects** across teams, with lead, dates, status, health and written project updates.
-- **Saved views**, shared with the workspace or private, and **favorites** in the sidebar.
-- **Inbox** for assignments, mentions, comments and status changes on issues you follow.
-- **Command menu** (`⌘K` / `Ctrl K`) and **keyboard shortcuts** for nearly everything (`?` lists them).
-- **Realtime** — every change shows up for everyone instantly, over a WebSocket fed by Postgres `LISTEN/NOTIFY`.
-- **Workspaces, members, roles and invite links**; invite-only or open sign-up.
-- **Attachments** on issues and comments, stored on disk or in any S3-compatible object store.
-- **Offline sync**: browsers keep a copy of each workspace, so it opens at once and stays readable without a
-  connection; changes made offline are sent when you're back.
-- **GitHub, GitLab and Forgejo/Gitea**: PRs, branches and commits link to issues and move them along; works
-  behind NAT by polling. **Slack, Discord, Matrix and Telegram** for feeds and notifications, **email** to triage,
-  and **Jira** links, mirroring or two-way sync.
-- **Imports** from CSV, Linear, GitHub Issues, Forgejo/Gitea, GitLab and Jira, and export to JSON or CSV.
-- **Agents**: assign an issue to an agent, and a runner you host (Claude Code, OpenCode or your own program) picks
-  it up, works on it and reports back on the issue. A project's **pull request agent** gets the pull requests
-  linked to its issues, to review or merge them.
-- **Single sign-on** per workspace with any OpenID Connect or SAML 2.0 provider, group → role mapping and "require SSO";
-  **directory sync** (SCIM 2.0) from Okta, Entra ID or Authentik.
-- **REST and GraphQL APIs** with personal API keys, signed **webhooks** for issue, comment, project and cycle
-  events, an **MCP server** for AI agents, and the **`ordo` CLI** with a typed TypeScript SDK.
+| Command               | What it does                                      |
+| --------------------- | ------------------------------------------------- |
+| `make up` / `down`    | Start or stop Ordo (data stays in Docker volumes) |
+| `make update`         | Pull, rebuild and restart; migrations run on boot |
+| `make backup`         | Dump the database and uploads to `backups/`       |
+| `make restore FILE=…` | Restore a backup                                  |
+| `make logs`           | Follow the application logs                       |
+| `make help`           | Everything else                                   |
 
-See [ROADMAP.md](ROADMAP.md) for what's next.
+One container serves the API and the web app; the only other service is Postgres.
 
-## Quick start (self-hosting)
+## Features
 
-Requirements: Docker with Compose v2, and `make`.
+### Plan and track
 
-```bash
-git clone <your fork or this repo> ordo && cd ordo
-make up          # creates .env with a random DB password, builds, starts, waits until healthy
-```
+Issues get a team identifier (`ENG-42`), a status from the team's own workflow, a priority, assignee, labels,
+estimate, due date, sub-issues and relations. Descriptions and comments use a rich text editor that stores
+Markdown, with threads, `@mentions`, reactions and attachments. Every change is kept in the issue's history.
 
-| Command               | What it does                                                         |
-| --------------------- | -------------------------------------------------------------------- |
-| `make up`             | Build and start Ordo in the background                               |
-| `make down`           | Stop Ordo (data is kept in the `ordo-db` volume)                     |
-| `make restart`        | Restart the containers                                               |
-| `make update`         | `git pull`, rebuild, restart — database migrations run automatically |
-| `make logs`           | Follow the application logs                                          |
-| `make backup`         | Dump the database and uploads to `backups/ordo-<timestamp>.*`        |
-| `make restore FILE=…` | Restore a backup                                                     |
-| `make seed`           | Load a demo workspace (`demo@ordo.test` / `ordo-demo-password`)      |
-| `make help`           | Everything else                                                      |
+Look at your work as a **list or a board**, grouped and ordered the way you like, with filters, multi-select, bulk
+edits and drag-and-drop. Save the views you use, share them with the workspace or keep them private.
 
-Configuration lives in `.env` — see [docs/configuration.md](docs/configuration.md). Before exposing Ordo to the
-internet, put it behind HTTPS and set `ORDO_PUBLIC_URL`; [docs/self-hosting.md](docs/self-hosting.md) has
-Caddy and nginx examples.
+![A team's issues as a board](docs/screenshots/board.png)
 
-## Development
+![An issue with its properties and comments](docs/screenshots/issue.png)
 
-```bash
-make dev         # Postgres in Docker on :5433, API on :3001, web on :5173 with hot reload
-pnpm db:seed     # optional demo data
-make test        # API integration tests + shared unit tests
-```
+### Cycles, projects and roadmaps
 
-Node 24+ and pnpm 12 are required. [docs/development.md](docs/development.md) explains the layout and
-conventions; [AGENTS.md](AGENTS.md) is the short version for AI coding agents.
+**Cycles** are time-boxed iterations per team, with scope, progress, burn-up charts and automation that rolls
+unfinished work over. **Projects** span teams, with a lead, dates, milestones, health, written updates and
+documents. Group projects into **initiatives** and see them all on a **roadmap** timeline.
 
-## Stack
+![A cycle with its board and insights](docs/screenshots/cycle.png)
 
-TypeScript end to end, in a pnpm monorepo:
+![A project overview with progress and updates](docs/screenshots/project.png)
 
-- `apps/api` — Fastify 5, Drizzle ORM, PostgreSQL 18, WebSockets. Bundled with esbuild into a single file.
-- `apps/web` — React 19, Vite, TanStack Router + Query, Tailwind CSS 4, cmdk, dnd-kit.
-- `packages/shared` — Zod schemas, types and domain constants used by both.
-- `packages/sync` — the offline sync engine: an IndexedDB copy of each workspace, kept current from a change feed.
-- `packages/sdk` — the typed REST client used by the CLI.
-- `packages/cli` — the `ordo` command, bundled into one file that every instance serves at `/cli/ordo.mjs`.
+### Fast, for people who live in it
 
-One container serves both the API and the built web app; the only other service is Postgres.
-The UI uses the **Hotline Pink** design system: dark charcoal ground (or a light theme), sparse pink accents, cyan
-focus rings, chamfered corners instead of rounded ones ([docs/design.md](docs/design.md)).
+Press `⌘K` / `Ctrl K` for the command menu and `?` for the shortcuts: almost everything has one. Changes show up for
+everyone instantly. Browsers keep a local copy of the workspace, so it opens at once, stays readable offline and
+sends what you changed when you're back. Install it as an app on desktop or phone, with push notifications, in a
+dark or light theme, in English, Swedish or Norwegian.
+
+![The command menu](docs/screenshots/palette.png)
+
+### An inbox that respects your attention
+
+Assignments, mentions, comments and status changes on the issues you follow land in one inbox. Choose per kind of
+notification whether it goes to the inbox, push, email or chat; snooze, filter, or pause everything but mentions.
+
+![The inbox with an issue open beside it](docs/screenshots/inbox.png)
+
+### Connected to your tools
+
+- **Git forges**: GitHub, GitLab and Forgejo/Gitea link branches, commits and pull requests to issues and move
+  issues along as they progress. Polling works for instances the forge can't reach.
+- **Chat**: Slack, Discord, Matrix and Telegram get channel feeds, personal notifications, issues from messages and
+  threaded comment sync.
+- **Email** to an address becomes triage issues; **Jira** can be linked, mirrored or synced both ways.
+- **Imports** from CSV, GitHub Issues, GitLab, Forgejo/Gitea, Jira and other trackers, with mapping, dry runs and
+  undo. **Export** the whole workspace as JSON, or issues as CSV.
+
+### Built for agents too
+
+Assign an issue to an **agent** and a runner you host (Claude Code, OpenCode or your own program) picks it up, works
+on it and reports back on the issue. A project's pull request agent reviews what comes in. AI clients connect through
+the built-in **MCP server**, and optional AI assistance (the Claude API or a local model) writes summaries, drafts and
+triage suggestions.
+
+### Ready for a whole organisation
+
+Workspaces with owners, admins, members and guests, private teams and team admins. Sign in with passwords, passkeys,
+TOTP, or **single sign-on** over OpenID Connect or SAML 2.0 per workspace, with group → role mapping and directory
+sync over **SCIM 2.0**. An audit log, secrets encrypted at rest, and an instance admin area for users, workspaces,
+email, jobs and health.
+
+### Open to build on
+
+**REST and GraphQL APIs** with personal API keys, signed **webhooks** for issues, comments, projects and cycles, a
+typed **TypeScript SDK**, and the **`ordo` CLI**, which every instance serves at `/cli/ordo.mjs`.
 
 ## Documentation
 
-| Doc                                                      |                                                    |
-| -------------------------------------------------------- | -------------------------------------------------- |
-| [docs/user-guide.md](docs/user-guide.md)                 | Concepts and everyday use                          |
-| [docs/keyboard-shortcuts.md](docs/keyboard-shortcuts.md) | Every shortcut                                     |
-| [docs/self-hosting.md](docs/self-hosting.md)             | Install, HTTPS, backups, upgrades, troubleshooting |
-| [docs/configuration.md](docs/configuration.md)           | Environment variables                              |
-| [docs/admin.md](docs/admin.md)                           | Instance administration and recovery               |
-| [docs/sso.md](docs/sso.md)                               | Single sign-on (OIDC and SAML) per workspace       |
-| [docs/scim.md](docs/scim.md)                             | Directory sync (SCIM) from your identity provider  |
-| [docs/integrations/](docs/integrations/README.md)        | Forges, chat, email and Jira                       |
-| [docs/import-export.md](docs/import-export.md)           | Importing from other tools, exporting a workspace  |
-| [docs/agents.md](docs/agents.md)                         | Agents, runners and pull request agents            |
-| [docs/api.md](docs/api.md)                               | REST API, webhooks and realtime events             |
-| [docs/graphql.md](docs/graphql.md)                       | GraphQL API                                        |
-| [docs/cli.md](docs/cli.md)                               | The `ordo` command line and the TypeScript SDK     |
-| [docs/mcp.md](docs/mcp.md)                               | MCP server for AI agents                           |
-| [docs/ai.md](docs/ai.md)                                 | Optional AI assistance (Claude API or local model) |
-| [docs/architecture.md](docs/architecture.md)             | How it's built, data model                         |
-| [docs/development.md](docs/development.md)               | Working on Ordo                                    |
-| [docs/design.md](docs/design.md)                         | The design system as applied to Ordo               |
+Everything lives in [docs/](docs/README.md):
+
+- **Using Ordo**: [user guide](docs/user-guide.md), [keyboard shortcuts](docs/keyboard-shortcuts.md),
+  [import and export](docs/import-export.md)
+- **Running it**: [self-hosting](docs/self-hosting.md), [configuration](docs/configuration.md),
+  [administration](docs/admin.md), [SSO](docs/sso.md), [SCIM](docs/scim.md)
+- **Integrating**: [REST API and webhooks](docs/api.md), [GraphQL](docs/graphql.md), [CLI and SDK](docs/cli.md),
+  [MCP](docs/mcp.md), [agents](docs/agents.md), [integrations](docs/integrations/README.md)
+- **Working on it**: [architecture](docs/architecture.md), [development](docs/development.md),
+  [design system](docs/design.md)
 
 ## Status
 
-Early (v0.1). The tracker, integrations, imports, SSO, attachments, offline sync and agents have shipped and are
-tested. Expect rough edges and breaking changes before 1.0; the [roadmap](ROADMAP.md) lists what's next.
+Ordo is young (v0.1) but broad: everything above has shipped and is covered by tests. Expect rough edges, and
+breaking changes before 1.0. The [roadmap](ROADMAP.md) shows what's next.
+
+## Contributing
+
+Bug reports and ideas are welcome as [GitHub issues](https://github.com/imevul/ordo/issues). To work on the code,
+see [CONTRIBUTING.md](CONTRIBUTING.md): it covers the dev setup (`make dev`), the checks a change must pass and the
+terms contributions are made under.
 
 ## License
 
@@ -133,8 +148,3 @@ Ordo is source-available under the [Functional Source License 1.1, Apache 2.0 Fu
 - **Each release becomes Apache 2.0** two years after it is published.
 
 Code up to the tag `apache-2.0-final` was released under the Apache License 2.0 and stays available under it.
-
-## Contributing
-
-By contributing, you license your contribution under the project's license and agree that the maintainer may
-relicense it in future versions.

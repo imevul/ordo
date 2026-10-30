@@ -55,7 +55,7 @@ const ISSUES: [string, string, number, string, string[]][] = [
   ['Rate-limit the public API per key', 'Todo', 2, 'ENG', ['Backend']],
   ['Postgres full-text search for issues', 'Backlog', 3, 'ENG', ['Backend', 'Feature']],
   ['GitHub integration: link PRs to issues', 'Backlog', 3, 'ENG', ['Feature']],
-  ['Import from Linear CSV export', 'Backlog', 4, 'ENG', ['Feature']],
+  ['Import from a Jira CSV export', 'Backlog', 4, 'ENG', ['Feature']],
   ['Flaky test: realtime reconnect', 'In Review', 2, 'ENG', ['Bug', 'Infra']],
   ['Optimistic updates flicker on slow networks', 'Todo', 3, 'ENG', ['Bug', 'Frontend']],
   ['Document the REST API', 'In Review', 3, 'ENG', ['Docs']],
