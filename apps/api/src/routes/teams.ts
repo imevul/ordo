@@ -373,8 +373,7 @@ export async function teamRoutes(app: FastifyInstance) {
         .where(eq(issues.stateId, state.id));
       await bulkUpdateIssues(
         ctx,
-        state.teamId,
-        inState.map((r) => r.id),
+        inState.map((i) => i.id),
         { stateId: target.id },
       );
       if (team.defaultStateId === state.id)

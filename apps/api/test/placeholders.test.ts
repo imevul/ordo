@@ -1,4 +1,10 @@
-import type { Bootstrap, Import, IssueDetail, PlaceholderSummary } from '@ordo/shared';
+import type {
+  Bootstrap,
+  HistoryEntry,
+  Import,
+  IssueDetail,
+  PlaceholderSummary,
+} from '@ordo/shared';
 import { eq, sql } from 'drizzle-orm';
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
@@ -186,6 +192,15 @@ describe('placeholders', () => {
     expect((await issue('ALP-1')).assigneeId).toBe(realId);
     expect((await issue('ALP-2')).creatorId).toBe(realId);
     expect((await issue('SEC-1')).assigneeId).toBeNull();
+    // The hand-over shows in the issues' history, without notifying anyone.
+    const history = (await owner.get(`${ws}/issues/${brief.id}/history`)).data as HistoryEntry[];
+    expect(history.flatMap((h) => h.changes)).toContainEqual({
+      field: 'assignee',
+      from: carol.id,
+      to: realId,
+    });
+    const told = await app.db.select().from(notifications).where(eq(notifications.userId, realId));
+    expect(told).toHaveLength(0);
     const subs = await app.db
       .select()
       .from(issueSubscribers)
