@@ -1,6 +1,7 @@
 import {
   type Bootstrap,
   type Cycle,
+  isCycleCurrent,
   type Label,
   type Member,
   PRIORITIES,
@@ -105,7 +106,7 @@ export class Names {
     const r = norm(ref);
     const cycle =
       r === 'current'
-        ? cycles.find((c) => c.startsAt.slice(0, 10) <= now && now <= c.endsAt.slice(0, 10))
+        ? cycles.find((c) => isCycleCurrent(c, now))
         : r === 'next'
           ? cycles.find((c) => c.startsAt.slice(0, 10) > now)
           : cycles.find((c) => c.id === ref || String(c.number) === r.replace(/^#/, ''));
