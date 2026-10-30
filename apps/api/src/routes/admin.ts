@@ -43,7 +43,7 @@ import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
 import { audit, auditFilters } from '../services/audit.ts';
 import { passwordResetEmail, siteInviteEmail } from '../services/mail-templates.ts';
 import { encryptSmtpUrl, queueEmail } from '../services/mailer.ts';
-import { countUnreadableSecrets } from '../services/secretKey.ts';
+import { AI_API_KEY_AAD, countUnreadableSecrets, SMTP_URL_AAD } from '../services/secretKey.ts';
 import { publishChanges } from '../services/sync.ts';
 import { createToken } from '../services/tokens.ts';
 
@@ -557,7 +557,7 @@ export async function adminRoutes(app: FastifyInstance) {
       return e;
     });
   const decryptSmtp = (url: string) =>
-    url.startsWith('v1.') ? app.keyring.decrypt(url, 'instance_settings:smtp:url') : url;
+    url.startsWith('v1.') ? app.keyring.decrypt(url, SMTP_URL_AAD) : url;
   const tryDecrypt = (fn: () => string | null) => {
     try {
       return fn();
@@ -611,8 +611,7 @@ export async function adminRoutes(app: FastifyInstance) {
         const apiKey =
           input.ai.apiKey === ''
             ? (current?.apiKey ?? null)
-            : input.ai.apiKey &&
-              app.keyring.encrypt(input.ai.apiKey, 'instance_settings:ai:apiKey');
+            : input.ai.apiKey && app.keyring.encrypt(input.ai.apiKey, AI_API_KEY_AAD);
         if (input.ai.apiKey === '' && apiKey && !readable(() => decryptAiKey(app, apiKey)))
           throw badRequest("The stored API key can't be decrypted. Enter it again");
         if (input.ai.provider === 'anthropic' && !apiKey)

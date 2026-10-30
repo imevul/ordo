@@ -4,6 +4,7 @@ import type * as Sdk from '@matrix-org/matrix-sdk-crypto-wasm';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { matrixCryptoStores } from '../db/schema.ts';
+import { matrixCryptoStoreAad } from '../services/secretKey.ts';
 import type { IntegrationContext } from './types.ts';
 
 /**
@@ -204,8 +205,6 @@ async function restore(integrationId: string, dbs: DumpedDb[]) {
   }
 }
 
-const aad = (integrationId: string) => `matrix_crypto_stores:${integrationId}:data`;
-
 // ─── one machine per integration ──────────────────────────────────────────
 
 interface Loaded {
@@ -273,7 +272,10 @@ async function locked<T>(
       loaded.delete(integration.id);
       const snapshot = row
         ? (deserialize(
-            Buffer.from(app.keyring.decrypt(row.data, aad(integration.id)), 'base64'),
+            Buffer.from(
+              app.keyring.decrypt(row.data, matrixCryptoStoreAad(integration.id)),
+              'base64',
+            ),
           ) as DumpedDb[])
         : [];
       await restore(integration.id, snapshot);
@@ -295,7 +297,10 @@ async function locked<T>(
     const bytes = serialize(await dump(integration.id));
     const hash = createHash('sha256').update(bytes).digest('hex');
     if (hash !== current.hash) {
-      const data = app.keyring.encrypt(bytes.toString('base64'), aad(integration.id));
+      const data = app.keyring.encrypt(
+        bytes.toString('base64'),
+        matrixCryptoStoreAad(integration.id),
+      );
       await app.db
         .insert(matrixCryptoStores)
         .values({ integrationId: integration.id, version: current.version + 1, data })
