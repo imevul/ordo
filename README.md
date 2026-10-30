@@ -27,11 +27,20 @@ Then open <http://localhost:3000>. The first person to sign up becomes the admin
 - **Command menu** (`⌘K` / `Ctrl K`) and **keyboard shortcuts** for nearly everything (`?` lists them).
 - **Realtime** — every change shows up for everyone instantly, over a WebSocket fed by Postgres `LISTEN/NOTIFY`.
 - **Workspaces, members, roles and invite links**; invite-only or open sign-up.
+- **Attachments** on issues and comments, stored on disk or in any S3-compatible object store.
+- **Offline sync**: browsers keep a copy of each workspace, so it opens at once and stays readable without a
+  connection; changes made offline are sent when you're back.
 - **GitHub, GitLab and Forgejo/Gitea**: PRs, branches and commits link to issues and move them along; works
-  behind NAT by polling.
+  behind NAT by polling. **Slack, Discord, Matrix and Telegram** for feeds and notifications, **email** to triage,
+  and **Jira** links, mirroring or two-way sync.
+- **Imports** from CSV, Linear, GitHub Issues, Forgejo/Gitea, GitLab and Jira, and export to JSON or CSV.
+- **Agents**: assign an issue to an agent, and a runner you host (Claude Code, OpenCode or your own program) picks
+  it up, works on it and reports back on the issue. A project's **pull request agent** gets the pull requests
+  linked to its issues, to review or merge them.
 - **Single sign-on** per workspace with any OpenID Connect or SAML 2.0 provider, group → role mapping and "require SSO";
   **directory sync** (SCIM 2.0) from Okta, Entra ID or Authentik.
-- **REST API** with personal API keys, and signed **webhooks** for issue, comment, project and cycle events.
+- **REST and GraphQL APIs** with personal API keys, signed **webhooks** for issue, comment, project and cycle
+  events, an **MCP server** for AI agents, and the **`ordo` CLI** with a typed TypeScript SDK.
 
 See [ROADMAP.md](ROADMAP.md) for what's next.
 
@@ -51,7 +60,7 @@ make up          # creates .env with a random DB password, builds, starts, waits
 | `make restart`        | Restart the containers                                               |
 | `make update`         | `git pull`, rebuild, restart — database migrations run automatically |
 | `make logs`           | Follow the application logs                                          |
-| `make backup`         | Dump the database to `backups/ordo-<timestamp>.sql.gz`               |
+| `make backup`         | Dump the database and uploads to `backups/ordo-<timestamp>.*`        |
 | `make restore FILE=…` | Restore a backup                                                     |
 | `make seed`           | Load a demo workspace (`demo@ordo.test` / `ordo-demo-password`)      |
 | `make help`           | Everything else                                                      |
@@ -78,6 +87,9 @@ TypeScript end to end, in a pnpm monorepo:
 - `apps/api` — Fastify 5, Drizzle ORM, PostgreSQL 18, WebSockets. Bundled with esbuild into a single file.
 - `apps/web` — React 19, Vite, TanStack Router + Query, Tailwind CSS 4, cmdk, dnd-kit.
 - `packages/shared` — Zod schemas, types and domain constants used by both.
+- `packages/sync` — the offline sync engine: an IndexedDB copy of each workspace, kept current from a change feed.
+- `packages/sdk` — the typed REST client used by the CLI.
+- `packages/cli` — the `ordo` command, bundled into one file that every instance serves at `/cli/ordo.mjs`.
 
 One container serves both the API and the built web app; the only other service is Postgres.
 The UI uses the **Hotline Pink** design system: dark charcoal ground (or a light theme), sparse pink accents, cyan
@@ -94,7 +106,9 @@ focus rings, chamfered corners instead of rounded ones ([docs/design.md](docs/de
 | [docs/admin.md](docs/admin.md)                           | Instance administration and recovery               |
 | [docs/sso.md](docs/sso.md)                               | Single sign-on (OIDC and SAML) per workspace       |
 | [docs/scim.md](docs/scim.md)                             | Directory sync (SCIM) from your identity provider  |
-| [docs/integrations/](docs/integrations/README.md)        | GitHub, GitLab, Forgejo/Gitea                      |
+| [docs/integrations/](docs/integrations/README.md)        | Forges, chat, email and Jira                       |
+| [docs/import-export.md](docs/import-export.md)           | Importing from other tools, exporting a workspace  |
+| [docs/agents.md](docs/agents.md)                         | Agents, runners and pull request agents            |
 | [docs/api.md](docs/api.md)                               | REST API, webhooks and realtime events             |
 | [docs/graphql.md](docs/graphql.md)                       | GraphQL API                                        |
 | [docs/cli.md](docs/cli.md)                               | The `ordo` command line and the TypeScript SDK     |
@@ -106,8 +120,8 @@ focus rings, chamfered corners instead of rounded ones ([docs/design.md](docs/de
 
 ## Status
 
-Early (v0.1). The core tracker is complete and tested; integrations, imports, SSO and attachments are on the
-[roadmap](ROADMAP.md).
+Early (v0.1). The tracker, integrations, imports, SSO, attachments, offline sync and agents have shipped and are
+tested. Expect rough edges and breaking changes before 1.0; the [roadmap](ROADMAP.md) lists what's next.
 
 ## License
 
