@@ -2,11 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { slackAppSchema } from '@ordo/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
 import { integrationApps, integrations, workspaces } from '../db/schema.ts';
 import { callApi } from '../integrations/http.ts';
 import { slackApiUrl, slackApp, slackProvider } from '../integrations/slack.ts';
 import { authInfo, authorizeWorkspace, requireAdmin, requireUser } from '../lib/auth.ts';
-import { badRequest, forbidden, parse } from '../lib/errors.ts';
+import { badRequest, forbidden, parse, tryParse } from '../lib/errors.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import { createIntegration, sealAppSecrets, sealSecrets } from '../services/integrations.ts';
 import { consumeToken, createToken } from '../services/tokens.ts';
@@ -208,17 +209,25 @@ interface OAuthAccess {
   team?: { id: string; name: string };
 }
 
+/** What Slack puts on its OAuth redirect: a code, or an error when the person cancelled. */
+const callbackQuerySchema = z.object({
+  code: z.string().max(500).optional(),
+  state: z.string().max(500).optional(),
+  error: z.string().max(200).optional(),
+});
+
 /** Where Slack sends the browser back: /api/integrations/slack/callback */
 export async function slackCallbackRoutes(app: FastifyInstance) {
   const fail = (message: string, slug?: string) =>
     `${slug ? `/${slug}/settings/integrations` : '/'}?error=${encodeURIComponent(message)}`;
 
   app.get('/integrations/slack/callback', async (req, reply) => {
-    const { code, state, error } = req.query as { code?: string; state?: string; error?: string };
+    const query = tryParse(callbackQuerySchema, req.query);
     let data: { appId: string; workspaceId: string };
     try {
       if (!req.user) throw badRequest('Sign in to Ordo first, then try again').as('sign_in_first');
-      const token = await consumeToken(app.db, 'integration_setup', state ?? '');
+      if (!query) throw badRequest('That link from Slack is malformed. Start again from Ordo.');
+      const token = await consumeToken(app.db, 'integration_setup', query.state ?? '');
       if (token.userId !== req.user.id || token.data.step !== 'slack-install')
         throw badRequest('This link belongs to someone else').as('link_other_person');
       data = token.data as typeof data;
@@ -238,6 +247,7 @@ export async function slackCallbackRoutes(app: FastifyInstance) {
     const slug = target?.slug;
     if (!ws?.access.isAdmin) return reply.redirect(fail('Only workspace admins can do this', slug));
     // Cancelled on Slack's consent screen.
+    const { code, error } = query!;
     if (error || !code) return reply.redirect(fail(`Slack: ${error ?? 'no code'}`, slug));
 
     const found = await slackApp(app);

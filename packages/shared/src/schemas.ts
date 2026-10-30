@@ -754,6 +754,65 @@ export const updateAuthProviderSchema = z
 /** Starts connecting a provider to the signed-in account; `redirect` is where to come back to. */
 export const linkIdentitySchema = z.object({ redirect: z.string().max(2000).optional() });
 
+/** `GET /auth/discover?email=`: sign-in options for an address's domain. */
+export const ssoDiscoverQuerySchema = z.object({ email: z.string().max(320).default('') });
+
+/** `GET /auth/providers?workspace=`: one workspace's enabled providers. */
+export const ssoProvidersQuerySchema = z.object({ workspace: z.string().max(200).default('') });
+
+/** `GET /auth/sso/:providerId/start`. A browser navigation, so the route answers a bad one with the sign-in page. */
+export const ssoStartQuerySchema = z.object({
+  redirect: z.string().max(2000).optional(),
+  mode: z.enum(['login', 'link', 'test']).default('login'),
+});
+
+/** `GET /auth/saml/complete?state=`, where the ACS sends the browser on. */
+export const samlCompleteQuerySchema = z.object({ state: z.string().max(2000).optional() });
+
+/**
+ * An OAuth authorization request (RFC 6749 §4.1.1, PKCE, RFC 8707's `resource`), as the consent
+ * page's query or its POST. Parameters must not repeat (§3.1); which are required is checked later,
+ * so the error can go back to the app when its redirect_uri is known.
+ */
+export const oauthAuthorizeQuerySchema = z.object({
+  response_type: z.string().max(100).optional(),
+  client_id: z.string().max(200).optional(),
+  redirect_uri: z.string().max(2000).optional(),
+  scope: z.string().max(2000).optional(),
+  state: z.string().max(2000).optional(),
+  code_challenge: z.string().max(200).optional(),
+  code_challenge_method: z.string().max(20).optional(),
+  resource: z.string().max(2000).optional(),
+});
+
+/** `GET /api/files/:id?exp=&sig=`. The route answers anything else with a 404, like a bad signature. */
+export const signedFileQuerySchema = z.object({
+  exp: z.coerce.number().int(),
+  sig: z.string().max(200),
+});
+
+/** `GET /api/ws?workspace=<slug>`. The socket closes with 4401 when this doesn't parse. */
+export const realtimeQuerySchema = z.object({ workspace: z.string().min(1).max(200) });
+
+/**
+ * SCIM list and get parameters (RFC 7644 §3.4.2). Others, like sortBy, are allowed and ignored;
+ * out-of-range numbers are clamped by the service, as the RFC asks.
+ */
+export const scimQuerySchema = z.object({
+  filter: z.string().max(2000).optional(),
+  startIndex: z.coerce.number().int().optional(),
+  count: z.coerce.number().int().optional(),
+  excludedAttributes: z.string().max(2000).optional(),
+});
+
+/** An inbound hook's query string, as providers see it: a repeated key keeps its first value. */
+export const inboundHookQuerySchema = z.record(
+  z.string(),
+  z
+    .union([z.string(), z.array(z.string())])
+    .transform((v) => (Array.isArray(v) ? (v[0] ?? '') : v)),
+);
+
 export const createScimTokenSchema = z.object({ name: z.string().trim().min(1).max(80) });
 
 export const syncIssuesSchema = z.object({

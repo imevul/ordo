@@ -1,9 +1,10 @@
+import { inboundHookQuerySchema } from '@ordo/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { integrations } from '../db/schema.ts';
 import { getProvider } from '../integrations/registry.ts';
 import type { InboundRequest } from '../integrations/types.ts';
-import { notFound, unauthorized } from '../lib/errors.ts';
+import { notFound, parse, unauthorized } from '../lib/errors.ts';
 import { allSecrets, queueInbound } from '../services/integrations.ts';
 
 const BODY_LIMIT = 25 * 1024 * 1024;
@@ -32,7 +33,8 @@ export async function hookRoutes(app: FastifyInstance) {
     }
     const inbound: InboundRequest = {
       headers,
-      query: req.query as Record<string, string>,
+      // Can't fail: Fastify's query values are strings or, for a repeated key, arrays of them.
+      query: parse(inboundHookQuerySchema, req.query),
       body: Buffer.isBuffer(req.body) ? req.body.toString('utf8') : '',
     };
 
