@@ -1,9 +1,9 @@
 import { type Bootstrap, type Import, parseCsv, type WorkspaceExport } from '@ordo/shared';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { auditLog, files, workspaceExports } from '../src/db/schema.ts';
-import { purgeOldExports } from '../src/services/exports.ts';
+import { purgeOldExports, runExport } from '../src/services/exports.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -193,6 +193,71 @@ describe('workspace export', () => {
     expect(team.states.find((s) => s.id === copy.stateId)!.name).toBe(
       original.states.find((s) => s.id === original.defaultStateId)!.name,
     );
+  });
+
+  it('keeps one result when two runs of the same export overlap', async () => {
+    const res = await owner.post(`${ws}/exports`, { format: 'json' });
+    const exportFiles = async () =>
+      (
+        await app.db
+          .select({ id: files.id })
+          .from(files)
+          .where(and(eq(files.workspaceId, boot.workspace.id), eq(files.kind, 'export')))
+      ).map((f) => f.id);
+    const before = await exportFiles();
+    // As if the job's lock had run out mid-export and a second worker had picked it up too.
+    const job = { attempt: 1, maxAttempts: 8, jobId: 0, log: app.log };
+    await Promise.all([
+      runExport(app, { exportId: res.data.id }, job),
+      runExport(app, { exportId: res.data.id }, job),
+    ]);
+    const [row] = await app.db
+      .select()
+      .from(workspaceExports)
+      .where(eq(workspaceExports.id, res.data.id));
+    expect(row!.status).toBe('ready');
+    const added = (await exportFiles()).filter((id) => !before.includes(id));
+    expect(added).toEqual([row!.fileId]);
+    await settle();
+  });
+
+  it('a run that fails late does not undo one that finished', async () => {
+    const res = await owner.post(`${ws}/exports`, { format: 'json' });
+    // The first export file to be saved fails, but only after a second's wait, by which time the
+    // other run has finished. Sequences aren't rolled back, so exactly one run fails.
+    await app.db.execute(
+      sql.raw(`create sequence export_race;
+        create function export_race() returns trigger language plpgsql as $$
+        begin
+          if new.kind = 'export' and nextval('export_race') = 1 then
+            perform pg_sleep(1);
+            raise exception 'injected failure';
+          end if;
+          return new;
+        end $$;
+        create trigger export_race before insert on files
+          for each row execute function export_race();`),
+    );
+    try {
+      // Both on their last attempt, so the failing one records its failure.
+      const job = { attempt: 8, maxAttempts: 8, jobId: 0, log: app.log };
+      await Promise.all([
+        runExport(app, { exportId: res.data.id }, job),
+        runExport(app, { exportId: res.data.id }, job),
+      ]);
+    } finally {
+      await app.db.execute(
+        sql.raw(`drop trigger export_race on files; drop function export_race();
+          drop sequence export_race;`),
+      );
+    }
+    const [row] = await app.db
+      .select()
+      .from(workspaceExports)
+      .where(eq(workspaceExports.id, res.data.id));
+    expect(row).toMatchObject({ status: 'ready', error: null });
+    expect(row!.fileId).not.toBeNull();
+    await settle();
   });
 
   it('can be deleted, and is purged after a week', async () => {

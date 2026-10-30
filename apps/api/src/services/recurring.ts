@@ -10,7 +10,7 @@ import type { DbOrTx } from '../db/client.ts';
 import { issueTemplates, recurringIssues } from '../db/schema.ts';
 import { badRequest, notFound } from '../lib/errors.ts';
 import { type Access, canReadTeam, teamScope } from './access.ts';
-import { runAutomation } from './automation.ts';
+import { forEachIsolated, runAutomation } from './automation.ts';
 import { type Ctx, emit } from './context.ts';
 import { addDays, isoDay } from './cycle-automation.ts';
 import { createIssue } from './issues.ts';
@@ -114,33 +114,51 @@ export async function runRecurring(app: FastifyInstance, today = isoDay(new Date
     .from(recurringIssues)
     .innerJoin(issueTemplates, eq(issueTemplates.id, recurringIssues.templateId))
     .where(and(lte(recurringIssues.nextOn, today), eq(recurringIssues.paused, false)));
-  for (const { schedule, template } of due) {
-    await runAutomation(app, schedule.workspaceId, async (ctx) => {
-      let next = schedule.nextOn;
-      while (next <= today) next = advance(next, schedule.every, schedule.unit);
-      const sameTeam = template.teamId === schedule.teamId;
-      const full: CreateIssueInput = {
-        teamId: schedule.teamId,
-        title: template.title.trim() || template.name,
-        description: template.description,
-        priority: template.priority ?? undefined,
-        stateId: sameTeam ? (template.stateId ?? undefined) : undefined,
-        assigneeId: template.assigneeId,
-        projectId: template.projectId,
-        estimate: template.estimate,
-        labelIds: template.labelIds,
-      };
-      // What the template sets may have gone stale (someone left the team, a label moved); the
-      // issue still gets made, with what's left.
-      const attempt = (input: CreateIssueInput) =>
-        ctx.tx.transaction((tx) => createIssue({ ...ctx, tx }, input));
-      const issue = await attempt(full).catch(() =>
-        attempt({ teamId: full.teamId, title: full.title, description: full.description }),
-      );
-      await ctx.tx
-        .update(recurringIssues)
-        .set({ nextOn: next, lastIssueId: issue.id })
-        .where(eq(recurringIssues.id, schedule.id));
-    });
-  }
+  await forEachIsolated(
+    app,
+    'issues.recur',
+    due,
+    ({ schedule }) => ({ recurringId: schedule.id, workspaceId: schedule.workspaceId }),
+    (row) => runSchedule(app, row, today),
+  );
+}
+
+async function runSchedule(
+  app: FastifyInstance,
+  {
+    schedule,
+    template,
+  }: {
+    schedule: typeof recurringIssues.$inferSelect;
+    template: typeof issueTemplates.$inferSelect;
+  },
+  today: string,
+) {
+  await runAutomation(app, schedule.workspaceId, async (ctx) => {
+    let next = schedule.nextOn;
+    while (next <= today) next = advance(next, schedule.every, schedule.unit);
+    const sameTeam = template.teamId === schedule.teamId;
+    const full: CreateIssueInput = {
+      teamId: schedule.teamId,
+      title: template.title.trim() || template.name,
+      description: template.description,
+      priority: template.priority ?? undefined,
+      stateId: sameTeam ? (template.stateId ?? undefined) : undefined,
+      assigneeId: template.assigneeId,
+      projectId: template.projectId,
+      estimate: template.estimate,
+      labelIds: template.labelIds,
+    };
+    // What the template sets may have gone stale (someone left the team, a label moved); the
+    // issue still gets made, with what's left.
+    const attempt = (input: CreateIssueInput) =>
+      ctx.tx.transaction((tx) => createIssue({ ...ctx, tx }, input));
+    const issue = await attempt(full).catch(() =>
+      attempt({ teamId: full.teamId, title: full.title, description: full.description }),
+    );
+    await ctx.tx
+      .update(recurringIssues)
+      .set({ nextOn: next, lastIssueId: issue.id })
+      .where(eq(recurringIssues.id, schedule.id));
+  });
 }

@@ -8,6 +8,11 @@ export default {
     cycle: 'Uten syklus',
     labels: 'Uten etiketter',
   },
+  group: {
+    placeholder: '{name} (plassholder)',
+    formerMember: '{name} (tidligere medlem)',
+    someone: 'Noen',
+  },
   allIssues: 'Alle saker',
   newIssue: 'Ny sak',
   newIssueIn: 'Ny sak i {group}',

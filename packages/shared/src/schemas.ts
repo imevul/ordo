@@ -22,6 +22,7 @@ import {
   USER_STATUSES,
   USERNAME_PATTERN,
 } from './constants.ts';
+import { isTimeZone } from './dates.ts';
 import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
 import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
 import { HEX_COLOR } from './theme.ts';
@@ -164,6 +165,7 @@ export const updateWorkspaceSchema = z.object({
       scimMatchGroupsByName: z.boolean().optional(),
       defaultAssigneeId: id.nullable().optional(),
       agentRunsPaused: z.boolean().optional(),
+      timezone: z.string().max(64).refine(isTimeZone, 'Unknown time zone').nullable().optional(),
     })
     .optional(),
 });
