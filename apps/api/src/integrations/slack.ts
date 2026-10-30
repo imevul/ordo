@@ -1,10 +1,10 @@
+import { type SlackConfig, slackSettingsSchema } from '@ordo/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { integrationApps, integrations } from '../db/schema.ts';
 import {
   type ChatIncoming,
   chatFeed,
-  parseChannels,
   runChatCommand,
   syncThreadReply,
   unfurl,
@@ -12,12 +12,12 @@ import {
 import { allSecrets, queueInbound, readAppSecrets } from '../services/integrations.ts';
 import { callApi, hmacHex, safeEqual } from './http.ts';
 import { runSocket } from './socket.ts';
-import type {
-  ChatMessage,
-  InboundRequest,
-  IntegrationContext,
-  IntegrationProvider,
-  IntegrationRow,
+import {
+  type ChatMessage,
+  configOf,
+  type InboundRequest,
+  type IntegrationContext,
+  type IntegrationProvider,
 } from './types.ts';
 
 /**
@@ -31,11 +31,6 @@ import type {
  * the app's signing secret, app-level token and URL (`/api/hooks/slack/app`), told apart by the
  * Slack team (workspace) id kept in `externalId`.
  */
-
-interface SlackConfig {
-  mode?: 'token' | 'app';
-  delivery: 'events' | 'socket';
-}
 
 /** The instance's Slack app (there's at most one) and its secrets. */
 export async function slackApp(app: FastifyInstance) {
@@ -81,7 +76,7 @@ const signedBySlack = (req: InboundRequest, signingSecret: string | undefined) =
   );
 };
 
-const cfg = (row: IntegrationRow) => row.config as unknown as SlackConfig;
+const cfg = configOf<SlackConfig>();
 // Overridable for tests (a mock Slack) and nothing else.
 export const slackApiUrl = () => process.env.ORDO_SLACK_API_URL ?? 'https://slack.com/api';
 
@@ -291,38 +286,7 @@ export const slackProvider: IntegrationProvider = {
     'Post issue activity to channels, DM people their notifications, create issues from messages and unfurl links.',
   category: 'chat',
 
-  configure({ config, secrets }) {
-    const delivery = config.delivery === 'socket' ? 'socket' : 'events';
-    if (config.mode === 'app') {
-      // Installed with "Add to Slack": the token came from Slack, the delivery from the app.
-      if (!String(secrets.botToken ?? '').startsWith('xoxb-'))
-        throw new Error('The bot token starts with xoxb-');
-      return {
-        config: {
-          mode: 'app',
-          delivery,
-          channels: parseChannels(config.channels),
-          // The Slack workspace's name, for people.
-          ...(config.team ? { team: String(config.team) } : {}),
-        },
-        secrets: { botToken: String(secrets.botToken) },
-      };
-    }
-    if (!secrets.botToken || !String(secrets.botToken).startsWith('xoxb-'))
-      throw new Error('The bot token starts with xoxb-');
-    if (delivery === 'events' && !secrets.signingSecret)
-      throw new Error('The signing secret is required for the Events API');
-    if (delivery === 'socket' && !String(secrets.appToken ?? '').startsWith('xapp-'))
-      throw new Error('Socket Mode needs an app-level token (xapp-…) with connections:write');
-    return {
-      config: { delivery, channels: parseChannels(config.channels) },
-      secrets: Object.fromEntries(
-        ['botToken', 'signingSecret', 'appToken']
-          .filter((k) => secrets[k])
-          .map((k) => [k, String(secrets[k])]),
-      ),
-    };
-  },
+  settings: slackSettingsSchema,
 
   async install(ictx) {
     const auth = await slack<{ team: string; team_id: string; user_id: string }>(ictx, 'auth.test');
