@@ -985,6 +985,101 @@ export async function updateIssue(
 }
 
 /**
+ * Moves many issues of one team to another status and/or cycle in one statement, for structural
+ * changes such as deleting a status or a cycle. Each changed issue gets a history entry, a realtime
+ * event and an `issue.updated` domain event. Trashed and archived issues move too. Unlike
+ * `updateIssue` there are no notifications or cycle automation: nobody changed these issues'
+ * progress, their status or cycle went away. Returns the ids that changed.
+ */
+export async function bulkUpdateIssues(
+  ctx: Ctx,
+  teamId: string,
+  ids: string[],
+  patch: { stateId?: string; cycleId?: string | null },
+): Promise<string[]> {
+  if (!ids.length) return [];
+  assertTeamAccess(ctx.access, teamId);
+  const state = patch.stateId ? await stateOf(ctx, teamId, patch.stateId) : null;
+  if (patch.cycleId) await assertCycle(ctx, teamId, patch.cycleId);
+
+  const rows = await ctx.tx
+    .select({
+      id: issues.id,
+      stateId: issues.stateId,
+      cycleId: issues.cycleId,
+      archivedAt: issues.archivedAt,
+    })
+    .from(issues)
+    .where(
+      and(
+        inArray(issues.id, ids),
+        eq(issues.workspaceId, ctx.workspaceId),
+        eq(issues.teamId, teamId),
+      ),
+    );
+  const reopens = !!state && state.type !== 'completed' && state.type !== 'canceled';
+  const changed = rows
+    .map((r) => {
+      const changes: HistoryChange[] = [];
+      if (state && r.stateId !== state.id) {
+        changes.push({ field: 'state', from: r.stateId, to: state.id });
+        if (r.archivedAt && reopens) changes.push({ field: 'archived', from: true, to: false });
+      }
+      if (patch.cycleId !== undefined && r.cycleId !== patch.cycleId)
+        changes.push({ field: 'cycle', from: r.cycleId, to: patch.cycleId });
+      return { id: r.id, changes };
+    })
+    .filter((r) => r.changes.length > 0);
+  if (!changed.length) return [];
+  const changedIds = changed.map((r) => r.id);
+
+  const now = new Date().toISOString();
+  const idsChanging = (field: string) =>
+    changed.filter((r) => r.changes.some((c) => c.field === field)).map((r) => r.id);
+  const moved = idsChanging('state');
+  if (state && moved.length) {
+    const startedAt =
+      state.type === 'started' || state.type === 'completed'
+        ? sql`coalesce("issues"."started_at", ${now})`
+        : null;
+    await ctx.tx
+      .update(issues)
+      .set({
+        stateId: state.id,
+        // Like stateTimestamps, but keeping each issue's own start time. An SQL expression,
+        // which update().set() takes like any value.
+        startedAt: startedAt as unknown as string | null,
+        completedAt: state.type === 'completed' ? now : null,
+        canceledAt: state.type === 'canceled' ? now : null,
+        ...(reopens ? { archivedAt: null } : {}),
+        updatedAt: now,
+      })
+      .where(inArray(issues.id, moved));
+  }
+  const recycled = idsChanging('cycle');
+  if (patch.cycleId !== undefined && recycled.length) {
+    await ctx.tx
+      .update(issues)
+      .set({ cycleId: patch.cycleId, updatedAt: now })
+      .where(inArray(issues.id, recycled));
+  }
+  await ctx.tx
+    .insert(issueHistory)
+    .values(changed.map((r) => ({ issueId: r.id, actorId: ctx.userId, changes: r.changes })));
+
+  const full = await baseQuery(ctx.tx).where(inArray(issues.id, changedIds));
+  const changesById = new Map(changed.map((r) => [r.id, r.changes]));
+  for (const row of full) {
+    emit(ctx, { kind: 'issue', action: 'updated', id: row.id, teamId });
+    record(ctx, 'issue.updated', toIssue(row), {
+      teamIds: [teamId],
+      changes: changesById.get(row.id),
+    });
+  }
+  return changedIds;
+}
+
+/**
  * Imports link sub-issues once every issue exists (a child can come before its parent). Checked
  * like any parent change, but part of the import rather than a history entry of its own.
  */
