@@ -37,7 +37,8 @@ In a checkout of the Ordo repository, `pnpm ordo <command>` runs the CLI from so
 | `ordo issue view <id>`           | One issue in full; `--comments` adds them, `--web` opens it in the browser                                |
 | `ordo issue create [title]`      | File an issue                                                                                             |
 | `ordo issue edit <id>`           | Change fields                                                                                             |
-| `ordo issue comment <id> [text]` | Comment; `--body-file <path>`, or `-` to read stdin                                                       |
+| `ordo issue comment <id> [text]` | Comment; `--body-file <path>`, or `-` to read stdin; `--attach <file>` adds files (images show inline)    |
+| `ordo issue attach <id> <file…>` | Upload files to the issue and print the Markdown that shows them, for a comment, description or summary   |
 | `ordo issue start <id>`          | Move to the team's first started status, assign it to you if nobody has it, and print the git branch name |
 | `ordo issue close <id>`          | Move to the first completed status (`--canceled` for the canceled one)                                    |
 | `ordo issue branch <id>`         | Print the git branch name (the workspace's branch format)                                                 |
@@ -65,6 +66,7 @@ ordo issues --mine --status started
 ordo issue create "Login button misaligned on Safari" --team WEB --priority high --label Bug
 ordo issue start WEB-42 && git switch -c "$(ordo issue branch WEB-42)"
 git log -1 --format=%B | ordo issue comment WEB-42 -
+ordo issue comment WEB-42 "Fixed on Safari too" --attach before.png --attach after.png
 ordo api POST /w/acme/issues/query --data '{"filter":{"assigneeIds":["none"]}}'
 ```
 

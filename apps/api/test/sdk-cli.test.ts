@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -173,6 +173,69 @@ describe('cli', () => {
     expect((await ordo(['issue', 'close', 'ENG-5'])).stdout).toContain('ENG-5 → Done');
     const json = JSON.parse((await ordo(['issue', 'view', 'ENG-5', '--json'])).stdout);
     expect(json.completedAt).toBeTruthy();
+  });
+
+  it('attaches files to an issue and its comments, also as an agent', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ordo-attach-'));
+    // 1×1 transparent PNG
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+      'base64',
+    );
+    writeFileSync(join(dir, 'shot.png'), png);
+    writeFileSync(join(dir, 'notes.txt'), 'plain text');
+    const issue = (
+      await ada.post('/api/w/kit/issues', { teamId: boot.teams[0]!.id, title: 'Screenshots' })
+    ).data;
+
+    const attached = await ordo([
+      'issue',
+      'attach',
+      issue.identifier,
+      join(dir, 'shot.png'),
+      join(dir, 'notes.txt'),
+    ]);
+    expect(attached.code, attached.stderr).toBe(0);
+    const [image, link] = attached.stdout.trim().split('\n');
+    expect(image).toMatch(/^!\[shot\.png\]\(\/api\/attachments\/[0-9a-f-]{36}\)$/);
+    expect(link).toMatch(/^\[notes\.txt\]\(\/api\/attachments\/[0-9a-f-]{36}\)$/);
+
+    // An agent's key, the way a runner's command uses it.
+    const agent = (
+      await ada.post('/api/w/kit/agents', { name: 'Shooter', teamIds: [boot.teams[0]!.id] })
+    ).data;
+    const key = (await ada.post(`/api/w/kit/agents/${agent.id}/keys`, { name: 'run' })).data.token;
+    const commented = await ordo(
+      ['issue', 'comment', issue.identifier, 'Checked at 375px', '--attach', join(dir, 'shot.png')],
+      { env: { ORDO_URL: url, ORDO_TOKEN: key, ORDO_WORKSPACE: 'kit' } },
+    );
+    expect(commented.code, commented.stderr).toBe(0);
+    const [comment] = (await ada.get(`/api/w/kit/issues/${issue.id}/comments`)).data;
+    expect(comment.body).toMatch(
+      /^Checked at 375px\n\n!\[shot\.png\]\(\/api\/attachments\/[0-9a-f-]{36}\)$/,
+    );
+
+    const detail = (await ada.get(`/api/w/kit/issues/${issue.id}`)).data;
+    expect(detail.attachments.map((a: { filename: string }) => a.filename)).toEqual([
+      'shot.png',
+      'notes.txt',
+      'shot.png',
+    ]);
+    const shown = /\((\/api\/attachments\/[^)]+)\)/.exec(comment.body)![1]!;
+    const file = await ada.get(shown);
+    expect(file.statusCode).toBe(200);
+    expect(file.headers['content-type']).toBe('image/png');
+
+    const missing = await ordo([
+      'issue',
+      'comment',
+      issue.identifier,
+      'x',
+      '-A',
+      join(dir, 'nope.png'),
+    ]);
+    expect(missing.code).toBe(1);
+    expect((await ada.get(`/api/w/kit/issues/${issue.id}/comments`)).data).toHaveLength(1);
   });
 
   it('lists open issues with filters, most urgent first', async () => {

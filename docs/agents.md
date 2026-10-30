@@ -100,7 +100,8 @@ A line `ORDO_SESSION_URL=https://…` on stdout is reported right away and linke
 run succeeded; anything else means it failed, with the end of stderr (or of stdout, if stderr is empty) as the error.
 
 Since `ORDO_TOKEN` is the agent's key, the command can use the CLI as the agent: `ordo issue comment "$ORDO_ISSUE"
-"Found the cause, fixing it now"`, `ordo issue edit "$ORDO_ISSUE" --status "In Progress"`. `ORDO_MCP_CONFIG` hands it
+"Found the cause, fixing it now"`, `ordo issue edit "$ORDO_ISSUE" --status "In Progress"`, or
+`ordo issue comment "$ORDO_ISSUE" "Checked at 375px" --attach shot.png` to show a screenshot. `ORDO_MCP_CONFIG` hands it
 the [MCP server](mcp.md) the same way.
 
 **Claude Code** asks before using tools, and `claude -p` can't ask, so it refuses them. Allow what the agent needs
