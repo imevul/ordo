@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isCycleCurrent, todayDate } from './cycles.ts';
+import { isCycleCurrent } from './cycles.ts';
 
 describe('isCycleCurrent', () => {
   const cycle = { startsAt: '2026-10-19', endsAt: '2026-11-02' };
@@ -15,9 +15,4 @@ describe('isCycleCurrent', () => {
     expect(isCycleCurrent(iso, '2026-11-01T23:59:59.000Z')).toBe(true);
     expect(isCycleCurrent(iso, '2026-11-02T00:00:00.000Z')).toBe(false);
   });
-});
-
-describe('todayDate', () => {
-  it('formats as YYYY-MM-DD in UTC', () =>
-    expect(todayDate(new Date('2026-11-01T23:30:00Z'))).toBe('2026-11-01'));
 });

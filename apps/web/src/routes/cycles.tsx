@@ -1,4 +1,4 @@
-import { type Cycle, isCycleCurrent } from '@ordo/shared';
+import { type Cycle, dayInZone, isCycleCurrent } from '@ordo/shared';
 import { Link, useParams } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
@@ -10,7 +10,7 @@ import { EmptyState, PageHeader, Sep } from '../components/PageHeader.tsx';
 import { ProgressBar, ProgressStats } from '../components/Progress.tsx';
 import { Modal } from '../components/ui/Modal.tsx';
 import { t } from '../i18n/index.ts';
-import { addDays, shortDate, today } from '../lib/format.ts';
+import { addDays, shortDate } from '../lib/format.ts';
 import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 
 function CycleModal({
@@ -26,7 +26,8 @@ function CycleModal({
 }) {
   const ws = useWorkspace();
   const last = ws.cycles.filter((c) => c.teamId === teamId).at(-1);
-  const defaultStart = last && last.endsAt > today() ? last.endsAt : today();
+  const today = dayInZone(ws.workspace.settings.timezone);
+  const defaultStart = last && last.endsAt > today ? last.endsAt : today;
   const [name, setName] = useState(cycle?.name ?? '');
   const [startsAt, setStartsAt] = useState(cycle?.startsAt ?? defaultStart);
   const [endsAt, setEndsAt] = useState(cycle?.endsAt ?? addDays(defaultStart, 14));
@@ -138,7 +139,8 @@ export function CyclesPage() {
   const team = ws.teamByKey.get(key);
   const [open, setOpen] = useState(false);
   if (!team) return <EmptyState title={t('cycles.teamNotFound')} />;
-  const now = today();
+  // The workspace's day, the one cycle automation opens and closes cycles by.
+  const now = dayInZone(ws.workspace.settings.timezone);
   const cycles = ws.cycles.filter((c) => c.teamId === team.id);
   const current = cycles.filter((c) => isCycleCurrent(c, now));
   const upcoming = cycles.filter((c) => c.startsAt > now);
