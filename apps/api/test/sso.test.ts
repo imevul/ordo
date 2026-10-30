@@ -204,6 +204,60 @@ describe('sign-in', () => {
     ).toEqual([]);
   });
 
+  it('links a verified account that already has the address', async () => {
+    const someone = await signup(app, 'Verified Person');
+    const id = (await someone.client.get('/api/auth/me')).data.id;
+    const claims = person('verified');
+    await app.db
+      .update(users)
+      .set({ email: claims.email, emailVerifiedAt: new Date().toISOString() })
+      .where(eq(users.id, id));
+    const { client } = await sso(claims);
+    expect((await client.get('/api/auth/me')).data.id).toBe(id);
+    expect(await roleOf(claims.email)).toBe('member');
+  });
+
+  it("doesn't link an unverified account with a password at the address, and frees the address", async () => {
+    // Someone signs up and moves to the person's address before they first sign in, unproven.
+    const claims = person('squatted');
+    const squatter = await signup(app, 'Squatter Person');
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    await squatter.client.post('/api/me/email', {
+      email: claims.email,
+      password: 'correct horse battery',
+    });
+    const [before] = await app.db.select().from(users).where(eq(users.id, squatterId));
+    expect(before).toMatchObject({ email: claims.email, emailVerifiedAt: null });
+    expect(before!.passwordHash).not.toBeNull();
+
+    const { client, location } = await sso(claims);
+    expect(location).toBe(`/${slug}`);
+    const me = (await client.get('/api/auth/me')).data;
+    expect(me.id).not.toBe(squatterId);
+    expect(me.email).toBe(claims.email);
+    expect(await roleOf(claims.email)).toBe('member');
+    const [identity] = await app.db
+      .select()
+      .from(userIdentities)
+      .where(eq(userIdentities.subject, claims.sub));
+    expect(identity!.userId).toBe(me.id);
+
+    // The squatter's account stays theirs, at another address and outside the workspace.
+    const theirs = (await squatter.client.get('/api/auth/me')).data;
+    expect(theirs.id).toBe(squatterId);
+    expect(theirs.email).toMatch(/\.invalid$/);
+    const [membership] = await app.db
+      .select()
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.workspaceId, wsId), eq(workspaceMembers.userId, squatterId)));
+    expect(membership).toBeUndefined();
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
+    expect(logged!.data).toMatchObject({ from: claims.email, via: 'sso' });
+  });
+
   it('lets signed-in users link an identity explicitly', async () => {
     const someone = await signup(app, 'Linker Person');
     await join(someone.client);

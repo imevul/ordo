@@ -65,6 +65,10 @@ Accounts are shared between workspaces on an instance, so a directory gets limit
 
 - It can add people only at the workspace's **verified domains**, and change someone's email only from one verified
   domain to another. Names change only for people at those domains.
+- It links an existing account only if that account has **verified** its address. An unverified account at the
+  address (anyone can claim an address without proving it) is moved to a placeholder address, kept with its work,
+  and the directory gets a fresh account. If it was really theirs, an instance admin can
+  send its holder a password reset link (Admin → Users) to get back in and pick another address.
 - It never suspends or removes an **owner** (you'll see a `403` in your provider's logs); change owners in Ordo.
 - A token works for one workspace only, and isn't an API key: it can't read issues or act as anyone.
 - Revoking a token (Settings → Authentication) stops it immediately.

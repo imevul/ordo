@@ -16,7 +16,7 @@ import { one } from '../lib/errors.ts';
 import { auditCtx } from './audit.ts';
 import type { Ctx } from './context.ts';
 import { removeMember, setSuspended } from './members.ts';
-import { domainVerifiedFor, uniqueUsername } from './sso.ts';
+import { claimableUser, domainVerifiedFor, uniqueUsername } from './sso.ts';
 import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 
 /**
@@ -422,34 +422,38 @@ export async function createScimUser(ctx: Ctx, baseUrl: string, body: unknown) {
       'invalidValue',
     );
 
-  let [user] = await ctx.tx
-    .select({ id: users.id, kind: users.kind })
-    .from(users)
-    .where(eq(users.email, email));
+  let user = await claimableUser(
+    ctx.tx,
+    email,
+    { workspaceId: ctx.workspaceId, actorId: ctx.userId, via: 'scim' },
+    ctx.meta,
+  );
   if (user && user.kind !== 'human')
     throw new ScimError(409, 'That address belongs to a bot', 'uniqueness');
   const meta = { via: 'scim' };
   if (!user) {
     const local = email.split('@')[0]!;
-    [user] = await ctx.tx
-      .insert(users)
-      .values({
-        email,
-        name: nameFrom(changes) || local,
-        username: await uniqueUsername(ctx.tx, local),
-        passwordHash: null,
-        emailVerifiedAt: new Date().toISOString(),
-        avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
-      })
-      .returning({ id: users.id, kind: users.kind });
+    user = one(
+      await ctx.tx
+        .insert(users)
+        .values({
+          email,
+          name: nameFrom(changes) || local,
+          username: await uniqueUsername(ctx.tx, local),
+          passwordHash: null,
+          emailVerifiedAt: new Date().toISOString(),
+          avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
+        })
+        .returning({ id: users.id, kind: users.kind, emailVerifiedAt: users.emailVerifiedAt }),
+    );
     await auditCtx(ctx, {
       action: 'auth.signup',
       targetType: 'user',
-      targetId: user!.id,
+      targetId: user.id,
       data: meta,
     });
   }
-  const userId = user!.id;
+  const userId = user.id;
   const [member] = await ctx.tx
     .select({ role: workspaceMembers.role, scimId: scimUsers.id })
     .from(workspaceMembers)
