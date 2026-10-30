@@ -7,7 +7,9 @@ import {
   applyBranch,
   applyCommits,
   applyPullRequest,
+  collectRepositories,
   type ForgePullRequest,
+  type ForgeRepoPayload,
   issueSummaries,
   linkedComment,
   mentionsIssue,
@@ -203,6 +205,29 @@ export const github: IntegrationProvider = {
   category: 'forge',
 
   accountHost: githubHost,
+
+  /** Everything the token or installation can see, not only the repositories it's hooked to. */
+  listRepositories(ictx, query) {
+    const app = cfg(ictx.integration).mode === 'app';
+    return collectRepositories(
+      100,
+      async (page) => {
+        if (app) {
+          const { data } = await gh<{ repositories: ForgeRepoPayload[] }>(
+            ictx,
+            `/installation/repositories?per_page=100&page=${page}`,
+          );
+          return data.repositories ?? [];
+        }
+        const { data } = await gh<ForgeRepoPayload[]>(
+          ictx,
+          `/user/repos?per_page=100&page=${page}&sort=full_name`,
+        );
+        return data ?? [];
+      },
+      query,
+    );
+  },
 
   configure({ config, secrets }) {
     if (config.mode === 'app') {

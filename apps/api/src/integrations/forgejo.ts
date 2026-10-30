@@ -3,7 +3,9 @@ import {
   applyBranch,
   applyCommits,
   applyPullRequest,
+  collectRepositories,
   type ForgePullRequest,
+  type ForgeRepoPayload,
   issueSummaries,
   linkedComment,
   mentionsIssue,
@@ -94,6 +96,15 @@ export const forgejo: IntegrationProvider = {
   category: 'forge',
 
   accountHost: host,
+
+  listRepositories: (ictx, query) =>
+    // Forgejo caps pages at 50 by default.
+    collectRepositories(
+      50,
+      async (page) =>
+        (await api<ForgeRepoPayload[]>(ictx, `/user/repos?limit=50&page=${page}`)).data ?? [],
+      query,
+    ),
 
   configure({ config, secrets }) {
     const repos = repoList(config.repos);
