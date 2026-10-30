@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { inflateRawSync } from 'node:zlib';
+import { escapeHtml as esc } from '../src/lib/html.ts';
 
 /**
  * A SAML identity provider for tests: reads Ordo's AuthnRequest and writes the response an IdP
@@ -56,9 +57,6 @@ export function readRequest(location: string) {
     url,
   };
 }
-
-const esc = (s: string) =>
-  s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 export interface ResponseOptions {
   acsUrl: string;

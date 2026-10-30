@@ -13,6 +13,7 @@ import {
 } from '../db/schema.ts';
 import { createSession } from '../lib/auth.ts';
 import { badRequest } from '../lib/errors.ts';
+import { escapeHtml as esc } from '../lib/html.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from './audit.ts';
 import { publishChanges } from './sync.ts';
@@ -297,9 +298,6 @@ export async function linkIdentity(
 }
 
 export const LAST_SSO_COOKIE = 'ordo_last_sso';
-
-const esc = (s: string) =>
-  s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 export const loginError = (reply: FastifyReply, message: string) =>
   reply.redirect(`/login?error=${encodeURIComponent(message)}`);
