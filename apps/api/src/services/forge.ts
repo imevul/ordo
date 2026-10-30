@@ -299,11 +299,12 @@ export interface ForgeRepoPayload {
 const MAX_REPO_PAGES = 10;
 
 /**
- * Walks a paginated repository listing (`fetchPage(1)`, `fetchPage(2)`…) until a short page,
- * keeping the repositories whose owner/name contains `query`, sorted by name.
+ * Walks a paginated repository listing (`fetchPage(1)`, `fetchPage(2)`…) until a short page
+ * (or, with `pageSize` null, an empty one), keeping the repositories whose owner/name contains
+ * `query`, sorted by name.
  */
 export async function collectRepositories(
-  pageSize: number,
+  pageSize: number | null,
   fetchPage: (page: number) => Promise<ForgeRepoPayload[]>,
   query?: string,
 ): Promise<ForgeRepository[]> {
@@ -321,7 +322,7 @@ export async function collectRepositories(
         private: !!r.private,
       });
     }
-    if (batch.length < pageSize) break;
+    if (batch.length === 0 || (pageSize !== null && batch.length < pageSize)) break;
   }
   return out.sort((a, b) => a.fullName.localeCompare(b.fullName));
 }

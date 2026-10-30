@@ -98,9 +98,10 @@ export const forgejo: IntegrationProvider = {
   accountHost: host,
 
   listRepositories: (ictx, query) =>
-    // Forgejo caps pages at 50 by default.
+    // Servers may cap pages below the 50 we ask for (MAX_RESPONSE_ITEMS), so a short page
+    // doesn't mean the last one: read until an empty page.
     collectRepositories(
-      50,
+      null,
       async (page) =>
         (await api<ForgeRepoPayload[]>(ictx, `/user/repos?limit=50&page=${page}`)).data ?? [],
       query,
