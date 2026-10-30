@@ -750,6 +750,12 @@
   }
 }
 
+/* The comment a notification points at. */
+.comment[data-focused] {
+  outline: 1px solid var(--color-primary);
+  outline-offset: -1px;
+}
+
 @keyframes blink {
   50% {
     opacity: 0;
