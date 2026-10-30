@@ -13,7 +13,7 @@ import {
 import { notFound } from '../lib/errors.ts';
 import { auditCtx } from './audit.ts';
 import type { Ctx } from './context.ts';
-import { SCIM_SCHEMA, ScimError, UUID, visible } from './scim.ts';
+import { SCIM_SCHEMA, ScimError, type ScimQuery, scimPage, UUID, visible } from './scim.ts';
 import { addTeamMember, removeTeamMember } from './teams.ts';
 import { workspaceSettings } from './workspaces.ts';
 
@@ -103,14 +103,9 @@ function groupFilter(filter: string | undefined): SQL[] {
   });
 }
 
-export async function listScimGroups(
-  ctx: Ctx,
-  baseUrl: string,
-  q: { filter?: string; startIndex?: string; count?: string; excludedAttributes?: string },
-) {
+export async function listScimGroups(ctx: Ctx, baseUrl: string, q: ScimQuery) {
   const where = and(eq(scimGroups.workspaceId, ctx.workspaceId), ...groupFilter(q.filter));
-  const startIndex = Math.max(1, Number(q.startIndex) || 1);
-  const pageSize = Math.min(200, Math.max(0, q.count === undefined ? 100 : Number(q.count) || 0));
+  const { startIndex, pageSize } = scimPage(q);
   const [{ total }] = (await ctx.tx.select({ total: count() }).from(scimGroups).where(where)) as [
     { total: number },
   ];
