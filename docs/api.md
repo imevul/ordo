@@ -64,21 +64,21 @@ the same as something that doesn't exist; actions the caller can see but isn't a
 
 ## Instance & account
 
-| Method     | Path                     |                                                          |
-| ---------- | ------------------------ | -------------------------------------------------------- |
-| GET        | `/health`                | `{ ok, version }`                                        |
-| GET        | `/config`                | Sign-up mode, whether any users exist                    |
-| POST       | `/auth/signup`           | `{ name, email, password, inviteToken? }`                |
-| POST       | `/auth/login`            | `{ email, password }` → sets cookie                      |
-| POST       | `/auth/logout`           |                                                          |
-| GET        | `/auth/me`               | You, plus your workspaces and roles                      |
-| PATCH      | `/me`                    | `{ name?, username?, avatarColor? }`                     |
-| POST       | `/me/password`           | `{ currentPassword, newPassword }`                       |
-| GET / POST | `/me/api-keys`           | List / create `{ name }` (the token is returned once)    |
-| DELETE     | `/me/api-keys/:id`       | Revoke                                                   |
-| POST       | `/workspaces`            | `{ name, slug, teamName?, teamKey? }` — you become admin |
-| GET        | `/invites/:token`        | Public invite info                                       |
-| POST       | `/invites/:token/accept` | Join with the signed-in account                          |
+| Method     | Path                     |                                                                                                                                 |
+| ---------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| GET        | `/health`                | No auth. `{ ok, version, realtimeConnections, jobs }`; 500 when the database is down ([monitoring](self-hosting.md#monitoring)) |
+| GET        | `/config`                | Sign-up mode, whether any users exist                                                                                           |
+| POST       | `/auth/signup`           | `{ name, email, password, inviteToken? }`                                                                                       |
+| POST       | `/auth/login`            | `{ email, password }` → sets cookie                                                                                             |
+| POST       | `/auth/logout`           |                                                                                                                                 |
+| GET        | `/auth/me`               | You, plus your workspaces and roles                                                                                             |
+| PATCH      | `/me`                    | `{ name?, username?, avatarColor? }`                                                                                            |
+| POST       | `/me/password`           | `{ currentPassword, newPassword }`                                                                                              |
+| GET / POST | `/me/api-keys`           | List / create `{ name }` (the token is returned once)                                                                           |
+| DELETE     | `/me/api-keys/:id`       | Revoke                                                                                                                          |
+| POST       | `/workspaces`            | `{ name, slug, teamName?, teamKey? }` — you become admin                                                                        |
+| GET        | `/invites/:token`        | Public invite info                                                                                                              |
+| POST       | `/invites/:token/accept` | Join with the signed-in account                                                                                                 |
 
 Joining by domain (no workspace prefix):
 
@@ -95,7 +95,12 @@ shown once) and `DELETE /scim/tokens/:id` under the workspace prefix; `GET /scim
 `managedBy`; on those, adding or removing members by hand returns `409 team_managed`.
 
 Account endpoints (no workspace prefix): `GET /me/account`, `PATCH /me/preferences`, `POST|DELETE /me/avatar`,
-`POST /me/email`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/2fa/setup|enable|disable|recovery-codes`,
+`POST /me/email` (sends a confirmation link to the new address, finished with `POST /auth/confirm-email-change`
+`{ token }`), `POST /me/email/verify` (send the verification email again), `GET /me/sessions`,
+`DELETE /me/sessions/:id`, `POST /me/sessions/revoke-others` (sign out everywhere but this browser; sessions only),
+`GET /me/oauth-grants` and `DELETE /me/oauth-grants/:id` (apps you've connected through [OAuth](mcp.md), and
+disconnecting one), `POST /auth/sso/:providerId/link` (`{ redirect? }` → `{ url }`: link a sign-in method of one of
+your workspaces to your account), `POST /me/2fa/setup|enable|disable|recovery-codes`,
 `GET /me/passkeys`, `POST /me/passkeys/options` (`{ password? }` → `{ challengeId, options }`), `POST /me/passkeys`
 (`{ challengeId, response, name? }`), `PATCH|DELETE /me/passkeys/:id`, `POST /auth/passkey/options` and
 `POST /auth/passkey` (`{ challengeId, response }`: sign in without a password),
@@ -104,8 +109,37 @@ second factor, `POST /auth/login` answers `{ ok: false, mfaRequired: true, mfaTo
 lists what the account can finish with (`totp`, `passkey`, `recovery`). Finish with `POST /auth/mfa`, either
 `{ mfaToken, code }` (an authenticator code or a recovery code) or `{ mfaToken, passkey: { challengeId, response } }`
 after `POST /auth/mfa/passkey/options` (`{ mfaToken }` → `{ challengeId, options }`). A wrong answer keeps the
-`mfaToken` usable for another try. Instance administration lives
-under `/api/admin/*` (instance admins only; see [admin.md](admin.md)).
+`mfaToken` usable for another try.
+
+**Push notifications** (no workspace prefix). The browser subscribes with the instance's VAPID key, and Ordo posts
+notifications to the push service it names:
+
+| Method | Path                     |                                                                                                      |
+| ------ | ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| GET    | `/push/key`              | `{ publicKey }`, the `applicationServerKey` for `PushManager.subscribe`                              |
+| POST   | `/me/push-subscriptions` | `{ endpoint, keys: { p256dh, auth } }` (what `PushSubscription.toJSON()` gives); `endpoint` is https |
+| DELETE | `/me/push-subscriptions` | `{ endpoint }`: stop pushing to that device                                                          |
+
+**Instance administration** lives under `/api/admin` (instance admins only; see [admin.md](admin.md)). The pages of the
+admin area use:
+
+| Method      | Path                          |                                                                                                                                                                                                                                                                                                                                                                                            |
+| ----------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET         | `/admin/overview`             | `{ version, users, workspaces, issues, databaseSize, jobs, leases, realtimeConnections, storage, emailEnabled, secretKey }`                                                                                                                                                                                                                                                                |
+| GET         | `/admin/users?q=&offset=`     | Accounts, newest first, 50 at a time, matching `q` in name, email or username                                                                                                                                                                                                                                                                                                              |
+| POST        | `/admin/users/:id/reset-link` | `{ url, emailed }`: a password reset link valid for a day, also emailed when email works                                                                                                                                                                                                                                                                                                   |
+| DELETE      | `/admin/users/:id`            | Delete an account; `409` while it's the only owner of a workspace                                                                                                                                                                                                                                                                                                                          |
+| GET         | `/admin/workspaces`           | Every workspace with `members`, `issues` and `owners` (emails)                                                                                                                                                                                                                                                                                                                             |
+| DELETE      | `/admin/workspaces/:id`       | `{ confirmSlug }`: delete a workspace                                                                                                                                                                                                                                                                                                                                                      |
+| GET         | `/admin/domains`              | Claimed email domains and whether they're verified                                                                                                                                                                                                                                                                                                                                         |
+| POST        | `/admin/domains/:id/approve`  | Verify a domain without DNS; `409` when another workspace verified it                                                                                                                                                                                                                                                                                                                      |
+| GET / PATCH | `/admin/settings`             | Each [instance setting](configuration.md#instance-settings) with its `value` and `source` (`env`, `db`, `default`) / change `{ signupMode?, allowWorkspaceCreation?, allowPrivateNetworkTargets?, maxAttachmentMb?, workspaceAi?, offlineSync?, smtp?, ai? }`; `null` turns SMTP or AI off, an empty `url` or `apiKey` keeps the stored one. Settings pinned by the environment answer 400 |
+| POST        | `/admin/settings/test-email`  | `{ to }`: send a test email                                                                                                                                                                                                                                                                                                                                                                |
+| POST        | `/admin/settings/test-ai`     | `{ reply, ms }`: one short request to the configured model                                                                                                                                                                                                                                                                                                                                 |
+| GET         | `/admin/jobs`                 | The latest 200 `pending` and `dead` jobs, with `lastError`                                                                                                                                                                                                                                                                                                                                 |
+| POST        | `/admin/jobs/:id/retry`       | Run a job again from its first attempt                                                                                                                                                                                                                                                                                                                                                     |
+| DELETE      | `/admin/jobs/:id`             | Discard a `dead` job                                                                                                                                                                                                                                                                                                                                                                       |
+| GET         | `/admin/audit-log`            | Same filters as the workspace audit log, plus `scope` (`instance`, the default, or `all`) or `workspaceId`                                                                                                                                                                                                                                                                                 |
 
 **Site invites** bring someone onto the instance without adding them to a workspace (instance admins only):
 
@@ -484,6 +518,14 @@ Chat integrations take `config.channels`: `[{ id, name?, teamIds, events, defaul
 Inbound webhooks from forges and chat services arrive at `/api/hooks/<provider>/<key>` (outside `/w/…`) and are
 verified per provider. Integrations that hold their own connection (Socket Mode, a gateway, long polling, Matrix
 sync) accept no webhooks.
+
+GitHub and Slack send the browser back to `GET /api/integrations/github/callback` (after creating the GitHub App),
+`GET /api/integrations/github/setup` (after installing it) and `GET /api/integrations/slack/callback` (after "Add to
+Slack"). These are steps of the setup flows above, not endpoints to call yourself.
+
+OAuth for MCP clients uses `/.well-known/oauth-authorization-server`,
+`/.well-known/oauth-protected-resource/api/w/<slug>/mcp` and `/api/oauth/register|token|revoke`; see
+[mcp.md](mcp.md).
 
 Team settings take `gitAutomation: { branch?, draft?, open?, review?, merged? }` — a status id or `"none"`; missing
 events use the defaults. Workspace settings take `gitBranchFormat`.
