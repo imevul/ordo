@@ -1,5 +1,6 @@
-import { AVATAR_COLORS, type ScimToken } from '@ordo/shared';
+import { AVATAR_COLORS, type ScimToken, scimQuerySchema } from '@ordo/shared';
 import { and, asc, count, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
+import type { z } from 'zod';
 import type { DbOrTx } from '../db/client.ts';
 import {
   scimTokens,
@@ -46,6 +47,26 @@ export class ScimError extends Error {
     super(message);
   }
 }
+
+export type ScimQuery = z.infer<typeof scimQuerySchema>;
+
+/** A SCIM query string, or a 400 in SCIM's shape. Unknown parameters are ignored. */
+export function parseScimQuery(query: unknown): ScimQuery {
+  const result = scimQuerySchema.safeParse(query ?? {});
+  if (result.success) return result.data;
+  const first = result.error.issues[0];
+  throw new ScimError(
+    400,
+    `${first?.path.join('.') || 'query'}: ${first?.message}`,
+    'invalidValue',
+  );
+}
+
+/** RFC 7644 §3.4.2.4: a startIndex below 1 means 1, a negative count means 0. At most 200. */
+export const scimPage = (q: ScimQuery) => ({
+  startIndex: Math.max(1, q.startIndex ?? 1),
+  pageSize: Math.min(200, Math.max(0, q.count ?? 100)),
+});
 
 // ─── tokens ──────────────────────────────────────────────────────────────
 
@@ -228,14 +249,9 @@ function userFilter(filter: string | undefined): SQL[] {
   });
 }
 
-export async function listScimUsers(
-  ctx: Ctx,
-  baseUrl: string,
-  q: { filter?: string; startIndex?: string; count?: string },
-) {
+export async function listScimUsers(ctx: Ctx, baseUrl: string, q: ScimQuery) {
   const where = and(visible(ctx), ...userFilter(q.filter));
-  const startIndex = Math.max(1, Number(q.startIndex) || 1);
-  const pageSize = Math.min(200, Math.max(0, q.count === undefined ? 100 : Number(q.count) || 0));
+  const { startIndex, pageSize } = scimPage(q);
   const [{ total }] = (await ctx.tx
     .select({ total: count() })
     .from(workspaceMembers)

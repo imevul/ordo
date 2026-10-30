@@ -1,9 +1,9 @@
-import type { OAuthAuthorizeInfo } from '@ordo/shared';
+import { type OAuthAuthorizeInfo, oauthAuthorizeQuerySchema } from '@ordo/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { oauthClients, oauthGrants } from '../db/schema.ts';
 import { authInfo, authorizeWorkspace, requireUser } from '../lib/auth.ts';
-import { HttpError, unauthorized } from '../lib/errors.ts';
+import { HttpError, tryParse, unauthorized } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from '../services/audit.ts';
 import {
@@ -139,12 +139,21 @@ export async function oauthRoutes(app: FastifyInstance) {
    * The consent screen's side. The page lives at /oauth/authorize in the web app, which reads the
    * request here and posts the person's answer back.
    */
-  async function authorizeRequest(req: FastifyRequest, params: Params) {
+  async function authorizeRequest(req: FastifyRequest, params: unknown) {
     const user = requireUser(req);
     // Only a person in the browser can say yes, not an API key.
     if (req.authMethod !== 'session') throw unauthorized();
+    // Nothing to send back to before the client and redirect_uri check out, so a malformed
+    // request (a repeated parameter) is answered here, on the consent page.
+    const query = tryParse(oauthAuthorizeQuerySchema, params);
+    if (!query)
+      throw new HttpError(
+        400,
+        'This authorization request is malformed: a parameter is repeated or too long',
+        'invalid_request',
+      );
     try {
-      const r = await checkAuthorizeRequest(app, params);
+      const r = await checkAuthorizeRequest(app, query);
       const ws = await authorizeWorkspace(db, user, r.slug, authInfo(req));
       return { r, ws, user };
     } catch (err) {
@@ -154,7 +163,7 @@ export async function oauthRoutes(app: FastifyInstance) {
   }
 
   app.get('/oauth/authorize', async (req): Promise<OAuthAuthorizeInfo> => {
-    const { r, ws } = await authorizeRequest(req, req.query as Params);
+    const { r, ws } = await authorizeRequest(req, req.query);
     return {
       client: clientInfo(r.client),
       workspace: { name: ws.name, slug: ws.slug },
