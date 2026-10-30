@@ -77,11 +77,11 @@ export function CommandPalette() {
   useHotkeyScope('palette', page !== null);
   const search = useSearch(ws.slug, page === 'root' && query.trim().length >= 2 ? query : '');
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset the query whenever the page changes
+  // Reset the query whenever the page changes.
   useEffect(() => setQuery(''), [page]);
 
   // Look up target issues in any cached list so pages can show the current value.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: re-read the query cache each time the palette opens or changes page
+  // Re-read the query cache each time the palette opens or changes page.
   const targetIssues = useMemo(() => {
     const found = new Map<string, Issue>();
     for (const [, list] of qc.getQueriesData<Issue[] | Issue>({ queryKey: ['ws', ws.slug] })) {

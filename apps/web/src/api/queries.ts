@@ -225,12 +225,12 @@ export function useComments(slug: string, issueId: string | undefined) {
   const [saved, setSaved] = useState<Comment[] | undefined>();
   // Re-reads when the outbox changes, so queued comments show.
   const version = useSyncState()?.version;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `version` marks a changed outbox
+  // `version` marks a changed outbox.
   useEffect(() => {
     setSaved(undefined);
     if (engine && issueId && !remote.data) void engine.commentsFor(issueId).then(setSaved);
   }, [engine, issueId, remote.data, version]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `version` marks a changed outbox
+  // `version` marks a changed outbox.
   const data = useMemo(() => {
     const base = remote.data ?? saved;
     return engine && issueId && base ? engine.overlayComments(issueId, base) : base;

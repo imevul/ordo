@@ -638,7 +638,7 @@ function ConnectModal({
   onDone: () => void;
 }) {
   const [tab, setTab] = useState<'app' | 'token'>('app');
-  // biome-ignore lint/correctness/useExhaustiveDependencies: start each provider on its first tab
+  // Start each provider on its first tab.
   useEffect(() => setTab('app'), [provider]);
   if (!provider) return null;
   const isGithub = provider.key === 'github';
