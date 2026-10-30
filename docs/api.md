@@ -101,9 +101,9 @@ custom status; `pause` is `mentions`, `all` or null and ends with the status), `
 address, finished with `POST /auth/confirm-email-change` `{ token }`), `POST /me/email/verify` (send the
 verification email again), `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/sessions/revoke-others`
 (sign out everywhere but this browser; sessions only), `GET /me/oauth-grants` and `DELETE /me/oauth-grants/:id`
-(apps you've connected through [OAuth](mcp.md), and disconnecting one), `POST /auth/sso/:providerId/link` (`{ redirect? }` → `{ url }`: link a sign-in method of one of
-your workspaces to your account), `POST /me/2fa/setup|enable|disable|recovery-codes`,
-`GET /me/passkeys`, `POST /me/passkeys/options` (`{ password? }` → `{ challengeId, options }`), `POST /me/passkeys`
+(apps you've connected through [OAuth](mcp.md), and disconnecting one), `POST /auth/sso/:providerId/link`
+(`{ redirect? }` → `{ url }`: link a sign-in method of one of your workspaces to your account),
+`POST /me/2fa/setup|enable|disable|recovery-codes`, `GET /me/passkeys`, `POST /me/passkeys/options` (`{ password? }` → `{ challengeId, options }`), `POST /me/passkeys`
 (`{ challengeId, response, name? }`), `PATCH|DELETE /me/passkeys/:id`, `POST /auth/passkey/options` and
 `POST /auth/passkey` (`{ challengeId, response }`: sign in without a password),
 `POST /auth/forgot`, `POST /auth/reset`, `POST /auth/mfa`, `POST /auth/verify-email`. When an account has a
