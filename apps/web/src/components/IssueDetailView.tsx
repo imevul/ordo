@@ -179,9 +179,11 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 export function IssueDetailView({
   issue,
   compact = false,
+  focusCommentId,
 }: {
   issue: IssueDetail;
   compact?: boolean;
+  focusCommentId?: string | null;
 }) {
   const ws = useWorkspace();
   const qc = useQueryClient();
@@ -584,7 +586,7 @@ export function IssueDetailView({
             <AgentRuns issue={issue} />
             <CustomerRequests issue={issue} onChange={done} />
 
-            <Activity issue={issue} />
+            <Activity issue={issue} focusCommentId={focusCommentId} />
           </div>
         </div>
 

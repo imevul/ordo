@@ -1,6 +1,6 @@
 import type { Comment, HistoryChange, HistoryEntry, IssueDetail } from '@ordo/shared';
 import { MoreHorizontal, Reply } from 'lucide-react';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import {
   keys,
@@ -188,10 +188,12 @@ function CommentItem({
   comment,
   replies,
   issueId,
+  focusId,
 }: {
   comment: Comment;
   replies: Comment[];
   issueId: string;
+  focusId?: string | null;
 }) {
   const ws = useWorkspace();
   const upload = useAttachmentUpload(ws.slug, issueId);
@@ -236,7 +238,11 @@ function CommentItem({
   const mine = comment.authorId === ws.me.id;
 
   return (
-    <div className="panel panel-sm my-2">
+    <div
+      id={`comment-${comment.id}`}
+      className="panel panel-sm comment my-2"
+      data-focused={focusId === comment.id || undefined}
+    >
       <div className="p-3.5">
         <div className="flex items-center gap-2 text-[12.5px]">
           {author && (
@@ -360,7 +366,7 @@ function CommentItem({
       {(replies.length > 0 || replying) && (
         <div className="border-t border-border-soft px-3.5 pb-2">
           {replies.map((r) => (
-            <CommentItem key={r.id} comment={r} replies={[]} issueId={issueId} />
+            <CommentItem key={r.id} comment={r} replies={[]} issueId={issueId} focusId={focusId} />
           ))}
           {replying && (
             <div className="pt-2">
@@ -387,9 +393,17 @@ function CommentItem({
   );
 }
 
-export function Activity({ issue }: { issue: IssueDetail }) {
+export function Activity({
+  issue,
+  focusCommentId,
+}: {
+  issue: IssueDetail;
+  /** A comment to scroll to and outline, e.g. the one an inbox notification is about. */
+  focusCommentId?: string | null;
+}) {
   const ws = useWorkspace();
-  const { data: history = [] } = useHistory(ws.slug, issue.id);
+  const historyQuery = useHistory(ws.slug, issue.id);
+  const history = historyQuery.data ?? [];
   const { data: comments = [] } = useComments(ws.slug, issue.id);
   const [draft, setDraft] = useState('');
   const upload = useAttachmentUpload(ws.slug, issue.id);
@@ -420,6 +434,17 @@ export function Activity({ issue }: { issue: IssueDetail }) {
     return all.sort((a, b) => a.at.localeCompare(b.at));
   }, [history, comments]);
 
+  // History rows sort in above comments, and with offline sync the comments can arrive from
+  // IndexedDB long before /history does, so wait for both or the comment moves after scrolling.
+  // Scroll once, not again on every refetch.
+  const focusReady = !historyQuery.isPending && comments.some((c) => c.id === focusCommentId);
+  useEffect(() => {
+    if (!focusCommentId || !focusReady) return;
+    document
+      .getElementById(`comment-${focusCommentId}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [focusCommentId, focusReady]);
+
   const submit = () => {
     if (!draft.trim()) return;
     send.mutate(draft);
@@ -438,6 +463,7 @@ export function Activity({ issue }: { issue: IssueDetail }) {
             comment={it.c}
             replies={comments.filter((r) => r.parentId === it.c.id)}
             issueId={issue.id}
+            focusId={focusCommentId}
           />
         ),
       )}
