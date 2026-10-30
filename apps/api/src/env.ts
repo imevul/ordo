@@ -9,6 +9,18 @@ import {
   type WorkspaceAiPolicy,
 } from '@ordo/shared';
 
+/**
+ * ORDO_TRUST_PROXY: `true` (the default) means one proxy in front of Ordo, so the client IP is the
+ * address that proxy saw, not the left-most X-Forwarded-For entry, which the client writes.
+ */
+export function proxyTrust(v: string | undefined): false | number | string {
+  const value = v?.trim().toLowerCase() ?? '';
+  if (value === '' || ['1', 'true', 'yes', 'on'].includes(value)) return 1;
+  if (['0', 'false', 'no', 'off'].includes(value)) return false;
+  if (/^\d+$/.test(value)) return Number(value);
+  return v!.trim();
+}
+
 function bool(v: string | undefined, fallback: boolean) {
   if (v == null || v === '') return fallback;
   return ['1', 'true', 'yes', 'on'].includes(v.toLowerCase());
@@ -99,8 +111,12 @@ export interface Env {
   /** Directory with the built web client. Served as the SPA when set. */
   staticDir: string | null;
   secureCookies: boolean;
-  /** Trust X-Forwarded-* headers (client IP for rate limits). Turn off when Ordo is exposed directly. */
-  trustProxy: boolean;
+  /**
+   * Which reverse proxies to believe about the client IP (rate limits, audit log): `false`, a hop
+   * count (see proxyTrustFn in app.ts), or addresses/CIDRs. Never `true`, which would believe
+   * whatever a client writes in X-Forwarded-For.
+   */
+  trustProxy: false | number | string;
   production: boolean;
   version: string;
   /** ORDO_SECRET_KEY; encrypts stored secrets. Null means encryption is unavailable. */
@@ -129,7 +145,7 @@ export function loadEnv(overrides: Partial<Env> = {}): Env {
     logLevel: process.env.LOG_LEVEL ?? 'info',
     staticDir: process.env.ORDO_STATIC_DIR || null,
     secureCookies: bool(process.env.ORDO_SECURE_COOKIES, publicUrl.startsWith('https://')),
-    trustProxy: bool(process.env.ORDO_TRUST_PROXY, true),
+    trustProxy: proxyTrust(process.env.ORDO_TRUST_PROXY),
     production,
     version: process.env.ORDO_VERSION ?? readVersion(),
     secretKey: parseKey(process.env.ORDO_SECRET_KEY) ?? (production ? null : DEV_SECRET_KEY),

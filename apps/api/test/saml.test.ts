@@ -92,13 +92,22 @@ async function saml(
   } = {},
 ) {
   const client = opts.client ?? new Client(app);
-  const start = await app.inject({
-    method: 'GET',
-    url: `/api/auth/sso/${providerId}/start?mode=${opts.mode ?? 'login'}`,
-    headers: client.cookie ? { cookie: client.cookie } : {},
-  });
-  expect(start.statusCode).toBe(302);
-  const req = readRequest(String(start.headers.location));
+  // Linking starts with a POST that answers the URL; sign-in and tests are plain navigations.
+  const start =
+    opts.mode === 'link'
+      ? await app.inject({
+          method: 'POST',
+          url: `/api/auth/sso/${providerId}/link`,
+          headers: client.cookie ? { cookie: client.cookie } : {},
+          payload: {},
+        })
+      : await app.inject({
+          method: 'GET',
+          url: `/api/auth/sso/${providerId}/start?mode=${opts.mode ?? 'login'}`,
+          headers: client.cookie ? { cookie: client.cookie } : {},
+        });
+  expect(start.statusCode).toBe(opts.mode === 'link' ? 200 : 302);
+  const req = readRequest(String(opts.mode === 'link' ? start.json().url : start.headers.location));
   const base = options(req, p);
   if (p.groups) base.attributes!.groups = p.groups;
   const xml = opts.build ? opts.build(req) : response(base);
@@ -263,6 +272,8 @@ describe('sign-in', () => {
 
   it('links an identity to the signed-in user', async () => {
     const someone = await signup(app, 'Linker');
+    const me = (await someone.client.get('/api/auth/me')).data;
+    await app.db.insert(workspaceMembers).values({ workspaceId: wsId, userId: me.id });
     const p = { nameId: `linked-${++n}`, email: `elsewhere-${n}@example.com` };
     const linked = await saml(p, { client: someone.client, mode: 'link' });
     expect(linked.location).not.toContain('error=');

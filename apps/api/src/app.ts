@@ -18,6 +18,8 @@ import { registerJobs } from './jobs.ts';
 import { authInfo, authorizeWorkspace, resolveUser } from './lib/auth.ts';
 import { HttpError, validationError } from './lib/errors.ts';
 import { JobQueue, Leases } from './lib/jobs/index.ts';
+import { redactUrl } from './lib/redact.ts';
+import { isPrivateAddress } from './lib/safeFetch.ts';
 import { Keyring } from './lib/secrets.ts';
 import { createStorage, type Storage } from './lib/storage/index.ts';
 import { Realtime } from './realtime.ts';
@@ -85,6 +87,17 @@ declare module 'fastify' {
   }
 }
 
+// Fastify's own request serializer, with the URL's secrets taken out.
+const serializers = {
+  req: (req: FastifyRequest) => ({
+    method: req.method,
+    url: redactUrl(req.url),
+    host: req.host,
+    remoteAddress: req.ip,
+    remotePort: req.socket?.remotePort,
+  }),
+};
+
 export async function buildApp(
   env: Env,
   opts: { logger?: boolean } = {},
@@ -94,15 +107,16 @@ export async function buildApp(
       opts.logger === false
         ? false
         : env.production
-          ? { level: env.logLevel }
+          ? { level: env.logLevel, serializers }
           : {
               level: env.logLevel,
+              serializers,
               transport: {
                 target: 'pino-pretty',
                 options: { colorize: true, ignore: 'pid,hostname' },
               },
             },
-    trustProxy: env.trustProxy,
+    trustProxy: proxyTrustFn(env.trustProxy),
     bodyLimit: 5 * 1024 * 1024,
   });
 
@@ -331,4 +345,14 @@ function rejectCrossSite(req: FastifyRequest) {
     if (!actual || actual !== expected)
       throw new HttpError(403, 'Cross-origin request blocked', 'forbidden');
   }
+}
+
+/**
+ * A hop count trusts that many proxies, and only when the one connecting is on a private network,
+ * as a reverse proxy in front of Ordo is. Exposed directly, the client is whoever connects: what
+ * it writes in X-Forwarded-For is never believed.
+ */
+export function proxyTrustFn(trust: false | number | string) {
+  if (typeof trust !== 'number') return trust;
+  return (address: string, hop: number) => hop < trust && (hop > 0 || isPrivateAddress(address));
 }

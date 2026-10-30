@@ -141,15 +141,16 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 
 ### Hardening — findings from the 2026-10-30 review
 
-- [ ] ⬜ Security
-  - [ ] ⬜ SSO account linking: POST with an Origin check, only providers of workspaces the user belongs to
-    (today a link click can attach an attacker's identity to the signed-in account)
-  - [ ] ⬜ GitHub App setup: confirm the user can access `installation_id` with GitHub, refuse one another
+- [~] 🟡 Security
+  - [x] ✅ SSO account linking: POST with an Origin check, only providers of workspaces the user belongs to
+  - [x] ✅ GitHub App setup: confirm the user can access `installation_id` with GitHub, refuse one another
     workspace already holds
-  - [ ] ⬜ Sign-in rate limits: trust one proxy hop instead of any `X-Forwarded-For`, per-account lockout, a wrong
-    2FA answer uses up the MFA token
-  - [ ] ⬜ Clear an integration's stored secrets when its base or API URL changes
-  - [ ] ⬜ `safeRedirect` rejects `/\…`; TOTP codes can't be reused; invite tokens hashed and kept out of request logs
+  - [x] ✅ Sign-in rate limits: trust one proxy hop instead of any `X-Forwarded-For`; per-account lockout after ten
+    wrong passwords or codes in 15 minutes
+  - [x] ✅ Clear an integration's stored secrets when its base or API URL changes
+  - [x] ✅ `safeRedirect` rejects `/\…`; TOTP codes can't be reused; invite tokens and other URL secrets kept out of
+    request logs
+  - [ ] ⬜ Invite tokens at rest: store a hash for lookup and the link encrypted, so admins can still copy and resend it
 - [ ] ⬜ Bugs
   - [ ] ⬜ Hotkeys: a matching `g x` sequence wins over a newer single-key binding
   - [ ] ⬜ `rotate-key` re-encrypts every secret (SSO, webhooks, integrations, AI, VAPID, Matrix store, imports)

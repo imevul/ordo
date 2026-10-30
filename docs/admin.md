@@ -29,3 +29,7 @@ docker compose exec app node cli.mjs rotate-key   # after changing ORDO_SECRET_K
 ```
 
 In development the same commands run with `pnpm --filter @ordo/api cli <command>`.
+
+**Locked out after failed attempts:** ten wrong passwords or second-factor codes within 15 minutes lock password
+sign-in for that account, from every address, until the 15 minutes have passed since the last failures. Passkeys and
+single sign-on still work. The failures are in the audit log, with the addresses they came from.

@@ -1,7 +1,10 @@
-/** Full-page navigation into a sign-in flow; the API redirects to the IdP and back. */
+/**
+ * Full-page navigation into a sign-in flow; the API redirects to the IdP and back. Linking an
+ * account starts with a POST instead (`/auth/sso/:id/link`).
+ */
 export function ssoStartUrl(
   providerId: string,
-  opts: { mode?: 'login' | 'link' | 'test'; redirect?: string } = {},
+  opts: { mode?: 'login' | 'test'; redirect?: string } = {},
 ) {
   const q = new URLSearchParams();
   if (opts.mode && opts.mode !== 'login') q.set('mode', opts.mode);

@@ -52,14 +52,25 @@ async function sso(
 ) {
   const client = opts.client ?? new Client(app);
   idp.next = claims;
-  const start = await app.inject({
-    method: 'GET',
-    url: `/api/auth/oidc/${providerId}/start?mode=${opts.mode ?? 'login'}`,
-    headers: client.cookie ? { cookie: client.cookie } : {},
-  });
-  if (start.statusCode !== 302) return { client, start, location: '', res: start };
+  // Linking starts with a POST that answers the URL; sign-in and tests are plain navigations.
+  const start =
+    opts.mode === 'link'
+      ? await app.inject({
+          method: 'POST',
+          url: `/api/auth/sso/${providerId}/link`,
+          headers: client.cookie ? { cookie: client.cookie } : {},
+          payload: {},
+        })
+      : await app.inject({
+          method: 'GET',
+          url: `/api/auth/oidc/${providerId}/start?mode=${opts.mode ?? 'login'}`,
+          headers: client.cookie ? { cookie: client.cookie } : {},
+        });
+  const next = opts.mode === 'link' ? start.json()?.url : start.headers.location;
+  if (start.statusCode !== (opts.mode === 'link' ? 200 : 302))
+    return { client, start, location: '', res: start };
   const state = opts.stateCookie ?? cookieOf(start.headers['set-cookie'], 'ordo_oidc')!;
-  const authorize = await fetch(start.headers.location as string, { redirect: 'manual' });
+  const authorize = await fetch(next as string, { redirect: 'manual' });
   const back = new URL(authorize.headers.get('location')!);
   const res = await app.inject({
     method: 'GET',
@@ -78,6 +89,13 @@ const person = (local: string, extra: Record<string, unknown> = {}) => ({
   name: `${local} person`,
   ...extra,
 });
+
+/** Adds someone to the Acme workspace, whose provider they can then link. */
+const join = async (client: Client) => {
+  const me = (await client.get('/api/auth/me')).data;
+  await app.db.insert(workspaceMembers).values({ workspaceId: wsId, userId: me.id });
+  return me.id as string;
+};
 
 const roleOf = async (email: string) => {
   const [row] = await app.db
@@ -188,6 +206,7 @@ describe('sign-in', () => {
 
   it('lets signed-in users link an identity explicitly', async () => {
     const someone = await signup(app, 'Linker Person');
+    await join(someone.client);
     const claims = person('linker', { email: someone.email });
     await sso(claims, { client: someone.client, mode: 'link' });
     const ids = (await someone.client.get('/api/me/identities')).data;
@@ -197,8 +216,32 @@ describe('sign-in', () => {
     expect((await fresh.client.get('/api/auth/me')).data.email).toBe(someone.email);
     // Someone else can't link the same identity.
     const other = await signup(app, 'Other Person');
+    await join(other.client);
     const taken = await sso(claims, { client: other.client, mode: 'link' });
     expect(taken.location).toContain('error=');
+  });
+
+  it("links only from a same-origin POST, and only a provider of the user's own workspace", async () => {
+    const someone = await signup(app, 'Navigated Person');
+    // A link someone sends you must not start linking.
+    const viaGet = await app.inject({
+      method: 'GET',
+      url: `/api/auth/sso/${providerId}/start?mode=link`,
+      headers: { cookie: someone.client.cookie! },
+    });
+    expect(viaGet.statusCode).toBe(400);
+    const crossSite = await app.inject({
+      method: 'POST',
+      url: `/api/auth/sso/${providerId}/link`,
+      headers: { cookie: someone.client.cookie!, origin: 'https://evil.test' },
+      payload: {},
+    });
+    expect(crossSite.statusCode).toBe(403);
+    // Someone outside the provider's workspace can't link its identities.
+    const outsider = await signup(app, 'Outside Person');
+    const res = await sso(person('outsider'), { client: outsider.client, mode: 'link' });
+    expect(res.start.statusCode).toBe(404);
+    expect((await outsider.client.get('/api/me/identities')).data).toEqual([]);
   });
 
   it('rejects a mismatched state or issuer', async () => {

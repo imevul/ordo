@@ -9,6 +9,7 @@ export default {
     no_access: 'Du har ikke tilgang til dette',
     not_found: 'Det finnes ikke, eller du kan ikke se det',
     wrong_credentials: 'Feil e-postadresse eller passord',
+    too_many_attempts: 'For mange mislykkede påloggingsforsøk. Prøv igjen om {minutes} minutter.',
     invalid_code: 'Koden er ikke gyldig',
     invalid_code_time: 'Koden er ikke gyldig. Sjekk klokken på enheten din.',
     sign_in_again: 'Logg inn på nytt',

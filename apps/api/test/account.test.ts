@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { Secret, TOTP } from 'otpauth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { notifications, schedules, users } from '../src/db/schema.ts';
+import { proxyTrust } from '../src/env.ts';
 import { Client, captureMail, linkIn, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -34,13 +35,14 @@ async function runSchedulesNow() {
   await app.jobs.drain();
 }
 
-const codeFor = (secret: string) =>
+/** The code for now, or `steps` 30-second steps away (one either side is accepted). */
+const codeFor = (secret: string, steps = 0) =>
   new TOTP({
     algorithm: 'SHA1',
     digits: 6,
     period: 30,
     secret: Secret.fromBase32(secret),
-  }).generate();
+  }).generate({ timestamp: Date.now() + steps * 30_000 });
 
 describe('email verification', () => {
   it('sends a link on sign-up that verifies the address', async () => {
@@ -106,6 +108,52 @@ describe('email change', () => {
   });
 });
 
+describe('sign-in throttling', () => {
+  it('counts wrong passwords per account, not per address', async () => {
+    const { email } = await signup(app, 'Spray Target');
+    for (let i = 0; i < 10; i++) {
+      const res = await new Client(app, { ip: `10.201.0.${i + 1}` }).post('/api/auth/login', {
+        email,
+        password: 'wrong password',
+      });
+      expect(res.statusCode).toBe(401);
+    }
+    const right = await new Client(app).post('/api/auth/login', { email, password: PASSWORD });
+    expect(right.statusCode).toBe(429);
+  });
+
+  it('takes the client address from the proxy, not from what the client wrote', async () => {
+    const email = `nobody-${Date.now()}@example.com`;
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      remoteAddress: '10.202.0.1',
+      headers: { 'x-forwarded-for': '6.6.6.6, 7.7.7.7' },
+      payload: { email, password: 'x' },
+    });
+    // Exposed directly, the header is the client's own word and ignored.
+    await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      remoteAddress: '8.8.8.8',
+      headers: { 'x-forwarded-for': '6.6.6.6' },
+      payload: { email, password: 'x' },
+    });
+    const rows = await app.db.execute<{ ip: string }>(
+      sql`select ip from audit_log where action = 'auth.login_failed' and data->>'email' = ${email} order by created_at`,
+    );
+    expect(rows.map((r) => r.ip)).toEqual(['7.7.7.7', '8.8.8.8']);
+  });
+
+  it('reads ORDO_TRUST_PROXY as a hop count, never as "trust everything"', () => {
+    expect(proxyTrust(undefined)).toBe(1);
+    expect(proxyTrust('true')).toBe(1);
+    expect(proxyTrust('false')).toBe(false);
+    expect(proxyTrust('2')).toBe(2);
+    expect(proxyTrust('10.0.0.0/8')).toBe('10.0.0.0/8');
+  });
+});
+
 describe('two-factor authentication', () => {
   it('enrols, then requires a code (or a recovery code) to sign in', async () => {
     const { client, email } = await signup(app, 'Tia Totp');
@@ -125,15 +173,26 @@ describe('two-factor authentication', () => {
         .statusCode,
     ).toBe(401);
     // A wrong code doesn't burn the step.
+    const used = codeFor(setup.secret);
     expect(
       (
         await second.post('/api/auth/mfa', {
           mfaToken: login.data.mfaToken,
-          code: codeFor(setup.secret),
+          code: used,
         })
       ).statusCode,
     ).toBe(200);
     expect((await second.get('/api/auth/me')).statusCode).toBe(200);
+    // That code is spent, even with a fresh password step.
+    const replay = await new Client(app).post('/api/auth/login', { email, password: PASSWORD });
+    expect(
+      (
+        await new Client(app).post('/api/auth/mfa', {
+          mfaToken: replay.data.mfaToken,
+          code: used,
+        })
+      ).statusCode,
+    ).toBe(401);
 
     const recovery = enabled.data.recoveryCodes[0];
     const login2 = await new Client(app).post('/api/auth/login', { email, password: PASSWORD });
@@ -159,13 +218,39 @@ describe('two-factor authentication', () => {
       (
         await client.post('/api/me/2fa/disable', {
           password: PASSWORD,
-          code: codeFor(setup.secret),
+          code: codeFor(setup.secret, 1),
         })
       ).statusCode,
     ).toBe(200);
     expect(
       (await new Client(app).post('/api/auth/login', { email, password: PASSWORD })).data,
     ).toEqual({ ok: true });
+  });
+
+  it('locks the account after repeated wrong codes, whatever address they come from', async () => {
+    const { client, email } = await signup(app, 'Guess Ing');
+    const setup = (await client.post('/api/me/2fa/setup', { password: PASSWORD })).data;
+    await client.post('/api/me/2fa/enable', { code: codeFor(setup.secret) });
+    const login = await new Client(app).post('/api/auth/login', { email, password: PASSWORD });
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      const guess = await new Client(app, { ip: `10.200.0.${i + 1}` }).post('/api/auth/mfa', {
+        mfaToken: login.data.mfaToken,
+        code: '000000',
+      });
+      statuses.push(guess.statusCode);
+    }
+    expect(statuses.slice(0, 9).every((s) => s === 401)).toBe(true);
+    expect(statuses.slice(9)).toEqual([429, 400]);
+    // The step is spent, and the password alone won't start a new one while locked.
+    const right = await new Client(app).post('/api/auth/mfa', {
+      mfaToken: login.data.mfaToken,
+      code: codeFor(setup.secret),
+    });
+    expect(right.statusCode).toBe(400);
+    const again = await new Client(app).post('/api/auth/login', { email, password: PASSWORD });
+    expect(again.statusCode).toBe(429);
+    expect(again.data.messageKey).toBe('too_many_attempts');
   });
 
   it('stores the secret encrypted', async () => {

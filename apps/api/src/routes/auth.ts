@@ -22,6 +22,7 @@ import type { FastifyInstance } from 'fastify';
 import type { Tx } from '../db/client.ts';
 import {
   apiKeys,
+  auditLog,
   authTokens,
   invites,
   sessions,
@@ -37,6 +38,7 @@ import {
   badRequest,
   conflict,
   forbidden,
+  HttpError,
   isUniqueViolation,
   notFound,
   parse,
@@ -67,6 +69,32 @@ const DUMMY_HASH =
   'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
 
 const authLimit = { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } };
+
+// Per account, whatever address the attempts come from: wrong passwords and wrong second factors.
+const LOCKOUT_ATTEMPTS = 10;
+const LOCKOUT_MINUTES = 15;
+
+async function failedAttempts(db: FastifyInstance['db'], userId: string) {
+  const since = new Date(Date.now() - LOCKOUT_MINUTES * 60_000).toISOString();
+  const [row] = await db
+    .select({ n: count() })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.actorId, userId),
+        eq(auditLog.action, 'auth.login_failed'),
+        gt(auditLog.createdAt, since),
+      ),
+    );
+  return row?.n ?? 0;
+}
+
+const lockedOut = () =>
+  new HttpError(
+    429,
+    `Too many failed sign-in attempts. Try again in ${LOCKOUT_MINUTES} minutes.`,
+    'rate_limited',
+  ).as('too_many_attempts', { minutes: LOCKOUT_MINUTES });
 
 async function uniqueUsername(tx: Tx, email: string) {
   const base =
@@ -232,6 +260,8 @@ export async function authRoutes(app: FastifyInstance) {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     // Always run a hash comparison so timing does not reveal which emails exist or have passwords.
     const valid = await verifyPassword(input.password, user?.passwordHash ?? DUMMY_HASH);
+    // Checked after hashing so a locked account answers as slowly as any other, right or wrong.
+    if (user && (await failedAttempts(db, user.id)) >= LOCKOUT_ATTEMPTS) throw lockedOut();
     const usable = user && user.kind === 'human' && user.passwordHash && valid;
     if (!usable) {
       await audit(
@@ -337,7 +367,6 @@ export async function authRoutes(app: FastifyInstance) {
       return user.id;
     });
     if (!userId) {
-      // A wrong answer doesn't burn the step: reissue the token so they can try again.
       const [row] = await db
         .select({ userId: authTokens.userId })
         .from(authTokens)
@@ -347,6 +376,9 @@ export async function authRoutes(app: FastifyInstance) {
         { action: 'auth.login_failed', actorId: row?.userId ?? null, data: { method } },
         requestMeta(req),
       );
+      // A wrong answer doesn't burn the step, so they can try again, until the account locks:
+      // a six-digit code would otherwise fall to guessing.
+      if (row && (await failedAttempts(db, row.userId)) >= LOCKOUT_ATTEMPTS) throw lockedOut();
       if (row)
         await db
           .update(authTokens)

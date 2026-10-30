@@ -99,6 +99,8 @@ export const users = pgTable('users', {
   /** TOTP secret, encrypted with the keyring (aad users:<id>:totp_secret). Set but unused until enabled. */
   totpSecret: text('totp_secret'),
   totpEnabledAt: ts('totp_enabled_at'),
+  /** The last 30-second step a code was accepted for; each step's code works once. */
+  totpLastStep: integer('totp_last_step'),
   preferences: jsonb('preferences').$type<Partial<UserPreferences>>().notNull().default({}),
   /**
    * For bots and agents: the workspace they act in (outlives the integration, so its history keeps a name).

@@ -748,6 +748,9 @@ export const updateAuthProviderSchema = z
     trustEmail: z.boolean().optional(),
   });
 
+/** Starts connecting a provider to the signed-in account; `redirect` is where to come back to. */
+export const linkIdentitySchema = z.object({ redirect: z.string().max(2000).optional() });
+
 export const createScimTokenSchema = z.object({ name: z.string().trim().min(1).max(80) });
 
 export const syncIssuesSchema = z.object({

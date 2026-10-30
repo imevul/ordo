@@ -12,10 +12,19 @@ An instance admin creates the app once; afterwards workspace admins install it.
    read access to code and metadata, read & write to pull requests, events for pull requests, reviews and pushes);
    confirm it.
 2. GitHub sends you straight on to install it: choose the account and repositories.
-3. You land back in Ordo with GitHub connected.
+3. GitHub asks you to authorise the app once. That's how Ordo checks your GitHub account can access the
+   installation you just made, so nobody can connect someone else's.
+4. You land back in Ordo with GitHub connected.
 
-Other workspaces on the same instance use **Install … on GitHub** to add their own installation. The app is private,
-so it can only be installed on the account that owns it; create it under the organisation your teams use.
+Other workspaces on the same instance use **Install … on GitHub** to add their own installation. An installation
+belongs to one workspace. The app is private, so it can only be installed on the account that owns it; create it
+under the organisation your teams use, or make it public (GitHub → the app → Advanced) to install it on several
+accounts. Installing it doesn't connect anything by itself: only a workspace admin who can access the installation
+can.
+
+**Apps created before 30 October 2026** don't have the authorisation callback yet. Add
+`https://<ordo>/api/integrations/github/authorized` under the app's **Callback URL** on GitHub (Settings → Developer
+settings → GitHub Apps → the app), or installing fails with GitHub's "redirect_uri is not associated" page.
 
 The app receives events at `https://<ordo>/api/hooks/github/app-<id>`, signed with its webhook secret. Uninstalling
 or suspending it on GitHub switches the integration off in Ordo.

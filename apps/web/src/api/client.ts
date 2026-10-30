@@ -28,7 +28,8 @@ const isMessageKey = (k: unknown): k is ApiMessageKey =>
  * English the API's own message is kept, since it can be more specific than the catalogue's.
  */
 export function errorMessage(status: number, data: ErrorBody | null, statusText = ''): string {
-  if (status === 429) return t('errors.rateLimited');
+  // A plain rate limit; a keyed 429 (an account lockout) says more below.
+  if (status === 429 && !isMessageKey(data?.messageKey)) return t('errors.rateLimited');
   if (status >= 500 && (!data?.message || data.error === 'error')) return t('errors.server');
   if (getLocale() !== 'en' && isMessageKey(data?.messageKey))
     return t(`errors.api.${data.messageKey}`, data.params);

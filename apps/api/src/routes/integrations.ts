@@ -38,6 +38,9 @@ const updateSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+/** Config fields that say which server an integration talks to (and sends its credentials to). */
+const ADDRESS_KEYS = ['baseUrl', 'apiUrl', 'webUrl', 'siteUrl', 'homeserverUrl', 'host', 'port'];
+
 /** Provider validation errors are the admin's to fix: 400, with the provider's message. */
 function configureOrReject(
   provider: IntegrationProvider,
@@ -116,13 +119,28 @@ export async function integrationRoutes(app: FastifyInstance) {
         const fresh = Object.fromEntries(
           Object.entries(input.secrets ?? {}).filter(([, v]) => v !== ''),
         );
-        const merged = {
-          config: { ...config, ...input.config },
-          secrets: { ...secrets, ...fresh },
+        const next = { ...config, ...input.config };
+        // An app's installations reach the app's own server; that isn't the workspace's to move.
+        if (row.appId) for (const k of ADDRESS_KEYS) if (k in config) next[k] = config[k];
+        const configureWith = (kept: Record<string, unknown>) => {
+          const merged = { config: next, secrets: { ...kept, ...fresh } };
+          return provider?.configure
+            ? configureOrReject(provider, merged)
+            : (merged as typeof merged & { secrets: Record<string, string> });
         };
-        ({ config, secrets } = provider?.configure
-          ? configureOrReject(provider, merged)
-          : (merged as typeof merged & { secrets: Record<string, string> }));
+        // Compared in the provider's own normal form, so a default it fills in isn't a move.
+        const stored = { config, secrets };
+        let before = config;
+        try {
+          if (provider?.configure) before = provider.configure(stored).config;
+        } catch {
+          // Settings saved before a stricter check: compare them as stored.
+        }
+        ({ config, secrets } = configureWith(secrets));
+        // Stored credentials stay with the server they were entered for: pointing the integration
+        // somewhere else takes them again, or they'd be sent to whoever runs the new address.
+        if (ADDRESS_KEYS.some((k) => String(before[k] ?? '') !== String(config[k] ?? '')))
+          ({ config, secrets } = configureWith({}));
       }
       const [saved] = await ctx.tx
         .update(integrations)

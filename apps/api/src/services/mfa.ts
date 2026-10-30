@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { and, count, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, isNull, lt, or } from 'drizzle-orm';
 import { Secret, TOTP } from 'otpauth';
 import type { DbOrTx } from '../db/client.ts';
 import { passkeys, recoveryCodes, users } from '../db/schema.ts';
@@ -35,10 +35,21 @@ export function verifyTotp(
   user: { id: string; email: string; totpSecret: string | null },
   code: string,
 ) {
-  if (!user.totpSecret) return false;
+  return totpStep(keyring, user, code) !== null;
+}
+
+/** The 30-second step a code belongs to, or null when it's wrong. */
+function totpStep(
+  keyring: Keyring,
+  user: { id: string; email: string; totpSecret: string | null },
+  code: string,
+) {
+  if (!user.totpSecret) return null;
   const secret = keyring.decrypt(user.totpSecret, aad(user.id));
+  const generator = totp(secret, user.email);
   // One step either side tolerates a little clock drift.
-  return totp(secret, user.email).validate({ token: code.replace(/\s/g, ''), window: 1 }) !== null;
+  const delta = generator.validate({ token: code.replace(/\s/g, ''), window: 1 });
+  return delta === null ? null : generator.counter() + delta;
 }
 
 /** Ten fresh single-use recovery codes (replacing any old ones); only hashes are stored. */
@@ -74,8 +85,19 @@ export async function verifySecondFactor(
   user: { id: string; email: string; totpSecret: string | null; totpEnabledAt: string | null },
   code: string,
 ) {
-  if (user.totpEnabledAt && /^\d{6}$/.test(code.trim()) && verifyTotp(keyring, user, code))
-    return true;
+  if (user.totpEnabledAt && /^\d{6}$/.test(code.trim())) {
+    const step = totpStep(keyring, user, code);
+    if (step === null) return false;
+    // Each code signs in once: one seen over a shoulder or phished is spent already.
+    const claimed = await db
+      .update(users)
+      .set({ totpLastStep: step })
+      .where(
+        and(eq(users.id, user.id), or(isNull(users.totpLastStep), lt(users.totpLastStep, step))),
+      )
+      .returning({ id: users.id });
+    return claimed.length > 0;
+  }
   return useRecoveryCode(db, user.id, code);
 }
 

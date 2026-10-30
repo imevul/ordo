@@ -8,7 +8,7 @@ import { callApi } from '../integrations/http.ts';
 import { authInfo, authorizeWorkspace, requireAdmin, requireUser } from '../lib/auth.ts';
 import { badRequest, forbidden, parse } from '../lib/errors.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
-import { createIntegration, sealAppSecrets } from '../services/integrations.ts';
+import { createIntegration, readAppSecrets, sealAppSecrets } from '../services/integrations.ts';
 import { consumeToken, createToken } from '../services/tokens.ts';
 
 /**
@@ -16,6 +16,8 @@ import { consumeToken, createToken } from '../services/tokens.ts';
  * registration); after that, workspace admins install it on their GitHub accounts. State travels
  * as single-use tokens bound to the user who started the flow.
  */
+
+const AUTHORIZED_PATH = '/api/integrations/github/authorized';
 
 async function githubApp(app: FastifyInstance) {
   const [row] = await app.db
@@ -61,6 +63,8 @@ export async function githubWorkspaceRoutes(app: FastifyInstance) {
       hook_attributes: { url: `${base}/api/hooks/github/app-${appId}`, active: true },
       redirect_url: `${base}/api/integrations/github/callback`,
       setup_url: `${base}/api/integrations/github/setup`,
+      // Where GitHub sends the user back after confirming they can see the installation.
+      callback_urls: [`${base}${AUTHORIZED_PATH}`],
       setup_on_update: false,
       public: false,
       default_permissions: { metadata: 'read', contents: 'read', pull_requests: 'write' },
@@ -101,7 +105,7 @@ export async function githubCallbackRoutes(app: FastifyInstance) {
     const token = await consumeToken(app.db, 'integration_setup', state ?? '');
     if (token.userId !== req.user.id || token.data.step !== step)
       throw badRequest('This link belongs to someone else').as('link_other_person');
-    return token.data as { appId: string; workspaceId: string };
+    return token.data as { appId: string; workspaceId: string; installationId?: string };
   }
 
   app.get('/integrations/github/callback', async (req, reply) => {
@@ -155,6 +159,11 @@ export async function githubCallbackRoutes(app: FastifyInstance) {
     return reply.redirect(`${created.html_url}/installations/new?state=${next}`);
   });
 
+  /**
+   * GitHub's setup redirect names the installation in the query string, where anyone can change
+   * it. So it only remembers which one, then has the user sign in to GitHub (below) to prove they
+   * can access it before anything is connected.
+   */
   app.get('/integrations/github/setup', async (req, reply) => {
     const { installation_id: installationId, state } = req.query as {
       installation_id?: string;
@@ -163,10 +172,38 @@ export async function githubCallbackRoutes(app: FastifyInstance) {
     let data: { appId: string; workspaceId: string };
     try {
       data = await claim(req, state, 'install');
-      if (!installationId) throw badRequest('GitHub did not say which installation this is');
+      if (!installationId || !/^\d+$/.test(installationId))
+        throw badRequest('GitHub did not say which installation this is');
     } catch (err) {
       return reply.redirect(fail(err instanceof Error ? err.message : 'GitHub setup failed'));
     }
+    const row = await githubApp(app);
+    const config = row?.config as { clientId?: string; webUrl?: string } | undefined;
+    if (!row || row.id !== data.appId || !config?.clientId)
+      return reply.redirect(fail('This GitHub App is no longer set up on this instance'));
+    const next = await createToken(app.db, req.user!.id, 'integration_setup', 10, {
+      step: 'authorize',
+      appId: data.appId,
+      workspaceId: data.workspaceId,
+      installationId,
+    });
+    const authorize = new URL(`${config.webUrl ?? app.env.github.webUrl}/login/oauth/authorize`);
+    authorize.searchParams.set('client_id', config.clientId);
+    authorize.searchParams.set('redirect_uri', `${app.env.publicUrl}${AUTHORIZED_PATH}`);
+    authorize.searchParams.set('state', next);
+    return reply.redirect(authorize.toString());
+  });
+
+  app.get(AUTHORIZED_PATH.replace('/api', ''), async (req, reply) => {
+    const { code, state } = req.query as { code?: string; state?: string };
+    let data: { appId: string; workspaceId: string; installationId?: string };
+    try {
+      data = await claim(req, state, 'authorize');
+      if (!code) throw badRequest('GitHub sign-in was cancelled');
+    } catch (err) {
+      return reply.redirect(fail(err instanceof Error ? err.message : 'GitHub setup failed'));
+    }
+    const installationId = String(data.installationId);
     const ws = await authorizeWorkspace(
       app.db,
       req.user!,
@@ -175,21 +212,29 @@ export async function githubCallbackRoutes(app: FastifyInstance) {
     ).catch(() => null);
     if (!ws?.access.isAdmin)
       return reply.redirect(fail('Only workspace admins can connect GitHub'));
+    const row = await githubApp(app);
+    if (!row || row.id !== data.appId)
+      return reply.redirect(fail('This GitHub App is no longer set up on this instance'));
+    try {
+      if (!(await canAccessInstallation(app, row, code, installationId)))
+        throw badRequest("Your GitHub account can't access that installation");
+    } catch (err) {
+      req.log.warn({ err }, 'GitHub installation check failed');
+      return reply.redirect(fail(err instanceof Error ? err.message : 'GitHub setup failed'));
+    }
     const [slug] = await app.db
       .select({ slug: workspaces.slug })
       .from(workspaces)
       .where(eq(workspaces.id, ws.id));
-    const [existing] = await app.db
-      .select({ id: integrations.id })
+    const holders = await app.db
+      .select({ workspaceId: integrations.workspaceId })
       .from(integrations)
-      .where(
-        and(
-          eq(integrations.workspaceId, ws.id),
-          eq(integrations.appId, data.appId),
-          eq(integrations.externalId, String(installationId)),
-        ),
+      .where(and(eq(integrations.appId, data.appId), eq(integrations.externalId, installationId)));
+    if (holders.some((h) => h.workspaceId !== ws.id))
+      return reply.redirect(
+        fail('This GitHub installation is already connected to another Ordo workspace'),
       );
-    if (!existing) {
+    if (holders.length === 0) {
       await runInWorkspace(
         app,
         { workspaceId: ws.id, actorId: req.user!.id, source: 'web', access: ws.access },
@@ -198,7 +243,7 @@ export async function githubCallbackRoutes(app: FastifyInstance) {
             provider: github,
             name: 'GitHub',
             appId: data.appId,
-            externalId: String(installationId),
+            externalId: installationId,
             config: {
               mode: 'app',
               apiUrl: app.env.github.apiUrl,
@@ -211,4 +256,49 @@ export async function githubCallbackRoutes(app: FastifyInstance) {
     }
     return reply.redirect(`/${slug!.slug}/settings/integrations`);
   });
+}
+
+/**
+ * Trades the sign-in code for a user token and asks GitHub whether that user can see the
+ * installation. The token is used for this one question and then forgotten.
+ */
+async function canAccessInstallation(
+  app: FastifyInstance,
+  row: typeof integrationApps.$inferSelect,
+  code: string,
+  installationId: string,
+) {
+  const config = row.config as { clientId: string; apiUrl?: string; webUrl?: string };
+  const { clientSecret } = readAppSecrets(app, row);
+  const { data: grant } = await callApi<{ access_token?: string; error_description?: string }>(
+    app,
+    `${config.webUrl ?? app.env.github.webUrl}/login/oauth/access_token`,
+    {
+      method: 'POST',
+      body: {
+        client_id: config.clientId,
+        client_secret: clientSecret,
+        code,
+        redirect_uri: `${app.env.publicUrl}${AUTHORIZED_PATH}`,
+      },
+    },
+  );
+  if (!grant.access_token)
+    throw badRequest(`GitHub sign-in failed: ${grant.error_description ?? 'no token'}`);
+  const api = config.apiUrl ?? app.env.github.apiUrl;
+  for (let page = 1; page <= 10; page++) {
+    const { data } = await callApi<{ installations: { id: number }[] }>(
+      app,
+      `${api}/user/installations?per_page=100&page=${page}`,
+      {
+        headers: {
+          authorization: `Bearer ${grant.access_token}`,
+          accept: 'application/vnd.github+json',
+        },
+      },
+    );
+    if (data.installations.some((i) => String(i.id) === installationId)) return true;
+    if (data.installations.length < 100) return false;
+  }
+  return false;
 }

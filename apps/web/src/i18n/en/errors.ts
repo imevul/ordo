@@ -11,6 +11,7 @@ export default {
     no_access: 'You do not have access to this',
     not_found: "That doesn't exist, or you can't see it",
     wrong_credentials: 'Wrong email or password',
+    too_many_attempts: 'Too many failed sign-in attempts. Try again in {minutes} minutes.',
     invalid_code: 'That code is not valid',
     invalid_code_time: 'That code is not valid. Check the time on your device.',
     sign_in_again: 'Sign in again',

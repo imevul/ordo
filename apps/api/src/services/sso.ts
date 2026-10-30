@@ -32,9 +32,16 @@ import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 export type Provider = typeof authProviders.$inferSelect;
 export const STATE_TTL_MS = 10 * 60_000;
 
-/** Where to go after signing in: only paths on this site. */
-export const safeRedirect = (redirect: string | null | undefined) =>
-  redirect?.startsWith('/') && !redirect.startsWith('//') ? redirect : null;
+/**
+ * Where to go after signing in: only paths on this site. Browsers read `\` as `/`, so `/\evil.com`
+ * is another site too; control characters are refused because browsers drop them before parsing.
+ */
+export function safeRedirect(redirect: string | null | undefined) {
+  if (!redirect?.startsWith('/') || redirect.startsWith('//') || redirect.includes('\\'))
+    return null;
+  for (const ch of redirect) if (ch.charCodeAt(0) < 0x20 || ch.charCodeAt(0) === 0x7f) return null;
+  return redirect;
+}
 
 /**
  * Takes the sign-in attempt that a callback belongs to. Each is good once, for ten minutes, and
