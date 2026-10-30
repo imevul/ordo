@@ -297,6 +297,17 @@ async function legacyBranch(clone: string, branch: string) {
   return stdout.split('\n').find(Boolean) ?? null;
 }
 
+/** The worktree `branch` is checked out in, if any (git allows only one). */
+async function worktreeOf(clone: string, branch: string) {
+  const { stdout } = await git(['worktree', 'list', '--porcelain'], clone);
+  let path: string | null = null;
+  for (const line of stdout.split('\n')) {
+    if (line.startsWith('worktree ')) path = line.slice('worktree '.length);
+    else if (line === `branch refs/heads/${branch}` && path !== clone) return path;
+  }
+  return null;
+}
+
 /** Worktree paths a run on this machine is using right now; pruning leaves them alone. */
 const inUse = new Set<string>();
 
@@ -331,6 +342,13 @@ export async function checkout(
         }
       }
       await git(['worktree', 'prune'], clone);
+      // An agent may have switched another worktree to this branch (say, one named the old way):
+      // the work is there, and git won't check the branch out twice.
+      const current = await worktreeOf(clone, branch);
+      if (current) {
+        tree = current;
+        return;
+      }
       if (await refExists(clone, `refs/heads/${branch}`))
         await git(['worktree', 'add', '--quiet', tree, branch], clone);
       else if (await refExists(clone, `refs/remotes/origin/${branch}`))

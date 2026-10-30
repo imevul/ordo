@@ -359,6 +359,28 @@ describe('ordo agent', () => {
     expect(lines[0]).toContain(`removed the worktree of ${issue.identifier} (done)`);
   });
 
+  it('carries on in the worktree a branch is already checked out in', async () => {
+    const issue = await assign('Switched branch');
+    const clone = join(
+      dir,
+      'repos',
+      readdirSync(join(dir, 'repos')).find((d) => !d.endsWith('.worktrees'))!,
+    );
+    // An old-style worktree whose agent switched it to the issue's branch.
+    const other = `${clone}.worktrees/somebody_${issue.identifier.toLowerCase()}-old`;
+    git(clone, 'worktree', 'add', '--quiet', '-b', 'somebody/old', other, 'origin/main');
+    git(other, 'checkout', '--quiet', '-b', `${issue.identifier.toLowerCase()}-switched-branch`);
+    const file = write(
+      'switched.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Claude}\ncommand: 'basename "$PWD"'\nrepos: ./repos\n`,
+    );
+    expect((await ordo(['agent', 'run', '--file', file, '--once'])).code).toBe(0);
+    expect((await runsOf(issue.id))[0]).toMatchObject({
+      status: 'succeeded',
+      summary: `somebody_${issue.identifier.toLowerCase()}-old`,
+    });
+  });
+
   it('carries on with a branch named the old way, per agent', async () => {
     const issue = await assign('Legacy work');
     const clone = readdirSync(join(dir, 'repos')).find((d) => !d.endsWith('.worktrees'))!;
