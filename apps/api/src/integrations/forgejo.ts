@@ -1,5 +1,4 @@
-import { randomBytes } from 'node:crypto';
-import type { PullRequestChecks } from '@ordo/shared';
+import { type ForgejoConfig, forgejoSettingsSchema, type PullRequestChecks } from '@ordo/shared';
 import {
   applyBranch,
   applyCommits,
@@ -13,22 +12,20 @@ import {
   mentionsIssue,
   type PullRequestState,
 } from '../services/forge.ts';
-import { callApi, hmacHex, repoList, safeEqual, trimUrl } from './http.ts';
-import type { IntegrationContext, IntegrationProvider, IntegrationRow } from './types.ts';
+import { callApi, hmacHex, safeEqual, withWebhookSecret } from './http.ts';
+import {
+  configOf,
+  type IntegrationContext,
+  type IntegrationProvider,
+  type IntegrationRow,
+} from './types.ts';
 
 /**
  * Forgejo and Gitea (Codeberg included): an access token and a list of repositories. Ordo adds
  * repository webhooks, or polls pull requests when the forge can't reach it.
  */
 
-interface ForgejoConfig {
-  baseUrl: string;
-  repos: string[];
-  delivery: 'webhook' | 'poll';
-  commentOnPullRequests: boolean;
-}
-
-const cfg = (row: IntegrationRow) => row.config as unknown as ForgejoConfig;
+const cfg = configOf<ForgejoConfig>();
 const host = (row: IntegrationRow) => new URL(cfg(row).baseUrl).host;
 
 const api = <T>(
@@ -128,30 +125,8 @@ export const forgejo: IntegrationProvider = {
       query,
     ),
 
-  configure({ config, secrets }) {
-    const repos = repoList(config.repos);
-    if (!secrets.token) throw new Error('An access token is required');
-    if (!config.baseUrl) throw new Error('The server URL is required, e.g. https://codeberg.org');
-    if (!repos.length) throw new Error('List at least one repository (owner/name)');
-    let baseUrl: string;
-    try {
-      baseUrl = trimUrl(new URL(String(config.baseUrl)).toString());
-    } catch {
-      throw new Error('The server URL is not valid');
-    }
-    return {
-      config: {
-        baseUrl,
-        repos,
-        delivery: config.delivery === 'poll' ? 'poll' : 'webhook',
-        commentOnPullRequests: config.commentOnPullRequests === true,
-      },
-      secrets: {
-        token: String(secrets.token),
-        webhookSecret: String(secrets.webhookSecret || randomBytes(24).toString('base64url')),
-      },
-    };
-  },
+  settings: forgejoSettingsSchema,
+  configure: (settings) => withWebhookSecret(settings),
 
   async install(ictx) {
     const c = cfg(ictx.integration);
