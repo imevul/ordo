@@ -34,6 +34,7 @@ Open <http://localhost:5173>. Load demo data with `pnpm db:seed` and sign in as 
 |                                    |                                                      |
 | ---------------------------------- | ---------------------------------------------------- |
 | `pnpm dev`                         | API + web with hot reload                            |
+| `pnpm dev:preview [--ttl 30m]`     | API + web on free ports, throwaway seeded database   |
 | `pnpm typecheck`                   | TypeScript (v7) across packages                      |
 | `pnpm test`                        | Vitest — shared unit tests and API integration tests |
 | `pnpm lint` / `pnpm format`        | Biome check / fix                                    |

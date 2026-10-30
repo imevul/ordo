@@ -33,6 +33,7 @@ docs/              user, operator and developer docs
 ```bash
 make dev-db                 # Postgres for dev/tests on localhost:5433 (docker-compose.dev.yml)
 pnpm dev                    # API :3001 (tsx watch) + web :5173 (Vite, proxies /api and /api/ws)
+pnpm dev:preview            # the same on free ports with a throwaway seeded database (headless checks, agents)
 pnpm typecheck              # tsc (TypeScript 7) in every package
 pnpm test                   # Vitest; API tests use a per-run `ordo_test_<pid>` database
 pnpm lint / pnpm format     # Biome
@@ -119,6 +120,13 @@ API tests in `apps/api/test/api.test.ts` drive the real app through `app.inject`
 `Client` (`test/helpers.ts`). Add a test for every new endpoint or rule. Shared logic gets unit tests next to
 the source (`*.test.ts`). The web app has unit tests only for pure logic (`src/lib/*.test.ts`); verify UI changes in a browser with
 `pnpm dev`.
+
+Without a desktop (agents, a runner box), run `pnpm dev:preview` in the background: it starts the API and web on free
+ports against a throwaway seeded database, prints the URL and the demo login when ready, and cleans up on exit (or
+after `--ttl`, default 1h). Open that URL with your browser tools (the Playwright MCP server, headless), sign in (email
+first, then the password on the next step), and
+click through what you changed, at desktop width and at 375px. Check the console for errors. Then stop the preview.
+In your summary, say what you checked in the browser, or why you couldn't; don't hand it to "someone".
 SSO tests run against an in-process OpenID provider (`test/mock-idp.ts`: discovery, PKCE-checking token endpoint,
 RS256 ID tokens); set `idp.next` to the claims of the next sign-in and `idp.tamper` to corrupt the next token.
 
