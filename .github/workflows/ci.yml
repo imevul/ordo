@@ -4,6 +4,11 @@ on:
   push:
   pull_request:
 
+# The token only needs to read the repository. The Docker layer cache (type=gha) talks to the cache
+# service with the runner's own ACTIONS_RUNTIME_TOKEN, which these scopes don't restrict.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -18,8 +23,10 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U ordo" --health-interval 2s --health-timeout 3s --health-retries 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
       - run: npm install -g pnpm@12.15.0
@@ -28,3 +35,19 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: ./scripts/check-bundle.sh
+
+  # Builds the production image (not pushed), so Dockerfile drift fails here and not on release.
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: ./scripts/check-dockerfile.sh
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max,ignore-error=true

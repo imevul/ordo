@@ -5,11 +5,14 @@ FROM node:26-alpine AS build
 WORKDIR /src
 RUN npm install -g pnpm@12.15.0
 
-# Install dependencies first so they cache independently of source changes.
+# Install dependencies first so they cache independently of source changes. Every workspace
+# package.json must be listed, or pnpm reinstalls during the build, uncached and online
+# (scripts/check-dockerfile.sh checks this in CI).
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
 COPY packages/shared/package.json packages/shared/
+COPY packages/sync/package.json packages/sync/
 COPY packages/sdk/package.json packages/sdk/
 COPY packages/cli/package.json packages/cli/
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
