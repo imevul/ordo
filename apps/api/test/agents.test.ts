@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { agentRuns, domainEvents } from '../src/db/schema.ts';
 import { reapLeases } from '../src/services/agents.ts';
-import { type Client, signup, testApp } from './helpers.ts';
+import { type Client, type Json, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
 let owner: Client;
@@ -25,8 +25,7 @@ async function bearer(token: string, method: string, url: string, body?: unknown
     payload: body as object,
     headers: { authorization: `Bearer ${token}` },
   });
-  // biome-ignore lint/suspicious/noExplicitAny: response bodies, as in helpers.ts
-  let data: any = null;
+  let data: Json = null;
   try {
     data = res.json();
   } catch {}
@@ -83,6 +82,16 @@ describe('agent accounts', () => {
       instructions: 'Run the tests before opening a PR.',
       teamIds: [eng],
     });
+  });
+
+  it('changes the colour of an agent’s avatar', async () => {
+    const res = await owner.patch(`${ws}/agents/${agentId}`, { avatarColor: '#22c55e' });
+    expect(res.data).toMatchObject({ avatarColor: '#22c55e' });
+    const members = (await owner.get(`${ws}/bootstrap`)).data.members as Bootstrap['members'];
+    expect(members.find((m) => m.id === agentId)).toMatchObject({ avatarColor: '#22c55e' });
+    expect((await owner.patch(`${ws}/agents/${agentId}`, { avatarColor: 'pink' })).statusCode).toBe(
+      400,
+    );
   });
 
   it('issues keys that authenticate the agent in its workspace only', async () => {

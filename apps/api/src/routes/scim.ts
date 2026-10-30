@@ -16,6 +16,7 @@ import {
   directoryBot,
   getScimUser,
   listScimUsers,
+  parseScimQuery,
   resourceTypes,
   SCIM_SCHEMA,
   ScimError,
@@ -142,7 +143,7 @@ export async function scimRoutes(app: FastifyInstance) {
   });
 
   app.get('/Users', limit, async (req, reply) =>
-    send(reply, await run(req, (ctx) => listScimUsers(ctx, baseUrl, req.query as object))),
+    send(reply, await run(req, (ctx) => listScimUsers(ctx, baseUrl, parseScimQuery(req.query)))),
   );
   app.get('/Users/:id', limit, async (req, reply) => {
     const { id } = req.params as { id: string };
@@ -169,13 +170,13 @@ export async function scimRoutes(app: FastifyInstance) {
   });
 
   app.get('/Groups', limit, async (req, reply) =>
-    send(reply, await run(req, (ctx) => listScimGroups(ctx, baseUrl, req.query as object))),
+    send(reply, await run(req, (ctx) => listScimGroups(ctx, baseUrl, parseScimQuery(req.query)))),
   );
   app.get('/Groups/:id', limit, async (req, reply) => {
     const { id } = req.params as { id: string };
     return send(
       reply,
-      await run(req, (ctx) => getScimGroup(ctx, baseUrl, id, req.query as object)),
+      await run(req, (ctx) => getScimGroup(ctx, baseUrl, id, parseScimQuery(req.query))),
     );
   });
   app.post('/Groups', limit, async (req, reply) =>

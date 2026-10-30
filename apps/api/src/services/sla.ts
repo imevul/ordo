@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { issues } from '../db/schema.ts';
-import { runAutomation } from './automation.ts';
+import { forEachIsolated, runAutomation } from './automation.ts';
+import { touchIssues } from './issues.ts';
 import { notify, subscriberIds } from './notifications.ts';
 
 /**
@@ -19,18 +19,20 @@ export async function announceSlaBreaches(app: FastifyInstance) {
     where i.sla_breaches_at <= now() and i.sla_notified_at is null
       and i.deleted_at is null and s.type not in ('completed', 'canceled')
     limit 500`);
-  for (const issue of breached) {
-    await runAutomation(app, issue.workspace_id, async (ctx) => {
-      const subscribers = await subscriberIds(ctx, issue.id);
-      await notify(ctx, {
-        userIds: [issue.assignee_id, ...subscribers],
-        type: 'issue_sla_breached',
-        issueId: issue.id,
-      });
-      await ctx.tx
-        .update(issues)
-        .set({ slaNotifiedAt: new Date().toISOString() })
-        .where(sql`${issues.id} = ${issue.id}`);
-    });
-  }
+  await forEachIsolated(
+    app,
+    'issues.sla',
+    [...breached],
+    (issue) => ({ issueId: issue.id, workspaceId: issue.workspace_id }),
+    (issue) =>
+      runAutomation(app, issue.workspace_id, async (ctx) => {
+        const subscribers = await subscriberIds(ctx, issue.id);
+        await notify(ctx, {
+          userIds: [issue.assignee_id, ...subscribers],
+          type: 'issue_sla_breached',
+          issueId: issue.id,
+        });
+        await touchIssues(ctx, [issue.id], { slaNotifiedAt: new Date().toISOString() });
+      }),
+  );
 }

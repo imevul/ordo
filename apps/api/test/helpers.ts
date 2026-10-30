@@ -18,11 +18,15 @@ export async function testApp(overrides: Parameters<typeof loadEnv>[0] = {}) {
     }),
     { logger: false },
   );
-  await runMigrations(app.db);
+  await runMigrations(app.db, app.keyring);
   await app.settings.reload();
   await app.ready();
   return app;
 }
+
+/** A JSON body in a test. Tests read whatever fields they expect, so it stays loosely typed. */
+// biome-ignore lint/suspicious/noExplicitAny: the one place tests opt out of typing JSON bodies
+export type Json = any;
 
 /** A tiny cookie-carrying client around app.inject. */
 export class Client {
@@ -37,7 +41,7 @@ export class Client {
     method: string,
     url: string,
     body?: unknown,
-  ): Promise<LightMyRequestResponse & { data: any }> {
+  ): Promise<LightMyRequestResponse & { data: Json }> {
     const res = await this.app.inject({
       method: method as 'GET',
       url,
@@ -89,7 +93,7 @@ export class Client {
     try {
       data = res.json();
     } catch {}
-    return Object.assign(res, { data }) as LightMyRequestResponse & { data: any };
+    return Object.assign(res, { data }) as LightMyRequestResponse & { data: Json };
   }
 }
 

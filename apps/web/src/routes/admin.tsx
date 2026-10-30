@@ -166,7 +166,8 @@ function Overview() {
         realtimeConnections: number;
         storage: string;
         emailEnabled: boolean;
-        secretKey: boolean;
+        secretKey: 'ok' | 'missing' | 'unreadable';
+        unreadableSecrets: number;
       }>('/admin/overview'),
     refetchInterval: 10_000,
   });
@@ -199,11 +200,13 @@ function Overview() {
           </span>
           <span>
             <span
-              className={`mr-2 inline-block h-[7px] w-[7px] ${data.secretKey ? 'bg-success' : 'bg-error'}`}
+              className={`mr-2 inline-block h-[7px] w-[7px] ${data.secretKey === 'ok' ? 'bg-success' : 'bg-error'}`}
             />
-            {data.secretKey
+            {data.secretKey === 'ok'
               ? t('admin.overview.secretKeyOk')
-              : t('admin.overview.secretKeyMissing')}
+              : data.secretKey === 'missing'
+                ? t('admin.overview.secretKeyMissing')
+                : t('admin.overview.secretKeyUnreadable', { count: data.unreadableSecrets })}
           </span>
           <span>
             <span className="mr-2 inline-block h-[7px] w-[7px] bg-success" />
@@ -441,8 +444,8 @@ function Invites() {
       });
       setEmails('');
       reload();
-      // A link has to be passed on by hand; copy it right away.
-      if (rows.length === 1 && (!rows[0]!.email || !config.data?.emailEnabled)) copy(rows[0]!.url);
+      // A link has to be passed on by hand; copy it right away. New invites always carry it.
+      if (rows.length === 1 && (!rows[0]!.email || !config.data?.emailEnabled)) copy(rows[0]!.url!);
       else toast.success(t('admin.invites.created', { count: rows.length }));
     } catch (err) {
       toast.error(errMsg(err));
@@ -523,15 +526,17 @@ function Invites() {
                   .join(' · ')}
               </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              title={t('admin.invites.copy')}
-              aria-label={t('admin.invites.copy')}
-              onClick={() => copy(i.url)}
-            >
-              <Copy size={12} />
-            </button>
+            {i.url && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                title={t('admin.invites.copy')}
+                aria-label={t('admin.invites.copy')}
+                onClick={() => copy(i.url!)}
+              >
+                <Copy size={12} />
+              </button>
+            )}
             {i.email && config.data?.emailEnabled && (
               <button
                 type="button"
@@ -703,7 +708,7 @@ function Settings() {
       toast.error(errMsg(err));
     }
   };
-  const smtp = entry('smtp').value as { url: string; from: string } | null;
+  const smtp = entry('smtp').value as { url: string | null; from: string } | null;
   const lockedTag = (k: InstanceSettingEntry['key']) =>
     locked(k) ? <span className="tag ml-2 font-mono">{t('admin.settings.setByEnv')}</span> : null;
 
@@ -777,11 +782,16 @@ function Settings() {
           </p>
         ) : (
           <form onSubmit={saveSmtp}>
-            {smtp && (
-              <p className="mb-3 font-mono text-[12px] text-muted">
-                {t('admin.settings.current', { url: smtp.url })}
-              </p>
-            )}
+            {smtp &&
+              (entry('smtp').unreadable ? (
+                <p className="mb-3 text-[12.5px] text-error">
+                  {t('admin.settings.smtpUnreadable')}
+                </p>
+              ) : (
+                <p className="mb-3 font-mono text-[12px] text-muted">
+                  {t('admin.settings.current', { url: smtp.url ?? '' })}
+                </p>
+              ))}
             <div className="grid gap-2 md:grid-cols-[1fr_16rem_auto]">
               <input
                 className="input"
@@ -895,6 +905,7 @@ function Settings() {
         key={JSON.stringify(entry('ai').value)}
         value={entry('ai').value as AiSettings | null}
         locked={locked('ai')}
+        unreadable={!!entry('ai').unreadable}
         save={save}
       />
       <Card title={t('admin.ai.workspacesTitle')}>
@@ -934,10 +945,12 @@ const MODEL_HINTS: Record<AiSettings['provider'], { model: string; baseUrl: stri
 function AiCard({
   value,
   locked,
+  unreadable,
   save,
 }: {
   value: AiSettings | null;
   locked: boolean;
+  unreadable: boolean;
   save: (patch: object) => Promise<void>;
 }) {
   const [provider, setProvider] = useState<AiSettings['provider'] | 'off'>(
@@ -1043,12 +1056,16 @@ function AiCard({
               <label className="flex items-center justify-between gap-4 text-[13.5px]">
                 <span>
                   {t('admin.ai.apiKey')}
-                  <span className="block text-[12px] text-index">
-                    {sameProvider && value?.apiKey
-                      ? t('admin.ai.apiKeyCurrent', { key: value.apiKey })
-                      : provider === 'openai'
-                        ? t('admin.ai.apiKeyOptional')
-                        : t('admin.ai.apiKeyConsole')}
+                  <span
+                    className={`block text-[12px] ${sameProvider && unreadable ? 'text-error' : 'text-index'}`}
+                  >
+                    {sameProvider && unreadable
+                      ? t('admin.ai.apiKeyUnreadable')
+                      : sameProvider && value?.apiKey
+                        ? t('admin.ai.apiKeyCurrent', { key: value.apiKey })
+                        : provider === 'openai'
+                          ? t('admin.ai.apiKeyOptional')
+                          : t('admin.ai.apiKeyConsole')}
                   </span>
                 </span>
                 <input

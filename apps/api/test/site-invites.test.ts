@@ -3,7 +3,8 @@ import type { Invite, InvitePreview, SiteInvite } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { users } from '../src/db/schema.ts';
+import { invites, users } from '../src/db/schema.ts';
+import { sha256 } from '../src/lib/crypto.ts';
 import { Client, captureMail, linkIn, signup, testApp } from './helpers.ts';
 
 // Invite-only, with workspace creation off: the instance a site invite is for.
@@ -90,11 +91,11 @@ describe('site invites', () => {
 
     // Without an invite the instance is closed; with someone else's address the invite refuses.
     expect((await signupWith(unique('nobody'))).res.data.messageKey).toBe('invite_required');
-    const wrong = await signupWith(unique('wrong'), invite!.token);
+    const wrong = await signupWith(unique('wrong'), invite!.token!);
     expect(wrong.res.statusCode).toBe(403);
     expect(wrong.res.data.messageKey).toBe('invite_other_email');
 
-    const ok = await signupWith(email, invite!.token);
+    const ok = await signupWith(email, invite!.token!);
     expect(ok.res.statusCode, ok.res.body).toBe(200);
     expect(ok.res.data.workspaceSlug).toBeNull();
     const account = await me(ok.client);
@@ -106,7 +107,7 @@ describe('site invites', () => {
     expect(create.data.messageKey).toBe('workspace_creation_off');
 
     // Single use, and gone from the open list.
-    expect((await signupWith(email, invite!.token)).res.data.messageKey).toBe('invite_invalid');
+    expect((await signupWith(email, invite!.token!)).res.data.messageKey).toBe('invite_invalid');
     const list = (await admin.get('/api/admin/invites')).data as SiteInvite[];
     expect(list.some((i) => i.id === invite!.id)).toBe(false);
 
@@ -124,7 +125,7 @@ describe('site invites', () => {
       (await admin.post('/api/admin/invites', { canCreateWorkspaces: true })).data as SiteInvite[]
     )[0]!;
     expect(link).toMatchObject({ email: null, canCreateWorkspaces: true, lastSentAt: null });
-    const { res, client } = await signupWith(unique('creator'), link.token);
+    const { res, client } = await signupWith(unique('creator'), link.token!);
     expect(res.statusCode, res.body).toBe(200);
     expect((await me(client)).canCreateWorkspace).toBe(true);
     for (const slug of [`one-${n}`, `two-${n}`]) {
@@ -139,7 +140,7 @@ describe('site invites', () => {
     expect((await admin.post('/api/admin/invites', { email: memberEmail })).statusCode).toBe(409);
     const link = ((await admin.post('/api/admin/invites', {})).data as SiteInvite[])[0]!;
 
-    const again = await signupWith(memberEmail, link.token);
+    const again = await signupWith(memberEmail, link.token!);
     expect(again.res.statusCode).toBe(409);
     expect(again.res.data.messageKey).toBe('invite_already_signed_up');
 
@@ -173,7 +174,43 @@ describe('site invites', () => {
 
     expect((await admin.del(`/api/admin/invites/${invite!.id}`)).statusCode).toBe(200);
     expect((await new Client(app).get(`/api/invites/${invite!.token}`)).statusCode).toBe(404);
-    expect((await signupWith(email, invite!.token)).res.data.messageKey).toBe('invite_invalid');
+    expect((await signupWith(email, invite!.token!)).res.data.messageKey).toBe('invite_invalid');
+  });
+
+  it('store only a hash and the encrypted link, which admins can still copy and resend', async () => {
+    const email = unique('stored');
+    const [invite] = (await admin.post('/api/admin/invites', { email })).data as SiteInvite[];
+    const token = invite!.token!;
+    const [row] = await app.db.select().from(invites).where(eq(invites.id, invite!.id));
+    expect(row!.tokenHash).toBe(sha256(token));
+    expect(JSON.stringify(row)).not.toContain(token);
+    const listed = ((await admin.get('/api/admin/invites')).data as SiteInvite[]).find(
+      (i) => i.id === invite!.id,
+    );
+    expect(listed).toMatchObject({ token, url: invite!.url });
+    await app.jobs.drain();
+    inbox.length = 0;
+    await admin.post(`/api/admin/invites/${invite!.id}/resend`);
+    await app.jobs.drain();
+    expect(linkIn(inbox.find((m) => m.to === email)!.text)).toBe(invite!.url);
+
+    // A link that can't be decrypted (made without a key) still works, but can't be shown;
+    // resending it mails a new one.
+    await app.db.update(invites).set({ tokenEncrypted: null }).where(eq(invites.id, invite!.id));
+    const hidden = ((await admin.get('/api/admin/invites')).data as SiteInvite[]).find(
+      (i) => i.id === invite!.id,
+    );
+    expect(hidden).toMatchObject({ token: null, url: null });
+    expect((await new Client(app).get(`/api/invites/${token}`)).statusCode).toBe(200);
+    inbox.length = 0;
+    await admin.post(`/api/admin/invites/${invite!.id}/resend`);
+    await app.jobs.drain();
+    const fresh = linkIn(inbox.find((m) => m.to === email)!.text)!;
+    expect(fresh).not.toBe(invite!.url);
+    expect((await new Client(app).get(`/api/invites/${token}`)).statusCode).toBe(404);
+    const freshToken = fresh.split('/invite/')[1]!;
+    expect((await new Client(app).get(`/api/invites/${freshToken}`)).statusCode).toBe(200);
+    expect((await signupWith(email, freshToken)).res.statusCode).toBe(200);
   });
 
   it('lets admins grant and take back workspace creation per account', async () => {

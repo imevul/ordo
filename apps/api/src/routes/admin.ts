@@ -3,6 +3,7 @@ import {
   adminAuditQuerySchema,
   adminSettingsSchema,
   adminUpdateUserSchema,
+  adminUsersQuerySchema,
   createSiteInviteSchema,
   type InstanceSettings,
   type SiteInvite,
@@ -36,13 +37,14 @@ import {
 } from '../db/schema.ts';
 import { localeForEmail, localeOf } from '../i18n/index.ts';
 import { requireUser } from '../lib/auth.ts';
-import { randomToken } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
+import { inviteUrl, newInviteToken, revealInviteToken } from '../lib/invites.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
 import { audit, auditFilters } from '../services/audit.ts';
 import { passwordResetEmail, siteInviteEmail } from '../services/mail-templates.ts';
 import { encryptSmtpUrl, queueEmail } from '../services/mailer.ts';
+import { AI_API_KEY_AAD, countUnreadableSecrets, SMTP_URL_AAD } from '../services/secretKey.ts';
 import { publishChanges } from '../services/sync.ts';
 import { createToken } from '../services/tokens.ts';
 
@@ -73,6 +75,18 @@ export async function adminRoutes(app: FastifyInstance) {
       throw forbidden('Only instance administrators can do this').as('instance_admins_only');
   });
 
+  // A key that is set but wrong (or a previous key removed too early) leaves stored secrets
+  // under a key id this keyring doesn't have.
+  const secretKeyStatus = async () => {
+    const unreadableSecrets = await countUnreadableSecrets(db, app.keyring);
+    const secretKey = !app.keyring.available
+      ? ('missing' as const)
+      : unreadableSecrets
+        ? ('unreadable' as const)
+        : ('ok' as const);
+    return { secretKey, unreadableSecrets };
+  };
+
   app.get('/overview', async () => {
     const [[u], [w], [i], size] = await Promise.all([
       db.select({ n: count() }).from(users).where(eq(users.kind, 'human')),
@@ -93,14 +107,14 @@ export async function adminRoutes(app: FastifyInstance) {
       realtimeConnections: app.realtime.connectionCount,
       storage: app.storage.describe(),
       emailEnabled: app.mailer.enabled,
-      secretKey: app.keyring.available,
+      ...(await secretKeyStatus()),
     };
   });
 
   // ─── users ───────────────────────────────────────────────────────────
 
   app.get('/users', async (req) => {
-    const { q = '', offset = '0' } = req.query as { q?: string; offset?: string };
+    const { q, offset } = parse(adminUsersQuerySchema, req.query);
     const like = `%${q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     const rows = await db
       .select({
@@ -130,7 +144,7 @@ export async function adminRoutes(app: FastifyInstance) {
       )
       .orderBy(desc(users.createdAt))
       .limit(50)
-      .offset(Math.max(0, Number(offset) || 0));
+      .offset(offset);
     return rows;
   });
 
@@ -259,20 +273,21 @@ export async function adminRoutes(app: FastifyInstance) {
 
   // ─── site invites: accounts on the instance, without a workspace ────
 
-  const inviteUrl = (token: string) => `${app.env.publicUrl}/invite/${token}`;
   const instanceName = () => new URL(app.env.publicUrl).host;
+  /** `token` is passed when it was just made; stored ones are decrypted when the key allows. */
   const toSiteInvite = (
     i: typeof invites.$inferSelect & { createdByName: string | null },
+    token = revealInviteToken(app, i),
   ): SiteInvite => ({
     id: i.id,
-    token: i.token,
+    token,
     email: i.email,
     canCreateWorkspaces: i.canCreateWorkspaces,
     expiresAt: i.expiresAt,
     createdAt: i.createdAt,
     lastSentAt: i.lastSentAt,
     createdByName: i.createdByName,
-    url: inviteUrl(i.token),
+    url: token ? inviteUrl(app, token) : null,
   });
 
   app.get('/invites', async (): Promise<SiteInvite[]> => {
@@ -315,18 +330,23 @@ export async function adminRoutes(app: FastifyInstance) {
     return db.transaction(async (tx) => {
       const expiresAt = new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString();
       const now = new Date().toISOString();
+      const tokens = new Map<string, string>();
       const rows = await tx
         .insert(invites)
         .values(
-          (emails.length ? emails : [null]).map((email) => ({
-            workspaceId: null,
-            token: randomToken(18),
-            email,
-            canCreateWorkspaces: input.canCreateWorkspaces,
-            createdBy: me.id,
-            expiresAt,
-            lastSentAt: email && app.mailer.enabled ? now : null,
-          })),
+          (emails.length ? emails : [null]).map((email) => {
+            const { token, columns } = newInviteToken(app);
+            tokens.set(columns.id, token);
+            return {
+              ...columns,
+              workspaceId: null,
+              email,
+              canCreateWorkspaces: input.canCreateWorkspaces,
+              createdBy: me.id,
+              expiresAt,
+              lastSentAt: email && app.mailer.enabled ? now : null,
+            };
+          }),
         )
         .returning();
       for (const row of rows) {
@@ -337,7 +357,7 @@ export async function adminRoutes(app: FastifyInstance) {
             siteInviteEmail(await localeForEmail(tx, row.email, me.id), {
               inviter: me.name,
               instance: instanceName(),
-              url: inviteUrl(row.token),
+              url: inviteUrl(app, tokens.get(row.id)!),
               canCreateWorkspaces: row.canCreateWorkspaces,
             }),
           );
@@ -354,7 +374,7 @@ export async function adminRoutes(app: FastifyInstance) {
           requestMeta(req),
         );
       }
-      return rows.map((r) => toSiteInvite({ ...r, createdByName: me.name }));
+      return rows.map((r) => toSiteInvite({ ...r, createdByName: me.name }, tokens.get(r.id)));
     });
   });
 
@@ -368,11 +388,14 @@ export async function adminRoutes(app: FastifyInstance) {
         .from(invites)
         .where(and(eq(invites.id, id), isNull(invites.workspaceId), isNull(invites.acceptedAt)));
       if (!row?.email) throw notFound('Invite');
-      // Resending also extends the invite.
+      // Resending also extends the invite. A link that can't be decrypted gets a new token.
       const expiresAt = new Date(Date.now() + 14 * 86_400_000).toISOString();
+      let token = revealInviteToken(app, row);
+      const fresh = token ? null : newInviteToken(app, id);
+      token ??= fresh!.token;
       await tx
         .update(invites)
-        .set({ lastSentAt: new Date().toISOString(), expiresAt })
+        .set({ lastSentAt: new Date().toISOString(), expiresAt, ...fresh?.columns })
         .where(eq(invites.id, id));
       await queueEmail(
         tx,
@@ -380,7 +403,7 @@ export async function adminRoutes(app: FastifyInstance) {
         siteInviteEmail(await localeForEmail(tx, row.email, me.id), {
           inviter: me.name,
           instance: instanceName(),
-          url: inviteUrl(row.token),
+          url: inviteUrl(app, token),
           canCreateWorkspaces: row.canCreateWorkspaces,
         }),
       );
@@ -518,21 +541,41 @@ export async function adminRoutes(app: FastifyInstance) {
 
   // ─── settings ────────────────────────────────────────────────────────
 
+  // A stored secret that won't decrypt (wrong or missing ORDO_SECRET_KEY) is shown as unreadable
+  // rather than failing the page, since this page is where it gets entered again.
   const describeSettings = () =>
     app.settings.describe().map((e) => {
       if (e.key === 'smtp' && e.value) {
         const smtp = e.value as NonNullable<InstanceSettings['smtp']>;
-        return { ...e, value: { from: smtp.from, url: maskSmtpUrl(decryptSmtp(smtp.url)) } };
+        const url = tryDecrypt(() => decryptSmtp(smtp.url));
+        return {
+          ...e,
+          value: { from: smtp.from, url: url === null ? null : maskSmtpUrl(url) },
+          ...(url === null && { unreadable: true }),
+        };
       }
       if (e.key === 'ai' && e.value) {
         const ai = e.value as NonNullable<InstanceSettings['ai']>;
-        const key = decryptAiKey(app, ai.apiKey);
-        return { ...e, value: { ...ai, apiKey: key ? maskKey(key) : null } };
+        const key = tryDecrypt(() => decryptAiKey(app, ai.apiKey));
+        const unreadable = key === null && ai.apiKey !== null;
+        return {
+          ...e,
+          value: { ...ai, apiKey: key ? maskKey(key) : null },
+          ...(unreadable && { unreadable: true }),
+        };
       }
       return e;
     });
   const decryptSmtp = (url: string) =>
-    url.startsWith('v1.') ? app.keyring.decrypt(url, 'instance_settings:smtp:url') : url;
+    url.startsWith('v1.') ? app.keyring.decrypt(url, SMTP_URL_AAD) : url;
+  const tryDecrypt = (fn: () => string | null) => {
+    try {
+      return fn();
+    } catch {
+      return null;
+    }
+  };
+  const readable = (fn: () => string | null) => tryDecrypt(fn) !== null;
 
   app.get('/settings', async () => describeSettings());
 
@@ -563,6 +606,8 @@ export async function adminRoutes(app: FastifyInstance) {
         // An empty URL keeps the stored one (the UI only ever sees it masked).
         const url = input.smtp.url ? encryptSmtpUrl(app, input.smtp.url) : current?.url;
         if (!url) throw badRequest('Enter the SMTP URL');
+        if (!input.smtp.url && !readable(() => decryptSmtp(url)))
+          throw badRequest("The stored SMTP URL can't be decrypted. Enter it again");
         if (input.smtp.url && !/^smtps?:\/\//.test(input.smtp.url))
           throw badRequest('The SMTP URL must start with smtp:// or smtps://');
         await app.settings.set('smtp', { url, from: input.smtp.from }, me.id);
@@ -576,8 +621,9 @@ export async function adminRoutes(app: FastifyInstance) {
         const apiKey =
           input.ai.apiKey === ''
             ? (current?.apiKey ?? null)
-            : input.ai.apiKey &&
-              app.keyring.encrypt(input.ai.apiKey, 'instance_settings:ai:apiKey');
+            : input.ai.apiKey && app.keyring.encrypt(input.ai.apiKey, AI_API_KEY_AAD);
+        if (input.ai.apiKey === '' && apiKey && !readable(() => decryptAiKey(app, apiKey)))
+          throw badRequest("The stored API key can't be decrypted. Enter it again");
         if (input.ai.provider === 'anthropic' && !apiKey)
           throw badRequest('Enter an API key for the Claude API');
         if (input.ai.provider === 'openai' && !input.ai.baseUrl)

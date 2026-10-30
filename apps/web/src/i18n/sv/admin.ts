@@ -31,6 +31,11 @@ export default {
       'e-post inte konfigurerad — återställning av lösenord och inbjudningar via e-post är avstängda',
     secretKeyOk: 'hemlig nyckel finns',
     secretKeyMissing: 'hemlig nyckel saknas — ange ORDO_SECRET_KEY',
+    secretKeyUnreadable: {
+      one: '{count} sparad hemlighet går inte att dekryptera — kontrollera ORDO_SECRET_KEY, eller ange den gamla nyckeln som ORDO_SECRET_KEY_PREVIOUS',
+      other:
+        '{count} sparade hemligheter går inte att dekryptera — kontrollera ORDO_SECRET_KEY, eller ange den gamla nyckeln som ORDO_SECRET_KEY_PREVIOUS',
+    },
     storage: 'lagring: {storage}',
     lease: 'lås {key} hålls av {holder}',
   },
@@ -135,6 +140,8 @@ export default {
       'Används för lösenordsåterställning, inbjudningar, verifiering av e-post och notiser via e-post. Lösenordet lagras krypterat och visas aldrig igen.',
     smtpFromEnv: 'Satt via ORDO_SMTP_URL: {url}',
     current: 'Nuvarande: {url}',
+    smtpUnreadable:
+      'Den sparade SMTP-adressen går inte att dekryptera med den nuvarande hemliga nyckeln. Ange den igen.',
     newSmtpUrl: 'Ny SMTP-URL (lämna tomt för att behålla)',
     turnEmailOff: 'Stäng av e-post',
     testSent: 'Testmejl skickat till {to}',
@@ -176,6 +183,8 @@ export default {
     baseUrlAnthropic: 'Bara för en gateway eller proxy framför API:et.',
     apiKey: 'API-nyckel',
     apiKeyCurrent: 'Nuvarande: {key}. Lämna tomt för att behålla den.',
+    apiKeyUnreadable:
+      'Den sparade nyckeln går inte att dekryptera med den nuvarande hemliga nyckeln. Ange den igen.',
     apiKeyOptional: 'Valfritt; lokala servrar behöver oftast ingen.',
     apiKeyConsole: 'Från Claude Console. Lagras krypterad.',
     testing: 'Testar…',

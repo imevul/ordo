@@ -1,11 +1,12 @@
-import { type CycleAutomation, cycleAutomationOf } from '@ordo/shared';
+import { type CycleAutomation, cycleAutomationOf, dayInZone } from '@ordo/shared';
 import { and, asc, eq, isNull, lte, notInArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { cycles, issues, teams, workflowStates } from '../db/schema.ts';
-import { runAutomation } from './automation.ts';
+import type { DbOrTx } from '../db/client.ts';
+import { cycles, issues, teams, workflowStates, workspaces } from '../db/schema.ts';
+import { forEachIsolated, runAutomation } from './automation.ts';
 import type { Ctx } from './context.ts';
 import { createCycle } from './cycles.ts';
-import { updateIssue } from './issues.ts';
+import { bulkUpdateIssues } from './issues.ts';
 
 export const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -21,19 +22,48 @@ export function nextWeekday(day: string, weekday: number) {
   return addDays(day, (weekday - current + 7) % 7);
 }
 
+/**
+ * The one definition of "today" for cycles: the calendar day in the workspace's time zone (UTC
+ * when it has none). Cycle dates are days, so a cycle ending on the 9th closes when it's the 9th
+ * there.
+ */
+export async function workspaceToday(db: DbOrTx, workspaceId: string, at = new Date()) {
+  const [ws] = await db
+    .select({ settings: workspaces.settings })
+    .from(workspaces)
+    .where(eq(workspaces.id, workspaceId));
+  return dayInZone(ws?.settings.timezone, at);
+}
+
 /** Hourly: every team with cycle automation plans ahead and closes the cycles that ended. */
-export async function automateCycles(app: FastifyInstance, today = isoDay(new Date())) {
+export async function automateCycles(app: FastifyInstance, at = new Date()) {
   const rows = await app.db
-    .select({ id: teams.id, workspaceId: teams.workspaceId, auto: teams.cycleAutomation })
+    .select({
+      id: teams.id,
+      workspaceId: teams.workspaceId,
+      auto: teams.cycleAutomation,
+      settings: workspaces.settings,
+    })
     .from(teams)
+    .innerJoin(workspaces, eq(workspaces.id, teams.workspaceId))
     .where(
       and(eq(teams.cyclesEnabled, true), sql`(${teams.cycleAutomation}->>'enabled')::boolean`),
     );
-  for (const team of rows) {
-    await runAutomation(app, team.workspaceId, (ctx) =>
-      automateTeamCycles(ctx, team.id, cycleAutomationOf(team.auto), today),
-    );
-  }
+  await forEachIsolated(
+    app,
+    'cycles.automate',
+    rows,
+    (team) => ({ teamId: team.id, workspaceId: team.workspaceId }),
+    (team) =>
+      runAutomation(app, team.workspaceId, (ctx) =>
+        automateTeamCycles(
+          ctx,
+          team.id,
+          cycleAutomationOf(team.auto),
+          dayInZone(team.settings.timezone, at),
+        ),
+      ),
+  );
 }
 
 /**
@@ -90,7 +120,11 @@ export async function automateTeamCycles(
               notInArray(workflowStates.type, ['completed', 'canceled']),
             ),
           );
-        for (const issue of open) await updateIssue(ctx, issue.id, { cycleId: next.id });
+        await bulkUpdateIssues(
+          ctx,
+          open.map((i) => i.id),
+          { cycleId: next.id },
+        );
       }
     }
     await ctx.tx
@@ -104,13 +138,14 @@ export async function automateTeamCycles(
  * The cycle an issue joins when work on it starts, if its team automates cycles that way: the
  * active one, or null.
  */
-export async function cycleForStartedIssue(ctx: Ctx, teamId: string, today = isoDay(new Date())) {
+export async function cycleForStartedIssue(ctx: Ctx, teamId: string, at = new Date()) {
   const [team] = await ctx.tx
     .select({ cyclesEnabled: teams.cyclesEnabled, auto: teams.cycleAutomation })
     .from(teams)
     .where(eq(teams.id, teamId));
   const auto = cycleAutomationOf(team?.auto);
   if (!team?.cyclesEnabled || !auto.enabled || !auto.addStarted) return null;
+  const today = await workspaceToday(ctx.tx, ctx.workspaceId, at);
   const [active] = await ctx.tx
     .select({ id: cycles.id })
     .from(cycles)

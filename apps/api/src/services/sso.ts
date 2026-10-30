@@ -1,4 +1,4 @@
-import { AVATAR_COLORS, type MemberRole } from '@ordo/shared';
+import { AVATAR_COLORS, isOwnerRole, type MemberRole } from '@ordo/shared';
 import { and, eq, isNotNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
@@ -13,6 +13,7 @@ import {
 } from '../db/schema.ts';
 import { createSession } from '../lib/auth.ts';
 import { badRequest, one } from '../lib/errors.ts';
+import { escapeHtml as esc } from '../lib/html.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from './audit.ts';
 import { publishChanges } from './sync.ts';
@@ -233,7 +234,7 @@ export async function resolveSsoUser(
         );
         membershipChanged = true;
       }
-    } else if (mapped && membership.role !== 'owner' && membership.role !== mapped) {
+    } else if (mapped && !isOwnerRole(membership.role) && membership.role !== mapped) {
       membershipChanged = true;
       await tx
         .update(workspaceMembers)
@@ -302,9 +303,6 @@ export async function linkIdentity(
 }
 
 export const LAST_SSO_COOKIE = 'ordo_last_sso';
-
-const esc = (s: string) =>
-  s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 export const loginError = (reply: FastifyReply, message: string) =>
   reply.redirect(`/login?error=${encodeURIComponent(message)}`);

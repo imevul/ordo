@@ -548,29 +548,33 @@ export interface Favorite {
   sortOrder: number;
 }
 
+/**
+ * `token` and `url` are null when the stored link can't be decrypted (the instance has no
+ * ORDO_SECRET_KEY): only a hash is kept, so the link is shown once, on creation.
+ */
 export interface Invite {
   id: string;
-  token: string;
+  token: string | null;
   email: string | null;
   role: MemberRole;
   teamIds: string[];
   expiresAt: string;
   createdAt: string;
   lastSentAt: string | null;
-  url: string;
+  url: string | null;
 }
 
-/** An invite to the instance itself, without a workspace (Admin → Invites). */
+/** An invite to the instance itself, without a workspace (Admin → Invites). Nulls as in `Invite`. */
 export interface SiteInvite {
   id: string;
-  token: string;
+  token: string | null;
   email: string | null;
   canCreateWorkspaces: boolean;
   expiresAt: string;
   createdAt: string;
   lastSentAt: string | null;
   createdByName: string | null;
-  url: string;
+  url: string | null;
 }
 
 /** What GET /invites/:token tells the invite page. `workspace` is null for a site invite. */
@@ -627,6 +631,8 @@ export interface Bootstrap {
   bots: Bot[];
   /** People from imports who aren't members (yet): shown on what they did and were assigned. */
   placeholders: User[];
+  /** People who left the workspace but are still assigned issues the requester can see. */
+  formerMembers: (User & Pick<Member, 'kind'>)[];
   repositories: Repository[];
   teams: Team[];
   labels: Label[];
@@ -833,6 +839,8 @@ export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof I
   value: InstanceSettings[K];
   /** Where the effective value comes from; `env` values are read-only in the UI. */
   source: 'env' | 'db' | 'default';
+  /** The stored secret in it (SMTP URL, AI key) can't be decrypted with the current key. */
+  unreadable?: true;
 }
 
 export type EmailDigest = 'off' | 'instant' | 'hourly' | 'daily';
@@ -933,6 +941,8 @@ export interface WorkspaceSettings {
   defaultAssigneeId: string | null;
   /** Runners claim nothing while set: queued runs wait, running ones finish. */
   agentRunsPaused: boolean;
+  /** IANA zone that decides when a day starts for cycle automation; null is UTC. */
+  timezone: string | null;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -950,6 +960,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   scimMatchGroupsByName: false,
   defaultAssigneeId: null,
   agentRunsPaused: false,
+  timezone: null,
 };
 
 export interface WorkspaceDomain {

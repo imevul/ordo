@@ -28,7 +28,13 @@ docker compose exec app node cli.mjs disable-2fa you@example.com
 docker compose exec app node cli.mjs rotate-key   # after changing ORDO_SECRET_KEY, see below
 ```
 
-In development the same commands run with `pnpm --filter @ordo/api cli <command>`.
+Without Docker, run `node cli.mjs <command>` from the release directory with the server's environment loaded (see
+[Running without Docker](self-hosting.md#running-without-docker)). Every command applies pending migrations first. In
+development the same commands run with `pnpm --filter @ordo/api cli <command>`.
+
+The Overview's **secret key** check fails when `ORDO_SECRET_KEY` isn't set, and when stored secrets were encrypted
+with a key Ordo doesn't have (it says how many). For symptoms of a wrong key and how to recover, see
+[Missing or wrong secret key](self-hosting.md#missing-or-wrong-secret-key).
 
 **Locked out after failed attempts:** ten wrong passwords or second-factor codes within 15 minutes lock password
 sign-in for that account, from every address, until the 15 minutes have passed since the last failures. Passkeys and
@@ -41,14 +47,16 @@ example after it may have leaked:
 
 1. In `.env`, move the current value of `ORDO_SECRET_KEY` to `ORDO_SECRET_KEY_PREVIOUS`.
 2. Put a new key in `ORDO_SECRET_KEY` (`head -c 32 /dev/urandom | base64`).
-3. `make restart`. New secrets are encrypted with the new key; existing ones still decrypt with the previous key.
-   Signed file links handed out before the restart stop working; reloading the page gets new ones.
-4. `docker compose exec app node cli.mjs rotate-key`. It re-encrypts two-factor secrets and the SMTP settings with
-   the new key.
-5. **Leave `ORDO_SECRET_KEY_PREVIOUS` set.** `rotate-key` doesn't yet re-encrypt the other stored secrets: SSO client
-   secrets, webhook signing secrets, integration tokens, AI API keys, push notification keys, Matrix encryption
-   state and import credentials. Each of these moves to the new key only when it's saved again (for example, when you
-   enter an SSO client secret again). If you remove the previous key while any of them still use it, the features
-   that depend on them stop working: SSO sign-in, signed webhooks, integrations, AI assistance, push notifications.
+3. `make up` (not `make restart`, which keeps the old environment). New secrets are encrypted with the new key;
+   existing ones still decrypt with the previous key. Signed file links handed out before the restart stop working;
+   reloading the page gets new ones.
+4. `docker compose exec app node cli.mjs rotate-key`. It re-encrypts every stored secret with the new key:
+   two-factor secrets, SMTP settings, SSO client secrets, webhook signing secrets, integration tokens, AI API keys,
+   push notification keys, Matrix encryption state, import credentials and invite links. It lists any secret it
+   can't decrypt with either key; enter those again in Ordo.
+5. Once every instance runs with the new key, run `rotate-key` again. When it re-encrypts 0 secrets and reports
+   nothing it can't decrypt, remove `ORDO_SECRET_KEY_PREVIOUS` and `make up`. If you remove it too early, the
+   features that depend on the remaining secrets stop working (SSO sign-in, signed webhooks, integrations, AI
+   assistance, push notifications), and **Admin → Overview** shows how many stored secrets can't be decrypted.
 
 Back up the new key with your database, and keep the previous one with it for as long as it's set.

@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
 import { t } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { FormRow } from './ui.tsx';
+import { FormRow, TeamSelect } from './ui.tsx';
 
 type Mode = 'links' | 'mirror' | 'sync';
 
@@ -194,18 +194,12 @@ export function JiraForm({
               onChange={(e) => setProject(i, { key: e.target.value })}
             />
             {synced && (
-              <select
+              <TeamSelect
                 className="input flex-1"
                 aria-label={t('integrations.jira.team')}
                 value={p.teamId}
-                onChange={(e) => setProject(i, { teamId: e.target.value })}
-              >
-                {ws.teams.map((team) => (
-                  <option key={team.id} value={team.id}>
-                    {team.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(teamId) => setProject(i, { teamId })}
+              />
             )}
             <button
               type="button"

@@ -23,7 +23,7 @@ import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { t } from '../../i18n/index.ts';
 import { priorityLabel } from '../../i18n/labels.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { SettingsCard } from './ui.tsx';
+import { SettingsCard, TeamSelect } from './ui.tsx';
 
 type Draft = Omit<IssueTemplate, 'id' | 'createdById' | 'updatedAt'>;
 
@@ -97,29 +97,23 @@ function TemplateEditor({ template, onClose }: { template?: IssueTemplate; onClo
             value={draft.name}
             onChange={(e) => set({ name: e.target.value })}
           />
-          <select
+          <TeamSelect
             className="input w-40"
-            value={draft.teamId ?? ''}
+            none={t('templates.editor.allTeams')}
+            value={draft.teamId}
             disabled={!!template}
             title={template ? t('templates.editor.teamLocked') : undefined}
-            onChange={(e) =>
+            onChange={(teamId) =>
               // Status, estimate and team labels belong to one team.
               set({
-                teamId: e.target.value || null,
+                teamId,
                 stateId: null,
                 estimate: null,
                 labelIds: draft.labelIds.filter((id) => !ws.labelById.get(id)?.teamId),
               })
             }
             aria-label={t('common.team')}
-          >
-            <option value="">{t('templates.editor.allTeams')}</option>
-            {ws.teams.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-          </select>
+          />
         </div>
         <div className="min-h-0 overflow-y-auto px-4">
           <input
@@ -256,18 +250,7 @@ function RepeatModal({ template, onClose }: { template: IssueTemplate; onClose: 
         <p className="mb-4 text-[12.5px] text-muted">{t('templates.repeat.body')}</p>
         <div className="grid grid-cols-[6rem_1fr] items-center gap-x-3 gap-y-3 text-[13px]">
           <span className="text-index">{t('templates.repeat.team')}</span>
-          <select
-            className="input"
-            value={teamId}
-            disabled={!!template.teamId}
-            onChange={(e) => setTeamId(e.target.value)}
-          >
-            {ws.teams.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-          </select>
+          <TeamSelect value={teamId} disabled={!!template.teamId} onChange={setTeamId} />
           <span className="text-index">{t('templates.repeat.every')}</span>
           <span className="flex gap-2">
             <input

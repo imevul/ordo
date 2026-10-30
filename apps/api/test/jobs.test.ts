@@ -95,6 +95,41 @@ describe('job queue', () => {
     expect([...runs.values()].every((c) => c === 1)).toBe(true);
   });
 
+  it('keeps a long job locked so no other worker picks it up', async () => {
+    const a = queue();
+    const b = queue();
+    a.renewMs = 20;
+    let runs = 0;
+    let release!: () => void;
+    const started = new Promise<number>((resolve) => {
+      a.define('test.long', async (_p, job) => {
+        runs++;
+        resolve(job.jobId);
+        await new Promise<void>((r) => {
+          release = r;
+        });
+      });
+    });
+    b.define('test.long', async () => {
+      runs++;
+    });
+    await enqueue(app.db, 'test.long', {});
+    const running = a.drain();
+    const id = await started;
+    // The visibility window runs out mid-job (as it would for an export that takes minutes)…
+    await app.db
+      .update(jobs)
+      .set({ lockedUntil: sql`now() - interval '1 second'` })
+      .where(eq(jobs.id, id));
+    await new Promise((r) => setTimeout(r, 100));
+    // …but the running worker has pushed it forward again, so the other one finds nothing.
+    await b.drain();
+    release();
+    await running;
+    expect(runs).toBe(1);
+    expect(await app.db.select().from(jobs).where(eq(jobs.id, id))).toHaveLength(0);
+  });
+
   it('runs a schedule once per interval across instances', async () => {
     const a = queue();
     const b = queue();

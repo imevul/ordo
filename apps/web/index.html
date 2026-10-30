@@ -11,7 +11,7 @@
         var pref = 'system';
         try {
           pref = JSON.parse(localStorage.getItem('ordo:theme')) || 'system';
-        } catch (e) {}
+        } catch {}
         var light =
           pref === 'light' ||
           (pref === 'system' && matchMedia('(prefers-color-scheme: light)').matches);

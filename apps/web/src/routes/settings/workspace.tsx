@@ -6,6 +6,8 @@ import {
   DEFAULT_ACCENT,
   HEX_COLOR,
   type Invite,
+  isGuestRole,
+  isOwnerRole,
   MEMBER_ROLES,
   type MemberRole,
   THEME_BACKGROUND,
@@ -51,6 +53,8 @@ export function WorkspaceSection() {
   const [name, setName] = useState(ws.workspace.name);
   const [slug, setSlug] = useState(ws.workspace.slug);
   const fileRef = useRef<HTMLInputElement>(null);
+  const zones =
+    typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
   const refresh = () => {
     qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
     qc.invalidateQueries({ queryKey: keys.me });
@@ -191,6 +195,33 @@ export function WorkspaceSection() {
           {memberChoices(ws).map((m) => (
             <option key={m.id} value={m.id}>
               {m.label}
+            </option>
+          ))}
+        </select>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t('workspaceSettings.timeZone.title')}
+        description={t('workspaceSettings.timeZone.description')}
+      >
+        <select
+          className="input w-72"
+          value={ws.workspace.settings.timezone ?? ''}
+          onChange={async (e) => {
+            try {
+              await api.patch(wsPath(ws.slug, '/'), {
+                settings: { timezone: e.target.value || null },
+              });
+              refresh();
+            } catch (err) {
+              toast.error(errMsg(err));
+            }
+          }}
+        >
+          <option value="">{t('workspaceSettings.timeZone.utc')}</option>
+          {zones.map((z) => (
+            <option key={z} value={z}>
+              {z}
             </option>
           ))}
         </select>
@@ -386,7 +417,7 @@ function DangerZone() {
   const [confirm, setConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
   const candidates = ws.members.filter(
-    (m) => m.id !== ws.me.id && m.role !== 'guest' && !m.suspended,
+    (m) => m.id !== ws.me.id && !isGuestRole(m.role) && !m.suspended,
   );
 
   return (
@@ -502,7 +533,7 @@ function InviteForm() {
   const [emails, setEmails] = useState('');
   const [role, setRole] = useState<Exclude<MemberRole, 'owner'>>('member');
   const [teamIds, setTeamIds] = useState<string[]>([]);
-  const inv = [keys.invites(ws.slug) as unknown as unknown[]];
+  const inv = [keys.invites(ws.slug)];
   const create = useWsMutation(
     ws.slug,
     (body: object) => api.post<Invite[]>(wsPath(ws.slug, '/invites'), body),
@@ -592,7 +623,7 @@ function InviteForm() {
               : t('workspaceSettings.invite.createLink')}
           </button>
         </div>
-        {role === 'guest' && (
+        {isGuestRole(role) && (
           <p className="mt-2 text-[12px] text-index">{t('workspaceSettings.invite.guestHint')}</p>
         )}
       </form>
@@ -604,7 +635,7 @@ function PendingInvites() {
   const ws = useWorkspace();
   const config = useConfig();
   const { data: invites = [] } = useInvites(ws.slug, true);
-  const inv = [keys.invites(ws.slug) as unknown as unknown[]];
+  const inv = [keys.invites(ws.slug)];
   const revoke = useWsMutation(
     ws.slug,
     (id: string) => api.del(wsPath(ws.slug, `/invites/${id}`)),
@@ -640,17 +671,19 @@ function PendingInvites() {
               ? t('workspaceSettings.pending.sent', { time: relativeTime(i.lastSentAt) })
               : t('workspaceSettings.pending.expires', { date: shortDate(i.expiresAt) })}
           </span>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              navigator.clipboard?.writeText(i.url);
-              toast.success(t('workspaceSettings.invite.linkCopied'));
-            }}
-            aria-label={t('workspaceSettings.pending.copyLink')}
-          >
-            <Copy size={12} />
-          </button>
+          {i.url && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                navigator.clipboard?.writeText(i.url!);
+                toast.success(t('workspaceSettings.invite.linkCopied'));
+              }}
+              aria-label={t('workspaceSettings.pending.copyLink')}
+            >
+              <Copy size={12} />
+            </button>
+          )}
           {i.email && config.data?.emailEnabled && (
             <button
               type="button"
@@ -732,14 +765,14 @@ export function MembersSection() {
               {t('workspaceSettings.members.joined', { time: relativeTime(m.joinedAt) })}
             </span>
             {/* Admins manage roles; only owners can grant or take away ownership. */}
-            {isAdmin && (ws.isOwner || m.role !== 'owner') ? (
+            {isAdmin && (ws.isOwner || !isOwnerRole(m.role)) ? (
               <select
                 className="h-7 border border-border bg-bg px-2 text-[12px] outline-none focus:border-primary"
                 value={m.role}
                 onChange={(e) => update.mutate({ userId: m.id, role: e.target.value })}
                 aria-label={t('workspaceSettings.members.roleOf', { name: m.name })}
               >
-                {MEMBER_ROLES.filter((r) => ws.isOwner || r !== 'owner').map((r) => (
+                {MEMBER_ROLES.filter((r) => ws.isOwner || !isOwnerRole(r)).map((r) => (
                   <option key={r} value={r}>
                     {roleLabel(r)}
                   </option>
@@ -748,7 +781,7 @@ export function MembersSection() {
             ) : (
               <span className="tag font-mono">{roleLabel(m.role)}</span>
             )}
-            {isAdmin && m.id !== ws.me.id && (ws.isOwner || m.role !== 'owner') && (
+            {isAdmin && m.id !== ws.me.id && (ws.isOwner || !isOwnerRole(m.role)) && (
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"

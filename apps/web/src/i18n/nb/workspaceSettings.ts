@@ -15,6 +15,12 @@ export default {
     description:
       'Nye medlemmer (unntatt gjester) blir automatisk med i dette teamet, og det er forhåndsvalgt for nye saker.',
   },
+  timeZone: {
+    title: 'Tidssone',
+    description:
+      'Når en dag begynner for syklusautomatikken: sykluser som slutter i dag lukkes, og nye planlegges fra i dag, i denne tidssonen.',
+    utc: 'UTC',
+  },
   accent: {
     title: 'Aksentfarge',
     description:

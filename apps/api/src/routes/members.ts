@@ -3,6 +3,8 @@ import {
   addDomainSchema,
   createInviteSchema,
   type Invite,
+  isAdminRole,
+  isOwnerRole,
   updateMemberSchema,
   type WorkspaceDomain,
 } from '@ordo/shared';
@@ -11,8 +13,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { invites, workspaceDomains, workspaces } from '../db/schema.ts';
 import { localeForEmail } from '../i18n/index.ts';
 import { requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
-import { randomToken } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
+import { inviteUrl, newInviteToken, revealInviteToken } from '../lib/invites.ts';
 import { mutate } from '../lib/mutate.ts';
 import { auditCtx } from '../services/audit.ts';
 import { inviteEmail } from '../services/mail-templates.ts';
@@ -34,7 +36,7 @@ export async function memberRoutes(app: FastifyInstance) {
     return mutate(app, req, async (ctx) => {
       const current = await memberRole(ctx.tx, ctx.workspaceId, userId);
       if (!current) throw notFound('Member');
-      const touchesOwner = input.role === 'owner' || current === 'owner';
+      const touchesOwner = isOwnerRole(input.role) || isOwnerRole(current);
       if (touchesOwner && !ws.access.isOwner)
         throw forbidden('Only owners can grant or change ownership').as('owners_grant');
       if (userId === ctx.userId && input.suspended) throw badRequest("You can't suspend yourself");
@@ -53,7 +55,7 @@ export async function memberRoutes(app: FastifyInstance) {
     return mutate(app, req, async (ctx) => {
       const current = await memberRole(ctx.tx, ctx.workspaceId, userId);
       if (!current) throw notFound('Member');
-      if (current === 'owner') {
+      if (isOwnerRole(current)) {
         if (userId !== user.id && !ws.access.isOwner)
           throw forbidden('Only owners can remove an owner').as('owners_remove_owner');
       }
@@ -64,16 +66,17 @@ export async function memberRoutes(app: FastifyInstance) {
 
   // ─── invites ─────────────────────────────────────────────────────────
 
-  const toInvite = (i: typeof invites.$inferSelect): Invite => ({
+  /** `token` is passed when it was just made; stored ones are decrypted when the key allows. */
+  const toInvite = (i: typeof invites.$inferSelect, token = revealInviteToken(app, i)): Invite => ({
     id: i.id,
-    token: i.token,
+    token,
     email: i.email,
     role: i.role,
     teamIds: i.teamIds,
     expiresAt: i.expiresAt,
     createdAt: i.createdAt,
     lastSentAt: i.lastSentAt,
-    url: `${app.env.publicUrl}/invite/${i.token}`,
+    url: token ? inviteUrl(app, token) : null,
   });
 
   /** Admins can always invite; members only when the workspace allows it, and never as admins. */
@@ -84,7 +87,7 @@ export async function memberRoutes(app: FastifyInstance) {
     if (ws.access.isGuest || workspaceSettings(row!).invitePolicy !== 'members') {
       throw forbidden('Only workspace admins can invite people').as('admins_invite');
     }
-    if (role === 'admin')
+    if (isAdminRole(role))
       throw forbidden('Only admins can invite admins').as('admins_invite_admins');
     return ws;
   }
@@ -109,7 +112,7 @@ export async function memberRoutes(app: FastifyInstance) {
         ),
       )
       .orderBy(asc(invites.createdAt));
-    return rows.map(toInvite);
+    return rows.map((row) => toInvite(row));
   });
 
   /**
@@ -134,19 +137,24 @@ export async function memberRoutes(app: FastifyInstance) {
       }
       const expiresAt = new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString();
       const now = new Date().toISOString();
+      const tokens = new Map<string, string>();
       const rows = await ctx.tx
         .insert(invites)
         .values(
-          (emails.length ? emails : [null]).map((email) => ({
-            workspaceId: ws.id,
-            token: randomToken(18),
-            email,
-            role: input.role,
-            teamIds: input.teamIds,
-            createdBy: inviter.id,
-            expiresAt,
-            lastSentAt: email && app.mailer.enabled ? now : null,
-          })),
+          (emails.length ? emails : [null]).map((email) => {
+            const { token, columns } = newInviteToken(app);
+            tokens.set(columns.id, token);
+            return {
+              ...columns,
+              workspaceId: ws.id,
+              email,
+              role: input.role,
+              teamIds: input.teamIds,
+              createdBy: inviter.id,
+              expiresAt,
+              lastSentAt: email && app.mailer.enabled ? now : null,
+            };
+          }),
         )
         .returning();
       for (const row of rows) {
@@ -158,7 +166,7 @@ export async function memberRoutes(app: FastifyInstance) {
               inviter: inviter.name,
               workspace: ws.name,
               role: row.role,
-              url: toInvite(row).url,
+              url: inviteUrl(app, tokens.get(row.id)!),
             }),
           );
         }
@@ -169,7 +177,7 @@ export async function memberRoutes(app: FastifyInstance) {
           data: { email: row.email, role: row.role, teamIds: row.teamIds },
         });
       }
-      return rows.map(toInvite);
+      return rows.map((row) => toInvite(row, tokens.get(row.id)));
     });
   });
 
@@ -184,11 +192,14 @@ export async function memberRoutes(app: FastifyInstance) {
         .where(and(eq(invites.id, id), eq(invites.workspaceId, ws.id), isNull(invites.acceptedAt)));
       if (!row?.email) throw notFound('Invite');
       if (!ws.access.isAdmin && row.createdBy !== ctx.userId) throw forbidden();
-      // Resending also extends the invite.
+      // Resending also extends the invite. A link that can't be decrypted gets a new token.
       const expiresAt = new Date(Date.now() + 14 * 86_400_000).toISOString();
+      let token = revealInviteToken(app, row);
+      const fresh = token ? null : newInviteToken(app, id);
+      token ??= fresh!.token;
       await ctx.tx
         .update(invites)
-        .set({ lastSentAt: new Date().toISOString(), expiresAt })
+        .set({ lastSentAt: new Date().toISOString(), expiresAt, ...fresh?.columns })
         .where(eq(invites.id, id));
       const inviter = requireUser(req);
       await queueEmail(
@@ -198,7 +209,7 @@ export async function memberRoutes(app: FastifyInstance) {
           inviter: inviter.name,
           workspace: ws.name,
           role: row.role,
-          url: toInvite(row).url,
+          url: inviteUrl(app, token),
         }),
       );
       return { ok: true };

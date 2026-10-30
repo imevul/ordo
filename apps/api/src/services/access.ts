@@ -1,4 +1,10 @@
-import { isAdminRole, type MemberRole } from '@ordo/shared';
+import {
+  isAdminRole,
+  isGuestRole,
+  isOwnerRole,
+  isTeamAdminRole,
+  type MemberRole,
+} from '@ordo/shared';
 import { type AnyColumn, and, eq, inArray, or, type SQL, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { teamMembers, teams, workspaceMembers } from '../db/schema.ts';
@@ -50,19 +56,19 @@ export async function computeAccess(
   const joined = new Set(memberships.map((m) => m.teamId));
   const isAdmin = isAdminRole(role);
   const readable = allTeams
-    .filter((t) => isAdmin || joined.has(t.id) || (role === 'member' && !t.private))
+    .filter((t) => isAdmin || joined.has(t.id) || (!isGuestRole(role) && !t.private))
     .map((t) => t.id);
   return {
     userId,
     workspaceId,
     role,
-    isOwner: role === 'owner',
+    isOwner: isOwnerRole(role),
     isAdmin,
-    isGuest: role === 'guest',
+    isGuest: isGuestRole(role),
     teamIds: readable,
     adminTeamIds: isAdmin
       ? readable
-      : memberships.filter((m) => m.role === 'admin').map((m) => m.teamId),
+      : memberships.filter((m) => isTeamAdminRole(m.role)).map((m) => m.teamId),
     memberTeamIds: [...joined],
     system: false,
   };

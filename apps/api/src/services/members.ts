@@ -1,4 +1,4 @@
-import type { MemberRole } from '@ordo/shared';
+import { isOwnerRole, type MemberRole } from '@ordo/shared';
 import { and, eq, inArray } from 'drizzle-orm';
 import { teamMembers, teams, users, workspaceMembers } from '../db/schema.ts';
 import { badRequest, notFound } from '../lib/errors.ts';
@@ -30,7 +30,7 @@ async function current(ctx: Ctx, userId: string) {
 export async function setMemberRole(ctx: Ctx, userId: string, role: MemberRole) {
   const was = await current(ctx, userId);
   if (was === role) return;
-  if (was === 'owner') await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
+  if (isOwnerRole(was)) await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
   await ctx.tx.update(workspaceMembers).set({ role }).where(where(ctx, userId));
   await auditCtx(ctx, {
     action: 'member.role_changed',
@@ -44,7 +44,7 @@ export async function setMemberRole(ctx: Ctx, userId: string, role: MemberRole) 
 /** Suspended members keep their place (teams, assignments) but can't open the workspace. */
 export async function setSuspended(ctx: Ctx, userId: string, suspended: boolean) {
   const role = await current(ctx, userId);
-  if (suspended && role === 'owner') await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
+  if (suspended && isOwnerRole(role)) await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
   const [row] = await ctx.tx
     .select({ suspendedAt: workspaceMembers.suspendedAt })
     .from(workspaceMembers)
@@ -66,7 +66,7 @@ export async function setSuspended(ctx: Ctx, userId: string, suspended: boolean)
 /** Removes someone from the workspace and from all of its teams. */
 export async function removeMember(ctx: Ctx, userId: string) {
   const role = await current(ctx, userId);
-  if (role === 'owner') await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
+  if (isOwnerRole(role)) await assertNotLastOwner(ctx.tx, ctx.workspaceId, userId);
   const left = await leaveWorkspaceTeams(ctx, userId);
   await ctx.tx.delete(workspaceMembers).where(where(ctx, userId));
   for (const teamId of left) emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });

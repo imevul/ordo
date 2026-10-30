@@ -30,6 +30,11 @@ export default {
     emailOff: 'email not configured — password resets and emailed invites are off',
     secretKeyOk: 'secret key present',
     secretKeyMissing: 'secret key missing — set ORDO_SECRET_KEY',
+    secretKeyUnreadable: {
+      one: "{count} stored secret can't be decrypted — check ORDO_SECRET_KEY, or set the old key as ORDO_SECRET_KEY_PREVIOUS",
+      other:
+        "{count} stored secrets can't be decrypted — check ORDO_SECRET_KEY, or set the old key as ORDO_SECRET_KEY_PREVIOUS",
+    },
     storage: 'storage: {storage}',
     lease: 'lease {key} held by {holder}',
   },
@@ -133,6 +138,8 @@ export default {
       'Used for password resets, invites, email verification and notification emails. The password is stored encrypted and never shown again.',
     smtpFromEnv: 'Set by ORDO_SMTP_URL: {url}',
     current: 'Current: {url}',
+    smtpUnreadable:
+      "The stored SMTP URL can't be decrypted with the current secret key. Enter it again.",
     newSmtpUrl: 'New SMTP URL (leave empty to keep)',
     turnEmailOff: 'Turn email off',
     testSent: 'Test email sent to {to}',
@@ -176,6 +183,8 @@ export default {
     baseUrlAnthropic: 'Only for a gateway or proxy in front of the API.',
     apiKey: 'API key',
     apiKeyCurrent: 'Current: {key}. Leave empty to keep it.',
+    apiKeyUnreadable:
+      "The stored key can't be decrypted with the current secret key. Enter it again.",
     apiKeyOptional: 'Optional; local servers usually need none.',
     apiKeyConsole: 'From the Claude Console. Stored encrypted.',
     testing: 'Testing…',

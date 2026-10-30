@@ -56,8 +56,7 @@ export async function cycleRoutes(app: FastifyInstance) {
         .where(eq(issues.cycleId, id));
       await bulkUpdateIssues(
         ctx,
-        cycle.teamId,
-        inCycle.map((r) => r.id),
+        inCycle.map((i) => i.id),
         { cycleId: null },
       );
       await ctx.tx.delete(cycles).where(eq(cycles.id, id));

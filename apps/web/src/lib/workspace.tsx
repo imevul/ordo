@@ -1,5 +1,13 @@
 import type { Bootstrap, Cycle, Label, Me, Project, Team, View, WorkflowState } from '@ordo/shared';
-import { accentVariables, defaultAssigneeFor, isAdminRole, isCycleCurrent } from '@ordo/shared';
+import {
+  accentVariables,
+  defaultAssigneeFor,
+  isAdminRole,
+  isCycleCurrent,
+  isGuestRole,
+  isOwnerRole,
+  isTeamAdminRole,
+} from '@ordo/shared';
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react';
 import type { Person } from '../components/ui/ActorName.tsx';
 import { t } from '../i18n/index.ts';
@@ -11,7 +19,10 @@ export interface WorkspaceData extends Bootstrap {
   teamById: Map<string, Team>;
   teamByKey: Map<string, Team>;
   stateById: Map<string, WorkflowState>;
-  /** Members, and the workspace's bots and placeholders (flagged), for showing who did what. */
+  /**
+   * Members, and the workspace's bots, placeholders and former members (flagged), for showing who
+   * did what.
+   */
   memberById: Map<string, Person>;
   labelById: Map<string, Label>;
   projectById: Map<string, Project>;
@@ -52,7 +63,8 @@ export function WorkspaceProvider({
       teamById: byId(data.teams),
       teamByKey: new Map(data.teams.map((t) => [t.key, t])),
       stateById: byId(states),
-      // Bots and placeholders aren't members (no pickers, no seats) but render where they appear.
+      // Bots, placeholders and former members aren't members (no pickers, no seats) but render
+      // where they appear.
       memberById: byId([
         ...(data.bots ?? []).map(
           (b): Person => ({
@@ -76,6 +88,16 @@ export function WorkspaceProvider({
             placeholder: true,
           }),
         ),
+        ...(data.formerMembers ?? []).map(
+          (p): Person => ({
+            ...p,
+            role: 'member',
+            joinedAt: '',
+            suspended: false,
+            status: null,
+            former: true,
+          }),
+        ),
         ...data.members,
       ]),
       labelById: byId(data.labels),
@@ -83,14 +105,14 @@ export function WorkspaceProvider({
       cycleById: byId(data.cycles),
       viewById: byId(data.views),
       myTeams: mine.length ? mine : data.teams,
-      isOwner: data.role === 'owner',
+      isOwner: isOwnerRole(data.role),
       isAdmin: isAdminRole(data.role),
-      isGuest: data.role === 'guest',
+      isGuest: isGuestRole(data.role),
       canAdminTeam: (teamId: string) =>
         isAdminRole(data.role) ||
         !!data.teams
           .find((t) => t.id === teamId)
-          ?.members.some((m) => m.userId === me.id && m.role === 'admin'),
+          ?.members.some((m) => m.userId === me.id && isTeamAdminRole(m.role)),
     };
   }, [data, me, slug]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -102,12 +124,8 @@ export function useWorkspace(): WorkspaceData {
   return v;
 }
 
-/** The cycle whose date range contains today, if any. */
-export function currentCycle(
-  cycles: Cycle[],
-  teamId: string,
-  today = new Date().toISOString().slice(0, 10),
-) {
+/** The cycle whose date range contains `today` (`dayInZone` of the workspace's time zone), if any. */
+export function currentCycle(cycles: Cycle[], teamId: string, today: string) {
   return cycles.find((c) => c.teamId === teamId && isCycleCurrent(c, today)) ?? null;
 }
 
@@ -146,8 +164,8 @@ export function defaultAssigneeOf(ws: WorkspaceData, teamId: string, projectId: 
   const member = id ? ws.members.find((m) => m.id === id && !m.suspended) : null;
   const team = ws.teamById.get(teamId);
   if (!member || !team) return null;
-  const needsMembership = member.kind === 'agent' || member.role === 'guest' || team.private;
-  const isAdmin = member.role === 'owner' || member.role === 'admin';
+  const needsMembership = member.kind === 'agent' || isGuestRole(member.role) || team.private;
+  const isAdmin = isAdminRole(member.role);
   return !needsMembership || isAdmin || team.memberIds.includes(member.id) ? member.id : null;
 }
 
