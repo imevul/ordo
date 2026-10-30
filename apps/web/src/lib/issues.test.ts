@@ -86,15 +86,22 @@ function workspace(): WorkspaceData {
     { id: 'bo', name: 'Bo', avatarColor: '#b0' },
   ];
   const placeholders = [{ id: 'imp', name: 'Imported Ivy', avatarColor: '#1' }];
+  const formerMembers = [{ id: 'cy', name: 'Cy', avatarColor: '#c' }];
   return {
     teams,
     teamById: new Map(teams.map((t) => [t.id, t])),
     stateById: new Map(teams.flatMap((t) => t.states).map((s) => [s.id, s])),
     members,
     placeholders,
-    // As WorkspaceProvider builds it: placeholders are flagged; removed members aren't in it.
+    formerMembers,
+    // As WorkspaceProvider builds it: placeholders and former members are flagged. Someone the
+    // client knows nothing about ('gone') isn't in it.
     memberById: new Map(
-      [...placeholders.map((p) => ({ ...p, placeholder: true })), ...members].map((m) => [m.id, m]),
+      [
+        ...placeholders.map((p) => ({ ...p, placeholder: true })),
+        ...formerMembers.map((p) => ({ ...p, former: true })),
+        ...members,
+      ].map((m) => [m.id, m]),
     ),
     projects,
     cycles: [
@@ -304,11 +311,13 @@ describe('groupIssues', () => {
     });
 
     // ENG-11: issues assigned to placeholders (imports) or people who left the workspace
-    // matched no group and vanished. Flip to `it` when the ENG-11 fix lands.
-    it.fails('puts issues of placeholders and removed members in a group too', () => {
+    // matched no group and vanished.
+    it('puts issues of placeholders and removed members in a group too', () => {
       const list = [
         issue({ id: 'member', assigneeId: 'ada' }),
         issue({ id: 'placeholder', assigneeId: 'imp' }),
+        issue({ id: 'former1', assigneeId: 'cy' }),
+        issue({ id: 'former2', assigneeId: 'cy' }),
         issue({ id: 'removed', assigneeId: 'gone' }),
         issue({ id: 'unassigned' }),
       ];
@@ -320,6 +329,19 @@ describe('groupIssues', () => {
       expect(of('placeholder')?.label).toContain('Imported Ivy');
       expect(of('removed')?.value).toBe('gone');
       expect(of('unassigned')?.key).toBe('none');
+      // Members first, then known non-members by name, then unknown people, then unassigned.
+      expect(groups.map((g) => [g.key, g.label, g.issues.length])).toEqual([
+        ['ada', 'Ada', 1],
+        ['cy', 'Cy (former member)', 2],
+        ['imp', 'Imported Ivy (placeholder)', 1],
+        ['gone', 'Someone', 1],
+        ['none', 'No assignee', 1],
+      ]);
+    });
+
+    it('shows no groups for non-members without issues, even with empty groups on', () => {
+      const groups = group('assignee', [issue({})], { showEmptyGroups: true });
+      expect(groups.map((g) => g.key)).toEqual(['ada', 'bo', 'none']);
     });
   });
 
@@ -460,5 +482,12 @@ describe('patchForGroup', () => {
   it("can't drop onto label groups or the ungrouped list", () => {
     expect(patchForGroup(ws, 'label', g('bug'), issue())).toBeNull();
     expect(patchForGroup(ws, 'none', g(null), issue())).toBeNull();
+  });
+
+  it("can't drop onto groups of people who can't be assigned", () => {
+    const i = issue({ assigneeId: 'ada' });
+    expect(patchForGroup(ws, 'assignee', g('imp'), i)).toBeNull();
+    expect(patchForGroup(ws, 'assignee', g('cy'), i)).toBeNull();
+    expect(patchForGroup(ws, 'assignee', g('gone'), i)).toBeNull();
   });
 });
