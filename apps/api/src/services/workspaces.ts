@@ -1,5 +1,6 @@
 import {
   DEFAULT_WORKSPACE_SETTINGS,
+  isGuestRole,
   type MemberRole,
   type Workspace,
   type WorkspaceSettings,
@@ -113,7 +114,10 @@ export async function joinWorkspace(
     .from(workspaces)
     .where(eq(workspaces.id, workspaceId));
   const wanted = [
-    ...new Set([...teamIds, ...(role !== 'guest' && ws?.defaultTeamId ? [ws.defaultTeamId] : [])]),
+    ...new Set([
+      ...teamIds,
+      ...(!isGuestRole(role) && ws?.defaultTeamId ? [ws.defaultTeamId] : []),
+    ]),
   ];
   if (wanted.length === 0) return;
   // Only teams that still exist in this workspace.

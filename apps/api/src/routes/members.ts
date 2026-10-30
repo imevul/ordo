@@ -3,6 +3,8 @@ import {
   addDomainSchema,
   createInviteSchema,
   type Invite,
+  isAdminRole,
+  isOwnerRole,
   updateMemberSchema,
   type WorkspaceDomain,
 } from '@ordo/shared';
@@ -34,7 +36,7 @@ export async function memberRoutes(app: FastifyInstance) {
     return mutate(app, req, async (ctx) => {
       const current = await memberRole(ctx.tx, ctx.workspaceId, userId);
       if (!current) throw notFound('Member');
-      const touchesOwner = input.role === 'owner' || current === 'owner';
+      const touchesOwner = isOwnerRole(input.role) || isOwnerRole(current);
       if (touchesOwner && !ws.access.isOwner)
         throw forbidden('Only owners can grant or change ownership').as('owners_grant');
       if (userId === ctx.userId && input.suspended) throw badRequest("You can't suspend yourself");
@@ -53,7 +55,7 @@ export async function memberRoutes(app: FastifyInstance) {
     return mutate(app, req, async (ctx) => {
       const current = await memberRole(ctx.tx, ctx.workspaceId, userId);
       if (!current) throw notFound('Member');
-      if (current === 'owner') {
+      if (isOwnerRole(current)) {
         if (userId !== user.id && !ws.access.isOwner)
           throw forbidden('Only owners can remove an owner').as('owners_remove_owner');
       }
@@ -84,7 +86,7 @@ export async function memberRoutes(app: FastifyInstance) {
     if (ws.access.isGuest || workspaceSettings(row!).invitePolicy !== 'members') {
       throw forbidden('Only workspace admins can invite people').as('admins_invite');
     }
-    if (role === 'admin')
+    if (isAdminRole(role))
       throw forbidden('Only admins can invite admins').as('admins_invite_admins');
     return ws;
   }
