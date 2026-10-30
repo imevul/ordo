@@ -43,6 +43,7 @@ import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
 import { audit, auditFilters } from '../services/audit.ts';
 import { passwordResetEmail, siteInviteEmail } from '../services/mail-templates.ts';
 import { encryptSmtpUrl, queueEmail } from '../services/mailer.ts';
+import { countUnreadableSecrets } from '../services/secretKey.ts';
 import { publishChanges } from '../services/sync.ts';
 import { createToken } from '../services/tokens.ts';
 
@@ -73,6 +74,18 @@ export async function adminRoutes(app: FastifyInstance) {
       throw forbidden('Only instance administrators can do this').as('instance_admins_only');
   });
 
+  // A key that is set but wrong (or a previous key removed too early) leaves stored secrets
+  // under a key id this keyring doesn't have.
+  const secretKeyStatus = async () => {
+    const unreadableSecrets = await countUnreadableSecrets(db, app.keyring);
+    const secretKey = !app.keyring.available
+      ? ('missing' as const)
+      : unreadableSecrets
+        ? ('unreadable' as const)
+        : ('ok' as const);
+    return { secretKey, unreadableSecrets };
+  };
+
   app.get('/overview', async () => {
     const [[u], [w], [i], size] = await Promise.all([
       db.select({ n: count() }).from(users).where(eq(users.kind, 'human')),
@@ -93,7 +106,7 @@ export async function adminRoutes(app: FastifyInstance) {
       realtimeConnections: app.realtime.connectionCount,
       storage: app.storage.describe(),
       emailEnabled: app.mailer.enabled,
-      secretKey: app.keyring.available,
+      ...(await secretKeyStatus()),
     };
   });
 
@@ -518,21 +531,41 @@ export async function adminRoutes(app: FastifyInstance) {
 
   // ─── settings ────────────────────────────────────────────────────────
 
+  // A stored secret that won't decrypt (wrong or missing ORDO_SECRET_KEY) is shown as unreadable
+  // rather than failing the page, since this page is where it gets entered again.
   const describeSettings = () =>
     app.settings.describe().map((e) => {
       if (e.key === 'smtp' && e.value) {
         const smtp = e.value as NonNullable<InstanceSettings['smtp']>;
-        return { ...e, value: { from: smtp.from, url: maskSmtpUrl(decryptSmtp(smtp.url)) } };
+        const url = tryDecrypt(() => decryptSmtp(smtp.url));
+        return {
+          ...e,
+          value: { from: smtp.from, url: url === null ? null : maskSmtpUrl(url) },
+          ...(url === null && { unreadable: true }),
+        };
       }
       if (e.key === 'ai' && e.value) {
         const ai = e.value as NonNullable<InstanceSettings['ai']>;
-        const key = decryptAiKey(app, ai.apiKey);
-        return { ...e, value: { ...ai, apiKey: key ? maskKey(key) : null } };
+        const key = tryDecrypt(() => decryptAiKey(app, ai.apiKey));
+        const unreadable = key === null && ai.apiKey !== null;
+        return {
+          ...e,
+          value: { ...ai, apiKey: key ? maskKey(key) : null },
+          ...(unreadable && { unreadable: true }),
+        };
       }
       return e;
     });
   const decryptSmtp = (url: string) =>
     url.startsWith('v1.') ? app.keyring.decrypt(url, 'instance_settings:smtp:url') : url;
+  const tryDecrypt = (fn: () => string | null) => {
+    try {
+      return fn();
+    } catch {
+      return null;
+    }
+  };
+  const readable = (fn: () => string | null) => tryDecrypt(fn) !== null;
 
   app.get('/settings', async () => describeSettings());
 
@@ -563,6 +596,8 @@ export async function adminRoutes(app: FastifyInstance) {
         // An empty URL keeps the stored one (the UI only ever sees it masked).
         const url = input.smtp.url ? encryptSmtpUrl(app, input.smtp.url) : current?.url;
         if (!url) throw badRequest('Enter the SMTP URL');
+        if (!input.smtp.url && !readable(() => decryptSmtp(url)))
+          throw badRequest("The stored SMTP URL can't be decrypted. Enter it again");
         if (input.smtp.url && !/^smtps?:\/\//.test(input.smtp.url))
           throw badRequest('The SMTP URL must start with smtp:// or smtps://');
         await app.settings.set('smtp', { url, from: input.smtp.from }, me.id);
@@ -578,6 +613,8 @@ export async function adminRoutes(app: FastifyInstance) {
             ? (current?.apiKey ?? null)
             : input.ai.apiKey &&
               app.keyring.encrypt(input.ai.apiKey, 'instance_settings:ai:apiKey');
+        if (input.ai.apiKey === '' && apiKey && !readable(() => decryptAiKey(app, apiKey)))
+          throw badRequest("The stored API key can't be decrypted. Enter it again");
         if (input.ai.provider === 'anthropic' && !apiKey)
           throw badRequest('Enter an API key for the Claude API');
         if (input.ai.provider === 'openai' && !input.ai.baseUrl)

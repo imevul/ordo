@@ -90,7 +90,7 @@ environment (`DATABASE_URL`, `ORDO_SECRET_KEY`…) and applies pending migration
 | `node cli.mjs promote-admin <email>`  | Make someone an instance admin, and enable the account if it was disabled                    |
 | `node cli.mjs reset-password <email>` | Print a one-hour password reset link (on `ORDO_PUBLIC_URL`)                                  |
 | `node cli.mjs disable-2fa <email>`    | Turn off someone's two-factor authentication: authenticator app, recovery codes and passkeys |
-| `node cli.mjs rotate-key`             | Re-encrypt 2FA secrets and stored SMTP settings with the current key                         |
+| `node cli.mjs rotate-key`             | Re-encrypt every stored secret with the current key, and list the ones it can't decrypt      |
 
 With Docker: `make admin EMAIL=…`, `make reset-password EMAIL=…` or `docker compose exec app node cli.mjs <command>`.
 In a checkout: `pnpm --filter @ordo/api cli <command>`. See [admin.md](admin.md#recovery-from-the-command-line) and
