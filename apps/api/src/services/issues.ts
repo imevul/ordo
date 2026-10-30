@@ -47,7 +47,7 @@ import {
   workflowStates,
   workspaces,
 } from '../db/schema.ts';
-import { badRequest, conflict, notFound } from '../lib/errors.ts';
+import { badRequest, conflict, notFound, one } from '../lib/errors.ts';
 import {
   type Access,
   assertTeamAccess,
@@ -728,38 +728,41 @@ export async function createIssue(
     sortOrder = min == null ? 0 : min - SORT_GAP;
   }
 
-  const [row] = await ctx.tx
-    .insert(issues)
-    .values({
-      ...(input.id && { id: input.id }),
-      workspaceId: ctx.workspaceId,
-      teamId: team.id,
-      number,
-      title: input.title,
-      description: input.description ?? '',
-      stateId: state.id,
-      priority: input.priority ?? 0,
-      assigneeId,
-      creatorId,
-      projectId: placed.projectId ?? null,
-      milestoneId: placed.milestoneId ?? null,
-      cycleId,
-      parentId: input.parentId ?? null,
-      estimate: input.estimate ?? null,
-      dueDate: input.dueDate ?? null,
-      sortOrder,
-      // Imported issues keep their history; an SLA would only mark them breached on arrival.
-      slaBreachesAt: imported ? null : slaDeadline(team.slaHours, input.priority ?? 0, sql`now()`),
-      ...(imported
-        ? {
-            ...importedTimestamps(state.type, imported),
-            createdAt: imported.createdAt,
-            updatedAt: imported.updatedAt ?? imported.createdAt,
-          }
-        : stateTimestamps(state.type)),
-    })
-    .returning({ id: issues.id });
-  const id = row!.id;
+  const { id } = one(
+    await ctx.tx
+      .insert(issues)
+      .values({
+        ...(input.id && { id: input.id }),
+        workspaceId: ctx.workspaceId,
+        teamId: team.id,
+        number,
+        title: input.title,
+        description: input.description ?? '',
+        stateId: state.id,
+        priority: input.priority ?? 0,
+        assigneeId,
+        creatorId,
+        projectId: placed.projectId ?? null,
+        milestoneId: placed.milestoneId ?? null,
+        cycleId,
+        parentId: input.parentId ?? null,
+        estimate: input.estimate ?? null,
+        dueDate: input.dueDate ?? null,
+        sortOrder,
+        // Imported issues keep their history; an SLA would only mark them breached on arrival.
+        slaBreachesAt: imported
+          ? null
+          : slaDeadline(team.slaHours, input.priority ?? 0, sql`now()`),
+        ...(imported
+          ? {
+              ...importedTimestamps(state.type, imported),
+              createdAt: imported.createdAt,
+              updatedAt: imported.updatedAt ?? imported.createdAt,
+            }
+          : stateTimestamps(state.type)),
+      })
+      .returning({ id: issues.id }),
+  );
   await claimAttachments(ctx, id, input.description);
   if (labelIds.length)
     await ctx.tx.insert(issueLabels).values(labelIds.map((labelId) => ({ issueId: id, labelId })));

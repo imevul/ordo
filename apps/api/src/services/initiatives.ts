@@ -2,7 +2,7 @@ import type { CreateInitiativeInput, Initiative, Progress, Project } from '@ordo
 import { and, asc, eq, min } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { initiatives } from '../db/schema.ts';
-import { badRequest, notFound } from '../lib/errors.ts';
+import { badRequest, notFound, one } from '../lib/errors.ts';
 import { type Access, assertCan } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { emptyProgress } from './progress.ts';
@@ -91,16 +91,18 @@ export async function createInitiative(ctx: Ctx, input: CreateInitiativeInput) {
     .select({ first: min(initiatives.sortOrder) })
     .from(initiatives)
     .where(eq(initiatives.workspaceId, ctx.workspaceId))) as [{ first: number | null }];
-  const [row] = await ctx.tx
-    .insert(initiatives)
-    .values({
-      ...input,
-      workspaceId: ctx.workspaceId,
-      createdBy: ctx.userId,
-      sortOrder: (first ?? 0) - 1024,
-    })
-    .returning({ id: initiatives.id });
-  return changed(ctx, row!.id, 'initiative.created');
+  const row = one(
+    await ctx.tx
+      .insert(initiatives)
+      .values({
+        ...input,
+        workspaceId: ctx.workspaceId,
+        createdBy: ctx.userId,
+        sortOrder: (first ?? 0) - 1024,
+      })
+      .returning({ id: initiatives.id }),
+  );
+  return changed(ctx, row.id, 'initiative.created');
 }
 
 export async function updateInitiative(

@@ -15,7 +15,7 @@ import {
   users,
   workspaceMembers,
 } from '../db/schema.ts';
-import { badRequest, forbidden, notFound } from '../lib/errors.ts';
+import { badRequest, forbidden, notFound, one } from '../lib/errors.ts';
 import { type Access, canReadTeam, teamScope, usersWithTeamAccess } from './access.ts';
 import { onComment } from './agents.ts';
 import { claimAttachments } from './attachments.ts';
@@ -141,18 +141,20 @@ export async function createComment(
       .where(eq(comments.id, input.parentId));
     if (parent?.issueId !== issue.id) throw badRequest('Reply must belong to the same issue');
   }
-  const [comment] = await ctx.tx
-    .insert(comments)
-    .values({
-      ...(input.id && { id: input.id }),
-      issueId: issue.id,
-      authorId,
-      body: input.body,
-      parentId: input.parentId ?? null,
-      createdAt: imported?.createdAt,
-      updatedAt: imported?.createdAt,
-    })
-    .returning();
+  const comment = one(
+    await ctx.tx
+      .insert(comments)
+      .values({
+        ...(input.id && { id: input.id }),
+        issueId: issue.id,
+        authorId,
+        body: input.body,
+        parentId: input.parentId ?? null,
+        createdAt: imported?.createdAt,
+        updatedAt: imported?.createdAt,
+      })
+      .returning(),
+  );
   await claimAttachments(ctx, issue.id, input.body);
   const mentioned = await mentionedUserIds(ctx, issue.teamId, input.body);
   const subscribers = await subscriberIds(ctx, issue.id);
@@ -161,13 +163,13 @@ export async function createComment(
     userIds: mentioned,
     type: 'issue_mention',
     issueId: issue.id,
-    commentId: comment!.id,
+    commentId: comment.id,
   });
   await notify(ctx, {
     userIds: subscribers.filter((s) => !mentioned.includes(s)),
     type: 'issue_comment',
     issueId: issue.id,
-    commentId: comment!.id,
+    commentId: comment.id,
   });
   if (!imported) {
     await ctx.tx
@@ -178,7 +180,7 @@ export async function createComment(
   emit(ctx, {
     kind: 'comment',
     action: 'created',
-    id: comment!.id,
+    id: comment.id,
     issueId: issue.id,
     teamId: issue.teamId,
   });
@@ -186,14 +188,14 @@ export async function createComment(
     ctx,
     'comment.created',
     {
-      comment: publicComment(comment!),
+      comment: publicComment(comment),
       issue: { id: issue.id, identifier: issue.identifier, title: issue.title },
     },
     { teamIds: [issue.teamId] },
   );
   // A person's reply answers an agent that's waiting on this issue; a mention asks one for help.
-  if (!imported) await onComment(ctx, issue.id, authorId, { id: comment!.id, mentioned });
-  return { ...comment!, reactions: [] } satisfies Comment;
+  if (!imported) await onComment(ctx, issue.id, authorId, { id: comment.id, mentioned });
+  return { ...comment, reactions: [] } satisfies Comment;
 }
 
 /** A comment on an issue the caller can read. */
