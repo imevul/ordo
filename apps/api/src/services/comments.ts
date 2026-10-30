@@ -20,7 +20,7 @@ import { type Access, canReadTeam, teamScope, usersWithTeamAccess } from './acce
 import { onComment } from './agents.ts';
 import { claimAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
-import { getIssue, retriedCreate } from './issues.ts';
+import { getIssue, retriedCreate, touchIssues } from './issues.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 
 const MENTION_RE = /(?:^|[\s(])@([a-z0-9._-]{2,32})/g;
@@ -169,12 +169,7 @@ export async function createComment(
     issueId: issue.id,
     commentId: comment!.id,
   });
-  if (!imported) {
-    await ctx.tx
-      .update(issues)
-      .set({ updatedAt: new Date().toISOString() })
-      .where(eq(issues.id, issue.id));
-  }
+  if (!imported) await touchIssues(ctx, [issue.id], { updatedAt: new Date().toISOString() });
   emit(ctx, {
     kind: 'comment',
     action: 'created',

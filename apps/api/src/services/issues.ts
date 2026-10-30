@@ -984,99 +984,140 @@ export async function updateIssue(
   return issue;
 }
 
+/** What `bulkUpdateIssues` can change: the fields that rewrites of many issues at once touch. */
+export interface BulkIssuePatch {
+  stateId?: string;
+  cycleId?: string | null;
+  assigneeId?: string | null;
+}
+
 /**
- * Moves many issues of one team to another status and/or cycle in one statement, for structural
- * changes such as deleting a status or a cycle. Each changed issue gets a history entry, a realtime
- * event and an `issue.updated` domain event. Trashed and archived issues move too. Unlike
- * `updateIssue` there are no notifications or cycle automation: nobody changed these issues'
- * progress, their status or cycle went away. Returns the ids that changed.
+ * Applies one patch to many issues in a few statements: one UPDATE, one batch of history, and an
+ * `emit` + `issue.updated` per issue that changed. State timestamps and archive follow
+ * `updateIssue`. Meant for rewrites the system does on someone's behalf (deleting a cycle or
+ * status, cycle rollover, placeholder merges): it notifies nobody, runs no assignee hooks and does
+ * no cycle automation (an issue moved to a started status doesn't join the active cycle), since
+ * nobody changed these issues' progress. A person's own edits still go through `updateIssue`.
+ * Trashed and archived issues are updated too. Returns the ids that changed.
  */
 export async function bulkUpdateIssues(
   ctx: Ctx,
-  teamId: string,
   ids: string[],
-  patch: { stateId?: string; cycleId?: string | null },
+  patch: BulkIssuePatch,
 ): Promise<string[]> {
-  if (!ids.length) return [];
-  assertTeamAccess(ctx.access, teamId);
-  const state = patch.stateId ? await stateOf(ctx, teamId, patch.stateId) : null;
-  if (patch.cycleId) await assertCycle(ctx, teamId, patch.cycleId);
-
+  if (ids.length === 0) return [];
   const rows = await ctx.tx
     .select({
       id: issues.id,
+      teamId: issues.teamId,
       stateId: issues.stateId,
       cycleId: issues.cycleId,
+      assigneeId: issues.assigneeId,
+      parentId: issues.parentId,
       archivedAt: issues.archivedAt,
     })
     .from(issues)
     .where(
       and(
-        inArray(issues.id, ids),
+        inArray(issues.id, [...new Set(ids)]),
         eq(issues.workspaceId, ctx.workspaceId),
-        eq(issues.teamId, teamId),
+        teamScope(ctx.access, issues.teamId),
       ),
     );
-  const reopens = !!state && state.type !== 'completed' && state.type !== 'canceled';
-  const changed = rows
-    .map((r) => {
-      const changes: HistoryChange[] = [];
-      if (state && r.stateId !== state.id) {
-        changes.push({ field: 'state', from: r.stateId, to: state.id });
-        if (r.archivedAt && reopens) changes.push({ field: 'archived', from: true, to: false });
-      }
-      if (patch.cycleId !== undefined && r.cycleId !== patch.cycleId)
-        changes.push({ field: 'cycle', from: r.cycleId, to: patch.cycleId });
-      return { id: r.id, changes };
-    })
-    .filter((r) => r.changes.length > 0);
-  if (!changed.length) return [];
-  const changedIds = changed.map((r) => r.id);
+  if (rows.length === 0) return [];
 
+  // Checked once per team, not per issue. A status belongs to one team, so with `stateId` every
+  // issue is in that team (or stateOf throws).
+  let state: typeof workflowStates.$inferSelect | undefined;
+  for (const teamId of new Set(rows.map((r) => r.teamId))) {
+    if (patch.stateId) state = await stateOf(ctx, teamId, patch.stateId);
+    if (patch.cycleId) await assertCycle(ctx, teamId, patch.cycleId);
+    if (patch.assigneeId) await assertAssignee(ctx, teamId, patch.assigneeId);
+  }
+  const closed = state?.type === 'completed' || state?.type === 'canceled';
+
+  const changed: { row: (typeof rows)[number]; changes: HistoryChange[] }[] = [];
+  for (const row of rows) {
+    const changes: HistoryChange[] = [];
+    const moves = !!state && row.stateId !== state.id;
+    if (moves) {
+      changes.push({ field: 'state', from: row.stateId, to: state!.id });
+      if (row.archivedAt && !closed) changes.push({ field: 'archived', from: true, to: false });
+    }
+    if (patch.cycleId !== undefined && patch.cycleId !== row.cycleId)
+      changes.push({ field: 'cycle', from: row.cycleId, to: patch.cycleId });
+    if (patch.assigneeId !== undefined && patch.assigneeId !== row.assigneeId)
+      changes.push({ field: 'assignee', from: row.assigneeId, to: patch.assigneeId });
+    if (changes.length) changed.push({ row, changes });
+  }
+  if (changed.length === 0) return [];
+  const changedIds = changed.map((c) => c.row.id);
+
+  // Per-issue values are CASEs on the old row (Postgres evaluates them before the update), so
+  // issues already in the target status keep their timestamps.
   const now = new Date().toISOString();
-  const idsChanging = (field: string) =>
-    changed.filter((r) => r.changes.some((c) => c.field === field)).map((r) => r.id);
-  const moved = idsChanging('state');
-  if (state && moved.length) {
-    const startedAt =
-      state.type === 'started' || state.type === 'completed'
-        ? sql`coalesce("issues"."started_at", ${now})`
-        : null;
-    await ctx.tx
-      .update(issues)
-      .set({
-        stateId: state.id,
-        // Like stateTimestamps, but keeping each issue's own start time. An SQL expression,
-        // which update().set() takes like any value.
-        startedAt: startedAt as unknown as string | null,
-        completedAt: state.type === 'completed' ? now : null,
-        canceledAt: state.type === 'canceled' ? now : null,
-        ...(reopens ? { archivedAt: null } : {}),
-        updatedAt: now,
-      })
-      .where(inArray(issues.id, moved));
+  const set: Record<string, unknown> = { updatedAt: now };
+  if (state) {
+    const moves = sql`${issues.stateId} <> ${state.id}`;
+    const onMove = (value: SQL | null, column: AnyPgColumn) =>
+      sql`case when ${moves} then ${value} else ${column} end`;
+    const at = sql`${now}::timestamptz`;
+    const started = state.type === 'started' || state.type === 'completed';
+    set.stateId = state.id;
+    set.startedAt = onMove(
+      started ? sql`coalesce(${issues.startedAt}, ${at})` : null,
+      issues.startedAt,
+    );
+    set.completedAt = onMove(state.type === 'completed' ? at : null, issues.completedAt);
+    set.canceledAt = onMove(state.type === 'canceled' ? at : null, issues.canceledAt);
+    if (!closed) set.archivedAt = onMove(null, issues.archivedAt);
   }
-  const recycled = idsChanging('cycle');
-  if (patch.cycleId !== undefined && recycled.length) {
-    await ctx.tx
-      .update(issues)
-      .set({ cycleId: patch.cycleId, updatedAt: now })
-      .where(inArray(issues.id, recycled));
-  }
+  if (patch.cycleId !== undefined) set.cycleId = patch.cycleId;
+  if (patch.assigneeId !== undefined) set.assigneeId = patch.assigneeId;
+  await ctx.tx.update(issues).set(set).where(inArray(issues.id, changedIds));
+
   await ctx.tx
     .insert(issueHistory)
-    .values(changed.map((r) => ({ issueId: r.id, actorId: ctx.userId, changes: r.changes })));
+    .values(changed.map((c) => ({ issueId: c.row.id, actorId: ctx.userId, changes: c.changes })));
+  // The assignee follows what they were given, as with `updateIssue`.
+  const assigneeId = patch.assigneeId;
+  if (assigneeId)
+    await ctx.tx
+      .insert(issueSubscribers)
+      .values(changedIds.map((issueId) => ({ issueId, userId: assigneeId })))
+      .onConflictDoNothing();
 
-  const full = await baseQuery(ctx.tx).where(inArray(issues.id, changedIds));
-  const changesById = new Map(changed.map((r) => [r.id, r.changes]));
-  for (const row of full) {
-    emit(ctx, { kind: 'issue', action: 'updated', id: row.id, teamId });
-    record(ctx, 'issue.updated', toIssue(row), {
-      teamIds: [teamId],
-      changes: changesById.get(row.id),
-    });
+  const updated = new Map(
+    (await baseQuery(ctx.tx).where(inArray(issues.id, changedIds))).map((r) => [r.id, toIssue(r)]),
+  );
+  const parents = new Map<string, string>();
+  for (const { row, changes } of changed) {
+    emit(ctx, { kind: 'issue', action: 'updated', id: row.id, teamId: row.teamId });
+    record(ctx, 'issue.updated', updated.get(row.id)!, { teamIds: [row.teamId], changes });
+    // A parent counts its finished sub-issues.
+    if (row.parentId && changes.some((c) => c.field === 'state'))
+      parents.set(row.parentId, row.teamId);
   }
+  for (const [id, teamId] of parents) emit(ctx, { kind: 'issue', action: 'updated', id, teamId });
   return changedIds;
+}
+
+/**
+ * Bookkeeping on issues (the comment-time `updatedAt` bump, SLA announcement marks): sync clients
+ * hear about it, but it is no change anyone made, so no history and no `issue.updated` webhook.
+ */
+export async function touchIssues(
+  ctx: Ctx,
+  ids: string[],
+  set: Pick<Partial<typeof issues.$inferInsert>, 'updatedAt' | 'slaNotifiedAt'>,
+) {
+  if (ids.length === 0) return;
+  const rows = await ctx.tx
+    .update(issues)
+    .set(set)
+    .where(and(inArray(issues.id, ids), eq(issues.workspaceId, ctx.workspaceId)))
+    .returning({ id: issues.id, teamId: issues.teamId });
+  for (const r of rows) emit(ctx, { kind: 'issue', action: 'updated', id: r.id, teamId: r.teamId });
 }
 
 /**
