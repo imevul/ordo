@@ -414,13 +414,13 @@ After changing either variable, run `make up` with Docker (`make restart` keeps 
 (`head -c 32 /dev/urandom | base64`), keep a copy with your backups, and enter the secrets again. `rotate-key` lists
 the ones it can't decrypt:
 
-| What                         | How                                                                                                                                                                           |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Two-factor (authenticator)   | People sign in with a recovery code or passkey and set up the app again, or `node cli.mjs disable-2fa <email>` ([admin.md](admin.md#recovery-from-the-command-line)).         |
-| SMTP and the instance AI key | Enter them again in **Admin → Settings** (it marks them as unreadable), or set `ORDO_SMTP_URL`.                                                                               |
-| SSO (OpenID Connect)         | Workspace admins enter the client secret again under **Settings → Authentication**.                                                                                           |
-| Integrations                 | Reconnect them, or enter their tokens again, in the workspace's integration settings.                                                                                         |
-| Webhooks                     | **Rotate the secret** on each webhook and give the new one to its receiver.                                                                                                   |
-| Workspace AI keys            | Workspace admins enter them again.                                                                                                                                            |
-| Push notifications           | `delete from instance_keys where key = 'vapid';` in `make psql`; Ordo makes new keys, and people turn notifications on again on each device.                                  |
-| Imports                      | Start them again.                                                                                                                                                             |
+| What                         | How                                                                                                                                                                   |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Two-factor (authenticator)   | People sign in with a recovery code or passkey and set up the app again, or `node cli.mjs disable-2fa <email>` ([admin.md](admin.md#recovery-from-the-command-line)). |
+| SMTP and the instance AI key | Enter them again in **Admin → Settings** (it marks them as unreadable), or set `ORDO_SMTP_URL`.                                                                       |
+| SSO (OpenID Connect)         | Workspace admins enter the client secret again under **Settings → Authentication**.                                                                                   |
+| Integrations                 | Reconnect them, or enter their tokens again, in the workspace's integration settings.                                                                                 |
+| Webhooks                     | **Rotate the secret** on each webhook and give the new one to its receiver.                                                                                           |
+| Workspace AI keys            | Workspace admins enter them again.                                                                                                                                    |
+| Push notifications           | `delete from instance_keys where key = 'vapid';` in `make psql`; Ordo makes new keys, and people turn notifications on again on each device.                          |
+| Imports                      | Start them again.                                                                                                                                                     |
