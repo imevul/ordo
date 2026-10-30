@@ -98,8 +98,172 @@ Anything else
   api <method> <path>      Call the REST API (path relative to /api); --data <json|@file|->
 
 Every command takes -w/--workspace <slug>, --json and -h/--help.
+"ordo <command> --help" (or "ordo help <command>") shows that command's options.
 ORDO_URL, ORDO_TOKEN and ORDO_WORKSPACE override the saved login.
 Docs: docs/cli.md in the Ordo repository.`;
+
+const COMMON_HELP = `Every command also takes -w/--workspace <slug>, --json and -h/--help.`;
+
+const ISSUE_FIELDS_HELP = `  --title <text>                 The title
+  -d, --description <text>       The description (Markdown)
+  --description-file <path|->    The description from a file, or - for stdin
+  -s, --status <name|type>       A status of the issue's team ("In Review", started)
+  --priority <name>              urgent, high, medium, low or none
+  -a, --assignee <who>           me, a username, an email, or none
+  -p, --project <name>           A project, or none
+  --cycle <which>                current, next, a number, or none
+  --parent <id>                  Make it a sub-issue of another issue, or none
+  --estimate <n>                 A number, or none
+  --due <YYYY-MM-DD>             The due date, or none`;
+
+/** `ordo <command> --help`, keyed by the command's canonical name. */
+const USAGE: Record<string, string> = {
+  login: `Usage: ordo login [url] [--token <key>]
+
+Save Ordo's address and a personal API key (Settings → API keys). Asks for what's missing.`,
+  logout: `Usage: ordo logout
+
+Forget the saved address and key.`,
+  whoami: `Usage: ordo whoami
+
+Who the API key belongs to.`,
+  workspaces: `Usage: ordo workspaces
+
+Your workspaces; * marks the default.`,
+  use: `Usage: ordo use <workspace>
+
+Make a workspace the default for every command.`,
+  teams: `Usage: ordo teams
+
+Teams with their keys and statuses.`,
+  issue: `Usage: ordo issue <command> [options]
+
+  list                     Open issues (same as: ordo issues)
+  view <id>                The issue in full
+  create [title]           A new issue
+  edit <id>                Change an issue
+  comment <id> [text]      Comment on an issue
+  attach <id> <file…>      Upload files and print the Markdown that shows them
+  start <id>               Assign to you, move to the first started status, print the branch name
+  close <id>               Move to the first completed status
+  branch <id>              The git branch name for the issue
+
+Run "ordo issue <command> --help" for its options.`,
+  'issue list': `Usage: ordo issue list [options]   (or: ordo issues)
+
+Open issues, most urgent first.
+
+  -t, --team <key>               One team
+  -s, --status <name|type>       A status name or type (started, "In Review"); repeatable
+  -a, --assignee <who>           me, a username, an email, or none; repeatable
+  --mine                         Assigned to you
+  -l, --label <name>             Repeatable
+  -p, --project <name>           A project, or none
+  --cycle <which>                current, next, a number, or none
+  --priority <name>              urgent, high, medium, low or none; repeatable
+  -q, --query <words>            Words or an identifier
+  --all                          Closed issues too
+  -n, --limit <n>                At most this many (default 50)`,
+  'issue view': `Usage: ordo issue view <id> [options]
+
+The issue in full.
+
+  -c, --comments                 Its comments too
+  --web                          Open it in the browser instead`,
+  'issue create': `Usage: ordo issue create [title] [options]
+
+A new issue, in the workspace's default team unless you give one.
+
+  -t, --team <key>               The team
+  -l, --label <name>             Repeatable
+${ISSUE_FIELDS_HELP}`,
+  'issue edit': `Usage: ordo issue edit <id> [options]
+
+Change an issue; only the fields you give change.
+
+${ISSUE_FIELDS_HELP}
+  --add-label <name>             Repeatable
+  --remove-label <name>          Repeatable
+  --unassign                     Clear the assignee`,
+  'issue comment': `Usage: ordo issue comment <id> [text|-] [options]
+
+Comment on an issue; - reads the text from stdin.
+
+  -F, --body-file <path|->       The text from a file, or - for stdin
+  -A, --attach <file>            Add a file below the text (repeatable; images show inline)`,
+  'issue attach': `Usage: ordo issue attach <id> <file…>
+
+Upload files to the issue and print the Markdown that shows them.`,
+  'issue start': `Usage: ordo issue start <id>
+
+Assign to you if nobody has it, move to the first started status, print the branch name.`,
+  'issue close': `Usage: ordo issue close <id> [--canceled]
+
+Move to the first completed status, or with --canceled to the first canceled one.`,
+  'issue branch': `Usage: ordo issue branch <id>
+
+The git branch name for the issue (the workspace's branch format).`,
+  search: `Usage: ordo search <words>
+
+Issues and projects, best matches first.`,
+  api: `Usage: ordo api <method> <path> [--data <json|@file|->]
+
+Call the REST API; the path is relative to /api. Prints the JSON answer.`,
+  agent: `Usage: ordo agent <command> [options]
+
+  run -- <command…>        Work on an agent's runs with a command of yours
+  run --file <yaml>        The agents and commands in a runner file
+  check --file <yaml>      Validate a runner file and its keys without claiming anything
+  ask <question>           Inside a run: ask a person and pause it
+
+Run "ordo agent <command> --help" for its options. Docs: docs/agents.md.`,
+  'agent run': `Usage: ordo agent run [options] -- <command…>
+       ordo agent run --file <yaml> [--only a,b]
+
+Claim an agent's runs and launch the command for each one, in a worktree of the issue's repository.
+
+  --key <key>                    The agent's key (or ORDO_AGENT_KEY)
+  --url <url>                    Ordo's address (default: the saved login)
+  --repos <dir>                  Where clones and worktrees go
+  --concurrency <n>              Runs worked on at once (default 1)
+  --timeout <30m>                Kill the command and fail the run after this long
+  --name <name>                  What the runner is called on the issue
+  --once                         Work through what's queued now, then exit
+  -v, --verbose                  Echo the command's output
+  -f, --file <yaml>              A runner file (repeatable)
+  --only <labels>                Only these agents from the runner files`,
+  'agent check': `Usage: ordo agent check --file <yaml> [--only a,b]
+
+Validate a runner file and its keys without claiming anything.`,
+  'agent ask': `Usage: ordo agent ask <question|-> [--run <id>]
+
+Inside a run: ask a person and pause the run until they reply on the issue. - reads stdin.`,
+};
+
+const ISSUE_ALIASES: Record<string, string> = {
+  ls: 'list',
+  show: 'view',
+  new: 'create',
+  update: 'edit',
+};
+
+/** The USAGE key for a command line, or null when the command is unknown. */
+function usageKey(argv: string[]): string | null {
+  const [command, sub] = argv;
+  if (command === 'issues') return 'issue list';
+  if (command === 'issue' || command === 'agent') {
+    const name = command === 'issue' ? (ISSUE_ALIASES[sub ?? ''] ?? sub) : sub;
+    if (!name || name.startsWith('-')) return command;
+    return USAGE[`${command} ${name}`] ? `${command} ${name}` : null;
+  }
+  return command && USAGE[command] ? command : null;
+}
+
+/** Whether -h/--help appears among the CLI's own arguments (not after `--`, which belongs to `agent run`). */
+function wantsHelp(args: string[]) {
+  const end = args.indexOf('--');
+  return (end === -1 ? args : args.slice(0, end)).some((a) => a === '-h' || a === '--help');
+}
 
 const common = {
   workspace: { type: 'string', short: 'w' },
@@ -146,7 +310,12 @@ export async function run(argv: string[], io: Io): Promise<number> {
 
 async function dispatch(argv: string[], io: Io, s: Style) {
   const [command, ...rest] = argv;
-  if (!command || command === '-h' || command === '--help' || command === 'help') {
+  if (
+    !command ||
+    command === '-h' ||
+    command === '--help' ||
+    (command === 'help' && !rest.length)
+  ) {
     io.stdout(`${HELP}\n`);
     return;
   }
@@ -154,6 +323,15 @@ async function dispatch(argv: string[], io: Io, s: Style) {
     io.stdout(`ordo ${VERSION}\n`);
     return;
   }
+  // `ordo issue create --help`, or `ordo help issue create`. Unknown commands fall through to
+  // the usual error, so a typo isn't answered with the global help.
+  const helpFor = command === 'help' ? rest : wantsHelp(rest) ? argv : null;
+  const key = helpFor && usageKey(helpFor);
+  if (key) {
+    io.stdout(`${USAGE[key]}\n\n${COMMON_HELP}\n`);
+    return;
+  }
+  if (command === 'help') throw new UsageError(`unknown command "${rest.join(' ')}"`);
   const path = configPath(io.env);
   const file = await readConfig(path);
   const ctx = new Context(io, s, path, file);

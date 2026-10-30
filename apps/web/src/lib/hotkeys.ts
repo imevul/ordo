@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react';
 
 /**
  * Global keyboard shortcuts. Bindings are strings like "c", "shift+a", "mod+k" or
- * two-key sequences like "g i". Shortcuts never fire while typing in a field unless
+ * two-key sequences like "g i". A key in brackets is the physical key (`KeyboardEvent.code`):
+ * "mod+shift+[Period]" is the same key on every layout, where "mod+>" only works where `>` is
+ * Shift+`.` (not on Nordic ones). Shortcuts never fire while typing in a field unless
  * `allowInInput` is set, and only the topmost scope (e.g. an open modal) receives them.
  */
 type Handler = (e: KeyboardEvent) => void;
@@ -35,15 +37,19 @@ function isTyping(e: KeyboardEvent) {
   return t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName);
 }
 
-function chord(e: KeyboardEvent) {
+type KeyInfo = Pick<KeyboardEvent, 'key' | 'code' | 'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey'>;
+
+/** The event as a chord by character ("mod+>") and by physical key ("mod+shift+[Period]"). */
+export function chords(e: KeyInfo): [string, string] {
   const parts: string[] = [];
   if (e.metaKey || e.ctrlKey) parts.push('mod');
   if (e.altKey) parts.push('alt');
   const key = e.key.toLowerCase();
   // Shifted punctuation ("?") already encodes shift; letters, digits and named keys do not.
-  if (e.shiftKey && (/^[a-z0-9]$/.test(key) || key.length > 1)) parts.push('shift');
-  parts.push(key);
-  return parts.join('+');
+  const shift = e.shiftKey && (/^[a-z0-9]$/.test(key) || key.length > 1);
+  const byKey = [...parts, ...(shift ? ['shift'] : []), key].join('+');
+  const byCode = [...parts, ...(e.shiftKey ? ['shift'] : []), `[${e.code}]`].join('+');
+  return [byKey, byCode];
 }
 
 /**
@@ -54,10 +60,10 @@ function chord(e: KeyboardEvent) {
  */
 export function resolveHotkey(
   list: readonly Binding[],
-  press: { chord: string; scope: string; typing: boolean; now: number },
+  press: { chord: string; code?: string; scope: string; typing: boolean; now: number },
   pending: PendingKey | null,
 ): { binding: Binding | null; pending: PendingKey | null } {
-  const { chord: c, scope, typing, now } = press;
+  const { chord: c, code, scope, typing, now } = press;
   const active = list.filter((b) => b.scope === scope && (!typing || b.allowInInput)).reverse();
   const seq =
     pending && pending.scope === scope && now - pending.at < SEQUENCE_TIMEOUT_MS
@@ -65,7 +71,7 @@ export function resolveHotkey(
       : null;
   const binding =
     (seq && active.find((b) => b.keys.includes(seq))) ||
-    active.find((b) => b.keys.includes(c)) ||
+    active.find((b) => b.keys.includes(c) || (!!code && b.keys.includes(code))) ||
     null;
   // Remember unbound single plain keys as potential sequence starters ("g" in "g i").
   const next = !binding && !typing && c.length === 1 ? { key: c, at: now, scope } : null;
@@ -74,8 +80,10 @@ export function resolveHotkey(
 
 function onKeyDown(e: KeyboardEvent) {
   if (e.defaultPrevented || e.isComposing) return;
+  const [chord, code] = chords(e);
   const press = {
-    chord: chord(e),
+    chord,
+    code,
     scope: scopeStack[scopeStack.length - 1]!,
     typing: isTyping(e),
     now: Date.now(),
