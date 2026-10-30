@@ -28,7 +28,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '../db/schema.ts';
-import { conflict } from '../lib/errors.ts';
+import { conflict, one } from '../lib/errors.ts';
 import { enqueue, type JobContext } from '../lib/jobs/index.ts';
 import { systemAccess } from './access.ts';
 import { audit } from './audit.ts';
@@ -106,11 +106,13 @@ export async function startExport(
       );
     if (running)
       throw conflict('An export is already being made; wait for it to finish').as('export_busy');
-    const [row] = await tx
-      .insert(workspaceExports)
-      .values({ workspaceId: opts.workspaceId, format: opts.format, createdById: opts.userId })
-      .returning();
-    await enqueue(tx, 'export.run', { exportId: row!.id }, { maxAttempts: 3 });
+    const row = one(
+      await tx
+        .insert(workspaceExports)
+        .values({ workspaceId: opts.workspaceId, format: opts.format, createdById: opts.userId })
+        .returning(),
+    );
+    await enqueue(tx, 'export.run', { exportId: row.id }, { maxAttempts: 3 });
     await audit(
       tx,
       {
@@ -118,12 +120,12 @@ export async function startExport(
         actorId: opts.userId,
         action: 'workspace.exported',
         targetType: 'export',
-        targetId: row!.id,
+        targetId: row.id,
         data: { format: opts.format },
       },
       opts.meta,
     );
-    return row!;
+    return row;
   });
 }
 

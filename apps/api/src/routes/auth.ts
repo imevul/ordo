@@ -41,6 +41,7 @@ import {
   HttpError,
   isUniqueViolation,
   notFound,
+  one,
   parse,
   unauthorized,
 } from '../lib/errors.ts';
@@ -178,11 +179,14 @@ async function acceptInvite(
       : { site: true, canCreateWorkspaces: invite.canCreateWorkspaces },
   });
   if (!invite.workspaceId) return null;
-  const [ws] = await tx
-    .select({ slug: workspaces.slug })
-    .from(workspaces)
-    .where(eq(workspaces.id, invite.workspaceId));
-  return ws!.slug;
+  const ws = one(
+    await tx
+      .select({ slug: workspaces.slug })
+      .from(workspaces)
+      .where(eq(workspaces.id, invite.workspaceId)),
+    'Workspace',
+  );
+  return ws.slug;
 }
 
 export async function authRoutes(app: FastifyInstance) {
@@ -217,27 +221,29 @@ export async function authRoutes(app: FastifyInstance) {
         .where(eq(users.email, email));
       if (existing && invite && !invite.workspaceId) throw alreadySignedUp();
       if (existing) throw conflict('An account with this email already exists').as('email_taken');
-      const [user] = await tx
-        .insert(users)
-        .values({
-          email,
-          name: input.name,
-          username: await uniqueUsername(tx, email),
-          passwordHash: await hashPassword(input.password),
-          preferences: input.locale ? { locale: input.locale } : {},
-          avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
-          // The first account on an instance administers it.
-          isInstanceAdmin: n === 0,
-        })
-        .returning({ id: users.id });
+      const user = one(
+        await tx
+          .insert(users)
+          .values({
+            email,
+            name: input.name,
+            username: await uniqueUsername(tx, email),
+            passwordHash: await hashPassword(input.password),
+            preferences: input.locale ? { locale: input.locale } : {},
+            avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
+            // The first account on an instance administers it.
+            isInstanceAdmin: n === 0,
+          })
+          .returning({ id: users.id }),
+      );
       await audit(
         tx,
-        { action: 'auth.signup', actorId: user!.id, data: { invited: !!invite } },
+        { action: 'auth.signup', actorId: user.id, data: { invited: !!invite } },
         requestMeta(req),
       );
-      const workspaceSlug = invite ? await acceptInvite(tx, invite, user!.id, email, true) : null;
+      const workspaceSlug = invite ? await acceptInvite(tx, invite, user.id, email, true) : null;
       if (app.mailer.enabled) {
-        const token = await createToken(tx, user!.id, 'email_verify', 48 * 60, { email });
+        const token = await createToken(tx, user.id, 'email_verify', 48 * 60, { email });
         await queueEmail(
           tx,
           email,
@@ -248,7 +254,7 @@ export async function authRoutes(app: FastifyInstance) {
           ),
         );
       }
-      return { userId: user!.id, workspaceSlug };
+      return { userId: user.id, workspaceSlug };
     });
     await createSession(app, reply, result.userId, req);
     return { ok: true, workspaceSlug: result.workspaceSlug };
@@ -607,17 +613,19 @@ export async function authRoutes(app: FastifyInstance) {
     const { name } = parse(createApiKeySchema, req.body);
     const token = `${API_KEY_PREFIX}${randomToken(24)}`;
     const key = await db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(apiKeys)
-        .values({ userId: user.id, name, tokenHash: sha256(token), prefix: token.slice(0, 12) })
-        .returning({ id: apiKeys.id });
+      const row = one(
+        await tx
+          .insert(apiKeys)
+          .values({ userId: user.id, name, tokenHash: sha256(token), prefix: token.slice(0, 12) })
+          .returning({ id: apiKeys.id }),
+      );
       await audit(
         tx,
         {
           action: 'api_key.created',
           actorId: user.id,
           targetType: 'api_key',
-          targetId: row!.id,
+          targetId: row.id,
           data: { name },
         },
         requestMeta(req),
@@ -704,18 +712,17 @@ export async function authRoutes(app: FastifyInstance) {
       );
     try {
       const slug = await db.transaction(async (tx) => {
-        const [ws] = await tx
-          .insert(workspaces)
-          .values({ name: input.name, slug: input.slug })
-          .returning();
+        const ws = one(
+          await tx.insert(workspaces).values({ name: input.name, slug: input.slug }).returning(),
+        );
         await tx
           .insert(workspaceMembers)
-          .values({ workspaceId: ws!.id, userId: user.id, role: 'owner' });
+          .values({ workspaceId: ws.id, userId: user.id, role: 'owner' });
         const ctx: Ctx = {
           tx,
           userId: user.id,
-          workspaceId: ws!.id,
-          access: systemAccess(ws!.id, user.id),
+          workspaceId: ws.id,
+          access: systemAccess(ws.id, user.id),
           events: [],
           domainEvents: [],
           source: req.authMethod === 'api_key' ? 'api' : 'web',
@@ -729,10 +736,10 @@ export async function authRoutes(app: FastifyInstance) {
         await auditCtx(ctx, {
           action: 'workspace.created',
           targetType: 'workspace',
-          targetId: ws!.id,
-          data: { slug: ws!.slug },
+          targetId: ws.id,
+          data: { slug: ws.slug },
         });
-        return ws!.slug;
+        return ws.slug;
       });
       return { slug };
     } catch (err) {
