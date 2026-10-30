@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { integrationApps, integrations, workspaces } from '../db/schema.ts';
-import { github } from '../integrations/github.ts';
+import { GITHUB_EVENTS, github } from '../integrations/github.ts';
 import { callApi } from '../integrations/http.ts';
 import { authInfo, authorizeWorkspace, requireAdmin, requireUser } from '../lib/auth.ts';
 import { badRequest, forbidden, parse } from '../lib/errors.ts';
@@ -67,8 +67,14 @@ export async function githubWorkspaceRoutes(app: FastifyInstance) {
       callback_urls: [`${base}${AUTHORIZED_PATH}`],
       setup_on_update: false,
       public: false,
-      default_permissions: { metadata: 'read', contents: 'read', pull_requests: 'write' },
-      default_events: ['pull_request', 'pull_request_review', 'push'],
+      default_permissions: {
+        metadata: 'read',
+        contents: 'read',
+        pull_requests: 'write',
+        checks: 'read',
+        statuses: 'read',
+      },
+      default_events: GITHUB_EVENTS,
     };
     return {
       action: org

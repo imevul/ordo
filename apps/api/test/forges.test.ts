@@ -408,6 +408,7 @@ describe('GitLab', () => {
     expect(res.data.status).toBe('active');
     const hook = forge.calls('POST', '/api/v4/projects/acme%2Fapp/hooks')[0]!;
     expect(hook.headers['private-token']).toBe('glpat');
+    expect(hook.body).toMatchObject({ merge_requests_events: true, pipeline_events: true });
     const token = (hook.body as { token: string }).token;
     const path = new URL(res.data.inboundUrl).pathname;
     const send = (event: string, body: object, t = token) =>
@@ -436,6 +437,7 @@ describe('GitLab', () => {
         draft: true,
         url: 'https://gl.example/acme/app/-/merge_requests/4',
         action: 'open',
+        last_commit: { id: 'g1' },
       },
       reviewers: [],
     });
@@ -443,6 +445,32 @@ describe('GitLab', () => {
     let d = await detail(issue.id);
     expect(d.links).toMatchObject([{ provider: 'gitlab', state: 'draft', author: 'gl-user' }]);
     expect(stateName(d.stateId)).toBe('In Progress');
+    // Pipelines are the MR's checks; approvals its review.
+    await send('Pipeline Hook', {
+      project: { path_with_namespace: 'acme/app' },
+      object_attributes: { sha: 'g1', status: 'failed' },
+      merge_request: { iid: 4 },
+    });
+    await send('Merge Request Hook', {
+      user: { id: 9, username: 'reviewer' },
+      project: { path_with_namespace: 'acme/app' },
+      object_attributes: {
+        iid: 4,
+        title: 'Draft: thing',
+        description: `Closes ${issue.identifier}`,
+        source_branch: 'x',
+        state: 'opened',
+        draft: true,
+        url: 'https://gl.example/acme/app/-/merge_requests/4',
+        action: 'approved',
+        last_commit: { id: 'g1' },
+      },
+    });
+    await settle();
+    expect((await detail(issue.id)).links[0]!.pullRequest).toMatchObject({
+      checks: 'failing',
+      review: 'approved',
+    });
     await send('Merge Request Hook', {
       user: { id: 9, username: 'merger' },
       project: { path_with_namespace: 'acme/app' },
@@ -656,6 +684,9 @@ describe('GitHub App', () => {
     expect(parsed.callback_urls).toEqual([
       `${app.env.publicUrl}/api/integrations/github/authorized`,
     ]);
+    // Checks and statuses for the pull request section and agent follow-ups.
+    expect(parsed.default_permissions).toMatchObject({ checks: 'read', statuses: 'read' });
+    expect(parsed.default_events).toEqual(expect.arrayContaining(['check_suite', 'status']));
 
     /** GitHub's setup redirect, then the sign-in that proves access, then the way back. */
     const connect = async (installState: string, installationId: string, visible: number[]) => {

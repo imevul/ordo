@@ -51,6 +51,8 @@ export const toProject = (
     p.defaultAssigneeMode === 'member'
       ? (p.defaultAssigneeId ?? 'workspace')
       : p.defaultAssigneeMode,
+  pullRequestAgentId: p.pullRequestAgentId,
+  pullRequestScope: p.pullRequestScope,
 });
 
 export const toMilestone = (

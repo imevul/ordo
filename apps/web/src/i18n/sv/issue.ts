@@ -56,12 +56,24 @@ export default {
     remove: 'Ta bort {name}',
   },
   uploadFailed: 'Kunde inte ladda upp {name}',
+  pullRequests: {
+    title: 'Pull requests',
+    checks: {
+      passing: 'Kontroller godkända',
+      failing: 'Kontroller misslyckas',
+      pending: 'Kontroller körs',
+    },
+    review: {
+      approved: 'Godkänd',
+      changes_requested: 'Ändringar begärda',
+    },
+  },
   links: {
     title: 'Länkar',
     add: 'Lägg till länk',
     titleOptional: 'Titel (valfritt)',
     titleLabel: 'Titel',
-    empty: '// pull requests och länkar visas här',
+    empty: '// brancher, commits och länkar visas här',
     addFailed: 'Kunde inte lägga till länken',
     remove: 'Ta bort länk',
     state: {

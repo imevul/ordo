@@ -41,6 +41,7 @@ import { type AiPanelKind, IssueAiPanel, useAiEnabled } from './AiAssist.tsx';
 import { CustomerRequests } from './CustomerRequests.tsx';
 import { IssueAttachments } from './IssueAttachments.tsx';
 import { IssueLinks } from './IssueLinks.tsx';
+import { IssuePullRequests } from './IssuePullRequests.tsx';
 import { IssueSearchPicker } from './IssueSearchPicker.tsx';
 import { StatusIcon, TeamIcon } from './icons.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -582,6 +583,8 @@ export function IssueDetailView({
             </section>
 
             <IssueAttachments issue={issue} onChange={done} />
+            {/* The sidebar has them on wide screens. */}
+            <IssuePullRequests issue={issue} className="mt-8 lg:hidden" />
             <IssueLinks issue={issue} onChange={done} />
             <AgentRuns issue={issue} />
             <CustomerRequests issue={issue} onChange={done} />
@@ -701,6 +704,8 @@ export function IssueDetailView({
               )}
             </div>
           </Field>
+
+          <IssuePullRequests issue={issue} className="mt-6" />
 
           <div className="mt-6 border-t border-border-soft pt-4 font-mono text-[11px] leading-6 text-index">
             <div>

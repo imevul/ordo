@@ -40,6 +40,13 @@ export default {
     completed: 'Klara',
   },
   overview: {
+    pullRequestAgent: 'Agent för pull requests',
+    pullRequestAgentHint:
+      'När en pull request i projektets repon är redo för granskning går dess ärende till den här agenten.',
+    noPullRequestAgent: 'Ingen (människor granskar)',
+    pullRequestScope: 'Vilka pull requests',
+    pullRequestScopeLinked: 'Kopplade till projektets ärenden',
+    pullRequestScopeAll: 'Alla i projektets repon',
     nameLabel: 'Projektnamn',
     addBrief: 'Lägg till en projektbeskrivning…',
     progress: 'Framsteg',

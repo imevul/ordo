@@ -32,6 +32,14 @@ export const isOpenRun = (r: AgentRun) =>
  * The issue's agent runs: shown while an agent is assigned, or once one has worked on it. Runs
  * change through realtime events (see api/realtime.ts), so nothing polls.
  */
+/** Why a run exists, for its tag: "mentioned", or what happened to which pull request. */
+export function triggerLabel(run: AgentRun) {
+  const pr = run.trigger === 'pull_request' ? run.triggerDetail : null;
+  return pr
+    ? t(`agents.runs.pullRequest.${pr.event}`, { ref: `#${pr.number}` })
+    : t(`agents.runs.trigger.${run.trigger}`);
+}
+
 export function AgentRuns({ issue }: { issue: IssueDetail }) {
   const ws = useWorkspace();
   const assignee = issue.assigneeId ? ws.memberById.get(issue.assigneeId) : null;
@@ -102,9 +110,7 @@ function RunRow({ run, onCancel }: { run: AgentRun; onCancel: () => void }) {
         >
           {agent?.name ?? t('shell.actor.someone')}
           {run.trigger !== 'assigned' && (
-            <span className="tag ml-2 flex-none font-mono">
-              {t(`agents.runs.trigger.${run.trigger}`)}
-            </span>
+            <span className="tag ml-2 flex-none font-mono">{triggerLabel(run)}</span>
           )}
           {run.runnerName && (
             <span className="ml-2 font-mono text-[11px] text-index">

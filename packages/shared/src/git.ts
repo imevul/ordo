@@ -12,6 +12,26 @@ export const GIT_EVENT_LABELS: Record<GitEvent, string> = {
   merged: 'PR merged',
 };
 
+/** Pull request checks (CI) on the head commit, summed up. */
+export const PULL_REQUEST_CHECKS = ['pending', 'passing', 'failing'] as const;
+export type PullRequestChecks = (typeof PULL_REQUEST_CHECKS)[number];
+
+/** The latest review verdict on a pull request. */
+export const PULL_REQUEST_REVIEWS = ['approved', 'changes_requested'] as const;
+export type PullRequestReview = (typeof PULL_REQUEST_REVIEWS)[number];
+
+/** Which pull requests a project's pull request agent gets: ones linked to its issues, or all. */
+export const PULL_REQUEST_SCOPES = ['linked', 'all'] as const;
+export type PullRequestScope = (typeof PULL_REQUEST_SCOPES)[number];
+
+/** What happened to a pull request that gave an agent a run. */
+export const PULL_REQUEST_RUN_EVENTS = [
+  'ready_for_review',
+  'checks_failed',
+  'changes_requested',
+] as const;
+export type PullRequestRunEvent = (typeof PULL_REQUEST_RUN_EVENTS)[number];
+
 /** Per team: a status id to move linked issues to, or "none". Missing events use the defaults. */
 export type GitAutomation = Partial<Record<GitEvent, string>>;
 

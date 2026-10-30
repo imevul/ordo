@@ -254,7 +254,19 @@ async function issueResult(c: McpReader, dir: Directory, ref: string, withCommen
       identifier: r.issue.identifier,
       title: r.issue.title,
     })),
-    links: detail.links.map((l) => ({ title: l.title, url: l.url, kind: l.kind, state: l.state })),
+    links: detail.links.map((l) => ({
+      title: l.title,
+      url: l.url,
+      kind: l.kind,
+      state: l.state,
+      ...(l.pullRequest && {
+        repo: l.pullRequest.repo,
+        number: l.pullRequest.number,
+        branch: l.pullRequest.branch,
+        checks: l.pullRequest.checks,
+        review: l.pullRequest.review,
+      }),
+    })),
     attachments: detail.attachments.map((a) => ({
       filename: a.filename,
       size: a.size,

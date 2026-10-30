@@ -5,7 +5,7 @@ import { ExternalLink, RotateCcw, Square } from 'lucide-react';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
-import { isOpenRun, RUN_STATUS_COLOR } from '../components/AgentRuns.tsx';
+import { isOpenRun, RUN_STATUS_COLOR, triggerLabel } from '../components/AgentRuns.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
@@ -166,9 +166,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
           {agent && <Avatar name={agent.name} color={agent.avatarColor} size={16} />}
           <span className="truncate">{agent?.name ?? t('shell.actor.someone')}</span>
           {run.trigger !== 'assigned' && (
-            <span className="tag ml-2 flex-none font-mono">
-              {t(`agents.runs.trigger.${run.trigger}`)}
-            </span>
+            <span className="tag ml-2 flex-none font-mono">{triggerLabel(run)}</span>
           )}
         </span>
         <span className="truncate font-mono text-[11.5px] text-index">

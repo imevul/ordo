@@ -45,6 +45,9 @@ export default {
     instructionsPlaceholder: 'Run the tests before opening a pull request. Never push to main.',
     concurrency: 'Runs at once',
     concurrencyHint: 'Across all of its runners.',
+    followPullRequests: 'Follow up on pull requests',
+    followPullRequestsHint:
+      'When checks fail or a reviewer requests changes on a pull request of an issue it has, it gets a run.',
     pickTeam: 'Pick at least one team.',
   },
   token: {
@@ -76,7 +79,18 @@ export default {
     },
     queued: 'Queued for {name}',
     /** Why a run exists, when it isn't an assignment. */
-    trigger: { assigned: 'assigned', mention: 'mentioned', rerun: 'run again' },
+    trigger: {
+      assigned: 'assigned',
+      mention: 'mentioned',
+      rerun: 'run again',
+      pull_request: 'pull request',
+    },
+    /** For pull request runs; {ref} is like "#42". */
+    pullRequest: {
+      ready_for_review: '{ref} ready for review',
+      checks_failed: 'checks failed on {ref}',
+      changes_requested: 'changes requested on {ref}',
+    },
   },
   /** The workspace-wide list of runs (sidebar → Agent runs). */
   runsPage: {

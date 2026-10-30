@@ -165,6 +165,7 @@ export const UNMERGED_COLUMNS: Record<string, string> = {
   'scim_tokens.created_by_id': 'made by admins',
   'repositories.created_by_id': 'made by admins',
   'projects.default_assignee_id': 'chosen among members',
+  'projects.pull_request_agent_id': 'always an agent',
   'agents.user_id': 'an agent is its own user, never a placeholder',
   'agents.created_by_id': 'made by admins',
   'agent_runs.requested_by_id': 'requested by members',

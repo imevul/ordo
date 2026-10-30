@@ -20,6 +20,7 @@ import {
   createProject,
   defaultAssigneeColumns,
   listProjects,
+  setPullRequestAgent,
 } from '../services/projects.ts';
 import { setProjectRepositories } from '../services/repositories.ts';
 
@@ -58,7 +59,14 @@ export async function projectRoutes(app: FastifyInstance) {
       await loadProject(ctx, id);
       await assertProjectLead(ctx, input.leadId);
       await assertInitiative(ctx, input.initiativeId);
-      const { teamIds, repositoryIds, defaultAssignee, ...rest } = input;
+      const {
+        teamIds,
+        repositoryIds,
+        defaultAssignee,
+        pullRequestAgentId,
+        pullRequestScope,
+        ...rest
+      } = input;
       if (repositoryIds) await setProjectRepositories(ctx, id, repositoryIds);
       const assignee = await defaultAssigneeColumns(ctx, defaultAssignee);
       if (teamIds) {
@@ -72,6 +80,7 @@ export async function projectRoutes(app: FastifyInstance) {
         .update(projects)
         .set({ ...rest, ...assignee, updatedAt: new Date().toISOString() })
         .where(eq(projects.id, id));
+      await setPullRequestAgent(ctx, id, { pullRequestAgentId, pullRequestScope });
       emit(ctx, { kind: 'project', action: 'updated', id });
       const [project] = await listProjects(ctx.tx, ctx.access, id);
       record(ctx, 'project.updated', project!, { teamIds: project!.teamIds });

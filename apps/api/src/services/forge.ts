@@ -2,9 +2,11 @@ import {
   type ForgeRepository,
   type GitEvent,
   gitAutomationTarget,
+  type PullRequestChecks,
+  type PullRequestReview,
   STATE_TYPES,
 } from '@ordo/shared';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   externalAccounts,
   issueLinks,
@@ -17,7 +19,8 @@ import {
 import type { IntegrationContext } from '../integrations/types.ts';
 import type { Ctx } from './context.ts';
 import { updateIssue } from './issues.ts';
-import { upsertIssueLink } from './links.ts';
+import { type PullRequestData, upsertIssueLink } from './links.ts';
+import { issueForPullRequest, onPullRequestChange, tagQueuedRun } from './pullRequests.ts';
 
 /**
  * What GitHub, GitLab and Forgejo have in common. Providers turn their payloads into
@@ -47,6 +50,13 @@ export interface ForgePullRequest {
   branch: string;
   state: PullRequestState;
   author: ForgeUser | null;
+  /** Head commit sha; checks are about it. */
+  head?: string;
+  /** Left out when the event doesn't say: what an earlier one told us stays. */
+  checks?: PullRequestChecks | null;
+  review?: PullRequestReview | null;
+  /** The event is a review being submitted (so "changes requested" is news). */
+  reviewed?: boolean;
 }
 
 export interface ForgeCommit {
@@ -189,32 +199,75 @@ export async function userFor(
 
 const prEvent = (state: PullRequestState): GitEvent | null => (state === 'closed' ? null : state);
 
-/** Links a pull request to the issues it mentions and moves them along. Returns newly linked issues. */
+/**
+ * Links a pull request to the issues it mentions and to those it was linked to before, and moves
+ * them along. Returns the issues it's linked to, and whether each link is new.
+ */
 export async function applyPullRequest(
   ictx: IntegrationContext,
   host: string,
   pr: ForgePullRequest,
 ) {
   const { provider } = ictx.integration;
+  const externalId = `${pr.repo}#${pr.number}`;
   return ictx.run(async (ctx) => {
+    // Deliveries for one PR (opened, review_requested…) arrive together; one at a time, so an
+    // issue made for an unlinked PR is made once.
+    await ctx.tx.execute(
+      sql`select pg_advisory_xact_lock(hashtext(${`${ctx.workspaceId}:${provider}:${externalId}`}))`,
+    );
     const { closing, referenced } = parseReferences(pr);
     const found = await resolveIdentifiers(ctx, [...closing, ...referenced]);
+    const existing = await ctx.tx
+      .select({ link: issueLinks, teamId: issues.teamId, stateId: issues.stateId })
+      .from(issueLinks)
+      .innerJoin(issues, eq(issues.id, issueLinks.issueId))
+      .where(
+        and(
+          eq(issueLinks.workspaceId, ctx.workspaceId),
+          eq(issueLinks.provider, provider),
+          eq(issueLinks.kind, 'pull_request'),
+          eq(issueLinks.externalId, externalId),
+          isNull(issues.deletedAt),
+        ),
+      );
+    const targets = new Map<string, { issue: ResolvedIssue; closes: boolean }>();
+    for (const [identifier, issue] of found)
+      targets.set(issue.id, { issue, closes: closing.has(identifier) });
+    // Once linked, a PR stays linked even if its title stops naming the issue.
+    for (const e of existing)
+      if (!targets.has(e.link.issueId))
+        targets.set(e.link.issueId, {
+          issue: { id: e.link.issueId, teamId: e.teamId, stateId: e.stateId },
+          closes: !!(e.link.data as Partial<PullRequestData>).closes,
+        });
+    let handedOffTo: string | undefined;
+    if (!targets.size) {
+      const made = await issueForPullRequest(ctx, ictx, pr);
+      if (made) {
+        handedOffTo = made.agentId;
+        targets.set(made.issue.id, { issue: made.issue, closes: true });
+      }
+    }
     const authorUserId = pr.author ? await userFor(ctx, provider, host, pr.author) : undefined;
-    const linked: { identifier: string; issueId: string; created: boolean }[] = [];
-    for (const [identifier, issue] of found) {
-      const externalId = `${pr.repo}#${pr.number}`;
-      const [existing] = await ctx.tx
-        .select({ id: issueLinks.id })
-        .from(issueLinks)
-        .where(
-          and(
-            eq(issueLinks.issueId, issue.id),
-            eq(issueLinks.provider, provider),
-            eq(issueLinks.kind, 'pull_request'),
-            eq(issueLinks.externalId, externalId),
-          ),
-        );
-      await upsertIssueLink(ctx, {
+    const linked: { issueId: string; created: boolean }[] = [];
+    for (const { issue, closes } of targets.values()) {
+      const prev = existing.find((e) => e.link.issueId === issue.id)?.link;
+      const before = (prev?.data ?? {}) as Partial<PullRequestData>;
+      const newHead = !!(pr.head && before.head && pr.head !== before.head);
+      const data: PullRequestData = {
+        ...before,
+        repo: pr.repo,
+        number: pr.number,
+        branch: pr.branch,
+        head: pr.head ?? before.head,
+        // Checks belong to a commit; a new head hasn't got any yet.
+        checks: pr.checks !== undefined ? pr.checks : newHead ? null : (before.checks ?? null),
+        review: pr.review !== undefined ? pr.review : (before.review ?? null),
+        closes: closes || !!before.closes,
+        ...(handedOffTo && { handedOffTo }),
+      };
+      const link = await upsertIssueLink(ctx, {
         issueId: issue.id,
         provider,
         kind: 'pull_request',
@@ -224,15 +277,104 @@ export async function applyPullRequest(
         state: pr.state,
         author: pr.author?.login,
         authorUserId,
-        data: { repo: pr.repo, number: pr.number, branch: pr.branch },
+        data: { ...data },
         integrationId: ictx.integration.id,
       });
-      linked.push({ identifier, issueId: issue.id, created: !existing });
+      linked.push({ issueId: issue.id, created: !prev });
       const event = prEvent(pr.state);
-      if (event && closing.has(identifier)) await automate(ctx, issue, event);
+      if (event && data.closes) await automate(ctx, issue, event);
+      if (handedOffTo) {
+        await tagQueuedRun(ctx, issue.id, handedOffTo, {
+          event: 'ready_for_review',
+          repo: pr.repo,
+          number: pr.number,
+          url: pr.url,
+          branch: pr.branch,
+        });
+        continue;
+      }
+      await onPullRequestChange(ctx, ictx, {
+        issueId: issue.id,
+        linkId: link.id,
+        url: pr.url,
+        data,
+        state: pr.state,
+        prevState: prev?.state ?? null,
+        prevChecks: before.checks ?? null,
+        reviewed: pr.reviewed,
+      });
     }
     return linked;
   });
+}
+
+/**
+ * Checks finished or started on a commit: updates the pull requests whose head it is. Found by
+ * `repo#number` when the forge says, else by head sha (pull requests from forks).
+ */
+export async function applyPullRequestChecks(
+  ictx: IntegrationContext,
+  update: { sha: string; checks: PullRequestChecks | null; repo?: string; numbers?: number[] },
+) {
+  const { provider } = ictx.integration;
+  await ictx.run(async (ctx) => {
+    const byNumber = update.repo && update.numbers?.length;
+    const rows = await ctx.tx
+      .select({ link: issueLinks, teamId: issues.teamId })
+      .from(issueLinks)
+      .innerJoin(issues, eq(issues.id, issueLinks.issueId))
+      .where(
+        and(
+          eq(issueLinks.workspaceId, ctx.workspaceId),
+          eq(issueLinks.provider, provider),
+          eq(issueLinks.kind, 'pull_request'),
+          isNull(issues.deletedAt),
+          byNumber
+            ? inArray(
+                issueLinks.externalId,
+                update.numbers!.map((n) => `${update.repo}#${n}`),
+              )
+            : sql`${issueLinks.data}->>'head' = ${update.sha}`,
+        ),
+      );
+    for (const { link } of rows) {
+      const before = link.data as unknown as PullRequestData;
+      // Results for a commit the PR has moved past say nothing about it.
+      if (before.head && before.head !== update.sha) continue;
+      if ((before.checks ?? null) === update.checks) continue;
+      const data: PullRequestData = { ...before, head: update.sha, checks: update.checks };
+      await upsertIssueLink(ctx, {
+        issueId: link.issueId,
+        provider,
+        kind: 'pull_request',
+        externalId: link.externalId,
+        url: link.url,
+        title: link.title,
+        state: link.state,
+        data: { ...data },
+        integrationId: link.integrationId,
+      });
+      await onPullRequestChange(ctx, ictx, {
+        issueId: link.issueId,
+        linkId: link.id,
+        url: link.url,
+        data,
+        state: link.state,
+        prevState: link.state,
+        prevChecks: before.checks ?? null,
+      });
+    }
+  });
+}
+
+/** Sums up check results: anything failed → failing, anything unfinished → pending. */
+export function summarizeChecks(
+  results: ('success' | 'failure' | 'pending' | 'neutral' | 'skipped')[],
+): PullRequestChecks | null {
+  if (!results.length) return null;
+  if (results.includes('failure')) return 'failing';
+  if (results.includes('pending')) return 'pending';
+  return 'passing';
 }
 
 /** Links commits that mention issues; on the default branch, closing words move issues to done. */

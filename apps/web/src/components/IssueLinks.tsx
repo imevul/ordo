@@ -28,7 +28,7 @@ const KIND_ICONS: Record<IssueLinkKind, typeof Link2> = {
 };
 
 /** Chip colours for the states forges report. */
-const STATE_COLORS: Record<string, string> = {
+export const STATE_COLORS: Record<string, string> = {
   open: 'var(--color-primary)',
   draft: 'var(--color-index)',
   review: 'var(--color-warning)',
@@ -37,7 +37,7 @@ const STATE_COLORS: Record<string, string> = {
 };
 
 /** Names for the states we know; anything else a forge reports is shown as it came. */
-const STATE_KEYS: Record<string, MessageKey> = {
+export const STATE_KEYS: Record<string, MessageKey> = {
   open: 'issue.links.state.open',
   draft: 'issue.links.state.draft',
   review: 'issue.links.state.review',
@@ -45,9 +45,10 @@ const STATE_KEYS: Record<string, MessageKey> = {
   closed: 'issue.links.state.closed',
 };
 
-/** Pull requests, branches, commits, messages and plain links attached to an issue. */
+/** Branches, commits, messages and plain links attached to an issue (pull requests have their own section). */
 export function IssueLinks({ issue, onChange }: { issue: IssueDetail; onChange: () => void }) {
   const ws = useWorkspace();
+  const links = issue.links.filter((l) => l.kind !== 'pull_request');
   const add = useWsMutation(ws.slug, (v: { url: string; title?: string }) =>
     api.post(wsPath(ws.slug, `/issues/${issue.id}/links`), v),
   );
@@ -112,14 +113,14 @@ export function IssueLinks({ issue, onChange }: { issue: IssueDetail; onChange: 
           )}
         </Popover>
       </div>
-      {issue.links.map((link) => (
+      {links.map((link) => (
         <LinkRow
           key={link.id}
           link={link}
           onRemove={() => remove.mutate(link.id, { onSuccess: onChange })}
         />
       ))}
-      {issue.links.length === 0 && (
+      {links.length === 0 && (
         <p className="px-2 font-mono text-[12px] text-index">{t('issue.links.empty')}</p>
       )}
     </section>

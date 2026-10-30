@@ -56,12 +56,24 @@ export default {
     remove: 'Fjern {name}',
   },
   uploadFailed: 'Kunne ikke laste opp {name}',
+  pullRequests: {
+    title: 'Pull requests',
+    checks: {
+      passing: 'Sjekker bestått',
+      failing: 'Sjekker feiler',
+      pending: 'Sjekker kjører',
+    },
+    review: {
+      approved: 'Godkjent',
+      changes_requested: 'Endringer etterspurt',
+    },
+  },
   links: {
     title: 'Lenker',
     add: 'Legg til lenke',
     titleOptional: 'Tittel (valgfritt)',
     titleLabel: 'Tittel',
-    empty: '// pull requests og lenker vises her',
+    empty: '// brancher, commits og lenker vises her',
     addFailed: 'Kunne ikke legge til lenken',
     remove: 'Fjern lenke',
     state: {
