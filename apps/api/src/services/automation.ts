@@ -47,15 +47,43 @@ export async function runAutomation<T>(
   return runInWorkspace(app, { workspaceId, actorId, source: 'system' }, fn);
 }
 
+/**
+ * Runs `fn` for each item of a scheduled sweep (a team, an issue, a schedule). One that fails is
+ * logged and skipped, so it can't hold up the rest; the next run tries it again.
+ */
+export async function forEachIsolated<T>(
+  app: FastifyInstance,
+  job: string,
+  items: T[],
+  describe: (item: T) => Record<string, unknown>,
+  fn: (item: T) => Promise<unknown>,
+) {
+  let failed = 0;
+  for (const item of items) {
+    try {
+      await fn(item);
+    } catch (err) {
+      failed++;
+      app.log.error({ err, job, ...describe(item) }, `${job}: one item failed; continuing`);
+    }
+  }
+  return failed;
+}
+
 /** Hourly: archives closed issues in teams that ask for it, after their chosen number of months. */
 export async function autoArchive(app: FastifyInstance) {
   const rows = await app.db
     .select({ id: teams.id, workspaceId: teams.workspaceId, months: teams.autoArchiveMonths })
     .from(teams)
     .where(isNotNull(teams.autoArchiveMonths));
-  for (const team of rows) {
-    await runAutomation(app, team.workspaceId, (ctx) =>
-      archiveClosedIssues(ctx, team.id, team.months!),
-    );
-  }
+  await forEachIsolated(
+    app,
+    'issues.autoArchive',
+    rows,
+    (team) => ({ teamId: team.id, workspaceId: team.workspaceId }),
+    (team) =>
+      runAutomation(app, team.workspaceId, (ctx) =>
+        archiveClosedIssues(ctx, team.id, team.months!),
+      ),
+  );
 }

@@ -627,6 +627,8 @@ export interface Bootstrap {
   bots: Bot[];
   /** People from imports who aren't members (yet): shown on what they did and were assigned. */
   placeholders: User[];
+  /** People who left the workspace but are still assigned issues the requester can see. */
+  formerMembers: (User & Pick<Member, 'kind'>)[];
   repositories: Repository[];
   teams: Team[];
   labels: Label[];
@@ -935,6 +937,8 @@ export interface WorkspaceSettings {
   defaultAssigneeId: string | null;
   /** Runners claim nothing while set: queued runs wait, running ones finish. */
   agentRunsPaused: boolean;
+  /** IANA zone that decides when a day starts for cycle automation; null is UTC. */
+  timezone: string | null;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -952,6 +956,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   scimMatchGroupsByName: false,
   defaultAssigneeId: null,
   agentRunsPaused: false,
+  timezone: null,
 };
 
 export interface WorkspaceDomain {

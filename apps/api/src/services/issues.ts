@@ -1163,6 +1163,38 @@ export async function setArchived(ctx: Ctx, issueId: string, archived: boolean):
 }
 
 /**
+ * When a team turns triage off, nobody looks at its triage column any more: the issues waiting
+ * there move to the team's default status (or its first backlog one) so they aren't stranded.
+ */
+export async function releaseTriage(ctx: Ctx, teamId: string) {
+  const team = await teamOf(ctx, teamId);
+  const states = await ctx.tx
+    .select()
+    .from(workflowStates)
+    .where(eq(workflowStates.teamId, team.id))
+    .orderBy(asc(workflowStates.position));
+  const open = states.filter((s) => s.type !== 'triage');
+  const target =
+    open.find((s) => s.id === team.defaultStateId) ??
+    open.find((s) => s.type === 'backlog') ??
+    open.find((s) => s.type === 'unstarted');
+  const triage = states.filter((s) => s.type === 'triage').map((s) => s.id);
+  if (!target || triage.length === 0) return 0;
+  const waiting = await ctx.tx
+    .select({ id: issues.id })
+    .from(issues)
+    .where(
+      and(eq(issues.teamId, team.id), inArray(issues.stateId, triage), isNull(issues.deletedAt)),
+    );
+  const moved = await bulkUpdateIssues(
+    ctx,
+    waiting.map((i) => i.id),
+    { stateId: target.id },
+  );
+  return moved.length;
+}
+
+/**
  * Archives a team's issues that closed (completed or canceled) more than `months` ago, in one
  * statement. Returns how many.
  */
@@ -1199,21 +1231,26 @@ export async function archiveClosedIssues(ctx: Ctx, teamId: string, months: numb
 }
 
 export async function trashIssue(ctx: Ctx, issueId: string, restore = false) {
+  const scope = and(
+    eq(issues.id, issueId),
+    eq(issues.workspaceId, ctx.workspaceId),
+    teamScope(ctx.access, issues.teamId),
+  );
+  // Trashing twice (or restoring what's not in the trash) changes nothing: in particular the
+  // trash date stays, so the purge countdown doesn't start over.
   const [row] = await ctx.tx
     .update(issues)
     .set({
       deletedAt: restore ? null : new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     })
-    .where(
-      and(
-        eq(issues.id, issueId),
-        eq(issues.workspaceId, ctx.workspaceId),
-        teamScope(ctx.access, issues.teamId),
-      ),
-    )
+    .where(and(scope, restore ? isNotNull(issues.deletedAt) : isNull(issues.deletedAt)))
     .returning({ id: issues.id, teamId: issues.teamId, parentId: issues.parentId });
-  if (!row) throw notFound('Issue');
+  if (!row) {
+    const [found] = await ctx.tx.select({ id: issues.id }).from(issues).where(scope);
+    if (!found) throw notFound('Issue');
+    return;
+  }
   await recordHistory(ctx, issueId, [
     { field: restore ? 'restored' : 'deleted', from: null, to: null },
   ]);
