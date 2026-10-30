@@ -112,6 +112,9 @@ export default {
     toggleRead: 'Merk som lest / ulest',
     snooze: 'Slumre',
     deleteNotification: 'Slett varsel',
+    inboxQuickFilter: 'Alle, Omtaler, Tildelt, Kommentarer',
+    inboxUnreadOnly: 'Bare uleste',
+    inboxFilters: 'Flere innboksfiltre',
   },
   confirm: {
     careful: 'Pass på',

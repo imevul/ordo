@@ -124,3 +124,64 @@ describe('notification delivery rules', () => {
     ).toBe(400);
   });
 });
+
+describe('inbox filters', () => {
+  let other: Client;
+  const mark: Record<string, string> = {};
+  beforeAll(async () => {
+    // A fresh person, so only this block's notifications are in their inbox.
+    other = (
+      await signup(app, 'Fia Filter', {
+        inviteToken: (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token,
+      })
+    ).client;
+    const me = (await other.get('/api/auth/me')).data;
+    const a = (
+      await owner.post(`${ws}/issues`, { teamId: ids.team, title: 'Urgent one', priority: 1 })
+    ).data;
+    const b = (
+      await owner.post(`${ws}/issues`, { teamId: ids.team, title: 'Mine', assigneeId: me.id })
+    ).data;
+    await owner.post(`${ws}/issues/${a.id}/comments`, { body: `Look @${me.username}` });
+    await other.post(`${ws}/issues/${a.id}/subscription`, { subscribed: true });
+    await owner.post(`${ws}/issues/${a.id}/comments`, { body: 'Plain comment' });
+    const list = await inbox(other);
+    mark.mention = list.find((n) => n.type === 'issue_mention')!.id;
+    mark.comment = list.find((n) => n.type === 'issue_comment')!.id;
+    mark.assigned = list.find((n) => n.type === 'issue_assigned' && n.issueId === b.id)!.id;
+  });
+
+  const shown = async (query: string) => (await inbox(other, query)).map((n) => n.id).sort();
+
+  it('narrows by type, reason, priority, unread and who did it', async () => {
+    expect(await shown('?types=issue_mention')).toEqual([mark.mention]);
+    expect(await shown('?types=issue_mention,issue_comment')).toEqual(
+      [mark.mention, mark.comment].sort(),
+    );
+    expect(await shown('?reasons=assignee')).toEqual([mark.assigned]);
+    expect(await shown('?priorities=1')).toEqual([mark.mention, mark.comment].sort());
+    expect(await shown('?from=bots')).toEqual([]);
+    expect((await shown('?from=people')).length).toBe(3);
+    await other.post(`${ws}/notifications/read`, { ids: [mark.comment] });
+    expect(await shown('?unread=1')).toEqual([mark.mention, mark.assigned].sort());
+    expect((await other.get(`${ws}/notifications?types=nope`)).statusCode).toBe(400);
+  });
+
+  it('counts unread per type', async () => {
+    const counts = (await other.get(`${ws}/notifications/counts`)).data;
+    expect(counts).toEqual({ issue_mention: 1, issue_assigned: 1 });
+  });
+
+  it('marks read and deletes only what the filter matches', async () => {
+    await other.post(`${ws}/notifications/read`, { filter: { types: ['issue_mention'] } });
+    expect(await shown('?unread=1')).toEqual([mark.assigned]);
+    await other.post(`${ws}/notifications/delete`, {
+      read: true,
+      filter: { types: ['issue_mention'] },
+    });
+    expect(await shown('')).toEqual([mark.comment, mark.assigned].sort());
+    // Someone else's filter never reaches this person's notifications.
+    await member.post(`${ws}/notifications/delete`, { read: true, filter: {} });
+    expect(await shown('')).toEqual([mark.comment, mark.assigned].sort());
+  });
+});

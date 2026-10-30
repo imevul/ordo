@@ -60,6 +60,9 @@ export const shortcuts = (): { section: string; items: [string, string][] }[] =>
       ['U', t('shell.shortcuts.toggleRead')],
       ['H', t('shell.shortcuts.snooze')],
       ['⌫', t('shell.shortcuts.deleteNotification')],
+      ['1 – 4', t('shell.shortcuts.inboxQuickFilter')],
+      ['5', t('shell.shortcuts.inboxUnreadOnly')],
+      ['Shift F', t('shell.shortcuts.inboxFilters')],
     ],
   },
 ];

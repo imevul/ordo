@@ -910,6 +910,8 @@ export interface WorkspaceSettings {
   scimMatchGroupsByName: boolean;
   /** Who new issues go to when they don't say; projects can override it. */
   defaultAssigneeId: string | null;
+  /** Runners claim nothing while set: queued runs wait, running ones finish. */
+  agentRunsPaused: boolean;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -926,6 +928,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   scimDefaultRole: 'member',
   scimMatchGroupsByName: false,
   defaultAssigneeId: null,
+  agentRunsPaused: false,
 };
 
 export interface WorkspaceDomain {

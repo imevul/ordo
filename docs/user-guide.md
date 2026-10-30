@@ -192,6 +192,13 @@ The **Inbox** collects notifications: assigned / unassigned, mentions, comments 
 follow, issues marked urgent, and reactions to your comments. Select one to read the issue alongside. `U` toggles read, `⌫` deletes;
 the header buttons mark everything read or clear read notifications.
 
+**Filter** the inbox with the row under its header: **All**, **Mentions**, **Assigned** and **Comments** (with
+their unread counts), and **Unread** on top of any of them (`1`–`5`). The sliders button (`Shift F`) narrows it
+further: by kind, by why you got it (you're the assignee, created the issue, follow it, or were mentioned), by who
+did it (people or bots and automations, or particular people), by team and by issue priority. Filters only change
+what you see — the sidebar's unread count still counts everything — and the header's mark-read and delete buttons act
+on what's shown. Your filters are remembered in this browser.
+
 **Settings → Notifications** decides what reaches you, per kind of notification and per channel: **Inbox**, **Push**
 (the devices you turned it on for), **Email** (batched as chosen above the grid) and **Chat** (direct messages to the
 chat accounts you connected, unless you turned DMs off there). Turn off Inbox for a kind and it isn't created at all,

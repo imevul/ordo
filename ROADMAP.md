@@ -187,7 +187,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 ### Inbox focus
 
 - [x] ✅ Delivery rules: per notification type, Inbox / Push / Email / Chat
-- [ ] ⬜ Inbox filters: quick chips (mentions, assigned, comments, unread) and a filter modal
+- [x] ✅ Inbox filters: quick chips (mentions, assigned, comments, unread) and a filter modal
 - [ ] ⬜ Status and pause: a profile menu at the bottom of the sidebar, statuses others see, "only mentions" / mute
 
 ### Phase 12 — Desktop and mobile apps
