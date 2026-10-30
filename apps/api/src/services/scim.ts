@@ -11,6 +11,7 @@ import {
 } from '../db/schema.ts';
 import { SCIM_TOKEN_PREFIX } from '../lib/auth.ts';
 import { randomToken, sha256 } from '../lib/crypto.ts';
+import { one } from '../lib/errors.ts';
 import { auditCtx } from './audit.ts';
 import type { Ctx } from './context.ts';
 import { removeMember, setSuspended } from './members.ts';
@@ -62,23 +63,25 @@ export const toScimToken = (
 
 export async function createScimToken(ctx: Ctx, name: string) {
   const token = `${SCIM_TOKEN_PREFIX}${randomToken(30)}`;
-  const [row] = await ctx.tx
-    .insert(scimTokens)
-    .values({
-      workspaceId: ctx.workspaceId,
-      name,
-      tokenHash: sha256(token),
-      prefix: token.slice(0, SCIM_TOKEN_PREFIX.length + 4),
-      createdById: ctx.userId,
-    })
-    .returning();
+  const row = one(
+    await ctx.tx
+      .insert(scimTokens)
+      .values({
+        workspaceId: ctx.workspaceId,
+        name,
+        tokenHash: sha256(token),
+        prefix: token.slice(0, SCIM_TOKEN_PREFIX.length + 4),
+        createdById: ctx.userId,
+      })
+      .returning(),
+  );
   await auditCtx(ctx, {
     action: 'scim.token_created',
     targetType: 'scim_token',
-    targetId: row!.id,
+    targetId: row.id,
     data: { name },
   });
-  return { token, row: row! };
+  return { token, row };
 }
 
 /** The workspace a token provisions, or null. Marks it used (at most once a minute). */

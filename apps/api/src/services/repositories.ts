@@ -8,7 +8,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import type { z } from 'zod';
 import type { DbOrTx } from '../db/client.ts';
 import { integrations, projectRepositories, repositories, teams } from '../db/schema.ts';
-import { badRequest, notFound } from '../lib/errors.ts';
+import { badRequest, notFound, one } from '../lib/errors.ts';
 import { auditCtx } from './audit.ts';
 import { type Ctx, emit } from './context.ts';
 
@@ -62,18 +62,20 @@ export async function createRepository(
   input: z.infer<typeof createRepositorySchema>,
 ): Promise<Repository> {
   await assertIntegration(ctx, input.integrationId);
-  const [row] = await ctx.tx
-    .insert(repositories)
-    .values({ ...input, workspaceId: ctx.workspaceId, createdById: ctx.userId })
-    .returning();
+  const row = one(
+    await ctx.tx
+      .insert(repositories)
+      .values({ ...input, workspaceId: ctx.workspaceId, createdById: ctx.userId })
+      .returning(),
+  );
   await auditCtx(ctx, {
     action: 'repository.created',
     targetType: 'repository',
-    targetId: row!.id,
+    targetId: row.id,
     data: { name: input.name, url: input.url },
   });
-  emit(ctx, { kind: 'repository', action: 'created', id: row!.id });
-  return toRepository(row!);
+  emit(ctx, { kind: 'repository', action: 'created', id: row.id });
+  return toRepository(row);
 }
 
 export async function updateRepository(
@@ -83,11 +85,14 @@ export async function updateRepository(
 ): Promise<Repository> {
   await loadRepository(ctx, id);
   await assertIntegration(ctx, input.integrationId);
-  const [row] = await ctx.tx
-    .update(repositories)
-    .set({ ...input, updatedAt: new Date().toISOString() })
-    .where(eq(repositories.id, id))
-    .returning();
+  const row = one(
+    await ctx.tx
+      .update(repositories)
+      .set({ ...input, updatedAt: new Date().toISOString() })
+      .where(eq(repositories.id, id))
+      .returning(),
+    'Repository',
+  );
   await auditCtx(ctx, {
     action: 'repository.updated',
     targetType: 'repository',
@@ -95,7 +100,7 @@ export async function updateRepository(
     data: input,
   });
   emit(ctx, { kind: 'repository', action: 'updated', id });
-  return toRepository(row!);
+  return toRepository(row);
 }
 
 /** Projects and teams that used it simply lose it (the foreign keys cascade or clear). */

@@ -528,6 +528,7 @@ describe('route inventory', () => {
     'GET /sync/changes',
     'GET /search',
     'GET /notifications',
+    'GET /notifications/counts',
     'POST /teams',
     'PATCH /teams/:teamId',
     'POST /teams/:teamId/members',

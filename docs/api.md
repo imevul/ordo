@@ -94,18 +94,20 @@ shown once) and `DELETE /scim/tokens/:id` under the workspace prefix; `GET /scim
 `PUT /scim/groups/:id/team` (`{ teamId | null }`) links or unlinks it. Teams list the groups that manage them in
 `managedBy`; on those, adding or removing members by hand returns `409 team_managed`.
 
-Account endpoints (no workspace prefix): `GET /me/account`, `PATCH /me/preferences`, `POST|DELETE /me/avatar`,
-`POST /me/email`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/2fa/setup|enable|disable|recovery-codes`,
-`GET /me/passkeys`, `POST /me/passkeys/options` (`{ password? }` → `{ challengeId, options }`), `POST /me/passkeys`
-(`{ challengeId, response, name? }`), `PATCH|DELETE /me/passkeys/:id`, `POST /auth/passkey/options` and
-`POST /auth/passkey` (`{ challengeId, response }`: sign in without a password),
-`POST /auth/forgot`, `POST /auth/reset`, `POST /auth/mfa`, `POST /auth/verify-email`. When an account has a
-second factor, `POST /auth/login` answers `{ ok: false, mfaRequired: true, mfaToken, factors }`, where `factors`
-lists what the account can finish with (`totp`, `passkey`, `recovery`). Finish with `POST /auth/mfa`, either
-`{ mfaToken, code }` (an authenticator code or a recovery code) or `{ mfaToken, passkey: { challengeId, response } }`
+Account endpoints (no workspace prefix): `GET /me/account`, `PATCH /me/preferences`, `PUT|DELETE /me/status` (`{ kind,
+emoji?, text?, until, pause? }` — `kind` one of `away`, `meeting`, `focus`, `dnd`, `sick`, `vacation`, or null for a
+custom status; `pause` is `mentions`, `all` or null and ends with the status), `PUT /me/notify-pause` (`{ mode, until
+}`; `mode: null` resumes), `POST|DELETE /me/avatar`, `POST /me/email`, `GET /me/sessions`, `DELETE /me/sessions/:id`,
+`POST /me/2fa/setup|enable|disable|recovery-codes`, `GET /me/passkeys`, `POST /me/passkeys/options` (`{ password? }` →
+`{ challengeId, options }`), `POST /me/passkeys` (`{ challengeId, response, name? }`), `PATCH|DELETE
+/me/passkeys/:id`, `POST /auth/passkey/options` and `POST /auth/passkey` (`{ challengeId, response }`: sign in without
+a password), `POST /auth/forgot`, `POST /auth/reset`, `POST /auth/mfa`, `POST /auth/verify-email`. When an account has
+a second factor, `POST /auth/login` answers `{ ok: false, mfaRequired: true, mfaToken, factors }`, where `factors`
+lists what the account can finish with (`totp`, `passkey`, `recovery`). Finish with `POST /auth/mfa`, either `{
+mfaToken, code }` (an authenticator code or a recovery code) or `{ mfaToken, passkey: { challengeId, response } }`
 after `POST /auth/mfa/passkey/options` (`{ mfaToken }` → `{ challengeId, options }`). A wrong answer keeps the
-`mfaToken` usable for another try. Instance administration lives
-under `/api/admin/*` (instance admins only; see [admin.md](admin.md)).
+`mfaToken` usable for another try. Instance administration lives under `/api/admin/*` (instance admins only; see
+[admin.md](admin.md)).
 
 **Site invites** bring someone onto the instance without adding them to a workspace (instance admins only):
 
@@ -297,13 +299,14 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 
 ### Notifications & search
 
-| Method | Path                    |                                                                                              |
-| ------ | ----------------------- | -------------------------------------------------------------------------------------------- |
-| GET    | `/notifications`        | Latest 200                                                                                   |
-| POST   | `/notifications/read`   | `{ ids?, unread? }` — omit `ids` for all                                                     |
-| POST   | `/notifications/delete` | `{ ids }` or `{ read: true }`                                                                |
-| POST   | `/notifications/snooze` | `{ ids, until }` — an ISO time, or `null` to wake; `GET /notifications?snoozed=1` lists them |
-| GET    | `/search?q=`            | `{ issues, projects }`, best matches first                                                   |
+| Method | Path                    |                                                                                                                                        |
+| ------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/notifications`        | Latest 200 matching the filter: `types`, `teams`, `actors`, `priorities`, `reasons` (comma-separated), `from=people\|bots`, `unread=1` |
+| GET    | `/notifications/counts` | Unread in the inbox per type: `{ issue_mention: 2, … }`                                                                                |
+| POST   | `/notifications/read`   | `{ ids?, unread? }`, or `{ filter, snoozed? }` for everything the filter matches; neither marks every unread one                       |
+| POST   | `/notifications/delete` | `{ ids }`, or `{ read: true, filter?, snoozed? }` for the read ones (that the filter matches)                                          |
+| POST   | `/notifications/snooze` | `{ ids, until }` — an ISO time, or `null` to wake; `GET /notifications?snoozed=1` lists them                                           |
+| GET    | `/search?q=`            | `{ issues, projects }`, best matches first                                                                                             |
 
 ## Realtime
 
@@ -314,8 +317,9 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 { "kind": "issue", "action": "updated", "id": "…", "teamId": "…", "workspaceId": "…", "actorId": "…" }
 ```
 
-`kind` is one of `issue`, `comment`, `project`, `projectUpdate`, `cycle`, `label`, `team`, `state`, `workspace`,
-`member`, `view`, `favorite`, `notification`, `import`, `export`; `action` is `created`, `updated` or `deleted`. Notification and
+`kind` is one of `issue`, `comment`, `project`, `projectUpdate`, `cycle`, `label`, `template`, `initiative`,
+`customer`, `document`, `team`, `state`, `workspace`, `member`, `view`, `favorite`, `notification`, `import`, `export`,
+`repository`, `agentRun` (`EntityKind` in `packages/shared/src/events.ts`); `action` is `created`, `updated` or `deleted`. Notification and
 favorite events are delivered only to their user. Events are hints — refetch what you display.
 Events also carry `seq` and `epoch`, their place in the workspace's change log (below). An issue that moves to a
 team you can't read arrives as `deleted` from the team you could.
@@ -369,23 +373,26 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 }
 ```
 
-| Type                                                             | `data`                                                                           |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `issue.created` `issue.updated` `issue.trashed` `issue.restored` | The issue (as `GET /issues/:id` without the detail lists); `changes` on updates  |
-| `issue.deleted`                                                  | `{ id }` (permanently deleted from the trash)                                    |
-| `issue.archived` `issue.unarchived`                              | `{ id, identifier, archivedAt }`                                                 |
-| `comment.created` `comment.updated` `comment.deleted`            | `{ comment, issue? }`                                                            |
-| `reaction.created` `reaction.deleted`                            | `{ reaction: { commentId, issueId, userId, emoji } }`                            |
-| `relation.created` `relation.deleted`                            | `{ id, type, issueId, relatedIssueId }`                                          |
-| `project.created` `project.updated` `project.deleted`            | The project (`{ id, name }` when deleted)                                        |
-| `initiative.created` `initiative.updated` `initiative.deleted`   | The initiative (`{ id, name }` when deleted)                                     |
-| `project_update.created`                                         | `{ update, project }`                                                            |
-| `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                        |
-| `agent_run.updated`                                              | The run (queued, claimed, started, finished, cancelled), see [agents](agents.md) |
-| `ping`                                                           | Sent by the "test" button                                                        |
+| Type                                                             | `data`                                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `issue.created` `issue.updated` `issue.trashed` `issue.restored` | The issue (as `GET /issues/:id` without the detail lists); `changes` on updates |
+| `issue.deleted`                                                  | `{ id }` (permanently deleted from the trash)                                   |
+| `issue.archived` `issue.unarchived`                              | `{ id, identifier, archivedAt }`                                                |
+| `comment.created` `comment.updated` `comment.deleted`            | `{ comment, issue? }`                                                           |
+| `reaction.created` `reaction.deleted`                            | `{ reaction: { commentId, issueId, userId, emoji } }`                           |
+| `relation.created` `relation.deleted`                            | `{ id, type, issueId, relatedIssueId }`                                         |
+| `project.created` `project.updated` `project.deleted`            | The project (`{ id, name }` when deleted)                                       |
+| `initiative.created` `initiative.updated` `initiative.deleted`   | The initiative (`{ id, name }` when deleted)                                    |
+| `project_update.created`                                         | `{ update, project }`                                                           |
+| `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                       |
+| `agent_run.updated`                                              | The run when its status changes (statuses below), see [agents](agents.md)       |
+| `ping`                                                           | Sent by the "test" button                                                       |
 
 `source` says where a change came from: `web`, `api` (an API key), `mcp` (an agent through the [MCP server](mcp.md)),
-`system`, `import` or `integration:<id>`.
+`system`, `import`, `scim` (directory sync through [SCIM](scim.md)) or `integration:<id>`.
+
+A run's `status` is `queued` (waiting for a runner), `claimed` (a runner took it), `running`, `waiting` (the agent
+asked a question; a reply requeues it), or one of the final `succeeded`, `failed` and `cancelled`.
 
 **Headers:** `Ordo-Event` (the type), `Ordo-Delivery` (unique per attempt series; reuse it to deduplicate), and
 `Ordo-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 over `"<t>.<raw body>"` with the webhook's
@@ -486,7 +493,8 @@ verified per provider. Integrations that hold their own connection (Socket Mode,
 sync) accept no webhooks.
 
 Team settings take `gitAutomation: { branch?, draft?, open?, review?, merged? }` — a status id or `"none"`; missing
-events use the defaults. Workspace settings take `gitBranchFormat`.
+events use the defaults. Workspace settings take `gitBranchFormat` (for people; agent runs use one branch per issue,
+see [agents.md](agents.md#ordo-agent-run)). Admins can set `agentRunsPaused: true` to stop runners claiming new runs.
 
 ## Imports
 

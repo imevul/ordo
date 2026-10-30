@@ -13,6 +13,7 @@ import { keys } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
 import { estimateLabel, priorityLabel } from '../i18n/labels.ts';
 import { addDays, dueState, shortDate, today } from '../lib/format.ts';
+import { isUnavailable, statusHint } from '../lib/status.ts';
 import { cycleName, upcomingCycles, useWorkspace, type WorkspaceData } from '../lib/workspace.tsx';
 import { PriorityIcon, ProjectIcon, StatusIcon, TeamIcon } from './icons.tsx';
 import { Avatar, EmptyAvatar } from './ui/Avatar.tsx';
@@ -61,8 +62,12 @@ export const assigneeOptions = (ws: WorkspaceData): Option[] => [
       value: m.id,
       label: m.id === ws.me.id ? t('issues.props.you', { name: m.name }) : m.name,
       keywords: `${m.username} ${m.email}`,
-      icon: <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={16} />,
+      icon: (
+        <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={16} status={m.status} />
+      ),
       ...(m.kind === 'agent' && { hint: t('agents.agentTag') }),
+      // Say so before someone hands work to a person who won't see it soon.
+      ...(isUnavailable(m.status) && { hint: statusHint(m.status!) }),
     })),
 ];
 
@@ -304,6 +309,7 @@ export function AssigneeProp({ issue, onPatch, variant = 'chip' }: IssuePropProp
               color={m.avatarColor}
               src={m.avatarUrl}
               size={variant === 'icon' ? 18 : 16}
+              status={m.status}
             />
           ) : variant === 'icon' ? (
             <EmptyAvatar />

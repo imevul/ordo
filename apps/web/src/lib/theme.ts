@@ -46,8 +46,8 @@ media()?.addEventListener('change', () => {
   if (pref === 'system') apply();
 });
 
-// Another tab changed the choice.
-addEventListener('storage', (e) => {
+// Another tab changed the choice. (Guarded so modules importing this load in unit tests.)
+globalThis.addEventListener?.('storage', (e) => {
   if (e.key !== 'ordo:theme') return;
   pref = readPref<ThemePref>('theme', 'system');
   apply();

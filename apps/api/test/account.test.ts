@@ -1,9 +1,10 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { Secret, TOTP } from 'otpauth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { notifications, schedules, users } from '../src/db/schema.ts';
+import { issues, jobs, notifications, schedules, users } from '../src/db/schema.ts';
 import { proxyTrust } from '../src/env.ts';
+import { enqueue } from '../src/lib/jobs/index.ts';
 import { Client, captureMail, linkIn, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -429,5 +430,85 @@ describe('notification emails', () => {
       .from(notifications)
       .where(eq(notifications.userId, devId));
     expect(pending.every((n) => n.emailedAt)).toBe(true);
+  });
+
+  it('lists items oldest first and sends each digest exactly once when the job is retried', async () => {
+    const owner = (await signup(app, 'Rita Retry')).client;
+    await owner.post('/api/workspaces', {
+      name: 'Retries',
+      slug: 'retries',
+      teamName: 'Retry',
+      teamKey: 'RET',
+    });
+    const invite = (await owner.post('/api/w/retries/invites', {})).data[0];
+    const join = () => signup(app, 'Retry Member', { inviteToken: invite.token });
+    const [a, b] = [await join(), await join()];
+    const aId = (await a.client.get('/api/auth/me')).data.id;
+    const bId = (await b.client.get('/api/auth/me')).data.id;
+    const teamId = (await owner.get('/api/w/retries/bootstrap')).data.teams[0].id;
+    for (const [title, assigneeId] of [
+      ['Second for A', aId],
+      ['First for A', aId],
+      ['Only for B', bId],
+    ]) {
+      await owner.post('/api/w/retries/issues', { teamId, title, assigneeId });
+    }
+    // Created out of order on purpose; A's are older than B's, so A's digest is queued first.
+    const age = async (title: string, minutes: number) => {
+      const [issue] = await app.db.select().from(issues).where(eq(issues.title, title));
+      await app.db
+        .update(notifications)
+        .set({ createdAt: sql`now() - make_interval(mins => ${minutes})` })
+        .where(eq(notifications.issueId, issue!.id));
+    };
+    await age('First for A', 30);
+    await age('Second for A', 20);
+    await age('Only for B', 10);
+
+    // B's email can't be queued on the first attempt, after A's has been.
+    await app.db.execute(
+      sql.raw(`
+      create function fail_retry_mail() returns trigger language plpgsql as $$
+      begin
+        if new.name = 'email.send' and new.payload->>'to' = '${b.email}' then
+          raise exception 'mail queue unavailable';
+        end if;
+        return new;
+      end $$;
+      create trigger fail_retry_mail before insert on jobs
+        for each row execute function fail_retry_mail();`),
+    );
+    const mark = inbox.length;
+    await enqueue(app.db, 'notifications.email');
+    await app.jobs.drain();
+    const [failed] = await app.db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.name, 'notifications.email'), eq(jobs.status, 'pending')))
+      .orderBy(desc(jobs.id))
+      .limit(1);
+    expect(failed!.attempts).toBe(1);
+    expect(failed!.lastError).toContain('insert into "jobs"');
+
+    await app.db.execute(sql`
+      drop trigger fail_retry_mail on jobs;
+      drop function fail_retry_mail();`);
+    await app.db.update(jobs).set({ runAt: sql`now()` }).where(eq(jobs.id, failed!.id));
+    await app.jobs.drain();
+    await app.jobs.drain();
+
+    const sent = (to: string) =>
+      inbox.slice(mark).filter((m) => m.to === to && !/verify/i.test(m.subject));
+    expect(sent(a.email)).toHaveLength(1);
+    expect(sent(b.email)).toHaveLength(1);
+    const text = sent(a.email)[0]!.text;
+    expect(text.indexOf('First for A')).toBeGreaterThan(-1);
+    expect(text.indexOf('First for A')).toBeLessThan(text.indexOf('Second for A'));
+    expect(sent(b.email)[0]!.text).toContain('Only for B');
+    const rows = await app.db
+      .select()
+      .from(notifications)
+      .where(inArray(notifications.userId, [aId, bId]));
+    expect(rows.every((n) => n.emailedAt)).toBe(true);
   });
 });
