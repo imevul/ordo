@@ -9,7 +9,9 @@ import {
   INITIATIVE_STATUSES,
   LOCALES,
   MEMBER_ROLES,
+  NOTIFICATION_REASONS,
   NOTIFICATION_TYPES,
+  NOTIFY_PAUSES,
   PROJECT_HEALTH,
   PROJECT_STATUSES,
   RECURRENCE_UNITS,
@@ -17,6 +19,7 @@ import {
   STATE_TYPES,
   TEAM_KEY_PATTERN,
   TEAM_ROLES,
+  USER_STATUSES,
   USERNAME_PATTERN,
 } from './constants.ts';
 import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
@@ -120,7 +123,10 @@ export const updatePreferencesSchema = z.object({
     .object({
       emailDigest: z.enum(['off', 'instant', 'hourly', 'daily']).optional(),
       // partialRecord: in Zod 4 an enum-keyed record would require every key.
+      inbox: z.partialRecord(z.enum(NOTIFICATION_TYPES), z.boolean()).optional(),
+      push: z.partialRecord(z.enum(NOTIFICATION_TYPES), z.boolean()).optional(),
       email: z.partialRecord(z.enum(NOTIFICATION_TYPES), z.boolean()).optional(),
+      chat: z.partialRecord(z.enum(NOTIFICATION_TYPES), z.boolean()).optional(),
     })
     .optional(),
 });
@@ -157,6 +163,7 @@ export const updateWorkspaceSchema = z.object({
       scimDefaultRole: z.enum(['member', 'guest']).optional(),
       scimMatchGroupsByName: z.boolean().optional(),
       defaultAssigneeId: id.nullable().optional(),
+      agentRunsPaused: z.boolean().optional(),
     })
     .optional(),
 });
@@ -580,6 +587,50 @@ export const snoozeSchema = z.object({
   ids: z.array(id).min(1).max(200),
   /** A future time, or null to wake them now. */
   until: z.iso.datetime({ offset: true }).nullable(),
+});
+
+const futureTime = z.iso.datetime({ offset: true }).nullable();
+
+/** Sets your status; `pause` holds back pings until the status clears (null: don't pause). */
+export const setStatusSchema = z.object({
+  kind: z.enum(USER_STATUSES).nullable(),
+  emoji: z.string().trim().max(16).nullable().optional(),
+  text: z.string().trim().max(100).nullable().optional(),
+  until: futureTime,
+  pause: z.enum(NOTIFY_PAUSES).nullable().optional(),
+});
+
+/** Pauses pings on its own; `mode: null` resumes them. */
+export const notifyPauseSchema = z.object({
+  mode: z.enum(NOTIFY_PAUSES).nullable(),
+  until: futureTime,
+});
+
+/**
+ * What the inbox shows. Every field narrows it; leaving one out doesn't. On `GET /notifications`
+ * the lists are comma-separated query parameters.
+ */
+export const inboxFilterSchema = z.object({
+  types: z.array(z.enum(NOTIFICATION_TYPES)).max(20).optional(),
+  teams: z.array(id).max(100).optional(),
+  actors: z.array(id).max(100).optional(),
+  /** People (humans, and deleted users) or bots (integrations, automations and agents). */
+  from: z.enum(['people', 'bots']).optional(),
+  priorities: z.array(z.number().int().min(0).max(4)).max(5).optional(),
+  reasons: z.array(z.enum(NOTIFICATION_REASONS)).max(10).optional(),
+  unread: z.boolean().optional(),
+});
+export type InboxFilter = z.infer<typeof inboxFilterSchema>;
+
+/** Mark read/unread or delete: these `ids`, or everything the filter matches in the inbox (or in Snoozed). */
+export const notificationBulkSchema = z.object({
+  ids: z.array(id).max(200).optional(),
+  filter: inboxFilterSchema.optional(),
+  snoozed: z.boolean().optional(),
+  /** Read: mark them unread instead. */
+  unread: z.boolean().optional(),
+  /** Delete: only the read ones. */
+  read: z.boolean().optional(),
 });
 
 export const createDocumentSchema = z.object({

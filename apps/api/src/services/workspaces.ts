@@ -13,6 +13,7 @@ import { issues, teamMembers, teams, users, workspaceMembers, workspaces } from 
 import { badRequest } from '../lib/errors.ts';
 import { type Access, teamScope } from './access.ts';
 import { signedFileUrl } from './files.ts';
+import { statusColumns, statusOf } from './status.ts';
 
 export const workspaceSettings = (row: {
   settings: Partial<WorkspaceSettings> | null;
@@ -47,17 +48,22 @@ export async function listMembers(db: DbOrTx, access: Access) {
       role: workspaceMembers.role,
       joinedAt: workspaceMembers.joinedAt,
       suspendedAt: workspaceMembers.suspendedAt,
+      ...statusColumns,
     })
     .from(workspaceMembers)
     .innerJoin(users, eq(users.id, workspaceMembers.userId))
     .where(eq(workspaceMembers.workspaceId, access.workspaceId))
     .orderBy(asc(users.name));
-  return rows.map(({ suspendedAt, kind, ...m }) => ({
-    ...m,
-    kind: kind === 'agent' ? ('agent' as const) : ('human' as const),
-    suspended: !!suspendedAt,
-    email: access.isGuest && m.id !== access.userId ? '' : m.email,
-  }));
+  const now = Date.now();
+  return rows.map(
+    ({ suspendedAt, kind, statusKind, statusEmoji, statusText, statusUntil, ...m }) => ({
+      ...m,
+      status: statusOf({ statusKind, statusEmoji, statusText, statusUntil }, now),
+      kind: kind === 'agent' ? ('agent' as const) : ('human' as const),
+      suspended: !!suspendedAt,
+      email: access.isGuest && m.id !== access.userId ? '' : m.email,
+    }),
+  );
 }
 
 /**

@@ -11,6 +11,7 @@ import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'reac
 import { toast } from 'sonner';
 import { t } from '../i18n/index.ts';
 import { markdownConverter, richTextExtensions } from '../lib/richtext.ts';
+import { isUnavailable, statusHint } from '../lib/status.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Avatar } from './ui/Avatar.tsx';
 
@@ -321,9 +322,17 @@ export function RichTextEditor({
                 menu.command(m);
               }}
             >
-              <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={16} />
+              <Avatar
+                name={m.name}
+                color={m.avatarColor}
+                src={m.avatarUrl}
+                size={16}
+                status={m.status}
+              />
               <span className="truncate">{m.name}</span>
-              <span className="ml-auto font-mono text-[11px] text-index">@{m.username}</span>
+              <span className="ml-auto flex-none truncate font-mono text-[11px] text-index">
+                {isUnavailable(m.status) ? statusHint(m.status!) : `@${m.username}`}
+              </span>
             </button>
           ))}
         </div>
