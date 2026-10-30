@@ -3,7 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { webhookDeliveries, webhooks, workspaces } from '../db/schema.ts';
 import { requireAdmin } from '../lib/auth.ts';
-import { badRequest, notFound, parse } from '../lib/errors.ts';
+import { badRequest, notFound, one, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { auditCtx } from '../services/audit.ts';
 import type { Ctx } from '../services/context.ts';
@@ -50,24 +50,26 @@ export async function webhookRoutes(app: FastifyInstance) {
     checkUrl(input.url);
     return mutate(app, req, async (ctx) => {
       const secret = newWebhookSecret();
-      const [row] = await ctx.tx
-        .insert(webhooks)
-        .values({
-          ...input,
-          workspaceId: ctx.workspaceId,
-          secret: 'pending',
-          createdById: ctx.userId,
-        })
-        .returning();
+      const row = one(
+        await ctx.tx
+          .insert(webhooks)
+          .values({
+            ...input,
+            workspaceId: ctx.workspaceId,
+            secret: 'pending',
+            createdById: ctx.userId,
+          })
+          .returning(),
+      );
       const [saved] = await ctx.tx
         .update(webhooks)
-        .set({ secret: app.keyring.encrypt(secret, webhookSecretAad(row!.id)) })
-        .where(eq(webhooks.id, row!.id))
+        .set({ secret: app.keyring.encrypt(secret, webhookSecretAad(row.id)) })
+        .where(eq(webhooks.id, row.id))
         .returning();
       await auditCtx(ctx, {
         action: 'webhook.created',
         targetType: 'webhook',
-        targetId: row!.id,
+        targetId: row.id,
         data: { url: input.url },
       });
       return { webhook: toWebhook(saved!), secret };
@@ -81,23 +83,26 @@ export async function webhookRoutes(app: FastifyInstance) {
     if (input.url) checkUrl(input.url);
     return mutate(app, req, async (ctx) => {
       await load(ctx, id);
-      const [row] = await ctx.tx
-        .update(webhooks)
-        .set({
-          ...input,
-          // Switching it back on starts with a clean slate.
-          ...(input.enabled && { failureCount: 0, disabledReason: null }),
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(webhooks.id, id))
-        .returning();
+      const row = one(
+        await ctx.tx
+          .update(webhooks)
+          .set({
+            ...input,
+            // Switching it back on starts with a clean slate.
+            ...(input.enabled && { failureCount: 0, disabledReason: null }),
+            updatedAt: new Date().toISOString(),
+          })
+          .where(eq(webhooks.id, id))
+          .returning(),
+        'Webhook',
+      );
       await auditCtx(ctx, {
         action: 'webhook.updated',
         targetType: 'webhook',
         targetId: id,
         data: input,
       });
-      return toWebhook(row!);
+      return toWebhook(row);
     });
   });
 

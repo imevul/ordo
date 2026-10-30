@@ -51,9 +51,11 @@ In a checkout of the Ordo repository, `pnpm ordo <command>` runs the CLI from so
 | `ordo agent ask <question>`      | Inside a run: ask a person and pause the run until they reply (`-` reads stdin)                                |
 
 Every command takes `-w, --workspace <slug>`, `--json` (machine-readable output, the API's own shapes) and
-`-h, --help`. `ordo help` prints the command list and `ordo --version` (`-v`, `version`) the CLI's version. Some issue
-commands have aliases: `issue ls` for `list`, `show` for `view`, `new` for `create` and `update` for `edit`. The
-options of `agent run` are in [agents](agents.md).
+`-h, --help`. `ordo <command> --help` (or `ordo help <command>`) prints that command's usage and options, e.g.
+`ordo issue create --help`; `ordo issue --help` and `ordo agent --help` list their subcommands. In `ordo agent run --
+<command…>`, a `--help` after `--` goes to your command. `ordo help` prints the command list and `ordo --version`
+(`-v`, `version`) the CLI's version. Some issue commands have aliases: `issue ls` for `list`, `show` for `view`, `new`
+for `create` and `update` for `edit`. The options of `agent run` are in [agents](agents.md).
 
 **Filters for `ordo issues`:** `--team ENG`, `--status <name or type>` (`started`, `"In Review"`; repeatable),
 `--assignee <me | username | email | none>` (repeatable), `--mine`, `--label <name>` (repeatable), `--project <name |

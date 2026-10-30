@@ -184,6 +184,12 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
     `escapeHtml`, dead label maps, unused `clsx`, current lint warnings
   - [ ] ⬜ Unit tests for `apps/web/src/lib/issues.ts`
 
+### Inbox focus
+
+- [x] ✅ Delivery rules: per notification type, Inbox / Push / Email / Chat
+- [x] ✅ Inbox filters: quick chips (mentions, assigned, comments, unread) and a filter modal
+- [x] ✅ Status and pause: a profile menu at the bottom of the sidebar, statuses others see, "only mentions" / mute
+
 ### Phase 12 — Desktop and mobile apps
 
 - [ ] ⬜ Desktop app

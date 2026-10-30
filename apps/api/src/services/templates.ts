@@ -2,7 +2,7 @@ import type { CreateTemplateInput, IssueTemplate, UpdateTemplateInput } from '@o
 import { and, asc, eq, isNull, or } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { issueTemplates, workspaceMembers } from '../db/schema.ts';
-import { badRequest, notFound } from '../lib/errors.ts';
+import { badRequest, notFound, one } from '../lib/errors.ts';
 import { type Access, canReadTeam, teamScope } from './access.ts';
 import { type Ctx, emit } from './context.ts';
 import { assertAssignee, assertLabels, assertProject, stateOf } from './issues.ts';
@@ -80,35 +80,40 @@ export async function createTemplate(ctx: Ctx, input: CreateTemplateInput) {
   const teamId = input.teamId ?? null;
   await assertLabelTeam(ctx, teamId, 'Guests cannot manage templates');
   await assertDefaults(ctx, teamId, input);
-  const [row] = await ctx.tx
-    .insert(issueTemplates)
-    .values({
-      ...input,
-      teamId,
-      labelIds: [...new Set(input.labelIds)],
-      workspaceId: ctx.workspaceId,
-      createdById: ctx.userId,
-    })
-    .returning();
-  emit(ctx, { kind: 'template', action: 'created', id: row!.id });
-  return toTemplate(row!);
+  const row = one(
+    await ctx.tx
+      .insert(issueTemplates)
+      .values({
+        ...input,
+        teamId,
+        labelIds: [...new Set(input.labelIds)],
+        workspaceId: ctx.workspaceId,
+        createdById: ctx.userId,
+      })
+      .returning(),
+  );
+  emit(ctx, { kind: 'template', action: 'created', id: row.id });
+  return toTemplate(row);
 }
 
 export async function updateTemplate(ctx: Ctx, id: string, input: UpdateTemplateInput) {
   const current = await loadTemplate(ctx, id);
   await assertLabelTeam(ctx, current.teamId, 'Guests cannot manage templates');
   await assertDefaults(ctx, current.teamId, input);
-  const [row] = await ctx.tx
-    .update(issueTemplates)
-    .set({
-      ...input,
-      ...(input.labelIds && { labelIds: [...new Set(input.labelIds)] }),
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(issueTemplates.id, id))
-    .returning();
+  const row = one(
+    await ctx.tx
+      .update(issueTemplates)
+      .set({
+        ...input,
+        ...(input.labelIds && { labelIds: [...new Set(input.labelIds)] }),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(issueTemplates.id, id))
+      .returning(),
+    'Template',
+  );
   emit(ctx, { kind: 'template', action: 'updated', id });
-  return toTemplate(row!);
+  return toTemplate(row);
 }
 
 export async function deleteTemplate(ctx: Ctx, id: string) {

@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { importItems, imports } from '../db/schema.ts';
 import { requireAdmin, requireUser } from '../lib/auth.ts';
-import { badRequest, conflict, notFound, parse } from '../lib/errors.ts';
+import { badRequest, conflict, notFound, one, parse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from '../services/audit.ts';
 import { deleteFile, saveFile } from '../services/files.ts';
@@ -160,19 +160,21 @@ export async function importRoutes(app: FastifyInstance) {
       throw badRequest(err instanceof Error ? err.message : String(err));
     }
     const id = randomUUID();
-    const [row] = await db
-      .insert(imports)
-      .values({
-        id,
-        workspaceId: ws.id,
-        source: input.source,
-        name: started.name.slice(0, 200),
-        config: started.config,
-        secrets: app.keyring.encrypt(JSON.stringify(started.secrets), importSecretsAad(id)),
-        createdById: user.id,
-      })
-      .returning();
-    await startAnalysis(app, row!);
+    const row = one(
+      await db
+        .insert(imports)
+        .values({
+          id,
+          workspaceId: ws.id,
+          source: input.source,
+          name: started.name.slice(0, 200),
+          config: started.config,
+          secrets: app.keyring.encrypt(JSON.stringify(started.secrets), importSecretsAad(id)),
+          createdById: user.id,
+        })
+        .returning(),
+    );
+    await startAnalysis(app, row);
     return show(ws.id, id);
   }
 
@@ -198,18 +200,20 @@ export async function importRoutes(app: FastifyInstance) {
         filename: file.filename,
         body,
       });
-      const [row] = await db
-        .insert(imports)
-        .values({
-          workspaceId: ws.id,
-          source,
-          name: file.filename.slice(0, 200) || 'Import',
-          fileId: saved.id,
-          createdById: user.id,
-        })
-        .returning();
-      await startAnalysis(app, row!);
-      return show(ws.id, row!.id);
+      const row = one(
+        await db
+          .insert(imports)
+          .values({
+            workspaceId: ws.id,
+            source,
+            name: file.filename.slice(0, 200) || 'Import',
+            fileId: saved.id,
+            createdById: user.id,
+          })
+          .returning(),
+      );
+      await startAnalysis(app, row);
+      return show(ws.id, row.id);
     });
   });
 }
