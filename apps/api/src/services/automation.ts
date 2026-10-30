@@ -6,6 +6,7 @@ import { teams, users } from '../db/schema.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import type { Ctx } from './context.ts';
 import { archiveClosedIssues } from './issues.ts';
+import { uniqueUsername } from './sso.ts';
 
 /**
  * The workspace's "Ordo" bot, created on first use. Automations (cycles, archiving) act as it, so
@@ -13,11 +14,20 @@ import { archiveClosedIssues } from './issues.ts';
  */
 export async function automationBot(db: DbOrTx, workspaceId: string): Promise<string> {
   const email = `automation-${workspaceId}@bots.ordo.invalid`;
-  const [found] = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(and(eq(users.email, email), eq(users.kind, 'bot')));
-  if (found) return found.id;
+  // Integration bots share botWorkspaceId and kind, so the email tells this one apart.
+  const find = async () => {
+    const [found] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(eq(users.botWorkspaceId, workspaceId), eq(users.kind, 'bot'), eq(users.email, email)),
+      );
+    return found?.id;
+  };
+  const existing = await find();
+  if (existing) return existing;
+  // Anyone can claim `ordo-<id>` before the bot exists, so take the next free name.
+  const username = await uniqueUsername(db, `ordo-${workspaceId.slice(0, 8)}`);
   const [bot] = await db
     .insert(users)
     .values({
@@ -25,13 +35,18 @@ export async function automationBot(db: DbOrTx, workspaceId: string): Promise<st
       botWorkspaceId: workspaceId,
       email,
       name: 'Ordo',
-      username: `ordo-${workspaceId.slice(0, 8)}`,
+      username,
       passwordHash: null,
       avatarColor: AVATAR_COLORS[0]!,
     })
     .onConflictDoNothing()
     .returning({ id: users.id });
-  return bot?.id ?? automationBot(db, workspaceId);
+  if (bot) return bot.id;
+  // A concurrent first use created it; anything else (the username taken in between, the email
+  // held by another account) fails here, once, instead of retrying forever.
+  const raced = await find();
+  if (raced) return raced;
+  throw new Error(`Could not create the automation bot for workspace ${workspaceId}`);
 }
 
 /**
