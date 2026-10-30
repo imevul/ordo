@@ -6,16 +6,25 @@ import { useEffect, useRef } from 'react';
  * `allowInInput` is set, and only the topmost scope (e.g. an open modal) receives them.
  */
 type Handler = (e: KeyboardEvent) => void;
-interface Binding {
+export interface Binding {
   keys: string[];
   handler: React.RefObject<Handler>;
   scope: string;
   allowInInput: boolean;
 }
 
+/** A plain key that may start a sequence, remembered with the scope it was pressed in. */
+export interface PendingKey {
+  key: string;
+  at: number;
+  scope: string;
+}
+
+export const SEQUENCE_TIMEOUT_MS = 900;
+
 const bindings = new Set<Binding>();
 const scopeStack: string[] = ['app'];
-let sequence: { key: string; at: number } | null = null;
+let sequence: PendingKey | null = null;
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 export const modKey = isMac ? '⌘' : 'Ctrl';
@@ -37,26 +46,46 @@ function chord(e: KeyboardEvent) {
   return parts.join('+');
 }
 
+/**
+ * Picks the binding for a keypress. Only bindings in the active scope count. A completed
+ * sequence ("g i") beats a single-key binding for its second key ("i") regardless of
+ * registration order, since the prefix alone does nothing. A prefix pressed in another
+ * scope, or too long ago, is ignored. Among bindings for the same keys, the newest wins.
+ */
+export function resolveHotkey(
+  list: readonly Binding[],
+  press: { chord: string; scope: string; typing: boolean; now: number },
+  pending: PendingKey | null,
+): { binding: Binding | null; pending: PendingKey | null } {
+  const { chord: c, scope, typing, now } = press;
+  const active = list.filter((b) => b.scope === scope && (!typing || b.allowInInput)).reverse();
+  const seq =
+    pending && pending.scope === scope && now - pending.at < SEQUENCE_TIMEOUT_MS
+      ? `${pending.key} ${c}`
+      : null;
+  const binding =
+    (seq && active.find((b) => b.keys.includes(seq))) ||
+    active.find((b) => b.keys.includes(c)) ||
+    null;
+  // Remember unbound single plain keys as potential sequence starters ("g" in "g i").
+  const next = !binding && !typing && c.length === 1 ? { key: c, at: now, scope } : null;
+  return { binding, pending: next };
+}
+
 function onKeyDown(e: KeyboardEvent) {
   if (e.defaultPrevented || e.isComposing) return;
-  const scope = scopeStack[scopeStack.length - 1];
-  const c = chord(e);
-  const typing = isTyping(e);
-  const now = Date.now();
-  const seq = sequence && now - sequence.at < 900 ? `${sequence.key} ${c}` : null;
-
-  for (const b of [...bindings].reverse()) {
-    if (b.scope !== scope) continue;
-    if (typing && !b.allowInInput) continue;
-    if ((seq && b.keys.includes(seq)) || b.keys.includes(c)) {
-      e.preventDefault();
-      sequence = null;
-      b.handler.current?.(e);
-      return;
-    }
+  const press = {
+    chord: chord(e),
+    scope: scopeStack[scopeStack.length - 1]!,
+    typing: isTyping(e),
+    now: Date.now(),
+  };
+  const { binding, pending } = resolveHotkey([...bindings], press, sequence);
+  sequence = pending;
+  if (binding) {
+    e.preventDefault();
+    binding.handler.current?.(e);
   }
-  // Remember single plain keys as potential sequence starters ("g" in "g i").
-  sequence = !typing && c.length === 1 ? { key: c, at: now } : null;
 }
 
 if (typeof window !== 'undefined') window.addEventListener('keydown', onKeyDown);
@@ -85,10 +114,13 @@ export function useHotkey(
 export function useHotkeyScope(scope: string, active = true) {
   useEffect(() => {
     if (!active) return;
+    // A prefix pressed before a modal opened or closed must not combine with the next key.
     scopeStack.push(scope);
+    sequence = null;
     return () => {
       const i = scopeStack.lastIndexOf(scope);
       if (i >= 0) scopeStack.splice(i, 1);
+      sequence = null;
     };
   }, [scope, active]);
 }

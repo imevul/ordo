@@ -92,7 +92,7 @@ environment (`DATABASE_URL`, `ORDO_SECRET_KEY`…) and applies pending migration
 
 With Docker: `make admin EMAIL=…`, `make reset-password EMAIL=…` or `docker compose exec app node cli.mjs <command>`.
 In a checkout: `pnpm --filter @ordo/api cli <command>`. See [admin.md](admin.md#recovery-from-the-command-line) and
-[key rotation](configuration.md#key-rotation).
+[key rotation](admin.md#rotating-the-secret-key).
 
 ## TypeScript SDK
 
