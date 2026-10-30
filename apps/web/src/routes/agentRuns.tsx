@@ -4,7 +4,7 @@ import { Link } from '@tanstack/react-router';
 import { ExternalLink, Pause, Play, RotateCcw, Square } from 'lucide-react';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
-import { useWsMutation } from '../api/queries.ts';
+import { keys, useWsMutation } from '../api/queries.ts';
 import { isOpenRun, RUN_STATUS_COLOR, triggerLabel } from '../components/AgentRuns.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
@@ -27,8 +27,11 @@ export function AgentRunsPage() {
   const [agentId, setAgentId] = useState('');
   const agents = ws.members.filter((m) => m.kind === 'agent');
   const paused = ws.workspace.settings.agentRunsPaused;
-  const togglePause = useWsMutation(ws.slug, () =>
-    api.patch(wsPath(ws.slug, '/'), { settings: { agentRunsPaused: !paused } }),
+  const togglePause = useWsMutation(
+    ws.slug,
+    () => api.patch(wsPath(ws.slug, '/'), { settings: { agentRunsPaused: !paused } }),
+    // The workspace's settings come with the signed-in user's workspaces.
+    { invalidate: [keys.me as unknown as unknown[]] },
   );
   const { data: runs } = useQuery({
     queryKey: ['ws', ws.slug, 'agentRuns', 'list', status, agentId],
