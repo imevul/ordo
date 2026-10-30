@@ -52,12 +52,12 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
   const again = useWsMutation(
     ws.slug,
     () => api.post(wsPath(ws.slug, `/issues/${issue.id}/agent-runs`)),
-    { invalidate: [[...key]] },
+    { invalidate: [key] },
   );
   const cancel = useWsMutation(
     ws.slug,
     (id: string) => api.post(wsPath(ws.slug, `/agent-runs/${id}/cancel`)),
-    { invalidate: [[...key]] },
+    { invalidate: [key] },
   );
   if (!assignedToAgent && runs.length === 0) return null;
   const busy = runs.some(isOpenRun);

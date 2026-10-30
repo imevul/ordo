@@ -504,7 +504,7 @@ function InviteForm() {
   const [emails, setEmails] = useState('');
   const [role, setRole] = useState<Exclude<MemberRole, 'owner'>>('member');
   const [teamIds, setTeamIds] = useState<string[]>([]);
-  const inv = [keys.invites(ws.slug) as unknown as unknown[]];
+  const inv = [keys.invites(ws.slug)];
   const create = useWsMutation(
     ws.slug,
     (body: object) => api.post<Invite[]>(wsPath(ws.slug, '/invites'), body),
@@ -606,7 +606,7 @@ function PendingInvites() {
   const ws = useWorkspace();
   const config = useConfig();
   const { data: invites = [] } = useInvites(ws.slug, true);
-  const inv = [keys.invites(ws.slug) as unknown as unknown[]];
+  const inv = [keys.invites(ws.slug)];
   const revoke = useWsMutation(
     ws.slug,
     (id: string) => api.del(wsPath(ws.slug, `/invites/${id}`)),
