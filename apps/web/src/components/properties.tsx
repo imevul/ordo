@@ -1,4 +1,5 @@
 import {
+  dayInZone,
   ESTIMATE_SCALES,
   LABEL_COLORS,
   type Label,
@@ -98,7 +99,7 @@ export const cycleOptions = (ws: WorkspaceData, teamId: string): Option[] => [
     label: t('issues.none.cycle'),
     icon: <RefreshCcw size={14} className="text-index" />,
   },
-  ...upcomingCycles(ws.cycles, teamId).map((c) => ({
+  ...upcomingCycles(ws.cycles, teamId, dayInZone(ws.workspace.settings.timezone)).map((c) => ({
     value: c.id,
     label: cycleName(c),
     hint: `${shortDate(c.startsAt)} → ${shortDate(c.endsAt)}`,

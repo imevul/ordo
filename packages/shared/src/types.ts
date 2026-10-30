@@ -935,6 +935,8 @@ export interface WorkspaceSettings {
   defaultAssigneeId: string | null;
   /** Runners claim nothing while set: queued runs wait, running ones finish. */
   agentRunsPaused: boolean;
+  /** IANA zone that decides when a day starts for cycle automation; null is UTC. */
+  timezone: string | null;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -952,6 +954,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   scimMatchGroupsByName: false,
   defaultAssigneeId: null,
   agentRunsPaused: false,
+  timezone: null,
 };
 
 export interface WorkspaceDomain {
