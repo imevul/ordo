@@ -78,6 +78,25 @@ export async function accountRoutes(app: FastifyInstance) {
     }
   };
 
+  /**
+   * Changes to how the account signs in need the password, or for an account without one (SSO),
+   * a sign-in within the last 15 minutes. With `sessionOnly`, an API key can't make them at all.
+   */
+  const reauthenticate = async (
+    req: FastifyRequest,
+    user: typeof users.$inferSelect,
+    password: string | undefined,
+    opts: { sessionOnly?: boolean } = {},
+  ) => {
+    if (opts.sessionOnly && !req.sessionId) throw forbidden('Use a browser session for this');
+    if (user.passwordHash) return confirmPassword(user, password);
+    const [session] = req.sessionId
+      ? await db.select().from(sessions).where(eq(sessions.id, req.sessionId))
+      : [];
+    if (!session || Date.now() - new Date(session.createdAt).getTime() > 15 * 60_000)
+      throw forbidden('Sign in again to make this change').as('reauth_needed');
+  };
+
   app.get('/me/account', async (req): Promise<Account> => {
     const user = await loadUser(req);
     const memberships = await db
@@ -250,7 +269,8 @@ export async function accountRoutes(app: FastifyInstance) {
   app.post('/me/email', async (req) => {
     const user = await loadUser(req);
     const input = parse(changeEmailSchema, req.body);
-    await confirmPassword(user, input.password);
+    // Password resets go to this address: whoever changes it can take the account over.
+    await reauthenticate(req, user, input.password, { sessionOnly: true });
     const email = input.email.toLowerCase();
     if (email === user.email)
       throw badRequest('That is already your email address').as('same_email');
@@ -355,23 +375,6 @@ export async function accountRoutes(app: FastifyInstance) {
 
   // ─── passkeys ────────────────────────────────────────────────────────
 
-  /**
-   * Adding or removing a passkey changes how the account signs in: it needs the password, or for
-   * an account without one (SSO), a sign-in within the last 15 minutes.
-   */
-  const reauthenticate = async (
-    req: FastifyRequest,
-    user: typeof users.$inferSelect,
-    password: string | undefined,
-  ) => {
-    if (user.passwordHash) return confirmPassword(user, password);
-    const [session] = req.sessionId
-      ? await db.select().from(sessions).where(eq(sessions.id, req.sessionId))
-      : [];
-    if (!session || Date.now() - new Date(session.createdAt).getTime() > 15 * 60_000)
-      throw forbidden('Sign in again to change your passkeys').as('reauth_needed');
-  };
-
   app.get('/me/passkeys', async (req): Promise<Passkey[]> => {
     const user = requireUser(req);
     return (await listPasskeys(db, user.id)).map(toPasskey);
@@ -464,7 +467,7 @@ export async function accountRoutes(app: FastifyInstance) {
     if (user.totpEnabledAt)
       throw badRequest('Two-factor authentication is already on').as('two_factor_already_on');
     const { password } = parse(passwordConfirmSchema, req.body);
-    await confirmPassword(user, password);
+    await reauthenticate(req, user, password, { sessionOnly: true });
     return beginTotp(db, app.keyring, user);
   });
 
