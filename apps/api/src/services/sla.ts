@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { issues } from '../db/schema.ts';
 import { runAutomation } from './automation.ts';
+import { touchIssues } from './issues.ts';
 import { notify, subscriberIds } from './notifications.ts';
 
 /**
@@ -27,10 +27,7 @@ export async function announceSlaBreaches(app: FastifyInstance) {
         type: 'issue_sla_breached',
         issueId: issue.id,
       });
-      await ctx.tx
-        .update(issues)
-        .set({ slaNotifiedAt: new Date().toISOString() })
-        .where(sql`${issues.id} = ${issue.id}`);
+      await touchIssues(ctx, [issue.id], { slaNotifiedAt: new Date().toISOString() });
     });
   }
 }
