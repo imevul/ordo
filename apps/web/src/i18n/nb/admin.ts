@@ -31,6 +31,11 @@ export default {
       'e-post ikke satt opp — tilbakestilling av passord og invitasjoner på e-post er slått av',
     secretKeyOk: 'hemmelig nøkkel finnes',
     secretKeyMissing: 'hemmelig nøkkel mangler — angi ORDO_SECRET_KEY',
+    secretKeyUnreadable: {
+      one: '{count} lagret hemmelighet kan ikke dekrypteres — sjekk ORDO_SECRET_KEY, eller angi den gamle nøkkelen som ORDO_SECRET_KEY_PREVIOUS',
+      other:
+        '{count} lagrede hemmeligheter kan ikke dekrypteres — sjekk ORDO_SECRET_KEY, eller angi den gamle nøkkelen som ORDO_SECRET_KEY_PREVIOUS',
+    },
     storage: 'lagring: {storage}',
     lease: 'lås {key} holdes av {holder}',
   },
@@ -135,6 +140,8 @@ export default {
       'Brukes til tilbakestilling av passord, invitasjoner, bekreftelse av e-post og varsler på e-post. Passordet lagres kryptert og vises aldri igjen.',
     smtpFromEnv: 'Satt via ORDO_SMTP_URL: {url}',
     current: 'Nåværende: {url}',
+    smtpUnreadable:
+      'Den lagrede SMTP-adressen kan ikke dekrypteres med den nåværende hemmelige nøkkelen. Skriv den inn på nytt.',
     newSmtpUrl: 'Ny SMTP-URL (la stå tom for å beholde)',
     turnEmailOff: 'Slå av e-post',
     testSent: 'Test-e-post sendt til {to}',
@@ -176,6 +183,8 @@ export default {
     baseUrlAnthropic: 'Bare for en gateway eller proxy foran API-et.',
     apiKey: 'API-nøkkel',
     apiKeyCurrent: 'Nåværende: {key}. La stå tom for å beholde den.',
+    apiKeyUnreadable:
+      'Den lagrede nøkkelen kan ikke dekrypteres med den nåværende hemmelige nøkkelen. Skriv den inn på nytt.',
     apiKeyOptional: 'Valgfritt; lokale servere trenger som regel ingen.',
     apiKeyConsole: 'Fra Claude Console. Lagres kryptert.',
     testing: 'Tester…',

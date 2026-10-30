@@ -25,6 +25,7 @@ export const configOf =
 /** A raw inbound webhook request, exactly as received (signatures cover the raw body). */
 export interface InboundRequest {
   headers: Record<string, string>;
+  /** A repeated key keeps its first value. */
   query: Record<string, string>;
   body: string;
 }

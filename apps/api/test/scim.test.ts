@@ -247,6 +247,27 @@ describe('users', () => {
     expect(bad.statusCode).toBe(400);
     expect(json(bad).scimType).toBe('invalidFilter');
   });
+
+  it('clamps out-of-range paging, ignores unknown parameters and refuses malformed ones', async () => {
+    const clamped = json(await scim('GET', '/Users?startIndex=-5&count=-1&sortBy=userName'));
+    expect(clamped).toMatchObject({ startIndex: 1, itemsPerPage: 0 });
+    for (const path of [
+      '/Users?count=ten',
+      '/Users?startIndex=1&startIndex=2',
+      '/Users?filter=a&filter=b',
+      '/Groups?count=1.5',
+      '/Groups/00000000-0000-0000-0000-000000000000?excludedAttributes=a&excludedAttributes=b',
+    ]) {
+      const res = await scim('GET', path);
+      expect(res.statusCode, path).toBe(400);
+      expect(res.headers['content-type']).toContain('application/scim+json');
+      expect(json(res), path).toMatchObject({
+        schemas: ['urn:ietf:params:scim:api:messages:2.0:Error'],
+        status: '400',
+        scimType: 'invalidValue',
+      });
+    }
+  });
 });
 
 describe('updates in each dialect', () => {
