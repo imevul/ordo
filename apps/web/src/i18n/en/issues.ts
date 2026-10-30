@@ -8,6 +8,12 @@ export default {
     cycle: 'No cycle',
     labels: 'No labels',
   },
+  /** Assignee group headers for people who aren't members. */
+  group: {
+    placeholder: '{name} (placeholder)',
+    formerMember: '{name} (former member)',
+    someone: 'Someone',
+  },
   allIssues: 'All issues',
   newIssue: 'New issue',
   newIssueIn: 'New issue in {group}',
