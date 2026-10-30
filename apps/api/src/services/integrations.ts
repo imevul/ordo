@@ -218,6 +218,35 @@ export async function activeIntegration(app: FastifyInstance, id: string) {
 
 // ─── the three paths in ───────────────────────────────────────────────────
 
+/** The issue an event is about, if any: outbound order only matters per issue. */
+function eventIssueId({ type, data }: EventRow): string | null {
+  const d = data as {
+    id?: string;
+    issueId?: string;
+    issue?: { id?: string };
+    comment?: { issueId?: string };
+    reaction?: { issueId?: string };
+  };
+  if (type.startsWith('issue.')) return d.id ?? null;
+  if (type.startsWith('comment.')) return d.issue?.id ?? d.comment?.issueId ?? null;
+  if (type.startsWith('reaction.')) return d.reaction?.issueId ?? null;
+  if (type.startsWith('relation.')) return d.issueId ?? null;
+  return null;
+}
+
+/**
+ * Ordering keys. A job that keeps failing holds up everything behind it with the same key while it
+ * retries, so outbound work is ordered per issue and kept apart from inbound work (webhooks and
+ * polls, which share one key so they never race each other).
+ */
+const outboundKey = (integrationId: string, event: EventRow) => {
+  const issueId = eventIssueId(event);
+  return issueId
+    ? `integration:${integrationId}:out:${issueId}`
+    : `integration:${integrationId}:out`;
+};
+const inboundKey = (integrationId: string) => `integration:${integrationId}:in`;
+
 /** Called by the event dispatcher: one ordered job per integration and event. */
 export async function dispatchToIntegrations(
   app: FastifyInstance,
@@ -244,7 +273,7 @@ export async function dispatchToIntegrations(
           'integration.event',
           { integrationId: integration.id, eventId: event.id },
           {
-            orderingKey: `integration:${integration.id}`,
+            orderingKey: outboundKey(integration.id, event),
             dedupeKey: `ie:${integration.id}:${event.id}`,
           },
         );
@@ -281,7 +310,7 @@ export async function queueInbound(
     app.db,
     'integration.inbound',
     { integrationId: row.id, req },
-    { dedupeKey: `in:${row.id}:${deliveryId}`, orderingKey: `integration:${row.id}` },
+    { dedupeKey: `in:${row.id}:${deliveryId}`, orderingKey: inboundKey(row.id) },
   );
 }
 
@@ -321,7 +350,7 @@ export async function schedulePolls(app: FastifyInstance) {
       'integration.poll',
       { integrationId: row.id },
       {
-        orderingKey: `integration:${row.id}`,
+        orderingKey: inboundKey(row.id),
         dedupeKey: `poll:${row.id}:${Math.floor(now / interval)}`,
         maxAttempts: 1,
       },

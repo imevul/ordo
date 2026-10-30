@@ -235,6 +235,8 @@ describe('webhooks', () => {
 describe('integration framework', () => {
   const seen: IntegrationEvent[] = [];
   let failNext = false;
+  /** Outbound events about the issue with this title fail. */
+  let rejecting: string | null = null;
   let integrationId: string;
   let inboundUrl: string;
 
@@ -274,6 +276,8 @@ describe('integration framework', () => {
         });
       },
       onDomainEvent: async (_ictx, event) => {
+        if (rejecting && (event.data as { title?: string }).title === rejecting)
+          throw new Error('remote rejected the update');
         seen.push(event);
       },
     });
@@ -377,6 +381,36 @@ describe('integration framework', () => {
     await settle();
     [listed] = (await owner.get(`${ws}/integrations`)).data.integrations;
     expect(listed).toMatchObject({ status: 'active', lastError: null });
+  });
+
+  it("doesn't let a failing outbound event hold up inbound work or other issues", async () => {
+    await settle();
+    seen.length = 0;
+    rejecting = 'Rejected outbound';
+    await owner.post(`${ws}/issues`, { teamId: teamA().id, title: 'Rejected outbound' });
+    await app.jobs.drain();
+    const stuck = async () => [
+      ...(await app.db.execute<{ status: string; attempts: number }>(
+        sql`select status, attempts from jobs where name = 'integration.event'
+            and payload->>'integrationId' = ${integrationId} and status <> 'done'`,
+      )),
+    ];
+    // Its first attempt failed; the retry waits on backoff.
+    expect(await stuck()).toEqual([{ status: 'pending', attempts: 1 }]);
+
+    const pr = { title: 'Arrived while stuck', url: 'https://code.example/pr/4' };
+    await hook(pr, { 'x-fake-token': 'let-me-in', 'x-fake-delivery': 'd4' });
+    await owner.post(`${ws}/issues`, { teamId: teamA().id, title: 'Unrelated issue' });
+    // No `settle()`: only jobs that are due run, so the failed event is still waiting.
+    await app.jobs.drain();
+    expect(await app.db.select().from(issues).where(eq(issues.title, pr.title))).toHaveLength(1);
+    expect(seen.map((e) => (e.data as { title?: string }).title)).toContain('Unrelated issue');
+    expect(await stuck()).toEqual([{ status: 'pending', attempts: 1 }]);
+
+    rejecting = null;
+    await settle();
+    expect(await stuck()).toEqual([]);
+    expect(seen.map((e) => (e.data as { title?: string }).title)).toContain('Rejected outbound');
   });
 
   it('stops accepting hooks when switched off', async () => {
