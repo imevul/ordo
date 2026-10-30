@@ -37,8 +37,8 @@ import {
 } from '../db/schema.ts';
 import { localeForEmail, localeOf } from '../i18n/index.ts';
 import { requireUser } from '../lib/auth.ts';
-import { randomToken } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
+import { inviteUrl, newInviteToken, revealInviteToken } from '../lib/invites.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
 import { audit, auditFilters } from '../services/audit.ts';
@@ -273,20 +273,21 @@ export async function adminRoutes(app: FastifyInstance) {
 
   // ─── site invites: accounts on the instance, without a workspace ────
 
-  const inviteUrl = (token: string) => `${app.env.publicUrl}/invite/${token}`;
   const instanceName = () => new URL(app.env.publicUrl).host;
+  /** `token` is passed when it was just made; stored ones are decrypted when the key allows. */
   const toSiteInvite = (
     i: typeof invites.$inferSelect & { createdByName: string | null },
+    token = revealInviteToken(app, i),
   ): SiteInvite => ({
     id: i.id,
-    token: i.token,
+    token,
     email: i.email,
     canCreateWorkspaces: i.canCreateWorkspaces,
     expiresAt: i.expiresAt,
     createdAt: i.createdAt,
     lastSentAt: i.lastSentAt,
     createdByName: i.createdByName,
-    url: inviteUrl(i.token),
+    url: token ? inviteUrl(app, token) : null,
   });
 
   app.get('/invites', async (): Promise<SiteInvite[]> => {
@@ -329,18 +330,23 @@ export async function adminRoutes(app: FastifyInstance) {
     return db.transaction(async (tx) => {
       const expiresAt = new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString();
       const now = new Date().toISOString();
+      const tokens = new Map<string, string>();
       const rows = await tx
         .insert(invites)
         .values(
-          (emails.length ? emails : [null]).map((email) => ({
-            workspaceId: null,
-            token: randomToken(18),
-            email,
-            canCreateWorkspaces: input.canCreateWorkspaces,
-            createdBy: me.id,
-            expiresAt,
-            lastSentAt: email && app.mailer.enabled ? now : null,
-          })),
+          (emails.length ? emails : [null]).map((email) => {
+            const { token, columns } = newInviteToken(app);
+            tokens.set(columns.id, token);
+            return {
+              ...columns,
+              workspaceId: null,
+              email,
+              canCreateWorkspaces: input.canCreateWorkspaces,
+              createdBy: me.id,
+              expiresAt,
+              lastSentAt: email && app.mailer.enabled ? now : null,
+            };
+          }),
         )
         .returning();
       for (const row of rows) {
@@ -351,7 +357,7 @@ export async function adminRoutes(app: FastifyInstance) {
             siteInviteEmail(await localeForEmail(tx, row.email, me.id), {
               inviter: me.name,
               instance: instanceName(),
-              url: inviteUrl(row.token),
+              url: inviteUrl(app, tokens.get(row.id)!),
               canCreateWorkspaces: row.canCreateWorkspaces,
             }),
           );
@@ -368,7 +374,7 @@ export async function adminRoutes(app: FastifyInstance) {
           requestMeta(req),
         );
       }
-      return rows.map((r) => toSiteInvite({ ...r, createdByName: me.name }));
+      return rows.map((r) => toSiteInvite({ ...r, createdByName: me.name }, tokens.get(r.id)));
     });
   });
 
@@ -382,11 +388,14 @@ export async function adminRoutes(app: FastifyInstance) {
         .from(invites)
         .where(and(eq(invites.id, id), isNull(invites.workspaceId), isNull(invites.acceptedAt)));
       if (!row?.email) throw notFound('Invite');
-      // Resending also extends the invite.
+      // Resending also extends the invite. A link that can't be decrypted gets a new token.
       const expiresAt = new Date(Date.now() + 14 * 86_400_000).toISOString();
+      let token = revealInviteToken(app, row);
+      const fresh = token ? null : newInviteToken(app, id);
+      token ??= fresh!.token;
       await tx
         .update(invites)
-        .set({ lastSentAt: new Date().toISOString(), expiresAt })
+        .set({ lastSentAt: new Date().toISOString(), expiresAt, ...fresh?.columns })
         .where(eq(invites.id, id));
       await queueEmail(
         tx,
@@ -394,7 +403,7 @@ export async function adminRoutes(app: FastifyInstance) {
         siteInviteEmail(await localeForEmail(tx, row.email, me.id), {
           inviter: me.name,
           instance: instanceName(),
-          url: inviteUrl(row.token),
+          url: inviteUrl(app, token),
           canCreateWorkspaces: row.canCreateWorkspaces,
         }),
       );

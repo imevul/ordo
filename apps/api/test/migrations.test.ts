@@ -1,10 +1,13 @@
+import { randomBytes } from 'node:crypto';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createDb } from '../src/db/client.ts';
-import { migrationsFolder } from '../src/db/migrate.ts';
+import { migrationsFolder, runMigrations } from '../src/db/migrate.ts';
+import { sha256 } from '../src/lib/crypto.ts';
+import { Keyring } from '../src/lib/secrets.ts';
 import { freshDatabase } from './helpers.ts';
 
 /** Copies the migrations folder with the journal cut down to the first `count` entries. */
@@ -136,5 +139,48 @@ describe('migrations', { timeout: 60_000 }, () => {
     const rows = await sql<{ username: string }[]>`
       select u.username from team_members tm join users u on u.id = tm.user_id`;
     expect(rows.map((r) => r.username)).toEqual(['stays']);
+  });
+
+  it('hashes and encrypts invite tokens, then drops the plain column', async () => {
+    const url = await freshDatabase('migrations_invite_tokens');
+    const { db, sql } = createDb(url);
+    cleanup.push(() => sql.end());
+
+    const before = folderUpTo(entryIndex('0050_invite_token_hash'));
+    cleanup.push(() => rmSync(before, { recursive: true, force: true }));
+    await migrate(db, { migrationsFolder: before });
+    const [invite] = await sql<{ id: string }[]>`insert into invites (token, expires_at)
+      values ('legacy-token', now() + interval '1 day') returning id`;
+
+    const keyring = new Keyring(randomBytes(32));
+    await runMigrations(db, keyring);
+    // Again, as on every boot: nothing left to do.
+    await runMigrations(db, keyring);
+    const columns = await sql<{ column_name: string }[]>`select column_name
+      from information_schema.columns where table_name = 'invites'`;
+    expect(columns.map((c) => c.column_name)).not.toContain('token');
+    const [row] = await sql<{ token_hash: string; token_encrypted: string }[]>`
+      select token_hash, token_encrypted from invites where id = ${invite!.id}`;
+    expect(row!.token_hash).toBe(sha256('legacy-token'));
+    expect(row!.token_encrypted).not.toContain('legacy-token');
+    expect(keyring.decrypt(row!.token_encrypted, `invites:${invite!.id}:token`)).toBe(
+      'legacy-token',
+    );
+  });
+
+  it('keeps invite links working without a secret key, as a hash only', async () => {
+    const url = await freshDatabase('migrations_invite_tokens_nokey');
+    const { db, sql } = createDb(url);
+    cleanup.push(() => sql.end());
+
+    const before = folderUpTo(entryIndex('0050_invite_token_hash'));
+    cleanup.push(() => rmSync(before, { recursive: true, force: true }));
+    await migrate(db, { migrationsFolder: before });
+    await sql`insert into invites (token, expires_at) values ('legacy-token', now() + interval '1 day')`;
+
+    await runMigrations(db, new Keyring(null));
+    expect(await sql`select token_hash, token_encrypted from invites`).toEqual([
+      { token_hash: sha256('legacy-token'), token_encrypted: null },
+    ]);
   });
 });

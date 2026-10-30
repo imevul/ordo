@@ -18,7 +18,7 @@ export async function testApp(overrides: Parameters<typeof loadEnv>[0] = {}) {
     }),
     { logger: false },
   );
-  await runMigrations(app.db);
+  await runMigrations(app.db, app.keyring);
   await app.settings.reload();
   await app.ready();
   return app;

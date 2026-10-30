@@ -159,6 +159,10 @@ once, for that address; links work until they expire or are revoked. With worksp
 in through a site invite can create workspaces only if the invite (or later an admin) granted it;
 `GET /auth/me` says whether you can now (`canCreateWorkspace`).
 
+Invites (site and workspace) store only a hash of the token, plus the token encrypted with `ORDO_SECRET_KEY` so
+the lists can show the link again. Without a key, an invite's `token` and `url` are returned only when it's
+created and are `null` in lists; resending such an invite mails a new link and the old one stops working.
+
 ## Workspace-scoped endpoints
 
 Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g. `/api/w/acme/issues`.

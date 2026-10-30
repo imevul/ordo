@@ -377,9 +377,9 @@ otherwise restore the backup you took before updating.
 
 `ORDO_SECRET_KEY` encrypts every secret Ordo stores: authenticator (TOTP) secrets for two-factor sign-in, SSO client
 secrets, SMTP and AI settings saved in the admin area, workspace AI keys, integration tokens, webhook signing secrets,
-import credentials, Matrix encryption state and the push notification keys. It also signs the short-lived links to
-profile pictures and workspace logos. Everything else (issues, accounts, passwords, API keys, recovery codes,
-passkeys, attachments) doesn't depend on it.
+import credentials, Matrix encryption state, invite links and the push notification keys. It also signs the
+short-lived links to profile pictures and workspace logos. Everything else (issues, accounts, passwords, API keys,
+recovery codes, passkeys, attachments) doesn't depend on it.
 
 **Missing.** With Docker Compose the app doesn't start at all (`Run make update to add ORDO_SECRET_KEY to .env`), and
 `make up` or `make update` generates a key when `.env` has none. That's right for a new install, but after a restore
@@ -398,7 +398,8 @@ secret key check fails with the number of stored secrets that can't be decrypted
 - OpenID Connect single sign-on fails (SAML doesn't use a stored secret and keeps working);
 - **Admin → Settings** marks a saved SMTP URL or AI key as unreadable, and email stops (jobs end up `dead`);
 - webhook deliveries, integrations (forges, Slack, Matrix…), workspace AI and running imports fail;
-- push notifications fail, and turning them on fails too.
+- push notifications fail, and turning them on fails too;
+- pending invites can't be copied (the links still open); resending one emails a new link.
 
 After changing either variable, run `make up` with Docker (`make restart` keeps the old environment) or
 `systemctl restart ordo`.
@@ -424,3 +425,4 @@ the ones it can't decrypt:
 | Workspace AI keys            | Workspace admins enter them again.                                                                                                                                    |
 | Push notifications           | `delete from instance_keys where key = 'vapid';` in `make psql`; Ordo makes new keys, and people turn notifications on again on each device.                          |
 | Imports                      | Start them again.                                                                                                                                                     |
+| Invite links                 | Links already sent keep working. To copy one again, **Resend** the invite: it emails a new link and the old one stops working.                                        |

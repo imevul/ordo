@@ -9,6 +9,7 @@ import {
   instanceSettings,
   integrationApps,
   integrations,
+  invites,
   matrixCryptoStores,
   users,
   webhooks,
@@ -33,6 +34,7 @@ export const workspaceAiKeyAad = (workspaceId: string) =>
   `workspace_ai_providers:${workspaceId}:apiKey`;
 export const importSecretsAad = (importId: string) => `imports:${importId}:secrets`;
 export const instanceKeyAad = (key: string) => `instance_keys:${key}:value`;
+export const inviteTokenAad = (inviteId: string) => `invites:${inviteId}:token`;
 export const SMTP_URL_AAD = 'instance_settings:smtp:url';
 export const AI_API_KEY_AAD = 'instance_settings:ai:apiKey';
 
@@ -81,6 +83,7 @@ export const ENCRYPTED_COLUMNS: {
     aad: workspaceAiKeyAad,
   },
   { table: imports, id: imports.id, column: imports.secrets, aad: importSecretsAad },
+  { table: invites, id: invites.id, column: invites.tokenEncrypted, aad: inviteTokenAad },
   { table: instanceKeys, id: instanceKeys.key, column: instanceKeys.value, aad: instanceKeyAad },
 ];
 

@@ -444,8 +444,8 @@ function Invites() {
       });
       setEmails('');
       reload();
-      // A link has to be passed on by hand; copy it right away.
-      if (rows.length === 1 && (!rows[0]!.email || !config.data?.emailEnabled)) copy(rows[0]!.url);
+      // A link has to be passed on by hand; copy it right away. New invites always carry it.
+      if (rows.length === 1 && (!rows[0]!.email || !config.data?.emailEnabled)) copy(rows[0]!.url!);
       else toast.success(t('admin.invites.created', { count: rows.length }));
     } catch (err) {
       toast.error(errMsg(err));
@@ -526,15 +526,17 @@ function Invites() {
                   .join(' · ')}
               </div>
             </div>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              title={t('admin.invites.copy')}
-              aria-label={t('admin.invites.copy')}
-              onClick={() => copy(i.url)}
-            >
-              <Copy size={12} />
-            </button>
+            {i.url && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                title={t('admin.invites.copy')}
+                aria-label={t('admin.invites.copy')}
+                onClick={() => copy(i.url!)}
+              >
+                <Copy size={12} />
+              </button>
+            )}
             {i.email && config.data?.emailEnabled && (
               <button
                 type="button"

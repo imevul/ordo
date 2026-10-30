@@ -52,8 +52,8 @@ example after it may have leaked:
    reloading the page gets new ones.
 4. `docker compose exec app node cli.mjs rotate-key`. It re-encrypts every stored secret with the new key:
    two-factor secrets, SMTP settings, SSO client secrets, webhook signing secrets, integration tokens, AI API keys,
-   push notification keys, Matrix encryption state and import credentials. It lists any secret it can't decrypt
-   with either key; enter those again in Ordo.
+   push notification keys, Matrix encryption state, import credentials and invite links. It lists any secret it
+   can't decrypt with either key; enter those again in Ordo.
 5. Once every instance runs with the new key, run `rotate-key` again. When it re-encrypts 0 secrets and reports
    nothing it can't decrypt, remove `ORDO_SECRET_KEY_PREVIOUS` and `make up`. If you remove it too early, the
    features that depend on the remaining secrets stop working (SSO sign-in, signed webhooks, integrations, AI
