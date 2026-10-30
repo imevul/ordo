@@ -17,9 +17,9 @@ import {
   startRun,
   suggestMapping,
 } from '../services/imports/engine.ts';
-import { importSecretsAad } from '../services/imports/secrets.ts';
 import type { StartedImport } from '../services/imports/types.ts';
 import { startUndo } from '../services/imports/undo.ts';
+import { importSecretsAad } from '../services/secretKey.ts';
 import { publishChanges } from '../services/sync.ts';
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;

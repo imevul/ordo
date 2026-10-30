@@ -16,6 +16,7 @@ import { assertTeamAccess } from '../access.ts';
 import { getIssue, similarIssues } from '../issues.ts';
 import { listLabels } from '../labels.ts';
 import { describeIssues, type McpReader, readIssue } from '../mcp.ts';
+import { AI_API_KEY_AAD, workspaceAiKeyAad } from '../secretKey.ts';
 import { listTeams } from '../teams.ts';
 import { type AiModel, aiModel, parseAnswer } from './providers.ts';
 
@@ -26,16 +27,13 @@ import { type AiModel, aiModel, parseAnswer } from './providers.ts';
  */
 
 export const decryptAiKey = (app: FastifyInstance, key: string | null) =>
-  key?.startsWith('v1.') ? app.keyring.decrypt(key, 'instance_settings:ai:apiKey') : key;
+  key?.startsWith('v1.') ? app.keyring.decrypt(key, AI_API_KEY_AAD) : key;
 
 /** The instance's model, built from settings; null when AI isn't set up. */
 export function instanceModel(app: FastifyInstance, settings?: AiSettings | null): AiModel | null {
   const ai = settings === undefined ? app.settings.get('ai') : settings;
   return ai ? aiModel(ai, decryptAiKey(app, ai.apiKey)) : null;
 }
-
-export const workspaceAiKeyAad = (workspaceId: string) =>
-  `workspace_ai_providers:${workspaceId}:apiKey`;
 
 /** A workspace's own model settings (key decrypted), if it has any. */
 export async function ownAiProvider(app: FastifyInstance, workspaceId: string) {
