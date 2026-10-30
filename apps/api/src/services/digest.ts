@@ -16,13 +16,18 @@ import { queueEmail } from './mailer.ts';
 export function resolvePreferences(
   stored: Partial<UserPreferences> | null | undefined,
 ): UserPreferences {
+  const d = DEFAULT_PREFERENCES.notifications;
+  const s = stored?.notifications;
   return {
     ...DEFAULT_PREFERENCES,
     ...stored,
     notifications: {
-      ...DEFAULT_PREFERENCES.notifications,
-      ...stored?.notifications,
-      email: { ...DEFAULT_PREFERENCES.notifications.email, ...stored?.notifications?.email },
+      ...d,
+      ...s,
+      inbox: { ...d.inbox, ...s?.inbox },
+      push: { ...d.push, ...s?.push },
+      email: { ...d.email, ...s?.email },
+      chat: { ...d.chat, ...s?.chat },
     },
   };
 }

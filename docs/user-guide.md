@@ -192,6 +192,11 @@ The **Inbox** collects notifications: assigned / unassigned, mentions, comments 
 follow, issues marked urgent, and reactions to your comments. Select one to read the issue alongside. `U` toggles read, `⌫` deletes;
 the header buttons mark everything read or clear read notifications.
 
+**Settings → Notifications** decides what reaches you, per kind of notification and per channel: **Inbox**, **Push**
+(the devices you turned it on for), **Email** (batched as chosen above the grid) and **Chat** (direct messages to the
+chat accounts you connected, unless you turned DMs off there). Turn off Inbox for a kind and it isn't created at all,
+on any channel; the others only send what lands in the Inbox. Reactions only ever go to the Inbox.
+
 **Snooze** a notification (`H`, or the clock button) to hide it until later: in an hour, later today, tomorrow
 morning or next week, in your own time zone. It leaves the inbox and the unread count, isn't emailed meanwhile, and
 comes back unread at the top when the time comes. **Snoozed** in the inbox header lists what's waiting; `H` there
@@ -283,8 +288,8 @@ _Share → Add to Home Screen_ in Safari; on Android, _Add to home screen_. It o
 working through a flaky connection (what's changed shows up once you're back online).
 
 **Push notifications** reach that device even when Ordo isn't open: turn them on under **Settings → Notifications
-→ Push notifications**, once per browser or device (on iPhone, from the installed app). Everything that lands in
-your Inbox is pushed, except reactions; tapping a notification opens the issue. Push needs Ordo on HTTPS (or
+→ Push notifications**, once per browser or device (on iPhone, from the installed app). What's pushed follows the
+Push column of the notification settings (everything but reactions by default); tapping a notification opens the issue. Push needs Ordo on HTTPS (or
 `localhost`).
 
 ## Your account

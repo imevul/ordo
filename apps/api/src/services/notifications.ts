@@ -1,10 +1,16 @@
-import type { NotificationType } from '@ordo/shared';
-import { eq, sql } from 'drizzle-orm';
+import {
+  INBOX_ONLY_TYPES,
+  type NotificationReason,
+  type NotificationType,
+  type UserPreferences,
+} from '@ordo/shared';
+import { eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { issueSubscribers, issues, notifications } from '../db/schema.ts';
+import { issueSubscribers, issues, notifications, users } from '../db/schema.ts';
 import { usersWithTeamAccess } from './access.ts';
 import { queueChatNotifications } from './chat.ts';
 import { type Ctx, emit } from './context.ts';
+import { resolvePreferences } from './digest.ts';
 import { queuePush } from './push.ts';
 import { publishChanges } from './sync.ts';
 
@@ -25,9 +31,18 @@ export async function subscriberIds(ctx: Ctx, issueId: string): Promise<string[]
   return rows.map((r) => r.userId);
 }
 
+/** Types that are about the assignee whoever else the issue has. */
+const ASSIGNEE_TYPES: readonly NotificationType[] = [
+  'issue_assigned',
+  'issue_unassigned',
+  'issue_priority_urgent',
+];
+
 /**
  * Creates notifications for each recipient except the actor, skipping anyone who can't see the
- * issue's team (non-members, guests outside it, members of the workspace outside a private team).
+ * issue's team (non-members, guests outside it, members of the workspace outside a private team)
+ * and anyone who turned the type off for their inbox. Push and chat DMs go out per the recipient's
+ * channel settings; email is left to the digest job.
  */
 export async function notify(
   ctx: Ctx,
@@ -43,12 +58,29 @@ export async function notify(
   const ids = [...new Set(input.userIds.filter((x): x is string => !!x && x !== ctx.userId))];
   if (ids.length === 0) return;
   const [issue] = await ctx.tx
-    .select({ teamId: issues.teamId })
+    .select({ teamId: issues.teamId, assigneeId: issues.assigneeId, creatorId: issues.creatorId })
     .from(issues)
     .where(eq(issues.id, input.issueId));
   if (!issue) return;
-  const recipients = await usersWithTeamAccess(ctx.tx, ctx.workspaceId, issue.teamId, ids);
+  const allowed = await usersWithTeamAccess(ctx.tx, ctx.workspaceId, issue.teamId, ids);
+  if (allowed.length === 0) return;
+  const people = await ctx.tx
+    .select({ id: users.id, preferences: users.preferences })
+    .from(users)
+    .where(inArray(users.id, allowed));
+  const prefs = new Map<string, UserPreferences['notifications']>(
+    people.map((p) => [p.id, resolvePreferences(p.preferences).notifications]),
+  );
+  const recipients = allowed.filter((id) => prefs.get(id)?.inbox[input.type] !== false);
   if (recipients.length === 0) return;
+  const reason = (userId: string): NotificationReason =>
+    input.type === 'issue_mention'
+      ? 'mention'
+      : ASSIGNEE_TYPES.includes(input.type) || userId === issue.assigneeId
+        ? 'assignee'
+        : userId === issue.creatorId
+          ? 'creator'
+          : 'subscriber';
   const rows = await ctx.tx
     .insert(notifications)
     .values(
@@ -59,14 +91,15 @@ export async function notify(
         issueId: input.issueId,
         commentId: input.commentId ?? null,
         actorId: ctx.userId,
-        data: input.data ?? {},
+        data: { ...input.data, reason: reason(userId) },
       })),
     )
     .returning({ id: notifications.id, userId: notifications.userId });
-  // Reactions are too small for a direct message or a push; they wait in the inbox.
-  if (input.type !== 'comment_reaction') {
-    await queueChatNotifications(ctx.tx, ctx.workspaceId, rows);
-    await queuePush(ctx.tx, rows);
+  if (!INBOX_ONLY_TYPES.includes(input.type)) {
+    const on = (channel: 'push' | 'chat') =>
+      rows.filter((r) => prefs.get(r.userId)?.[channel][input.type]);
+    await queueChatNotifications(ctx.tx, ctx.workspaceId, on('chat'));
+    await queuePush(ctx.tx, on('push'));
   }
   for (const r of rows)
     emit(ctx, {

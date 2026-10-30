@@ -120,7 +120,10 @@ export const updatePreferencesSchema = z.object({
     .object({
       emailDigest: z.enum(['off', 'instant', 'hourly', 'daily']).optional(),
       // partialRecord: in Zod 4 an enum-keyed record would require every key.
+      inbox: z.partialRecord(z.enum(NOTIFICATION_TYPES), z.boolean()).optional(),
+      push: z.partialRecord(z.enum(NOTIFICATION_TYPES), z.boolean()).optional(),
       email: z.partialRecord(z.enum(NOTIFICATION_TYPES), z.boolean()).optional(),
+      chat: z.partialRecord(z.enum(NOTIFICATION_TYPES), z.boolean()).optional(),
     })
     .optional(),
 });
