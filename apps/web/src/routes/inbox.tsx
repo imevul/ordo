@@ -362,6 +362,7 @@ export function InboxPage() {
                       color={actor.avatarColor}
                       src={actor.avatarUrl}
                       size={20}
+                      status={actor.status}
                     />
                   ) : (
                     <span className="block h-5 w-5 bg-border" />

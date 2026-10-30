@@ -2,7 +2,8 @@ import type { Bootstrap, Notification } from '@ordo/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { jobs, pushSubscriptions } from '../src/db/schema.ts';
+import { jobs, notifications, pushSubscriptions, users } from '../src/db/schema.ts';
+import { expireStatuses } from '../src/services/status.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -183,5 +184,87 @@ describe('inbox filters', () => {
     // Someone else's filter never reaches this person's notifications.
     await member.post(`${ws}/notifications/delete`, { read: true, filter: {} });
     expect(await shown('')).toEqual([mark.comment, mark.assigned].sort());
+  });
+});
+
+describe('status and pause', () => {
+  const later = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
+  const memberOf = async (c: Client, id: string) =>
+    ((await c.get(`${ws}/bootstrap`)).data as Bootstrap).members.find((m) => m.id === id)!;
+  const lastFor = async (issueId: string) =>
+    (await inbox(member)).find((n) => n.issueId === issueId)!;
+
+  it('shows a status to others, but keeps the pause private', async () => {
+    const until = later(48);
+    expect(
+      (
+        await member.put('/api/me/status', {
+          kind: 'vacation',
+          text: 'Back Monday',
+          until,
+          pause: 'all',
+        })
+      ).statusCode,
+    ).toBe(200);
+    const seen = await memberOf(owner, ids.member!);
+    expect(seen.status).toMatchObject({ kind: 'vacation', text: 'Back Monday' });
+    expect(Date.parse(seen.status!.until!)).toBe(Date.parse(until));
+    expect(JSON.stringify(seen)).not.toContain('notifyPause');
+    const me = (await member.get('/api/auth/me')).data;
+    expect(me.notifyPause).toMatchObject({ mode: 'all' });
+    expect((await member.put('/api/me/status', { kind: null, until: null })).statusCode).toBe(400);
+    expect(
+      (await member.put('/api/me/status', { kind: 'away', until: later(-1) })).statusCode,
+    ).toBe(400);
+  });
+
+  it('mute: keeps everything in the inbox, sends nothing', async () => {
+    const issue = await newIssue('While away');
+    const n = await lastFor(issue.id);
+    expect(n).toBeDefined();
+    expect(await pushJobs()).not.toContain(n.id);
+    const [row] = await app.db.select().from(notifications).where(eq(notifications.id, n.id));
+    expect(row!.emailedAt).not.toBeNull();
+  });
+
+  it('only mentions: lets mentions through and holds the rest', async () => {
+    await member.put('/api/me/notify-pause', { mode: 'mentions', until: null });
+    const issue = await newIssue('Focus time');
+    expect(await pushJobs()).not.toContain((await lastFor(issue.id)).id);
+    await owner.post(`${ws}/issues/${issue.id}/comments`, { body: `Need you @${ids.username}` });
+    const mention = (await inbox(member)).find(
+      (n) => n.issueId === issue.id && n.type === 'issue_mention',
+    )!;
+    expect(await pushJobs()).toContain(mention.id);
+  });
+
+  it('clearing the status ends the pause that came with it, not one set on its own', async () => {
+    await member.put('/api/me/status', { kind: 'dnd', until: later(2), pause: 'all' });
+    await member.del('/api/me/status');
+    let me = (await member.get('/api/auth/me')).data;
+    expect(me.status).toBeNull();
+    expect(me.notifyPause).toBeNull();
+    await member.put('/api/me/status', { kind: 'away', until: later(1) });
+    await member.put('/api/me/notify-pause', { mode: 'all', until: later(3) });
+    await member.del('/api/me/status');
+    me = (await member.get('/api/auth/me')).data;
+    expect(me.notifyPause).toMatchObject({ mode: 'all' });
+    await member.put('/api/me/notify-pause', { mode: null, until: null });
+  });
+
+  it('expires statuses and pauses on time', async () => {
+    await member.put('/api/me/status', { kind: 'focus', until: later(1), pause: 'mentions' });
+    await app.db
+      .update(users)
+      .set({ statusUntil: later(-1), notifyPauseUntil: later(-1) })
+      .where(eq(users.id, ids.member!));
+    // Read as gone even before the job runs…
+    expect((await memberOf(owner, ids.member!)).status).toBeNull();
+    const issue = await newIssue('Back again');
+    expect(await pushJobs()).toContain((await lastFor(issue.id)).id);
+    // …and cleared by it.
+    await expireStatuses(app);
+    const [row] = await app.db.select().from(users).where(eq(users.id, ids.member!));
+    expect(row).toMatchObject({ statusKind: null, notifyPause: null });
   });
 });

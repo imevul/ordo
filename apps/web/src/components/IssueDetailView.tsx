@@ -508,6 +508,7 @@ export function IssueDetailView({
                         color={assignee.avatarColor}
                         src={assignee.avatarUrl}
                         size={16}
+                        status={assignee.status}
                       />
                     )}
                   </div>

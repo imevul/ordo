@@ -229,6 +229,37 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
+/** Statuses people can set on themselves; "available" is no status at all. */
+export const USER_STATUSES = ['away', 'meeting', 'focus', 'dnd', 'sick', 'vacation'] as const;
+export type UserStatusKind = (typeof USER_STATUSES)[number];
+
+/** Pausing pings: `mentions` lets mentions (and SLA breaches) through, `all` lets nothing through. */
+export const NOTIFY_PAUSES = ['mentions', 'all'] as const;
+export type NotifyPauseMode = (typeof NOTIFY_PAUSES)[number];
+
+/** How long a status or pause lasts, before it's turned into a time in the person's own zone. */
+export const STATUS_DURATIONS = ['30m', '1h', '2h', '4h', 'today', 'week', 'never'] as const;
+export type StatusDuration = (typeof STATUS_DURATIONS)[number];
+
+/** What each status suggests: an emoji, how it pauses notifications, and when it clears. */
+export const USER_STATUS_PRESETS: Record<
+  UserStatusKind,
+  { emoji: string; pause: NotifyPauseMode | null; clearAfter: StatusDuration }
+> = {
+  away: { emoji: '🚶', pause: null, clearAfter: '1h' },
+  meeting: { emoji: '📅', pause: 'mentions', clearAfter: '1h' },
+  focus: { emoji: '🎧', pause: 'mentions', clearAfter: '2h' },
+  dnd: { emoji: '⛔', pause: 'all', clearAfter: 'today' },
+  sick: { emoji: '🤒', pause: 'all', clearAfter: 'today' },
+  vacation: { emoji: '🌴', pause: 'all', clearAfter: 'week' },
+};
+
+/** Statuses that warn people who assign or mention someone: they won't see it soon. */
+export const UNAVAILABLE_STATUSES: readonly UserStatusKind[] = ['dnd', 'sick', 'vacation'];
+
+/** Notification types a `mentions` pause still pings for. */
+export const PAUSE_PASSES: readonly NotificationType[] = ['issue_mention', 'issue_sla_breached'];
+
 /** Why someone got a notification, stored as `data.reason`; older rows have none and count as `subscriber`. */
 export const NOTIFICATION_REASONS = ['assignee', 'creator', 'subscriber', 'mention'] as const;
 export type NotificationReason = (typeof NOTIFICATION_REASONS)[number];

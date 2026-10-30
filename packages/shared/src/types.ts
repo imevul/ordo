@@ -11,6 +11,7 @@ import type {
   Locale,
   MemberRole,
   NotificationType,
+  NotifyPauseMode,
   Priority,
   ProjectHealth,
   ProjectStatus,
@@ -18,6 +19,7 @@ import type {
   StateType,
   TeamRole,
   UserKind,
+  UserStatusKind,
 } from './constants.ts';
 import { DEFAULT_LOCALE, NOTIFICATION_TYPES } from './constants.ts';
 import {
@@ -42,8 +44,26 @@ export interface User {
   avatarUrl: string | null;
 }
 
+/** What someone says about their availability; `kind` null is a custom status (emoji and text only). */
+export interface UserStatus {
+  kind: UserStatusKind | null;
+  emoji: string | null;
+  text: string | null;
+  /** When it clears by itself; null: when they clear it. */
+  until: string | null;
+}
+
+/** Notifications held back from push, email and chat (they still land in the inbox). Private. */
+export interface NotifyPause {
+  mode: NotifyPauseMode;
+  /** Null: until turned off. */
+  until: string | null;
+}
+
 export interface Me extends User {
   isInstanceAdmin: boolean;
+  status: UserStatus | null;
+  notifyPause: NotifyPause | null;
   /** The language the app, emails and notifications use for this person. */
   locale: Locale;
   workspaces: { id: string; name: string; slug: string; role: MemberRole }[];
@@ -86,6 +106,7 @@ export interface Member extends User {
   role: MemberRole;
   joinedAt: string;
   suspended: boolean;
+  status: UserStatus | null;
 }
 
 export interface WorkflowState {

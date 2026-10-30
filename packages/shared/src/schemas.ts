@@ -11,6 +11,7 @@ import {
   MEMBER_ROLES,
   NOTIFICATION_REASONS,
   NOTIFICATION_TYPES,
+  NOTIFY_PAUSES,
   PROJECT_HEALTH,
   PROJECT_STATUSES,
   RECURRENCE_UNITS,
@@ -18,6 +19,7 @@ import {
   STATE_TYPES,
   TEAM_KEY_PATTERN,
   TEAM_ROLES,
+  USER_STATUSES,
   USERNAME_PATTERN,
 } from './constants.ts';
 import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
@@ -585,6 +587,23 @@ export const snoozeSchema = z.object({
   ids: z.array(id).min(1).max(200),
   /** A future time, or null to wake them now. */
   until: z.iso.datetime({ offset: true }).nullable(),
+});
+
+const futureTime = z.iso.datetime({ offset: true }).nullable();
+
+/** Sets your status; `pause` holds back pings until the status clears (null: don't pause). */
+export const setStatusSchema = z.object({
+  kind: z.enum(USER_STATUSES).nullable(),
+  emoji: z.string().trim().max(16).nullable().optional(),
+  text: z.string().trim().max(100).nullable().optional(),
+  until: futureTime,
+  pause: z.enum(NOTIFY_PAUSES).nullable().optional(),
+});
+
+/** Pauses pings on its own; `mode: null` resumes them. */
+export const notifyPauseSchema = z.object({
+  mode: z.enum(NOTIFY_PAUSES).nullable(),
+  until: futureTime,
 });
 
 /**
