@@ -1,4 +1,4 @@
-import type { Attachment, Member } from '@ordo/shared';
+import { type Attachment, attachmentMarkdown, type Member } from '@ordo/shared';
 import { type Editor, Extension } from '@tiptap/core';
 import { Placeholder } from '@tiptap/extensions';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
@@ -9,7 +9,6 @@ import { exitSuggestion, Suggestion, type SuggestionProps } from '@tiptap/sugges
 import { Bold, Code, Italic, Link2, Strikethrough } from 'lucide-react';
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { attachmentMarkdown } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
 import { markdownConverter, richTextExtensions } from '../lib/richtext.ts';
 import { useWorkspace } from '../lib/workspace.tsx';

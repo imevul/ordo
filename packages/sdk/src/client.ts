@@ -2,6 +2,7 @@ import type {
   AgentIdentity,
   AgentRun,
   AgentRunContext,
+  Attachment,
   Bootstrap,
   Comment,
   CreateCommentInput,
@@ -64,17 +65,19 @@ export class Ordo {
     this.#fetch = opts.fetch ?? globalThis.fetch;
   }
 
-  /** Any API call; `path` is relative to `/api`. */
+  /** Any API call; `path` is relative to `/api`. A `FormData` body is sent as a multipart upload. */
   async request<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
     const headers: Record<string, string> = {
       authorization: `Bearer ${this.#token}`,
       accept: 'application/json',
     };
-    if (body !== undefined) headers['content-type'] = 'application/json';
+    const form = body instanceof FormData;
+    // fetch sets the multipart content type itself, with the boundary.
+    if (body !== undefined && !form) headers['content-type'] = 'application/json';
     const res = await this.#fetch(`${this.url}/api${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : form ? body : JSON.stringify(body),
     });
     const text = await res.text();
     let data: unknown = null;
@@ -245,6 +248,24 @@ export class WorkspaceClient {
 
     link: (idOrIdentifier: string, link: { url: string; title?: string }) =>
       this.request('POST', `/issues/${encodeURIComponent(idOrIdentifier)}/links`, link),
+
+    /**
+     * Uploads a file to the issue. Reference its `url` in a comment or the description to show it
+     * there (`attachmentMarkdown` in @ordo/shared writes the Markdown: inline for images).
+     */
+    attach: (
+      idOrIdentifier: string,
+      file: { filename: string; body: Blob | Uint8Array<ArrayBuffer> },
+    ) => {
+      const form = new FormData();
+      const blob = file.body instanceof Blob ? file.body : new Blob([file.body]);
+      form.append('file', blob, file.filename);
+      return this.request<Attachment>(
+        'POST',
+        `/attachments?issueId=${encodeURIComponent(idOrIdentifier)}`,
+        form,
+      );
+    },
   };
 
   /**

@@ -124,9 +124,11 @@ the source (`*.test.ts`). The web app has unit tests only for pure logic (`src/l
 Without a desktop (agents, a runner box), run `pnpm dev:preview` in the background: it starts the API and web on free
 ports against a throwaway seeded database, prints the URL and the demo login when ready, and cleans up on exit (or
 after `--ttl`, default 1h). Open that URL with your browser tools (the Playwright MCP server, headless), sign in (email
-first, then the password on the next step), and
-click through what you changed, at desktop width and at 375px. Check the console for errors. Then stop the preview.
-In your summary, say what you checked in the browser, or why you couldn't; don't hand it to "someone".
+first, then the password on the next step), and click through what you changed, at desktop width and at 375px. Check
+the console for errors. Then stop the preview. Show what you saw: `ordo issue comment "$ORDO_ISSUE" "<what you
+checked>" --attach <screenshot.png>` (repeatable), or put the Markdown that `ordo issue attach "$ORDO_ISSUE" <file…>`
+prints into your summary. Say what you checked in the browser, or why you couldn't; don't hand it to "someone".
+
 SSO tests run against an in-process OpenID provider (`test/mock-idp.ts`: discovery, PKCE-checking token endpoint,
 RS256 ID tokens); set `idp.next` to the claims of the next sign-in and `idp.tamper` to corrupt the next token.
 

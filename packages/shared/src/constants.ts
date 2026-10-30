@@ -272,6 +272,11 @@ export const ISSUE_IDENTIFIER_PATTERN = /^([A-Z][A-Z0-9]{0,6})-(\d+)$/;
 
 /** Attachment URLs are slug-free so renaming a workspace doesn't break them in Markdown. */
 export const attachmentUrl = (id: string) => `/api/attachments/${id}`;
+/** The Markdown that shows an attachment: inline for images, a link for anything else. */
+export const attachmentMarkdown = (att: { filename: string; contentType: string; url: string }) => {
+  const name = att.filename.replace(/[[\]\\]/g, '');
+  return att.contentType.startsWith('image/') ? `![${name}](${att.url})` : `[${name}](${att.url})`;
+};
 /** Finds attachment ids referenced in Markdown (relative or absolute URLs). */
 export const ATTACHMENT_URL_PATTERN =
   /\/api\/attachments\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/g;

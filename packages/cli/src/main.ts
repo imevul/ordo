@@ -1,7 +1,10 @@
 import { readFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 import { type ParseArgsOptionsConfig, parseArgs } from 'node:util';
 import { NameError, Names, Ordo, OrdoError, parsePriority, type WorkspaceClient } from '@ordo/sdk';
 import {
+  type Attachment,
+  attachmentMarkdown,
   type Bootstrap,
   branchName,
   type Issue,
@@ -75,7 +78,9 @@ Issues
                            --status --priority --assignee --label --project --cycle
                            --parent --estimate --due <YYYY-MM-DD>
   issue edit <id>          The same fields, plus --add-label --remove-label --unassign
-  issue comment <id> [text]  Text, --body-file <path>, or - to read stdin
+  issue comment <id> [text]  Text, --body-file <path>, or - to read stdin; --attach <file> adds
+                           a file below the text (repeatable; images show inline)
+  issue attach <id> <file…>  Upload files to the issue and print the Markdown that shows them
   issue start <id>         Assign to you, move to the first started status, print the branch name
   issue close <id>         Move to the first completed status (--canceled to cancel)
   issue branch <id>        The git branch name for the issue
@@ -186,6 +191,8 @@ async function dispatch(argv: string[], io: Io, s: Style) {
           return issueEdit(ctx, args);
         case 'comment':
           return issueComment(ctx, args);
+        case 'attach':
+          return issueAttach(ctx, args);
         case 'start':
           return issueMove(ctx, args, 'start');
         case 'close':
@@ -636,15 +643,43 @@ async function issueEdit(ctx: Context, args: string[]) {
 }
 
 async function issueComment(ctx: Context, args: string[]) {
-  const { values, positionals } = parse(args, { 'body-file': { type: 'string', short: 'F' } });
+  const { values, positionals } = parse(args, {
+    'body-file': { type: 'string', short: 'F' },
+    attach: { type: 'string', short: 'A', multiple: true },
+  });
   const [id, ...words] = positionals;
   if (!id) throw new UsageError('which issue? "ordo issue comment ENG-42 \\"text\\""');
-  const body = await textFrom(ctx, words.length ? words.join(' ') : undefined, values['body-file']);
-  if (!body?.trim()) throw new UsageError('the comment is empty');
+  const text = await textFrom(ctx, words.length ? words.join(' ') : undefined, values['body-file']);
+  const files = values.attach ?? [];
+  if (!text?.trim() && !files.length) throw new UsageError('the comment is empty');
   const ws = await ctx.workspace(values.workspace);
+  // Uploaded first, so a missing file fails before anything is posted.
+  const shown = (await uploadFiles(ws, id, files)).map(attachmentMarkdown);
+  const body = [text?.trim(), ...shown].filter(Boolean).join('\n\n');
   const comment = await ws.issues.comment(id, { body });
   if (values.json) return ctx.json(comment);
   ctx.io.stdout(`Commented on ${ctx.s.accent(id.toUpperCase())}\n`);
+}
+
+async function issueAttach(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, {});
+  const [id, ...files] = positionals;
+  if (!id || !files.length)
+    throw new UsageError('which issue and files? "ordo issue attach ENG-42 shot.png"');
+  const ws = await ctx.workspace(values.workspace);
+  const attachments = await uploadFiles(ws, id, files);
+  if (values.json) return ctx.json(attachments);
+  // Just the Markdown, one per line, to paste into a comment, description or run summary.
+  ctx.io.stdout(`${attachments.map(attachmentMarkdown).join('\n')}\n`);
+}
+
+/** Uploads files to an issue, one at a time. Reads them all first, so a missing file uploads nothing. */
+async function uploadFiles(ws: WorkspaceClient, id: string, files: string[]) {
+  const bodies = await Promise.all(files.map((file) => readFile(file)));
+  const attachments: Attachment[] = [];
+  for (const [i, file] of files.entries())
+    attachments.push(await ws.issues.attach(id, { filename: basename(file), body: bodies[i]! }));
+  return attachments;
 }
 
 /** `start`: assign to me and move to the first started status. `close`: the first completed one. */

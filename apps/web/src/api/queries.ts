@@ -485,9 +485,3 @@ export function useAttachmentUpload(slug: string, issueId?: string) {
     [slug, issueId, qc],
   );
 }
-
-/** The Markdown that shows an attachment: inline for images, a link for anything else. */
-export const attachmentMarkdown = (att: Attachment) => {
-  const name = att.filename.replace(/[[\]\\]/g, '');
-  return att.contentType.startsWith('image/') ? `![${name}](${att.url})` : `[${name}](${att.url})`;
-};

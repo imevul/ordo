@@ -1,4 +1,4 @@
-import type { Attachment } from '@ordo/shared';
+import { type Attachment, attachmentMarkdown } from '@ordo/shared';
 import { Paperclip } from 'lucide-react';
 import {
   type KeyboardEvent,
@@ -13,7 +13,6 @@ import {
   useState,
 } from 'react';
 import { toast } from 'sonner';
-import { attachmentMarkdown } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
 import { richTextUnsafe } from '../lib/markdown.ts';
 import { readPref, writePref } from '../lib/store.ts';
