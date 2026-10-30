@@ -21,7 +21,13 @@ import type {
   UpdateIssueInput,
 } from '@ordo/shared';
 import type { Engine } from '@ordo/sync';
-import { type QueryClient, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  type QueryClient,
+  type QueryKey,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { t } from '../i18n/index.ts';
@@ -453,7 +459,7 @@ export function useToggleReaction(slug: string, issueId: string, userId: string)
 export function useWsMutation<TVars, TResult = unknown>(
   slug: string,
   fn: (vars: TVars) => Promise<TResult>,
-  opts: { success?: string; invalidate?: readonly unknown[][] } = {},
+  opts: { success?: string; invalidate?: readonly QueryKey[] } = {},
 ) {
   const qc = useQueryClient();
   return useMutation({
