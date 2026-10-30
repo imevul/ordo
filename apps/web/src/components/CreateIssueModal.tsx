@@ -128,7 +128,7 @@ export function CreateIssueModal() {
     tpl.projectId && ws.projectById.has(tpl.projectId) ? tpl.projectId : base.projectId;
   // A template's assignee is a choice; without one, a default still follows the project.
   const templateAssignee = (tpl: IssueTemplate, base: Form) =>
-    tpl.assigneeId && ws.memberById.has(tpl.assigneeId)
+    tpl.assigneeId && ws.members.some((m) => m.id === tpl.assigneeId)
       ? { assigneeId: tpl.assigneeId, assigneeAuto: false }
       : base.assigneeAuto
         ? { assigneeId: defaultAssigneeOf(ws, base.teamId, templateProject(tpl, base)) }
