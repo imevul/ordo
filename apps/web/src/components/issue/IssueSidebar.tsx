@@ -40,8 +40,11 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** The properties sidebar on wide screens. */
-export function IssueSidebar({
+/**
+ * The editable properties. The sidebar shows them on wide screens and IssueDetailView shows them
+ * under the title on narrow ones, so both use the same pickers.
+ */
+export function IssueProperties({
   issue,
   team,
   compact,
@@ -56,7 +59,6 @@ export function IssueSidebar({
   const qc = useQueryClient();
   const navigate = useNavigate();
   const sla = slaState(issue, isDone(ws, issue));
-  const creator = issue.creatorId ? ws.memberById.get(issue.creatorId) : undefined;
 
   const moveToTeam = (teamId: string) => {
     if (teamId === issue.teamId) return;
@@ -75,8 +77,7 @@ export function IssueSidebar({
   };
 
   return (
-    <aside className="hidden w-72 flex-none overflow-y-auto border-l border-border-soft bg-surface/40 p-4 lg:block">
-      <div className="section-label mb-3">{t('issue.detail.properties')}</div>
+    <>
       <Field label={t('common.status')}>
         <StatusProp issue={issue} onPatch={onPatch} variant="field" />
       </Field>
@@ -180,6 +181,29 @@ export function IssueSidebar({
           )}
         </div>
       </Field>
+    </>
+  );
+}
+
+/** The properties sidebar on wide screens. */
+export function IssueSidebar({
+  issue,
+  team,
+  compact,
+  onPatch,
+}: {
+  issue: IssueDetail;
+  team: Team | undefined;
+  compact: boolean;
+  onPatch: (p: UpdateIssueInput) => void;
+}) {
+  const ws = useWorkspace();
+  const creator = issue.creatorId ? ws.memberById.get(issue.creatorId) : undefined;
+
+  return (
+    <aside className="hidden w-72 flex-none overflow-y-auto border-l border-border-soft bg-surface/40 p-4 lg:block">
+      <div className="section-label mb-3">{t('issue.detail.properties')}</div>
+      <IssueProperties issue={issue} team={team} compact={compact} onPatch={onPatch} />
 
       <IssuePullRequests issue={issue} className="mt-6" />
 

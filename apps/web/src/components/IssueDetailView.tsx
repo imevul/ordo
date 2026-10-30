@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { invalidateIssues, useUpdateIssue } from '../api/queries.ts';
+import { t } from '../i18n/index.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
 import { ui } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
@@ -15,7 +16,7 @@ import { IssueLinks } from './IssueLinks.tsx';
 import { IssuePullRequests } from './IssuePullRequests.tsx';
 import { IssueHeader } from './issue/IssueHeader.tsx';
 import { IssueRelations } from './issue/IssueRelations.tsx';
-import { IssueSidebar } from './issue/IssueSidebar.tsx';
+import { IssueProperties, IssueSidebar } from './issue/IssueSidebar.tsx';
 import { IssueDescription, IssueTitle } from './issue/IssueText.tsx';
 import { SubIssues } from './issue/SubIssues.tsx';
 
@@ -75,6 +76,13 @@ export function IssueDetailView({
               </Link>
             )}
             <IssueTitle issue={issue} onSave={(title) => patch({ title })} />
+            {/* The sidebar has them on wide screens. */}
+            <section className="mt-4 border-y border-border-soft py-3 lg:hidden">
+              <div className="section-label mb-2">{t('issue.detail.properties')}</div>
+              <div className="grid gap-x-6 sm:grid-cols-2">
+                <IssueProperties issue={issue} team={team} compact={compact} onPatch={patch} />
+              </div>
+            </section>
             <IssueDescription issue={issue} onSave={(description) => patch({ description })} />
             {aiPanel && (
               <IssueAiPanel
