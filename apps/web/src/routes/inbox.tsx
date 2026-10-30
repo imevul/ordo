@@ -287,7 +287,12 @@ export function InboxPage() {
               {t('inbox.back')}
             </button>
             <div className="min-h-0 flex-1">
-              <IssueDetailView key={issue.data.id} issue={issue.data} compact />
+              <IssueDetailView
+                key={issue.data.id}
+                issue={issue.data}
+                compact
+                focusCommentId={selected.commentId}
+              />
             </div>
           </div>
         ) : selected && issue.isLoading ? (
