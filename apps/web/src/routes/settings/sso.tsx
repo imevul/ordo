@@ -32,7 +32,7 @@ import { roleLabel } from '../../i18n/labels.ts';
 import { longDate, relativeTime } from '../../lib/format.ts';
 import { ssoStartUrl } from '../../lib/sso.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { FormRow, SettingsCard } from './ui.tsx';
+import { FormRow, SettingsCard, TeamSelect } from './ui.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 const here = () => window.location.pathname;
@@ -458,19 +458,13 @@ function DirectoryGroupsCard({
           <span className="font-mono text-[11px] text-index">
             {t('sso.scim.memberCount', { count: g.memberCount })}
           </span>
-          <select
+          <TeamSelect
             className="input h-8 w-44 py-0 text-[12.5px]"
-            value={g.teamId ?? ''}
+            none={t('sso.scim.notLinked')}
+            value={g.teamId}
             aria-label={t('sso.scim.teamOf', { group: g.displayName })}
-            onChange={(e) => link(g, e.target.value || null)}
-          >
-            <option value="">{t('sso.scim.notLinked')}</option>
-            {ws.teams.map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-          </select>
+            onChange={(teamId) => link(g, teamId)}
+          />
         </div>
       ))}
       {groups.length === 0 && (

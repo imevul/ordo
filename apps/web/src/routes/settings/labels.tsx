@@ -7,7 +7,7 @@ import { confirmDialog } from '../../components/ui/Modal.tsx';
 import { Popover } from '../../components/ui/Popover.tsx';
 import { t } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { SettingsCard } from './ui.tsx';
+import { SettingsCard, TeamSelect } from './ui.tsx';
 
 function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   return (
@@ -108,19 +108,13 @@ export function LabelsSection() {
           value={name}
           onChange={(e) => setName(e.target.value)}
         />
-        <select
+        <TeamSelect
           className="input w-36"
+          none={t('settings.labels.workspace')}
           value={teamId}
-          onChange={(e) => setTeamId(e.target.value)}
+          onChange={(id) => setTeamId(id ?? '')}
           aria-label={t('settings.labels.scope')}
-        >
-          <option value="">{t('settings.labels.workspace')}</option>
-          {ws.teams.map((team) => (
-            <option key={team.id} value={team.id}>
-              {team.name}
-            </option>
-          ))}
-        </select>
+        />
         <button className="btn btn-primary">{t('common.add')}</button>
       </form>
       {ws.labels.map((l) => (

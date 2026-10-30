@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
 import { t, tx } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { FormRow } from './ui.tsx';
+import { FormRow, TeamSelect } from './ui.tsx';
 
 /** Connects (or edits) email intake: which team gets the issues, and how mail reaches Ordo. */
 export function EmailForm({
@@ -79,19 +79,15 @@ export function EmailForm({
     <form onSubmit={submit}>
       <p className="mb-4 text-[12.5px] text-muted">{t('integrations.email.intro')}</p>
       <FormRow label={t('common.team')}>
-        <select
-          className="input"
+        <TeamSelect
           value={v.teamId}
-          onChange={(e) => set({ teamId: e.target.value })}
-        >
-          {ws.teams.map((team) => (
-            <option key={team.id} value={team.id}>
-              {team.triageEnabled
-                ? team.name
-                : t('integrations.email.teamNoTriage', { team: team.name })}
-            </option>
-          ))}
-        </select>
+          onChange={(teamId) => set({ teamId })}
+          optionLabel={(team) =>
+            team.triageEnabled
+              ? team.name
+              : t('integrations.email.teamNoTriage', { team: team.name })
+          }
+        />
       </FormRow>
       <FormRow label={t('integrations.email.address')} hint={t('integrations.email.addressHint')}>
         <input
