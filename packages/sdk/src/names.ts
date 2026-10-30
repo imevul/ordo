@@ -1,6 +1,7 @@
 import {
   type Bootstrap,
   type Cycle,
+  dayInZone,
   isCycleCurrent,
   type Label,
   type Member,
@@ -99,7 +100,8 @@ export class Names {
 
   /** `current`, `next`, or a cycle number, in a team. */
   cycle(team: Team, ref: string): Cycle {
-    const now = new Date().toISOString().slice(0, 10);
+    // The workspace's day, the one cycle automation opens and closes cycles by.
+    const now = dayInZone(this.boot.workspace.settings.timezone);
     const cycles = this.boot.cycles
       .filter((c) => c.teamId === team.id)
       .sort((a, b) => a.number - b.number);

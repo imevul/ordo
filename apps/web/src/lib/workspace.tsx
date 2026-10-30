@@ -116,12 +116,8 @@ export function useWorkspace(): WorkspaceData {
   return v;
 }
 
-/** The cycle whose date range contains today, if any. */
-export function currentCycle(
-  cycles: Cycle[],
-  teamId: string,
-  today = new Date().toISOString().slice(0, 10),
-) {
+/** The cycle whose date range contains `today` (`dayInZone` of the workspace's time zone), if any. */
+export function currentCycle(cycles: Cycle[], teamId: string, today: string) {
   return cycles.find((c) => c.teamId === teamId && isCycleCurrent(c, today)) ?? null;
 }
 

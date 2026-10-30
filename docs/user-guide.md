@@ -68,7 +68,7 @@ Statuses are grouped into six types that drive behavior:
 | Canceled  | Won't do                                            | Canceled, Duplicate    |
 
 Rename, recolor, add and delete statuses freely; every type except triage keeps at least one. The **default**
-status is where new issues land.
+status is where new issues land. Turning triage off moves the issues still waiting in triage to the default status.
 
 **Triage rules** (team settings, once triage is on; team admins) sort what lands in triage. A rule matches issues
 by where they came from (the app, the API, AI agents, integrations, email), text in their title or description, a
@@ -235,7 +235,8 @@ optional cooldown, the weekday they start on and how many to plan ahead; Ordo th
 calendar. When a cycle ends, its unfinished issues move to the next one (_Roll over unfinished issues_), and with
 _Add started issues to the active cycle_, issues join the current cycle as soon as work on them starts. These changes
 are made by a bot called **Ordo**, without notifications, and show in each issue's history. Cycles that had already
-ended when you turned automation on keep their issues.
+ended when you turned automation on keep their issues. "Today" is the date in the workspace's time zone
+(workspace settings → _Time zone_; UTC unless you pick one).
 
 ## Projects
 

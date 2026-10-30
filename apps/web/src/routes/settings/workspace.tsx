@@ -51,6 +51,8 @@ export function WorkspaceSection() {
   const [name, setName] = useState(ws.workspace.name);
   const [slug, setSlug] = useState(ws.workspace.slug);
   const fileRef = useRef<HTMLInputElement>(null);
+  const zones =
+    typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
   const refresh = () => {
     qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
     qc.invalidateQueries({ queryKey: keys.me });
@@ -191,6 +193,33 @@ export function WorkspaceSection() {
           {memberChoices(ws).map((m) => (
             <option key={m.id} value={m.id}>
               {m.label}
+            </option>
+          ))}
+        </select>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t('workspaceSettings.timeZone.title')}
+        description={t('workspaceSettings.timeZone.description')}
+      >
+        <select
+          className="input w-72"
+          value={ws.workspace.settings.timezone ?? ''}
+          onChange={async (e) => {
+            try {
+              await api.patch(wsPath(ws.slug, '/'), {
+                settings: { timezone: e.target.value || null },
+              });
+              refresh();
+            } catch (err) {
+              toast.error(errMsg(err));
+            }
+          }}
+        >
+          <option value="">{t('workspaceSettings.timeZone.utc')}</option>
+          {zones.map((z) => (
+            <option key={z} value={z}>
+              {z}
             </option>
           ))}
         </select>
