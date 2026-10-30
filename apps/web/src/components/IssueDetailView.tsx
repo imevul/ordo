@@ -198,7 +198,9 @@ export function IssueDetailView({
   useEffect(() => setAiPanel(null), [issue.id]);
   const patch = (p: UpdateIssueInput) => update.mutate({ id: issue.id, patch: p });
   const sla = slaState(issue, isDone(ws, issue));
-  const team = ws.teamById.get(issue.teamId)!;
+  // Missing if access to the team was just revoked (the issue refetch will 404 next) or the issue
+  // arrived before the refreshed workspace data; show what we can until it settles.
+  const team = ws.teamById.get(issue.teamId);
   const creator = issue.creatorId ? ws.memberById.get(issue.creatorId) : undefined;
   const subscribed = issue.subscriberIds.includes(ws.me.id);
   const p = { slug: ws.slug };
@@ -264,8 +266,10 @@ export function IssueDetailView({
         },
       },
     });
-    if (!compact)
+    if (compact) return;
+    if (team)
       navigate({ to: '/$slug/team/$key/$tab', params: { ...p, key: team.key, tab: 'all' } });
+    else navigate({ to: '/$slug', params: p });
   };
 
   const copy = (text: string, message: string) => {
@@ -295,13 +299,19 @@ export function IssueDetailView({
       <PageHeader
         kicker={
           <>
-            <Link
-              to="/$slug/team/$key/$tab"
-              params={{ ...p, key: team.key, tab: 'all' }}
-              className="hover:text-highlight"
-            >
-              {team.name}
-            </Link>
+            {team ? (
+              <Link
+                to="/$slug/team/$key/$tab"
+                params={{ ...p, key: team.key, tab: 'all' }}
+                className="hover:text-highlight"
+              >
+                {team.name}
+              </Link>
+            ) : (
+              <span title={t('issue.detail.teamUnavailableTitle')}>
+                {t('issue.detail.teamUnavailable')}
+              </span>
+            )}
             <Sep />
             {issue.identifier}
             {issue.deletedAt && <span className="text-error"> {t('issue.detail.inTrash')}</span>}
@@ -628,12 +638,12 @@ export function IssueDetailView({
               <MilestoneProp issue={issue} onPatch={patch} variant="field" />
             </Field>
           )}
-          {team.cyclesEnabled && (
+          {team?.cyclesEnabled && (
             <Field label={t('common.cycle')}>
               <CycleProp issue={issue} onPatch={patch} variant="field" />
             </Field>
           )}
-          {team.estimateScale !== 'none' && (
+          {team && team.estimateScale !== 'none' && (
             <Field label={t('common.estimate')}>
               <EstimateProp issue={issue} onPatch={patch} variant="field" />
             </Field>
@@ -671,8 +681,16 @@ export function IssueDetailView({
                   type="button"
                   className="prop w-full justify-start bg-transparent shadow-none hover:bg-text/[0.03]"
                 >
-                  <TeamIcon color={team.color} label={team.key} size={14} />
-                  {team.name}
+                  {team ? (
+                    <>
+                      <TeamIcon color={team.color} label={team.key} size={14} />
+                      {team.name}
+                    </>
+                  ) : (
+                    <span className="text-index" title={t('issue.detail.teamUnavailableTitle')}>
+                      {t('issue.detail.teamUnavailable')}
+                    </span>
+                  )}
                 </button>
               }
             />

@@ -28,6 +28,7 @@ import {
   forbidden,
   isUniqueViolation,
   notFound,
+  one,
   parse,
 } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
@@ -187,12 +188,14 @@ export async function teamRoutes(app: FastifyInstance) {
         .select({ last: max(triageRules.position) })
         .from(triageRules)
         .where(eq(triageRules.teamId, teamId))) as [{ last: number | null }];
-      const [row] = await ctx.tx
-        .insert(triageRules)
-        .values({ ...input, teamId, position: (last ?? 0) + SORT_GAP })
-        .returning();
+      const row = one(
+        await ctx.tx
+          .insert(triageRules)
+          .values({ ...input, teamId, position: (last ?? 0) + SORT_GAP })
+          .returning(),
+      );
       emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
-      return toTriageRule(row!);
+      return toTriageRule(row);
     });
   });
 
@@ -209,13 +212,12 @@ export async function teamRoutes(app: FastifyInstance) {
     return mutate(app, req, async (ctx) => {
       const rule = await loadRule(ctx, id);
       await assertTriageRule(ctx, rule.teamId, input);
-      const [row] = await ctx.tx
-        .update(triageRules)
-        .set(input)
-        .where(eq(triageRules.id, id))
-        .returning();
+      const row = one(
+        await ctx.tx.update(triageRules).set(input).where(eq(triageRules.id, id)).returning(),
+        'Triage rule',
+      );
       emit(ctx, { kind: 'team', action: 'updated', id: rule.teamId, teamId: rule.teamId });
-      return toTriageRule(row!);
+      return toTriageRule(row);
     });
   });
 
@@ -319,11 +321,13 @@ export async function teamRoutes(app: FastifyInstance) {
         .select({ last: max(workflowStates.position) })
         .from(workflowStates)
         .where(eq(workflowStates.teamId, teamId))) as [{ last: number | null }];
-      const [state] = await ctx.tx
-        .insert(workflowStates)
-        .values({ ...input, teamId, position: (last ?? 0) + SORT_GAP })
-        .returning();
-      emit(ctx, { kind: 'state', action: 'created', id: state!.id, teamId });
+      const state = one(
+        await ctx.tx
+          .insert(workflowStates)
+          .values({ ...input, teamId, position: (last ?? 0) + SORT_GAP })
+          .returning(),
+      );
+      emit(ctx, { kind: 'state', action: 'created', id: state.id, teamId });
       return state;
     });
   });
