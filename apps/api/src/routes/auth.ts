@@ -6,6 +6,7 @@ import {
   DEFAULT_LOCALE,
   forgotPasswordSchema,
   type InstanceConfig,
+  type InvitePreview,
   loginSchema,
   type Me,
   mfaLoginSchema,
@@ -59,7 +60,7 @@ import {
 import { publishChanges } from '../services/sync.ts';
 import { createTeam } from '../services/teams.ts';
 import { consumeToken, createToken } from '../services/tokens.ts';
-import { joinWorkspace } from '../services/workspaces.ts';
+import { joinWorkspace, mayCreateWorkspace } from '../services/workspaces.ts';
 
 // A well-formed hash nobody can match, compared against when the account doesn't exist.
 const DUMMY_HASH =
@@ -99,16 +100,38 @@ async function findInvite(tx: Tx, token: string) {
   return invite ?? null;
 }
 
+const alreadySignedUp = () =>
+  conflict('You already have an account on this instance. Sign in instead.').as(
+    'invite_already_signed_up',
+  );
+
+/**
+ * Accepts an invite for an account that was just made or is signing in. Site invites (no
+ * workspace) only ever go to new accounts, so the caller passes `newAccount` for them.
+ * Returns the workspace to open, or null for a site invite.
+ */
 async function acceptInvite(
   tx: Tx,
   invite: typeof invites.$inferSelect,
   userId: string,
   email: string,
+  newAccount = false,
 ) {
   if (invite.email && invite.email.toLowerCase() !== email.toLowerCase()) {
     throw forbidden('This invite was sent to a different email address').as('invite_other_email');
   }
-  await joinWorkspace(tx, invite.workspaceId, userId, invite.role, invite.teamIds);
+  if (!invite.workspaceId) {
+    if (!newAccount) throw alreadySignedUp();
+    await tx
+      .update(users)
+      .set({
+        canCreateWorkspaces: invite.canCreateWorkspaces,
+        siteInvitedAt: new Date().toISOString(),
+      })
+      .where(eq(users.id, userId));
+  } else {
+    await joinWorkspace(tx, invite.workspaceId, userId, invite.role, invite.teamIds);
+  }
   // Email-bound invites are single use; open invite links stay valid until they expire.
   if (invite.email) {
     await tx
@@ -122,8 +145,11 @@ async function acceptInvite(
     actorId: userId,
     targetType: 'invite',
     targetId: invite.id,
-    data: { role: invite.role },
+    data: invite.workspaceId
+      ? { role: invite.role }
+      : { site: true, canCreateWorkspaces: invite.canCreateWorkspaces },
   });
+  if (!invite.workspaceId) return null;
   const [ws] = await tx
     .select({ slug: workspaces.slug })
     .from(workspaces)
@@ -161,6 +187,7 @@ export async function authRoutes(app: FastifyInstance) {
         .select({ id: users.id })
         .from(users)
         .where(eq(users.email, email));
+      if (existing && invite && !invite.workspaceId) throw alreadySignedUp();
       if (existing) throw conflict('An account with this email already exists').as('email_taken');
       const [user] = await tx
         .insert(users)
@@ -180,7 +207,7 @@ export async function authRoutes(app: FastifyInstance) {
         { action: 'auth.signup', actorId: user!.id, data: { invited: !!invite } },
         requestMeta(req),
       );
-      const workspaceSlug = invite ? await acceptInvite(tx, invite, user!.id, email) : null;
+      const workspaceSlug = invite ? await acceptInvite(tx, invite, user!.id, email, true) : null;
       if (app.mailer.enabled) {
         const token = await createToken(tx, user!.id, 'email_verify', 48 * 60, { email });
         await queueEmail(
@@ -469,6 +496,7 @@ export async function authRoutes(app: FastifyInstance) {
       avatarUrl: signedFileUrl(app, avatarFileId),
       locale: resolvePreferences(prefs?.preferences).locale,
       workspaces: memberships,
+      canCreateWorkspace: await mayCreateWorkspace(app, user.id),
     };
   });
 
@@ -591,10 +619,21 @@ export async function authRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.get('/invites/:token', async (req) => {
+  app.get('/invites/:token', async (req): Promise<InvitePreview> => {
     const { token } = req.params as { token: string };
     const invite = await db.transaction((tx) => findInvite(tx, token));
     if (!invite) throw notFound('Invite');
+    if (!invite.workspaceId) {
+      return {
+        kind: 'site',
+        workspace: null,
+        email: invite.email,
+        role: null,
+        teams: [],
+        canCreateWorkspaces: invite.canCreateWorkspaces,
+        alreadySignedUp: !!req.user,
+      };
+    }
     const [ws] = await db
       .select({ name: workspaces.name, slug: workspaces.slug })
       .from(workspaces)
@@ -603,10 +642,13 @@ export async function authRoutes(app: FastifyInstance) {
       ? await db.select({ name: teams.name }).from(teams).where(inArray(teams.id, invite.teamIds))
       : [];
     return {
-      workspace: ws,
+      kind: 'workspace',
+      workspace: ws ?? null,
       email: invite.email,
       role: invite.role,
       teams: teamRows.map((t) => t.name),
+      canCreateWorkspaces: false,
+      alreadySignedUp: false,
     };
   });
 
@@ -624,11 +666,7 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/workspaces', async (req) => {
     const user = requireUser(req);
     const input = parse(createWorkspaceSchema, req.body);
-    const [{ n }] = (await db
-      .select({ n: count() })
-      .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, user.id))) as [{ n: number }];
-    if (!settings.get('allowWorkspaceCreation') && n > 0)
+    if (!(await mayCreateWorkspace(app, user.id)))
       throw forbidden('Creating workspaces is disabled on this instance').as(
         'workspace_creation_off',
       );

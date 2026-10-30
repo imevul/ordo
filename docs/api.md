@@ -107,6 +107,22 @@ after `POST /auth/mfa/passkey/options` (`{ mfaToken }` → `{ challengeId, optio
 `mfaToken` usable for another try. Instance administration lives
 under `/api/admin/*` (instance admins only; see [admin.md](admin.md)).
 
+**Site invites** bring someone onto the instance without adding them to a workspace (instance admins only):
+
+| Method     | Path                        |                                                                                                         |
+| ---------- | --------------------------- | ------------------------------------------------------------------------------------------------------- |
+| GET / POST | `/admin/invites`            | List open ones / create `{ emails?, canCreateWorkspaces?, expiresInDays? }`: one per address, or a link |
+| POST       | `/admin/invites/:id/resend` | Email it again (and extend it)                                                                          |
+| DELETE     | `/admin/invites/:id`        | Revoke                                                                                                  |
+| PATCH      | `/admin/users/:id`          | `{ disabled?, isInstanceAdmin?, canCreateWorkspaces? }`                                                 |
+
+Sign up with the token as `inviteToken`; the answer's `workspaceSlug` is `null`. `GET /invites/:token` answers
+`kind: "site"` and `workspace: null` for them. Site invites are for new accounts only: an address that already has
+one gets `409` (`invite_already_signed_up`), and so does `POST /invites/:token/accept`. Email-bound invites work
+once, for that address; links work until they expire or are revoked. With workspace creation off, people who came
+in through a site invite can create workspaces only if the invite (or later an admin) granted it;
+`GET /auth/me` says whether you can now (`canCreateWorkspace`).
+
 ## Workspace-scoped endpoints
 
 Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g. `/api/w/acme/issues`.

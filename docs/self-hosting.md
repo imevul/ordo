@@ -140,7 +140,8 @@ works the same way. Sticky sessions are not required.
 - Every sign-in, failed sign-in, password change, API key, invite, role and team change is written to an audit log.
 - Outbound requests to URLs an admin enters (SSO, webhooks, integrations) refuse private and loopback addresses unless
   `ORDO_ALLOW_PRIVATE_NETWORK_TARGETS` is on.
-- Keep `ORDO_SIGNUP_MODE=invite` on public instances.
+- Keep `ORDO_SIGNUP_MODE=invite` on public instances. To let someone in without adding them to a workspace, send a
+  site invite from **Instance admin → Invites** (see [admin.md](admin.md)).
 - Passwords are hashed with scrypt; session tokens and API keys are stored as SHA-256 hashes.
 - Login, sign-up, password reset and 2FA steps are rate-limited per IP (20/min).
 - Users can turn on TOTP two-factor authentication (with single-use recovery codes); TOTP secrets are encrypted.

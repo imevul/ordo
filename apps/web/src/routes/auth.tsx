@@ -1,4 +1,5 @@
 import {
+  type InvitePreview,
   type JoinableWorkspace,
   type OAuthAuthorizeInfo,
   SLUG_PATTERN,
@@ -818,22 +819,12 @@ export function InvitePage() {
   const me = useMe();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const [info, setInfo] = useState<{
-    workspace: { name: string; slug: string };
-    email: string | null;
-    role: string;
-    teams: string[];
-  } | null>(null);
+  const [info, setInfo] = useState<InvitePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     api
-      .get<{
-        workspace: { name: string; slug: string };
-        email: string | null;
-        role: string;
-        teams: string[];
-      }>(`/invites/${token}`)
+      .get<InvitePreview>(`/invites/${token}`)
       .then(setInfo)
       .catch((err) => setError(message(err)));
   }, [token]);
@@ -849,17 +840,47 @@ export function InvitePage() {
   };
 
   if (me.isLoading) return <Spinner />;
+  // An invite to the instance only: it makes a new account and joins no workspace.
+  if (info?.kind === 'site') {
+    return (
+      <AuthLayout kicker={t('auth.invite.kicker')} title={t('auth.invite.titleSite')}>
+        <ErrorLine error={error} />
+        {me.data ? (
+          <>
+            <p className="mb-5 text-[13.5px] text-muted">
+              {tx('auth.invite.alreadySignedUp', {
+                email: me.data.email,
+                b: (c) => <span className="text-text">{c}</span>,
+              })}
+            </p>
+            <Link to="/" className="btn btn-primary w-full">
+              {t('auth.invite.continue')} <span className="arrow">→</span>
+            </Link>
+          </>
+        ) : (
+          <>
+            <p className="mb-5 text-[13.5px] text-muted">
+              {info.canCreateWorkspaces ? t('auth.invite.siteCanCreate') : t('auth.invite.site')}
+            </p>
+            <Link to="/signup" search={{ invite: token }} className="btn btn-primary w-full">
+              {t('auth.invite.createAccount')} <span className="arrow">→</span>
+            </Link>
+          </>
+        )}
+      </AuthLayout>
+    );
+  }
   return (
     <AuthLayout
       kicker={t('auth.invite.kicker')}
       title={
-        info
+        info?.workspace
           ? t('auth.invite.title', { workspace: info.workspace.name })
           : t('auth.invite.titleLoading')
       }
     >
       <ErrorLine error={error} />
-      {info && (
+      {info?.role && (
         <p className="mb-4 text-[13px] text-muted">
           {tx(info.teams.length > 0 ? 'auth.invite.invitedAsTo' : 'auth.invite.invitedAs', {
             role: inviteRole(info.role),
@@ -971,30 +992,55 @@ export function OnboardingPage() {
     }
   };
 
+  const joinList = joinable.data && joinable.data.length > 0 && (
+    <div className="mb-6">
+      <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.16em] text-muted uppercase">
+        {t('auth.onboarding.orJoin')}
+      </div>
+      {joinable.data.map((w) => (
+        <button
+          type="button"
+          key={w.id}
+          onClick={() => join(w.id)}
+          className="panel panel-sm panel-interactive mb-2 flex w-full items-center gap-3 p-3 text-left"
+        >
+          {w.logoUrl && <img src={w.logoUrl} alt="" className="h-6 w-6 object-cover" />}
+          <span className="min-w-0 flex-1 truncate">{w.name}</span>
+          <span className="font-mono text-[11px] whitespace-nowrap text-index">
+            {t('auth.onboarding.members', { count: w.memberCount })}
+          </span>
+          <span className="arrow text-primary">→</span>
+        </button>
+      ))}
+    </div>
+  );
+
+  // Not allowed to make one (e.g. site-invited without the grant): wait to be added instead.
+  if (!me.data.canCreateWorkspace) {
+    if (me.data.workspaces[0])
+      return <Navigate to="/$slug" params={{ slug: me.data.workspaces[0].slug }} />;
+    return (
+      <AuthLayout kicker={t('auth.onboarding.waitKicker')} title={t('auth.onboarding.waitTitle')}>
+        <ErrorLine error={error} />
+        {joinList}
+        <p className="mb-5 text-[13.5px] text-muted">{t('auth.onboarding.waitBody')}</p>
+        <button
+          type="button"
+          className="btn btn-ghost w-full"
+          onClick={() => {
+            me.refetch();
+            joinable.refetch();
+          }}
+        >
+          {t('auth.onboarding.checkAgain')}
+        </button>
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout kicker={t('auth.onboarding.kicker')} title={t('auth.onboarding.title')}>
-      {joinable.data && joinable.data.length > 0 && (
-        <div className="mb-6">
-          <div className="mb-2 font-mono text-[10.5px] font-semibold tracking-[0.16em] text-muted uppercase">
-            {t('auth.onboarding.orJoin')}
-          </div>
-          {joinable.data.map((w) => (
-            <button
-              type="button"
-              key={w.id}
-              onClick={() => join(w.id)}
-              className="panel panel-sm panel-interactive mb-2 flex w-full items-center gap-3 p-3 text-left"
-            >
-              {w.logoUrl && <img src={w.logoUrl} alt="" className="h-6 w-6 object-cover" />}
-              <span className="min-w-0 flex-1 truncate">{w.name}</span>
-              <span className="font-mono text-[11px] whitespace-nowrap text-index">
-                {t('auth.onboarding.members', { count: w.memberCount })}
-              </span>
-              <span className="arrow text-primary">→</span>
-            </button>
-          ))}
-        </div>
-      )}
+      {joinList}
       <form onSubmit={submit}>
         <ErrorLine error={error} />
         <TextField

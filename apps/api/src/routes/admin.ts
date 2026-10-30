@@ -3,12 +3,29 @@ import {
   adminAuditQuerySchema,
   adminSettingsSchema,
   adminUpdateUserSchema,
+  createSiteInviteSchema,
   type InstanceSettings,
+  type SiteInvite,
 } from '@ordo/shared';
-import { and, count, desc, eq, ilike, inArray, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
   auditLog,
+  invites,
   issues,
   jobs,
   sessions,
@@ -17,13 +34,14 @@ import {
   workspaceMembers,
   workspaces,
 } from '../db/schema.ts';
-import { localeOf } from '../i18n/index.ts';
+import { localeForEmail, localeOf } from '../i18n/index.ts';
 import { requireUser } from '../lib/auth.ts';
+import { randomToken } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
 import { audit, auditFilters } from '../services/audit.ts';
-import { passwordResetEmail } from '../services/mail-templates.ts';
+import { passwordResetEmail, siteInviteEmail } from '../services/mail-templates.ts';
 import { encryptSmtpUrl, queueEmail } from '../services/mailer.ts';
 import { publishChanges } from '../services/sync.ts';
 import { createToken } from '../services/tokens.ts';
@@ -92,6 +110,7 @@ export async function adminRoutes(app: FastifyInstance) {
         username: users.username,
         kind: users.kind,
         isInstanceAdmin: users.isInstanceAdmin,
+        canCreateWorkspaces: users.canCreateWorkspaces,
         disabledAt: users.disabledAt,
         emailVerifiedAt: users.emailVerifiedAt,
         twoFactor: sql<boolean>`(${users.totpEnabledAt} is not null or exists (select 1 from passkeys p where p.user_id = "users"."id"))`,
@@ -135,6 +154,7 @@ export async function adminRoutes(app: FastifyInstance) {
                 ? new Date().toISOString()
                 : null,
           isInstanceAdmin: input.isInstanceAdmin,
+          canCreateWorkspaces: input.canCreateWorkspaces,
         })
         .where(eq(users.id, id));
       // Disabling signs them out everywhere.
@@ -228,6 +248,161 @@ export async function adminRoutes(app: FastifyInstance) {
           action: 'admin.user_deleted',
           actorId: me.id,
           targetType: 'user',
+          targetId: id,
+          data: { email: gone.email },
+        },
+        requestMeta(req),
+      );
+    });
+    return { ok: true };
+  });
+
+  // ─── site invites: accounts on the instance, without a workspace ────
+
+  const inviteUrl = (token: string) => `${app.env.publicUrl}/invite/${token}`;
+  const instanceName = () => new URL(app.env.publicUrl).host;
+  const toSiteInvite = (
+    i: typeof invites.$inferSelect & { createdByName: string | null },
+  ): SiteInvite => ({
+    id: i.id,
+    token: i.token,
+    email: i.email,
+    canCreateWorkspaces: i.canCreateWorkspaces,
+    expiresAt: i.expiresAt,
+    createdAt: i.createdAt,
+    lastSentAt: i.lastSentAt,
+    createdByName: i.createdByName,
+    url: inviteUrl(i.token),
+  });
+
+  app.get('/invites', async (): Promise<SiteInvite[]> => {
+    const rows = await db
+      .select({ invite: invites, createdByName: users.name })
+      .from(invites)
+      .leftJoin(users, eq(users.id, invites.createdBy))
+      .where(
+        and(
+          isNull(invites.workspaceId),
+          isNull(invites.acceptedAt),
+          gt(invites.expiresAt, new Date().toISOString()),
+        ),
+      )
+      .orderBy(asc(invites.createdAt));
+    return rows.map((r) => toSiteInvite({ ...r.invite, createdByName: r.createdByName }));
+  });
+
+  /** One invite per address (emailed when SMTP is set up), or a single open link without one. */
+  app.post('/invites', async (req): Promise<SiteInvite[]> => {
+    const me = requireUser(req);
+    const input = parse(createSiteInviteSchema, req.body);
+    const emails = [
+      ...new Set(
+        [...(input.emails ?? []), ...(input.email ? [input.email] : [])].map((e) =>
+          e.toLowerCase(),
+        ),
+      ),
+    ];
+    if (emails.length) {
+      const taken = await db
+        .select({ email: users.email })
+        .from(users)
+        .where(inArray(users.email, emails));
+      if (taken.length)
+        throw conflict(
+          `Already signed up: ${taken.map((u) => u.email).join(', ')}. Add them to a workspace instead.`,
+        );
+    }
+    return db.transaction(async (tx) => {
+      const expiresAt = new Date(Date.now() + input.expiresInDays * 86_400_000).toISOString();
+      const now = new Date().toISOString();
+      const rows = await tx
+        .insert(invites)
+        .values(
+          (emails.length ? emails : [null]).map((email) => ({
+            workspaceId: null,
+            token: randomToken(18),
+            email,
+            canCreateWorkspaces: input.canCreateWorkspaces,
+            createdBy: me.id,
+            expiresAt,
+            lastSentAt: email && app.mailer.enabled ? now : null,
+          })),
+        )
+        .returning();
+      for (const row of rows) {
+        if (row.email && app.mailer.enabled) {
+          await queueEmail(
+            tx,
+            row.email,
+            siteInviteEmail(await localeForEmail(tx, row.email, me.id), {
+              inviter: me.name,
+              instance: instanceName(),
+              url: inviteUrl(row.token),
+              canCreateWorkspaces: row.canCreateWorkspaces,
+            }),
+          );
+        }
+        await audit(
+          tx,
+          {
+            action: 'admin.invite_created',
+            actorId: me.id,
+            targetType: 'invite',
+            targetId: row.id,
+            data: { email: row.email, canCreateWorkspaces: row.canCreateWorkspaces },
+          },
+          requestMeta(req),
+        );
+      }
+      return rows.map((r) => toSiteInvite({ ...r, createdByName: me.name }));
+    });
+  });
+
+  app.post('/invites/:id/resend', async (req) => {
+    const me = requireUser(req);
+    const { id } = req.params as { id: string };
+    if (!app.mailer.enabled) throw badRequest("Email isn't set up on this instance");
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select()
+        .from(invites)
+        .where(and(eq(invites.id, id), isNull(invites.workspaceId), isNull(invites.acceptedAt)));
+      if (!row?.email) throw notFound('Invite');
+      // Resending also extends the invite.
+      const expiresAt = new Date(Date.now() + 14 * 86_400_000).toISOString();
+      await tx
+        .update(invites)
+        .set({ lastSentAt: new Date().toISOString(), expiresAt })
+        .where(eq(invites.id, id));
+      await queueEmail(
+        tx,
+        row.email,
+        siteInviteEmail(await localeForEmail(tx, row.email, me.id), {
+          inviter: me.name,
+          instance: instanceName(),
+          url: inviteUrl(row.token),
+          canCreateWorkspaces: row.canCreateWorkspaces,
+        }),
+      );
+    });
+    return { ok: true };
+  });
+
+  app.delete('/invites/:id', async (req) => {
+    const me = requireUser(req);
+    const { id } = req.params as { id: string };
+    await db.transaction(async (tx) => {
+      const [gone] = await tx
+        .delete(invites)
+        .where(and(eq(invites.id, id), isNull(invites.workspaceId)))
+        .returning({ email: invites.email });
+      if (!gone) return;
+      await audit(
+        tx,
+        {
+          action: 'admin.invite_revoked',
+          actorId: me.id,
+          targetType: 'invite',
           targetId: id,
           data: { email: gone.email },
         },

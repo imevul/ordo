@@ -20,6 +20,7 @@ export default {
     invite_other_email: 'This invite was sent to a different email address',
     invite_required: 'Sign-ups on this instance require an invite',
     invite_needed: 'You need an invite to join this workspace',
+    invite_already_signed_up: 'You already have an account on this instance. Sign in instead.',
     account_disabled: 'This account has been disabled. Contact your administrator.',
     email_taken: 'Another account already uses that email',
     same_email: 'That is already your email address',
