@@ -6,7 +6,7 @@ import { integrationApps, integrations, workspaces } from '../db/schema.ts';
 import { GITHUB_EVENTS, github } from '../integrations/github.ts';
 import { callApi } from '../integrations/http.ts';
 import { authInfo, authorizeWorkspace, requireAdmin, requireUser } from '../lib/auth.ts';
-import { badRequest, forbidden, parse } from '../lib/errors.ts';
+import { badRequest, forbidden, parse, tryParse } from '../lib/errors.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import { createIntegration, readAppSecrets, sealAppSecrets } from '../services/integrations.ts';
 import { consumeToken, createToken } from '../services/tokens.ts';
@@ -98,6 +98,13 @@ export async function githubWorkspaceRoutes(app: FastifyInstance) {
   });
 }
 
+/** What GitHub puts on its redirects back: the manifest code, the installation, the OAuth code. */
+const callbackQuerySchema = z.object({
+  code: z.string().max(500).optional(),
+  state: z.string().max(500).optional(),
+  installation_id: z.string().max(50).optional(),
+});
+
 /** Where GitHub sends the browser back: /api/integrations/github/… */
 export async function githubCallbackRoutes(app: FastifyInstance) {
   const fail = (message: string) => `/?error=${encodeURIComponent(message)}`;
@@ -114,11 +121,20 @@ export async function githubCallbackRoutes(app: FastifyInstance) {
     return token.data as { appId: string; workspaceId: string; installationId?: string };
   }
 
+  /** Throws inside each handler's try, so a mangled link redirects like any other failure. */
+  const callbackQuery = (query: unknown) => {
+    const q = tryParse(callbackQuerySchema, query);
+    if (!q) throw badRequest('That link from GitHub is malformed. Start again from Ordo.');
+    return q;
+  };
+
   app.get('/integrations/github/callback', async (req, reply) => {
-    const { code, state } = req.query as { code?: string; state?: string };
+    let code: string | undefined;
     let data: { appId: string; workspaceId: string };
     try {
-      data = await claim(req, state, 'manifest');
+      const q = callbackQuery(req.query);
+      code = q.code;
+      data = await claim(req, q.state, 'manifest');
     } catch (err) {
       return reply.redirect(fail(err instanceof Error ? err.message : 'GitHub setup failed'));
     }
@@ -171,13 +187,12 @@ export async function githubCallbackRoutes(app: FastifyInstance) {
    * can access it before anything is connected.
    */
   app.get('/integrations/github/setup', async (req, reply) => {
-    const { installation_id: installationId, state } = req.query as {
-      installation_id?: string;
-      state?: string;
-    };
+    let installationId: string | undefined;
     let data: { appId: string; workspaceId: string };
     try {
-      data = await claim(req, state, 'install');
+      const q = callbackQuery(req.query);
+      installationId = q.installation_id;
+      data = await claim(req, q.state, 'install');
       if (!installationId || !/^\d+$/.test(installationId))
         throw badRequest('GitHub did not say which installation this is');
     } catch (err) {
@@ -201,10 +216,12 @@ export async function githubCallbackRoutes(app: FastifyInstance) {
   });
 
   app.get(AUTHORIZED_PATH.replace('/api', ''), async (req, reply) => {
-    const { code, state } = req.query as { code?: string; state?: string };
+    let code: string | undefined;
     let data: { appId: string; workspaceId: string; installationId?: string };
     try {
-      data = await claim(req, state, 'authorize');
+      const q = callbackQuery(req.query);
+      code = q.code;
+      data = await claim(req, q.state, 'authorize');
       if (!code) throw badRequest('GitHub sign-in was cancelled');
     } catch (err) {
       return reply.redirect(fail(err instanceof Error ? err.message : 'GitHub setup failed'));

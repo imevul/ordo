@@ -3,9 +3,14 @@ import { t } from '../../i18n/index.ts';
 
 /**
  * A member (a person or an agent), a bot (which may belong to an integration that's since been
- * removed), or a placeholder for someone an import brought along.
+ * removed), a placeholder for someone an import brought along, or someone who left the workspace.
  */
-export type Person = Member & { bot?: boolean; removed?: boolean; placeholder?: boolean };
+export type Person = Member & {
+  bot?: boolean;
+  removed?: boolean;
+  placeholder?: boolean;
+  former?: boolean;
+};
 
 /**
  * Someone's name where they did something. A removed integration's bot keeps its name, followed

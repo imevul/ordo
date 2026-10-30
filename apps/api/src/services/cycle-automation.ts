@@ -5,7 +5,7 @@ import { cycles, issues, teams, workflowStates } from '../db/schema.ts';
 import { runAutomation } from './automation.ts';
 import type { Ctx } from './context.ts';
 import { createCycle } from './cycles.ts';
-import { updateIssue } from './issues.ts';
+import { bulkUpdateIssues } from './issues.ts';
 
 export const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -90,7 +90,11 @@ export async function automateTeamCycles(
               notInArray(workflowStates.type, ['completed', 'canceled']),
             ),
           );
-        for (const issue of open) await updateIssue(ctx, issue.id, { cycleId: next.id });
+        await bulkUpdateIssues(
+          ctx,
+          open.map((i) => i.id),
+          { cycleId: next.id },
+        );
       }
     }
     await ctx.tx

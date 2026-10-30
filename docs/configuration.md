@@ -83,6 +83,9 @@ Files are served through Ordo with short-lived signed URLs; the bucket never nee
 To replace `ORDO_SECRET_KEY`, follow [Rotating the secret key](admin.md#rotating-the-secret-key) in the
 administration guide.
 
+Lost the old key, or started with the wrong one? See
+[Missing or wrong secret key](self-hosting.md#missing-or-wrong-secret-key).
+
 ## Application variables
 
 These are set by `docker-compose.yml` or the Dockerfile; you only need them when running the API yourself.

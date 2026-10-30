@@ -627,6 +627,8 @@ export interface Bootstrap {
   bots: Bot[];
   /** People from imports who aren't members (yet): shown on what they did and were assigned. */
   placeholders: User[];
+  /** People who left the workspace but are still assigned issues the requester can see. */
+  formerMembers: (User & Pick<Member, 'kind'>)[];
   repositories: Repository[];
   teams: Team[];
   labels: Label[];
@@ -833,6 +835,8 @@ export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof I
   value: InstanceSettings[K];
   /** Where the effective value comes from; `env` values are read-only in the UI. */
   source: 'env' | 'db' | 'default';
+  /** The stored secret in it (SMTP URL, AI key) can't be decrypted with the current key. */
+  unreadable?: true;
 }
 
 export type EmailDigest = 'off' | 'instant' | 'hourly' | 'daily';

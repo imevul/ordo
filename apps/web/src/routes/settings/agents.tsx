@@ -1,9 +1,10 @@
-import type {
-  Agent,
-  ForgeRepository,
-  Integration,
-  IntegrationProviderInfo,
-  Repository,
+import {
+  type Agent,
+  AVATAR_COLORS,
+  type ForgeRepository,
+  type Integration,
+  type IntegrationProviderInfo,
+  type Repository,
 } from '@ordo/shared';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Copy, KeyRound, Pencil, Plus, Power, Search, Trash2 } from 'lucide-react';
@@ -15,6 +16,7 @@ import { TeamIcon } from '../../components/icons.tsx';
 import { MarkdownEditor } from '../../components/MarkdownEditor.tsx';
 import { Spinner } from '../../components/PageHeader.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
+import { AvatarColorPicker } from '../../components/ui/AvatarColorPicker.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { t, tx } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
@@ -207,6 +209,7 @@ function AgentModal({
   const ws = useWorkspace();
   const existing = agent && agent !== 'new' ? agent : null;
   const [name, setName] = useState('');
+  const [avatarColor, setAvatarColor] = useState(AVATAR_COLORS[0]!);
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [instructions, setInstructions] = useState('');
   const [concurrency, setConcurrency] = useState(1);
@@ -215,6 +218,9 @@ function AgentModal({
   useEffect(() => {
     if (!agent) return;
     setName(existing?.name ?? '');
+    setAvatarColor(
+      existing?.avatarColor ?? AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
+    );
     setTeamIds(existing?.teamIds ?? (ws.teams[0] ? [ws.teams[0].id] : []));
     setInstructions(existing?.instructions ?? '');
     setConcurrency(existing?.concurrency ?? 1);
@@ -228,7 +234,7 @@ function AgentModal({
       return;
     }
     setBusy(true);
-    const body = { name, teamIds, instructions, concurrency, followPullRequests };
+    const body = { name, avatarColor, teamIds, instructions, concurrency, followPullRequests };
     try {
       if (existing) {
         await api.patch(wsPath(ws.slug, `/agents/${existing.id}`), body);
@@ -263,6 +269,16 @@ function AgentModal({
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
+        </FormRow>
+        <FormRow label={t('agents.form.color')}>
+          <div className="flex items-center gap-3">
+            <Avatar name={name || '?'} color={avatarColor} size={22} />
+            <AvatarColorPicker
+              value={avatarColor}
+              onChange={setAvatarColor}
+              label={t('agents.form.color')}
+            />
+          </div>
         </FormRow>
         <div className="mb-1 text-[12px] text-muted">{t('agents.form.teams')}</div>
         <div className="mb-1 flex flex-wrap gap-3 border border-border-soft p-3">

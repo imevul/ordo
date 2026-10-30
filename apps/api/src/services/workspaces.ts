@@ -1,16 +1,18 @@
 import {
   DEFAULT_WORKSPACE_SETTINGS,
   isGuestRole,
+  type Member,
   type MemberRole,
+  type User,
   type Workspace,
   type WorkspaceSettings,
 } from '@ordo/shared';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
-import { teamMembers, teams, users, workspaceMembers, workspaces } from '../db/schema.ts';
+import { issues, teamMembers, teams, users, workspaceMembers, workspaces } from '../db/schema.ts';
 import { badRequest } from '../lib/errors.ts';
-import type { Access } from './access.ts';
+import { type Access, teamScope } from './access.ts';
 import { signedFileUrl } from './files.ts';
 import { statusColumns, statusOf } from './status.ts';
 
@@ -63,6 +65,55 @@ export async function listMembers(db: DbOrTx, access: Access) {
       email: access.isGuest && m.id !== access.userId ? '' : m.email,
     }),
   );
+}
+
+/**
+ * People who left the workspace but are still assigned issues `access` can see: a name and a
+ * colour, so those issues still say whose they are.
+ */
+export async function listFormerMembers(
+  db: DbOrTx,
+  access: Access,
+): Promise<(User & Pick<Member, 'kind'>)[]> {
+  const current = db
+    .select({ id: workspaceMembers.userId })
+    .from(workspaceMembers)
+    .where(eq(workspaceMembers.workspaceId, access.workspaceId));
+  const assigned = db
+    .selectDistinct({ id: issues.assigneeId })
+    .from(issues)
+    .where(
+      and(
+        eq(issues.workspaceId, access.workspaceId),
+        isNull(issues.deletedAt),
+        teamScope(access, issues.teamId),
+      ),
+    );
+  const rows = await db
+    .select({
+      id: users.id,
+      name: users.name,
+      username: users.username,
+      avatarColor: users.avatarColor,
+      kind: users.kind,
+    })
+    .from(users)
+    .where(
+      and(
+        inArray(users.id, assigned),
+        notInArray(users.id, current),
+        // Placeholders and bots come with the bootstrap on their own.
+        inArray(users.kind, ['human', 'agent']),
+      ),
+    )
+    .orderBy(asc(users.name));
+  // The kind filter above leaves only humans and agents.
+  return rows.map((r) => ({
+    ...r,
+    kind: r.kind as Member['kind'],
+    email: '',
+    avatarUrl: null,
+  }));
 }
 
 /**

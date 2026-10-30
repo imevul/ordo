@@ -40,7 +40,13 @@ import { toView } from '../services/serialize.ts';
 import { publishChanges } from '../services/sync.ts';
 import { listTeams } from '../services/teams.ts';
 import { listTemplates } from '../services/templates.ts';
-import { listMembers, memberRole, toWorkspace, workspaceSettings } from '../services/workspaces.ts';
+import {
+  listFormerMembers,
+  listMembers,
+  memberRole,
+  toWorkspace,
+  workspaceSettings,
+} from '../services/workspaces.ts';
 
 /** Everything the app needs to show a workspace, as the requester may see it. */
 export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): Promise<Bootstrap> {
@@ -62,6 +68,7 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
     unread,
     bots,
     placeholders,
+    formerMembers,
     repositories,
   ] = await Promise.all([
     db.select().from(workspaces).where(eq(workspaces.id, ws.id)),
@@ -96,6 +103,7 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
       ),
     workspaceBots(db, ws.id),
     workspacePlaceholders(db, ws.id),
+    listFormerMembers(db, access),
     listRepositories(db, ws.id),
   ]);
   // Favorites only for things still visible.
@@ -116,6 +124,7 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
     })),
     bots: bots.map((b) => ({ ...b, email: '', avatarUrl: null })),
     placeholders,
+    formerMembers,
     repositories,
     teams: teamList,
     labels: labelRows,
