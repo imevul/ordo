@@ -124,7 +124,11 @@ export async function authProviderRoutes(app: FastifyInstance) {
     const input = parse(updateAuthProviderSchema, req.body);
     return mutate(app, req, async (ctx) => {
       const [current] = await ctx.tx
-        .select({ protocol: authProviders.protocol })
+        .select({
+          protocol: authProviders.protocol,
+          issuer: authProviders.issuer,
+          clientSecret: authProviders.clientSecret,
+        })
         .from(authProviders)
         .where(and(eq(authProviders.id, id), eq(authProviders.workspaceId, ws.id)));
       if (!current) throw notFound('Sign-in provider');
@@ -132,15 +136,25 @@ export async function authProviderRoutes(app: FastifyInstance) {
       const oidcOnly = rest.issuer ?? rest.clientId ?? rest.scopes ?? clientSecret;
       if (current.protocol === 'saml' ? oidcOnly : saml || rest.trustEmail !== undefined)
         throw badRequest("Those settings don't belong to this provider's protocol");
+      const issuer = rest.issuer?.trim();
+      // The secret stays with the issuer it was entered for: the next sign-in would send it to
+      // the new issuer's token endpoint. Moving the provider takes the secret again.
+      const dropSecret =
+        !clientSecret &&
+        issuer !== undefined &&
+        issuer !== current.issuer &&
+        !!current.clientSecret;
       const row = one(
         await ctx.tx
           .update(authProviders)
           .set({
             ...rest,
-            issuer: rest.issuer?.trim(),
+            issuer,
             clientSecret: clientSecret
               ? app.keyring.encrypt(clientSecret, authProviderSecretAad(id))
-              : undefined,
+              : dropSecret
+                ? null
+                : undefined,
             saml: saml ? cleanSaml(saml) : undefined,
             updatedAt: new Date().toISOString(),
           })
@@ -154,7 +168,7 @@ export async function authProviderRoutes(app: FastifyInstance) {
         targetId: id,
         data: {
           ...rest,
-          clientSecret: clientSecret ? 'changed' : undefined,
+          clientSecret: clientSecret ? 'changed' : dropSecret ? 'removed' : undefined,
           saml: saml ? { idpEntityId: saml.idpEntityId, ssoUrl: saml.ssoUrl } : undefined,
         },
       });

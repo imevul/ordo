@@ -143,7 +143,10 @@ function OwnModelCard({ data, onSaved }: { data: WorkspaceAi; onSaved: () => voi
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const hint = HINTS[provider];
-  const sameProvider = own?.provider === provider;
+  const sentBaseUrl = provider === 'openai' ? baseUrl.trim() || hint.baseUrl : null;
+  // The API keeps the stored key only for the endpoint it was entered for.
+  const sameProvider =
+    own?.provider === provider && own.baseUrl === (sentBaseUrl?.replace(/\/$/, '') ?? null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -152,8 +155,8 @@ function OwnModelCard({ data, onSaved }: { data: WorkspaceAi; onSaved: () => voi
       await api.put(wsPath(ws.slug, '/ai/provider'), {
         provider,
         model: model.trim() || hint.model,
-        baseUrl: provider === 'openai' ? baseUrl.trim() || hint.baseUrl : null,
-        // Empty keeps the stored key, but only for the provider it was stored for.
+        baseUrl: sentBaseUrl,
+        // Empty keeps the stored key, but only for the endpoint it was stored for.
         apiKey: apiKey.trim() || (sameProvider ? '' : null),
       });
       setApiKey('');

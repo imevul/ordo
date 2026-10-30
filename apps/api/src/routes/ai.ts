@@ -96,13 +96,23 @@ export async function aiRoutes(app: FastifyInstance) {
     const input = parse(workspaceAiProviderSchema, req.body);
     return mutate(app, req, async (ctx) => {
       const [current] = await ctx.tx
-        .select({ apiKey: workspaceAiProviders.apiKey })
+        .select({
+          provider: workspaceAiProviders.provider,
+          baseUrl: workspaceAiProviders.baseUrl,
+          apiKey: workspaceAiProviders.apiKey,
+        })
         .from(workspaceAiProviders)
         .where(eq(workspaceAiProviders.workspaceId, ctx.workspaceId));
+      const baseUrl =
+        input.provider === 'openai' ? (input.baseUrl?.replace(/\/$/, '') ?? null) : null;
       // An empty key keeps the stored one (the page only ever sees it masked); null removes it.
+      // The stored key stays with the endpoint it was entered for: another provider or base URL
+      // takes it again, or it'd be sent to whoever runs the new address.
+      const sameTarget = current?.provider === input.provider && current.baseUrl === baseUrl;
+      const kept = input.apiKey === '' && sameTarget && current?.apiKey ? current.apiKey : null;
       const apiKey =
         input.apiKey === ''
-          ? (current?.apiKey ?? null)
+          ? kept
           : input.apiKey && app.keyring.encrypt(input.apiKey, workspaceAiKeyAad(ctx.workspaceId));
       if (input.provider === 'anthropic' && !apiKey)
         throw badRequest('Enter an API key for the Claude API');
@@ -111,7 +121,7 @@ export async function aiRoutes(app: FastifyInstance) {
       const values = {
         provider: input.provider,
         model: input.model,
-        baseUrl: input.provider === 'openai' ? (input.baseUrl?.replace(/\/$/, '') ?? null) : null,
+        baseUrl,
         apiKey,
         updatedAt: new Date().toISOString(),
       };
@@ -129,7 +139,7 @@ export async function aiRoutes(app: FastifyInstance) {
           provider: input.provider,
           model: input.model,
           baseUrl: values.baseUrl,
-          apiKey: input.apiKey === '' ? 'kept' : input.apiKey ? 'changed' : null,
+          apiKey: input.apiKey ? 'changed' : kept ? 'kept' : current?.apiKey ? 'removed' : null,
         },
       });
       return { ok: true };

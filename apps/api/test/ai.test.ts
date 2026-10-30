@@ -349,6 +349,61 @@ describe("a workspace's own model", () => {
       await app.close();
     }
   });
+
+  it('keeps a stored key only for the provider and base URL it was entered for', async () => {
+    const app = await testApp({ settingsFromEnv: { ai: null, allowPrivateNetworkTargets: true } });
+    try {
+      const admin = as(app, owner);
+      const put = (body: Record<string, unknown>) => admin.put(`${ws}/ai/provider`, body);
+      mock.on('POST', '/v1/chat/completions', {
+        choices: [{ finish_reason: 'stop', message: { content: 'ok' } }],
+      });
+      mock.on('POST', '/elsewhere/chat/completions', {
+        choices: [{ finish_reason: 'stop', message: { content: 'ok' } }],
+      });
+      const authOfLast = async (path: string) => {
+        expect((await admin.post(`${ws}/ai/issues/ENG-1/summary`)).statusCode).toBe(200);
+        return mock.calls('POST', path).at(-1)!.headers.authorization;
+      };
+
+      // A Claude key doesn't follow the workspace to an OpenAI-compatible server.
+      const claudeKey = 'sk-ant-stored-claude-key-1234';
+      const claude = { provider: 'anthropic', model: 'claude-own', baseUrl: null };
+      expect((await put({ ...claude, apiKey: claudeKey })).statusCode).toBe(200);
+      const moved = await put({
+        provider: 'openai',
+        model: 'm',
+        baseUrl: `${mock.url}/v1`,
+        apiKey: '',
+      });
+      expect(moved.statusCode, moved.body).toBe(200);
+      expect((await admin.get(`${ws}/ai/settings`)).data.own.apiKey).toBeNull();
+      expect(await authOfLast('/v1/chat/completions')).toBeUndefined();
+      // Nor back: there is no key to keep for the Claude API any more.
+      expect((await put({ ...claude, apiKey: '' })).statusCode).toBe(400);
+
+      // Same server (trailing slash or not): the key stays.
+      const key = 'sk-local-stored-key-5678';
+      const local = { provider: 'openai', model: 'm', baseUrl: `${mock.url}/v1` };
+      await put({ ...local, apiKey: key });
+      await put({ ...local, baseUrl: `${mock.url}/v1/`, model: 'm2', apiKey: '' });
+      expect(await authOfLast('/v1/chat/completions')).toBe(`Bearer ${key}`);
+
+      // Another base URL: the key is dropped unless it comes with the request.
+      await put({ ...local, baseUrl: `${mock.url}/elsewhere`, apiKey: '' });
+      expect(await authOfLast('/elsewhere/chat/completions')).toBeUndefined();
+      await put({ ...local, apiKey: key });
+      await put({ ...local, baseUrl: `${mock.url}/elsewhere`, apiKey: 'sk-new-key-0000' });
+      expect(await authOfLast('/elsewhere/chat/completions')).toBe('Bearer sk-new-key-0000');
+
+      const log = JSON.stringify((await admin.get(`${ws}/audit-log?category=workspace`)).data);
+      expect(log).toContain('"apiKey":"removed"');
+      expect(log).not.toContain('5678');
+    } finally {
+      await as(app, owner).del(`${ws}/ai/provider`);
+      await app.close();
+    }
+  });
 });
 
 describe('what the instance lets workspaces change', () => {
