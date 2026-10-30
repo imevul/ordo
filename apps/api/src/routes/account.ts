@@ -122,7 +122,10 @@ export async function accountRoutes(app: FastifyInstance) {
         ...(input.notifications?.emailDigest
           ? { emailDigest: input.notifications.emailDigest }
           : {}),
+        inbox: { ...current.notifications.inbox, ...input.notifications?.inbox },
+        push: { ...current.notifications.push, ...input.notifications?.push },
         email: { ...current.notifications.email, ...input.notifications?.email },
+        chat: { ...current.notifications.chat, ...input.notifications?.chat },
       },
     };
     await db.update(users).set({ preferences: next }).where(eq(users.id, user.id));

@@ -229,6 +229,10 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
+/** Why someone got a notification, stored as `data.reason`; older rows have none and count as `subscriber`. */
+export const NOTIFICATION_REASONS = ['assignee', 'creator', 'subscriber', 'mention'] as const;
+export type NotificationReason = (typeof NOTIFICATION_REASONS)[number];
+
 /** The reactions offered first; any single emoji is accepted. */
 export const QUICK_REACTIONS = ['👍', '👎', '❤️', '🎉', '😄', '😕', '🚀', '👀'] as const;
 /** Distinct emoji one comment can collect, so reactions stay a row and not a wall. */

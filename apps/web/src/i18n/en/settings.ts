@@ -173,11 +173,14 @@ export default {
     off: 'Off for this device.',
   },
   notifications: {
-    title: 'Email notifications',
+    title: 'Notifications',
     description:
-      'Everything always shows up in your Inbox. Choose what is also emailed, and how often. Anything you read in the app first is not emailed.',
-    descriptionNoEmail:
-      "Email isn't set up on this instance, so these settings have no effect yet.",
+      'Choose what reaches your Inbox and what also pings you. Push goes to the devices you turned it on for, chat to the chat accounts you connected and allowed direct messages on. Anything you read in the app first is not emailed.',
+    descriptionNoEmail: "Email isn't set up on this instance, so nothing is emailed.",
+    channels: { inbox: 'Inbox', push: 'Push', email: 'Email', chat: 'Chat' },
+    cellLabel: '{type}: {channel}',
+    channelsHint:
+      "Turning off Inbox means you don't get that kind of notification at all, on any channel. Reactions only go to the Inbox.",
     sendEmails: 'Send emails',
     digest: {
       instant: 'Within a few minutes',

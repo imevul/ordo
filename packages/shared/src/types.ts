@@ -19,7 +19,7 @@ import type {
   TeamRole,
   UserKind,
 } from './constants.ts';
-import { DEFAULT_LOCALE } from './constants.ts';
+import { DEFAULT_LOCALE, NOTIFICATION_TYPES } from './constants.ts';
 import {
   DEFAULT_BRANCH_FORMAT,
   type GitAutomation,
@@ -827,10 +827,26 @@ export interface UserPreferences {
   notifications: {
     /** How notification emails are batched; "off" sends none. */
     emailDigest: EmailDigest;
+    /** Notification types that are created at all; the other channels only send what lands here. */
+    inbox: Record<NotificationType, boolean>;
+    /** Notification types pushed to this person's devices. */
+    push: Record<NotificationType, boolean>;
     /** Notification types that may be emailed. */
     email: Record<NotificationType, boolean>;
+    /** Notification types sent as a chat DM (to verified chat accounts that allow DMs). */
+    chat: Record<NotificationType, boolean>;
   };
 }
+
+/** Every type on, except the ones listed. */
+const typesExcept = (...off: NotificationType[]) =>
+  Object.fromEntries(NOTIFICATION_TYPES.map((t) => [t, !off.includes(t)])) as Record<
+    NotificationType,
+    boolean
+  >;
+
+/** Channels a notification type can't go out on: reactions are too small for anything but the inbox. */
+export const INBOX_ONLY_TYPES: readonly NotificationType[] = ['comment_reaction'];
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
   locale: DEFAULT_LOCALE,
@@ -838,16 +854,10 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   weekStartsOn: 1,
   notifications: {
     emailDigest: 'instant',
-    email: {
-      issue_assigned: true,
-      issue_unassigned: false,
-      issue_comment: true,
-      issue_mention: true,
-      issue_status_changed: false,
-      issue_priority_urgent: true,
-      comment_reaction: false,
-      issue_sla_breached: true,
-    },
+    inbox: typesExcept(),
+    push: typesExcept('comment_reaction'),
+    email: typesExcept('issue_unassigned', 'issue_status_changed', 'comment_reaction'),
+    chat: typesExcept('comment_reaction'),
   },
 };
 
