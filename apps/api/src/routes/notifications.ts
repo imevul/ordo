@@ -1,4 +1,4 @@
-import { type Notification, snoozeSchema } from '@ordo/shared';
+import { type Notification, notificationsQuerySchema, snoozeSchema } from '@ordo/shared';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { issues, notifications, teams } from '../db/schema.ts';
@@ -13,7 +13,7 @@ export async function notificationRoutes(app: FastifyInstance) {
   app.get('/notifications', async (req): Promise<Notification[]> => {
     const user = requireUser(req);
     const ws = requireWorkspace(req);
-    const snoozed = (req.query as { snoozed?: string }).snoozed === '1';
+    const snoozed = parse(notificationsQuerySchema, req.query).snoozed === '1';
     const rows = await app.db
       .select({
         n: notifications,

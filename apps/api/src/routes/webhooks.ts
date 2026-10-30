@@ -1,4 +1,9 @@
-import { createWebhookSchema, updateWebhookSchema, type WebhookPayload } from '@ordo/shared';
+import {
+  createWebhookSchema,
+  updateWebhookSchema,
+  type WebhookPayload,
+  webhookDeliveriesQuerySchema,
+} from '@ordo/shared';
 import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { webhookDeliveries, webhooks, workspaces } from '../db/schema.ts';
@@ -152,7 +157,7 @@ export async function webhookRoutes(app: FastifyInstance) {
   app.get('/webhooks/:id/deliveries', async (req) => {
     requireAdmin(req);
     const { id } = req.params as { id: string };
-    const { limit = '50' } = req.query as { limit?: string };
+    const { limit } = parse(webhookDeliveriesQuerySchema, req.query);
     return mutate(app, req, async (ctx) => {
       await load(ctx, id);
       const rows = await ctx.tx
@@ -160,7 +165,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         .from(webhookDeliveries)
         .where(eq(webhookDeliveries.webhookId, id))
         .orderBy(desc(webhookDeliveries.createdAt))
-        .limit(Math.min(200, Number(limit) || 50));
+        .limit(limit);
       return rows.map(toDelivery);
     });
   });
