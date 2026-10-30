@@ -62,8 +62,9 @@ pnpm --filter @ordo/api test
 2. Add it to `Issue` in `packages/shared/src/types.ts` and to `createIssueSchema` / `updateIssueSchema`.
 3. Map it in `toIssue()` and handle it in `createIssue` / `updateIssue` (`services/issues.ts`) — record history
    with `change()`.
-4. Add a picker in `apps/web/src/components/properties.tsx` and show it in `IssueDetailView`, `IssueRow`
-   and the create modal as appropriate. Render its history entry in `Activity.tsx`.
+4. Add a picker in `apps/web/src/components/properties.tsx` and show it in the issue sidebar
+   (`components/issue/IssueSidebar.tsx`), `IssueRow` and the create modal as appropriate. Render its history
+   entry in `Activity.tsx`.
 5. Test it in `apps/api/test/api.test.ts`.
 
 ### Add an endpoint

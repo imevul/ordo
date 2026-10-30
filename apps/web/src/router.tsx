@@ -8,19 +8,15 @@ import {
 } from '@tanstack/react-router';
 import { Toaster } from 'sonner';
 import { ConfirmHost } from './components/ui/Modal.tsx';
-import { AdminPage } from './routes/admin.tsx';
+import { AdminPage } from './routes/admin/index.tsx';
 import { AgentRunsPage } from './routes/agentRuns.tsx';
-import {
-  EmailLinkPage,
-  ForgotPasswordPage,
-  IndexRedirect,
-  InvitePage,
-  LoginPage,
-  OAuthAuthorizePage,
-  OnboardingPage,
-  ResetPasswordPage,
-  SignupPage,
-} from './routes/auth.tsx';
+import { EmailLinkPage } from './routes/auth/emailLink.tsx';
+import { InvitePage } from './routes/auth/invite.tsx';
+import { IndexRedirect, LoginPage } from './routes/auth/login.tsx';
+import { OAuthAuthorizePage } from './routes/auth/oauth.tsx';
+import { OnboardingPage } from './routes/auth/onboarding.tsx';
+import { ForgotPasswordPage, ResetPasswordPage } from './routes/auth/password.tsx';
+import { SignupPage } from './routes/auth/signup.tsx';
 import { CustomerPage, CustomersPage } from './routes/customers.tsx';
 import { CycleDetailPage, CyclesPage } from './routes/cycles.tsx';
 import { InboxPage } from './routes/inbox.tsx';
