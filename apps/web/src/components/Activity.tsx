@@ -366,13 +366,7 @@ function CommentItem({
       {(replies.length > 0 || replying) && (
         <div className="border-t border-border-soft px-3.5 pb-2">
           {replies.map((r) => (
-            <CommentItem
-              key={r.id}
-              comment={r}
-              replies={[]}
-              issueId={issueId}
-              focusId={focusId}
-            />
+            <CommentItem key={r.id} comment={r} replies={[]} issueId={issueId} focusId={focusId} />
           ))}
           {replying && (
             <div className="pt-2">
