@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { poolSize } from '../src/db/client.ts';
 
 // Keeps what the API reads, docs/configuration.md, docker-compose.yml and .env.example in sync, so a
 // documented setting can't silently do nothing in a Compose install.
@@ -95,5 +96,13 @@ describe('configuration', () => {
     const docs = documentedVars();
     expect(TEST_HOOKS.filter((v) => !src.has(v) || docs.has(v))).toEqual([]);
     expect(NOT_IN_COMPOSE.filter((v) => !docs.has(v) || composeVars().has(v))).toEqual([]);
+  });
+
+  it('uses the default pool size when compose passes DATABASE_POOL_SIZE through empty', () => {
+    expect(poolSize(undefined)).toBe(10);
+    expect(poolSize('')).toBe(10);
+    expect(poolSize('0')).toBe(10);
+    expect(poolSize('abc')).toBe(10);
+    expect(poolSize('25')).toBe(25);
   });
 });
