@@ -29,6 +29,7 @@ export default {
   },
   appShell: {
     openNavigation: 'Open navigation',
+    navigation: 'Navigation',
   },
   spinner: {
     loading: 'loading',
@@ -156,6 +157,7 @@ export default {
     assign: 'Assign',
     copyBranch: 'Copy git branch name (open issue)',
     submit: 'Submit (forms, comments)',
+    editDescription: 'Edit description',
     boldItalic: 'Bold / italic (in text)',
     nextPrevNotification: 'Next / previous notification',
     toggleRead: 'Toggle read',

@@ -47,6 +47,7 @@ export const shortcuts = (): { section: string; items: [string, string][] }[] =>
       ['Shift P', t('common.project')],
       ['Shift C', t('common.cycle')],
       ['E', t('common.estimate')],
+      ['D', t('shell.shortcuts.editDescription')],
       [`${modKey} ⌫`, t('shell.palette.moveToTrash')],
       [`${modKey} Shift .`, t('shell.shortcuts.copyBranch')],
       [`${modKey} Enter`, t('shell.shortcuts.submit')],

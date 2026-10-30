@@ -30,6 +30,7 @@ export default {
   },
   appShell: {
     openNavigation: 'Åpne navigasjonen',
+    navigation: 'Navigasjon',
   },
   spinner: {
     loading: 'laster',
@@ -157,6 +158,7 @@ export default {
     assign: 'Tildel',
     copyBranch: 'Kopier navnet på git-grenen (åpen sak)',
     submit: 'Send inn (skjemaer, kommentarer)',
+    editDescription: 'Rediger beskrivelsen',
     boldItalic: 'Fet / kursiv (i tekst)',
     nextPrevNotification: 'Neste / forrige varsel',
     toggleRead: 'Merk som lest / ulest',

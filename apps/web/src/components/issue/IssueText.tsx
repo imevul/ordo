@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAttachmentUpload } from '../../api/queries.ts';
 import { t } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
+import { ClickToEdit } from '../ClickToEdit.tsx';
 import { Markdown } from '../Markdown.tsx';
 import { MarkdownEditor } from '../MarkdownEditor.tsx';
 
@@ -69,43 +70,43 @@ export function IssueDescription({
     if (value !== issue.description) onSave(value);
     setEditing(false);
   };
-  if (editing) {
-    return (
-      <div className="mt-4">
-        <MarkdownEditor
-          value={value}
-          onChange={setValue}
-          onSubmit={save}
-          onCancel={() => setEditing(false)}
-          autoFocus
-          minRows={6}
-          placeholder={t('issue.detail.addDescription')}
-          onUpload={upload}
-        />
-        <div className="mt-2 flex justify-end gap-2">
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditing(false)}>
-            {t('common.cancel')}
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={save}>
-            {t('common.save')}
-          </button>
-        </div>
-      </div>
-    );
-  }
   return (
-    <div
-      className="mt-4 min-h-12 cursor-text"
-      onClick={(e) => {
-        if ((e.target as HTMLElement).closest('a,input')) return;
-        setEditing(true);
-      }}
+    <ClickToEdit
+      editing={editing}
+      onEdit={() => setEditing(true)}
+      className="mt-4 min-h-12"
+      editor={
+        <div className="mt-4">
+          <MarkdownEditor
+            value={value}
+            onChange={setValue}
+            onSubmit={save}
+            onCancel={() => setEditing(false)}
+            autoFocus
+            minRows={6}
+            placeholder={t('issue.detail.addDescription')}
+            onUpload={upload}
+          />
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setEditing(false)}
+            >
+              {t('common.cancel')}
+            </button>
+            <button type="button" className="btn btn-primary btn-sm" onClick={save}>
+              {t('common.save')}
+            </button>
+          </div>
+        </div>
+      }
     >
       {issue.description.trim() ? (
         <Markdown source={issue.description} />
       ) : (
         <p className="text-[14px] text-index">{t('issue.detail.addDescription')}</p>
       )}
-    </div>
+    </ClickToEdit>
   );
 }
