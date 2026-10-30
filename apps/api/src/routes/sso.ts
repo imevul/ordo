@@ -1,4 +1,12 @@
-import { type LinkedIdentity, linkIdentitySchema, type SsoDiscovery } from '@ordo/shared';
+import {
+  type LinkedIdentity,
+  linkIdentitySchema,
+  type SsoDiscovery,
+  samlCompleteQuerySchema,
+  ssoDiscoverQuerySchema,
+  ssoProvidersQuerySchema,
+  ssoStartQuerySchema,
+} from '@ordo/shared';
 import { and, count, eq, isNotNull } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
@@ -9,7 +17,7 @@ import {
   workspaces,
 } from '../db/schema.ts';
 import { authInfo, authorizeWorkspace, requireUser } from '../lib/auth.ts';
-import { badRequest, HttpError, notFound, parse } from '../lib/errors.ts';
+import { badRequest, HttpError, notFound, parse, tryParse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from '../services/audit.ts';
 import { beginLogin, CALLBACK_PATH, completeLogin } from '../services/oidc.ts';
@@ -33,7 +41,7 @@ export async function ssoRoutes(app: FastifyInstance) {
    * Answers per domain, never per person, so it can't be used to find out who has an account.
    */
   app.get('/auth/discover', async (req): Promise<SsoDiscovery> => {
-    const { email = '' } = req.query as { email?: string };
+    const { email } = parse(ssoDiscoverQuerySchema, req.query);
     const domain = email.split('@')[1]?.toLowerCase().trim();
     if (!domain) return { options: [], ssoRequired: false };
     const rows = await db
@@ -58,7 +66,7 @@ export async function ssoRoutes(app: FastifyInstance) {
 
   /** Enabled providers of one workspace (for /login?workspace=… and the "SSO required" screen). */
   app.get('/auth/providers', async (req): Promise<SsoDiscovery> => {
-    const { workspace = '' } = req.query as { workspace?: string };
+    const { workspace } = parse(ssoProvidersQuerySchema, req.query);
     const rows = await db
       .select({
         providerId: authProviders.id,
@@ -81,10 +89,10 @@ export async function ssoRoutes(app: FastifyInstance) {
    */
   const start = async (req: FastifyRequest, reply: FastifyReply) => {
     const { providerId } = req.params as { providerId: string };
-    const { redirect, mode = 'login' } = req.query as {
-      redirect?: string;
-      mode?: 'login' | 'link' | 'test';
-    };
+    const query = tryParse(ssoStartQuerySchema, req.query);
+    // Followed from a button or a bookmark, so a mangled link lands on the sign-in page.
+    if (!query) return loginError(reply, "That sign-in link isn't valid. Sign in another way.");
+    const { redirect, mode } = query;
     // Linking attaches whatever identity comes back to the signed-in account, so a plain link
     // must never start it: anyone could send one that ends at their own identity provider.
     if (mode === 'link') throw badRequest('Connect accounts from Settings → Connected accounts');
@@ -242,7 +250,8 @@ export async function ssoRoutes(app: FastifyInstance) {
   });
 
   app.get('/auth/saml/complete', async (req, reply) => {
-    const { state } = req.query as { state?: string };
+    // A malformed state counts as none: completeSamlLogin refuses it with a message for people.
+    const state = tryParse(samlCompleteQuerySchema, req.query)?.state;
     reply.clearCookie(SAML_COOKIE, { path: SAML_COOKIE_PATH });
     let result: Awaited<ReturnType<typeof completeSamlLogin>>;
     try {
