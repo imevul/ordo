@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { type Binding, type PendingKey, resolveHotkey, SEQUENCE_TIMEOUT_MS } from './hotkeys.ts';
+import {
+  type Binding,
+  chords,
+  type PendingKey,
+  resolveHotkey,
+  SEQUENCE_TIMEOUT_MS,
+} from './hotkeys.ts';
 
 const bind = (keys: string | string[], opts: Partial<Binding> = {}): Binding => ({
   keys: Array.isArray(keys) ? keys : [keys],
@@ -83,5 +89,39 @@ describe('resolveHotkey', () => {
     const older = bind('s');
     const newer = bind('s');
     expect(resolveHotkey([older, newer], press('s'), null).binding).toBe(newer);
+  });
+
+  it('matches a binding by physical key', () => {
+    const copyBranch = bind('mod+shift+[Period]');
+    const nordic = { ...press('mod+:'), code: 'mod+shift+[Period]' };
+    expect(resolveHotkey([copyBranch], nordic, null).binding).toBe(copyBranch);
+    expect(resolveHotkey([copyBranch], press('mod+:'), null).binding).toBeNull();
+  });
+});
+
+const key = (k: string, code: string, mods: { mod?: boolean; shift?: boolean } = {}) =>
+  chords({
+    key: k,
+    code,
+    metaKey: false,
+    ctrlKey: !!mods.mod,
+    altKey: false,
+    shiftKey: !!mods.shift,
+  });
+
+describe('chords', () => {
+  it('names keys by character', () => {
+    expect(key('k', 'KeyK', { mod: true })[0]).toBe('mod+k');
+    expect(key('A', 'KeyA', { shift: true })[0]).toBe('shift+a');
+    expect(key('?', 'Slash', { shift: true })[0]).toBe('?');
+  });
+
+  it('names the physical key the same on every layout', () => {
+    // Mod Shift . on US English types ">", on Swedish and Norwegian ":".
+    const us = key('>', 'Period', { mod: true, shift: true });
+    const nordic = key(':', 'Period', { mod: true, shift: true });
+    expect(us[1]).toBe('mod+shift+[Period]');
+    expect(nordic[1]).toBe('mod+shift+[Period]');
+    expect(nordic[0]).toBe('mod+:');
   });
 });

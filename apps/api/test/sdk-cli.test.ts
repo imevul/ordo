@@ -128,6 +128,40 @@ describe('cli', () => {
     expect((await ordo(['whoami'])).stdout).toContain('Ada Lovelace (@cli-ada)');
   });
 
+  it("prints a command's own usage for --help", async () => {
+    const global = await ordo(['--help']);
+    expect(global.stdout).toContain('Usage: ordo <command>');
+
+    const create = await ordo(['issue', 'create', '--help']);
+    expect(create.code).toBe(0);
+    expect(create.stdout).toContain('Usage: ordo issue create');
+    expect(create.stdout).toContain('--description-file');
+    expect(create.stdout).not.toContain('Usage: ordo <command>');
+    // Aliases, -h, `ordo help …`, and help that comes after other arguments.
+    expect((await ordo(['issue', 'ls', '-h'])).stdout).toContain('Usage: ordo issue list');
+    expect((await ordo(['issues', '--help'])).stdout).toContain('Usage: ordo issue list');
+    expect((await ordo(['help', 'issue', 'comment'])).stdout).toContain(
+      'Usage: ordo issue comment',
+    );
+    expect((await ordo(['issue', 'view', 'ENG-1', '--help'])).stdout).toContain(
+      'Usage: ordo issue view',
+    );
+    expect((await ordo(['issue', '--help'])).stdout).toContain('Usage: ordo issue <command>');
+    expect((await ordo(['agent', 'run', '--help'])).stdout).toContain('--concurrency');
+
+    // After `--`, --help belongs to the agent's command, not to ordo.
+    const passed = await ordo(['agent', 'run', '--', 'claude', '--help'], {
+      env: { XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), 'ordo-cli-')) },
+    });
+    expect(passed.stdout).not.toContain('Usage:');
+    expect(passed.stderr).toContain("agent's key");
+
+    const unknown = await ordo(['issue', 'nope', '--help']);
+    expect(unknown.code).toBe(2);
+    expect(unknown.stderr).toContain('unknown issue command "nope"');
+    expect((await ordo(['help', 'nope'])).code).toBe(2);
+  });
+
   it('refuses a wrong key at login', async () => {
     const res = await ordo(['login', url, '--token', 'ordo_wrong'], {
       env: { XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), 'ordo-cli-')) },
