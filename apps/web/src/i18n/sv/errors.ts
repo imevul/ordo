@@ -18,6 +18,7 @@ export default {
     invite_other_email: 'Inbjudan skickades till en annan e-postadress',
     invite_required: 'Du behöver en inbjudan för att registrera dig på den här instansen',
     invite_needed: 'Du behöver en inbjudan för att gå med i arbetsytan',
+    invite_already_signed_up: 'Du har redan ett konto på den här instansen. Logga in i stället.',
     account_disabled: 'Kontot har inaktiverats. Kontakta din administratör.',
     email_taken: 'Ett annat konto använder redan den e-postadressen',
     same_email: 'Det är redan din e-postadress',

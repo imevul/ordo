@@ -41,6 +41,16 @@ export default {
       /** The role as it reads mid-sentence: "as member". */
       role: { owner: 'owner', admin: 'admin', member: 'member', guest: 'guest' },
     },
+    siteInvite: {
+      subject: '{inviter} invited you to Ordo at {instance}',
+      kicker: 'invitation',
+      title: 'Join Ordo at {instance}',
+      body: '{inviter} invited you to create an account on <b>{instance}</b>.',
+      bodyCreate:
+        '{inviter} invited you to create an account on <b>{instance}</b>, where you can start your own workspaces.',
+      cta: 'Create your account',
+      text: '{inviter} invited you to create an account on Ordo at {instance}.\n\nSign up: {url}',
+    },
     security: {
       kicker: 'security',
       notYou: "If this wasn't you, change your password and contact your administrator.",

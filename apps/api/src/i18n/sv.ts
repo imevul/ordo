@@ -40,6 +40,16 @@ export default {
       text: '{inviter} har bjudit in dig till {workspace} i Ordo som {role}.\n\nTacka ja: {url}',
       role: { owner: 'ägare', admin: 'admin', member: 'medlem', guest: 'gäst' },
     },
+    siteInvite: {
+      subject: '{inviter} har bjudit in dig till Ordo på {instance}',
+      kicker: 'inbjudan',
+      title: 'Gå med i Ordo på {instance}',
+      body: '{inviter} har bjudit in dig att skapa ett konto på <b>{instance}</b>.',
+      bodyCreate:
+        '{inviter} har bjudit in dig att skapa ett konto på <b>{instance}</b>, där du kan starta egna arbetsytor.',
+      cta: 'Skapa ditt konto',
+      text: '{inviter} har bjudit in dig att skapa ett konto i Ordo på {instance}.\n\nRegistrera dig: {url}',
+    },
     security: {
       kicker: 'säkerhet',
       notYou: 'Om det inte var du: byt lösenord och kontakta din administratör.',

@@ -40,6 +40,8 @@ export interface Me extends User {
   /** The language the app, emails and notifications use for this person. */
   locale: Locale;
   workspaces: { id: string; name: string; slug: string; role: MemberRole }[];
+  /** Whether POST /workspaces would let them create one now. */
+  canCreateWorkspace: boolean;
 }
 
 export interface Workspace {
@@ -525,6 +527,31 @@ export interface Invite {
   createdAt: string;
   lastSentAt: string | null;
   url: string;
+}
+
+/** An invite to the instance itself, without a workspace (Admin → Invites). */
+export interface SiteInvite {
+  id: string;
+  token: string;
+  email: string | null;
+  canCreateWorkspaces: boolean;
+  expiresAt: string;
+  createdAt: string;
+  lastSentAt: string | null;
+  createdByName: string | null;
+  url: string;
+}
+
+/** What GET /invites/:token tells the invite page. `workspace` is null for a site invite. */
+export interface InvitePreview {
+  kind: 'workspace' | 'site';
+  workspace: { name: string; slug: string } | null;
+  email: string | null;
+  role: MemberRole | null;
+  teams: string[];
+  canCreateWorkspaces: boolean;
+  /** A site invite opened while signed in: the person already has an account. */
+  alreadySignedUp: boolean;
 }
 
 export interface ApiKey {

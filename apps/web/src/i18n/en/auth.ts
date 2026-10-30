@@ -100,9 +100,21 @@ export default {
     join: 'Join workspace',
     createAccount: 'Create account',
     haveAccount: 'I already have an account',
+    titleSite: 'Join Ordo.',
+    site: "You're invited to create an account on this instance.",
+    siteCanCreate:
+      "You're invited to create an account on this instance, where you can start your own workspaces.",
+    alreadySignedUp:
+      "You're already signed in as <b>{email}</b>. This invite is for creating a new account, so there's nothing to accept.",
+    continue: 'Continue to Ordo',
   },
   onboarding: {
     kicker: 'new workspace',
+    waitKicker: 'no workspace yet',
+    waitTitle: 'Almost there.',
+    waitBody:
+      "Your account is ready, but you aren't in a workspace yet. Ask an administrator to add you to one. It shows up here once they do.",
+    checkAgain: 'Check again',
     title: 'Create a workspace.',
     orJoin: 'Or join your team',
     members: { one: '{count} member', other: '{count} members' },

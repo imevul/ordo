@@ -86,6 +86,13 @@ export const users = pgTable('users', {
    */
   kind: text('kind').$type<UserKind>().notNull().default('human'),
   isInstanceAdmin: boolean('is_instance_admin').notNull().default(false),
+  /** May create workspaces even when the instance turns workspace creation off. */
+  canCreateWorkspaces: boolean('can_create_workspaces').notNull().default(false),
+  /**
+   * Set when the account came from a site invite. Such accounts don't get the usual "anyone may
+   * create their first workspace" allowance; only `canCreateWorkspaces` lets them.
+   */
+  siteInvitedAt: ts('site_invited_at'),
   emailVerifiedAt: ts('email_verified_at'),
   disabledAt: ts('disabled_at'),
   avatarFileId: uuid('avatar_file_id'),
@@ -171,14 +178,15 @@ export const workspaceMembers = pgTable(
 
 export const invites = pgTable('invites', {
   id: pk(),
-  workspaceId: uuid('workspace_id')
-    .notNull()
-    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  /** Null for a site invite: an account on the instance, made by an instance admin, no workspace. */
+  workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
   token: text('token').notNull().unique(),
   email: text('email'),
   role: text('role').$type<MemberRole>().notNull().default('member'),
   /** Teams the invitee joins on accepting. */
   teamIds: jsonb('team_ids').$type<string[]>().notNull().default([]),
+  /** Site invites: copied to `users.can_create_workspaces` on sign-up. */
+  canCreateWorkspaces: boolean('can_create_workspaces').notNull().default(false),
   createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
   lastSentAt: ts('last_sent_at'),
   expiresAt: ts('expires_at').notNull(),

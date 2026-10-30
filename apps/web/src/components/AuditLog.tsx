@@ -545,6 +545,12 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
       return a('accountUpdated');
     case 'admin.user_deleted':
       return a('accountDeleted');
+    case 'admin.invite_created':
+      return d.email
+        ? a('siteInviteCreated', { email: String(d.email) })
+        : a('siteInviteCreatedLink');
+    case 'admin.invite_revoked':
+      return a('siteInviteRevoked');
     case 'settings.updated':
       return a('settingsUpdated');
     case 'agent.created':
