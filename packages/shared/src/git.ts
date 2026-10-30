@@ -4,14 +4,6 @@ import type { StateType } from './constants.ts';
 export const GIT_EVENTS = ['branch', 'draft', 'open', 'review', 'merged'] as const;
 export type GitEvent = (typeof GIT_EVENTS)[number];
 
-export const GIT_EVENT_LABELS: Record<GitEvent, string> = {
-  branch: 'Branch pushed',
-  draft: 'Draft PR opened',
-  open: 'PR opened',
-  review: 'Review requested',
-  merged: 'PR merged',
-};
-
 /** Pull request checks (CI) on the head commit, summed up. */
 export const PULL_REQUEST_CHECKS = ['pending', 'passing', 'failing'] as const;
 export type PullRequestChecks = (typeof PULL_REQUEST_CHECKS)[number];

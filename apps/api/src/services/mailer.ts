@@ -3,12 +3,11 @@ import nodemailer, { type Transporter } from 'nodemailer';
 import type { DbOrTx } from '../db/client.ts';
 import { enqueue } from '../lib/jobs/index.ts';
 import type { Email } from './mail-templates.ts';
-
-const SMTP_AAD = 'instance_settings:smtp:url';
+import { SMTP_URL_AAD } from './secretKey.ts';
 
 /** SMTP URLs saved through the admin UI are encrypted; ones from ORDO_SMTP_URL are plain. */
 export const encryptSmtpUrl = (app: FastifyInstance, url: string) =>
-  app.keyring.encrypt(url, SMTP_AAD);
+  app.keyring.encrypt(url, SMTP_URL_AAD);
 
 export class Mailer {
   private transport: { url: string; t: Transporter } | null = null;
@@ -23,7 +22,7 @@ export class Mailer {
     const smtp = this.app.settings.get('smtp');
     if (!smtp) return null;
     const url = smtp.url.startsWith('v1.')
-      ? this.app.keyring.decrypt(smtp.url, SMTP_AAD)
+      ? this.app.keyring.decrypt(smtp.url, SMTP_URL_AAD)
       : smtp.url;
     return { url, from: smtp.from };
   }

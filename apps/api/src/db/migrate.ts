@@ -5,8 +5,8 @@ import { sql } from 'drizzle-orm';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import type { PgDialect, PgSession } from 'drizzle-orm/pg-core';
 import { loadEnv } from '../env.ts';
-import { inviteTokenAad } from '../lib/invites.ts';
 import { Keyring } from '../lib/secrets.ts';
+import { inviteTokenAad } from '../services/secretKey.ts';
 import type { Db } from './client.ts';
 
 /** Finds the drizzle/ folder both from source (src/db) and from the bundle (dist/). */

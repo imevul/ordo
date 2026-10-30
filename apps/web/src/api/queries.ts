@@ -26,6 +26,7 @@ import type { Engine } from '@ordo/sync';
 import {
   keepPreviousData,
   type QueryClient,
+  type QueryKey,
   useMutation,
   useQuery,
   useQueryClient,
@@ -482,7 +483,7 @@ export function useToggleReaction(slug: string, issueId: string, userId: string)
 export function useWsMutation<TVars, TResult = unknown>(
   slug: string,
   fn: (vars: TVars) => Promise<TResult>,
-  opts: { success?: string; invalidate?: readonly unknown[][] } = {},
+  opts: { success?: string; invalidate?: readonly QueryKey[] } = {},
 ) {
   const qc = useQueryClient();
   return useMutation({

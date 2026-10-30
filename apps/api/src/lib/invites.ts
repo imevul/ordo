@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
+import { inviteTokenAad } from '../services/secretKey.ts';
 import { randomToken, sha256 } from './crypto.ts';
 
-/**
+/*
  * Invite tokens are stored as a sha256 for lookup, plus encrypted so admins can copy and resend
  * the link later. Without ORDO_SECRET_KEY only the hash is kept: the link is shown once.
  */
-export const inviteTokenAad = (id: string) => `invites:${id}:token`;
 
 /** Columns for a new invite row (or a new token for row `id`), with the token to put in the link. */
 export function newInviteToken(app: FastifyInstance, id: string = randomUUID()) {

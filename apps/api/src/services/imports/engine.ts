@@ -5,6 +5,7 @@ import {
   type ImportMapping,
   type ImportReport,
   type ImportSummary,
+  isGuestRole,
   LABEL_COLORS,
   SORT_GAP,
   STATE_TYPES,
@@ -870,7 +871,7 @@ async function assignable(ctx: Ctx, st: RunState, target: string, userId: string
   if (placeholder) return true;
   if (ok === undefined) {
     ok = target.startsWith('new:')
-      ? st.data.members.some((m) => m.id === userId && m.role !== 'guest')
+      ? st.data.members.some((m) => m.id === userId && !isGuestRole(m.role))
       : (await usersWithTeamAccess(ctx.tx, ctx.workspaceId, target, [userId])).length > 0;
     st.canAssign.set(key, ok);
   }

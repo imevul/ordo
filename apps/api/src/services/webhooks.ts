@@ -8,6 +8,7 @@ import { one } from '../lib/errors.ts';
 import { enqueue, type JobContext } from '../lib/jobs/index.ts';
 import { safeFetch } from '../lib/safeFetch.ts';
 import { audit } from './audit.ts';
+import { webhookSecretAad } from './secretKey.ts';
 
 /**
  * Outgoing webhooks. Each delivery is a job: retried with backoff for about an hour, then marked
@@ -21,7 +22,6 @@ const RESPONSE_LIMIT = 2000;
 type WebhookRow = typeof webhooks.$inferSelect;
 type DeliveryRow = typeof webhookDeliveries.$inferSelect;
 
-export const webhookSecretAad = (id: string) => `webhooks:${id}:secret`;
 export const newWebhookSecret = () => `whsec_${randomBytes(24).toString('base64url')}`;
 
 export const toWebhook = (w: WebhookRow): Webhook => ({

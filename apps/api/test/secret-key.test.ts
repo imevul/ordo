@@ -4,13 +4,18 @@ import { join } from 'node:path';
 import type { SiteInvite } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { Secret, TOTP } from 'otpauth';
 import { afterAll, describe, expect, it } from 'vitest';
 import { instanceKeys, users } from '../src/db/schema.ts';
 import { Keyring } from '../src/lib/secrets.ts';
+import { decryptAiKey } from '../src/services/ai/assist.ts';
+import { beginTotp, verifyTotp } from '../src/services/mfa.ts';
+import * as secretKey from '../src/services/secretKey.ts';
 import {
   countUnreadableSecrets,
   ENCRYPTED_COLUMNS,
   ENCRYPTED_SETTINGS,
+  instanceKeyAad,
   rotateSecrets,
 } from '../src/services/secretKey.ts';
 import { Client, freshDatabase, signup, testApp } from './helpers.ts';
@@ -42,32 +47,87 @@ const admin = async (app: FastifyInstance) => {
   return client;
 };
 
-describe('the list of encrypted columns', () => {
-  it('covers every AAD the source encrypts under', () => {
-    const src = join(import.meta.dirname, '../src');
-    const files = (readdirSync(src, { recursive: true }) as string[])
-      .filter((f) => f.endsWith('.ts'))
-      .map((f) => ({ f, text: readFileSync(join(src, f), 'utf8') }));
-    // `table:${id}:column` templates and 'table:key:field' literals: the shape every AAD has.
-    const found = new Set<string>();
-    for (const { text } of files) {
-      for (const m of text.matchAll(/`([a-z_]+):\$\{[^}]+\}:([A-Za-z_]+)`/g))
-        found.add(`${m[1]}::${m[2]}`);
-      for (const m of text.matchAll(/'(instance_settings:[a-z]+:[A-Za-z_]+)'/g)) found.add(m[1]!);
+/** The second argument of a call whose arguments start at `from`, as written in the source. */
+function secondArgument(text: string, from: number) {
+  let depth = 0;
+  let start = -1;
+  for (let i = from; i < text.length; i++) {
+    const ch = text[i]!;
+    if ('([{'.includes(ch)) depth++;
+    else if (')]}'.includes(ch)) {
+      if (depth === 0) return start < 0 ? null : text.slice(start, i).trim();
+      depth--;
+    } else if (ch === ',' && depth === 0) {
+      if (start >= 0) return text.slice(start, i).trim();
+      start = i + 1;
     }
-    const listed = new Set([
-      ...ENCRYPTED_COLUMNS.map((c) => c.aad('')),
-      ...ENCRYPTED_SETTINGS.map((s) => s.aad),
-    ]);
-    expect(found.size).toBeGreaterThanOrEqual(listed.size);
-    expect([...found].filter((a) => !listed.has(a))).toEqual([]);
+  }
+  return null;
+}
 
-    // Every encrypt call names its AAD in a way the scan above sees (a literal or an *Aad/aad helper).
-    const calls = files.flatMap(({ f, text }) =>
-      [...text.matchAll(/keyring\.encrypt\(\s*[^,]+,\s*([^)\s]+)/g)].map((m) => `${f}: ${m[1]}`),
+describe('the list of encrypted columns', () => {
+  const src = join(import.meta.dirname, '../src');
+  // The keyring itself and the registry (whose rotation passes its own `aad`) are left out.
+  const skip = [join('lib', 'secrets.ts'), join('services', 'secretKey.ts')];
+  const files = (readdirSync(src, { recursive: true }) as string[])
+    .filter((f) => f.endsWith('.ts') && !skip.includes(f))
+    .map((f) => ({ f, text: readFileSync(join(src, f), 'utf8') }));
+  const helpers = Object.entries(secretKey).filter(([name]) => /(Aad|_AAD)$/.test(name)) as [
+    string,
+    string | ((id: string) => string),
+  ][];
+
+  it('lists every AAD helper, so rotate-key re-encrypts what they protect', () => {
+    const listed = [
+      ...ENCRYPTED_COLUMNS.map((c) => c.aad),
+      ...ENCRYPTED_SETTINGS.map((s) => s.aad),
+    ] as unknown[];
+    expect(helpers.length).toBe(listed.length);
+    expect(helpers.filter(([, h]) => !listed.includes(h)).map(([name]) => name)).toEqual([]);
+  });
+
+  it('keeps every AAD byte-for-byte, so stored ciphertexts still decrypt', () => {
+    expect(
+      Object.fromEntries(helpers.map(([n, h]) => [n, typeof h === 'function' ? h('X') : h])),
+    ).toEqual({
+      totpSecretAad: 'users:X:totp_secret',
+      authProviderSecretAad: 'auth_providers:X:client_secret',
+      webhookSecretAad: 'webhooks:X:secret',
+      integrationAppSecretsAad: 'integration_apps:X:secrets',
+      integrationSecretsAad: 'integrations:X:secrets',
+      matrixCryptoStoreAad: 'matrix_crypto_stores:X:data',
+      workspaceAiKeyAad: 'workspace_ai_providers:X:apiKey',
+      importSecretsAad: 'imports:X:secrets',
+      instanceKeyAad: 'instance_keys:X:value',
+      inviteTokenAad: 'invites:X:token',
+      SMTP_URL_AAD: 'instance_settings:smtp:url',
+      AI_API_KEY_AAD: 'instance_settings:ai:apiKey',
+    });
+  });
+
+  it('is the only place AADs are written out', () => {
+    // `table:${id}:column` templates and 'table:key:field' literals: the shape every AAD has.
+    const shaped = files.flatMap(({ f, text }) =>
+      [
+        ...text.matchAll(
+          /`[a-z_]+:\$\{[^}]+\}:[A-Za-z_]+`|'(?:instance_[a-z]+):[a-z]+:[A-Za-z_]+'/g,
+        ),
+      ].map((m) => `${f}: ${m[0]}`),
     );
-    expect(calls.length).toBeGreaterThan(10);
-    expect(calls.filter((c) => !/(Aad|aad|AAD)\b|^'|`/.test(c.split(': ')[1]!))).toEqual([]);
+    expect(shaped).toEqual([]);
+  });
+
+  it('is what every encrypt and decrypt call uses', () => {
+    const names = new Set(helpers.map(([name]) => name));
+    const calls = files.flatMap(({ f, text }) =>
+      [...text.matchAll(/keyring\.(?:encrypt|decrypt)\(/g)].map(
+        (m) => `${f}: ${secondArgument(text, m.index + m[0].length)}`,
+      ),
+    );
+    expect(calls.length).toBeGreaterThan(20);
+    expect(
+      calls.filter((c) => !names.has(/^([A-Za-z_$][\w$]*)/.exec(c.split(': ')[1]!)?.[1] ?? '')),
+    ).toEqual([]);
   });
 });
 
@@ -141,14 +201,25 @@ describe('rotate-key', () => {
       },
     });
     expect(res.statusCode, res.body).toBe(200);
-    const id = await userId((await signup(a, 'Tess Totp')).client);
-    await a.db
-      .update(users)
-      .set({ totpSecret: a.keyring.encrypt('JBSWY3DPEHPK3PXP', `users:${id}:totp_secret`) })
-      .where(eq(users.id, id));
+    // Secrets written the way the app writes them: a TOTP enrolment, a webhook, an instance key.
+    const tess = await signup(a, 'Tess Totp');
+    const id = await userId(tess.client);
+    const { secret: totp } = await beginTotp(a.db, a.keyring, { id, email: tess.email });
+    const slug = `rot${randomBytes(3).toString('hex')}`;
+    const ws = await tess.client.post('/api/workspaces', {
+      name: 'Rotation',
+      slug,
+      teamName: 'Core',
+      teamKey: 'ROT',
+    });
+    expect(ws.statusCode, ws.body).toBe(200);
+    const hook = await tess.client.post(`/api/w/${slug}/webhooks`, {
+      url: 'https://hooks.example.com/ordo',
+    });
+    expect(hook.statusCode, hook.body).toBe(200);
     await a.db
       .insert(instanceKeys)
-      .values({ key: 'test', value: a.keyring.encrypt('{"k":1}', 'instance_keys:test:value') });
+      .values({ key: 'test', value: a.keyring.encrypt('{"k":1}', instanceKeyAad('test')) });
     const invite = ((await rootA.post('/api/admin/invites', {})).data as SiteInvite[])[0]!;
     expect(invite.token).toBeTruthy();
 
@@ -162,32 +233,54 @@ describe('rotate-key', () => {
     const both = new Keyring(KEY_B, KEY_A);
     const onlyB = new Keyring(KEY_B);
     expect(await countUnreadableSecrets(b.db, both)).toBe(0);
-    expect(await countUnreadableSecrets(b.db, onlyB)).toBe(5);
+    expect(await countUnreadableSecrets(b.db, onlyB)).toBe(6);
     expect(await listedLink()).toBeNull();
 
-    expect(await rotateSecrets(b.db, b.settings, both)).toEqual({ rotated: 5, failed: [] });
+    expect(await rotateSecrets(b.db, b.settings, both)).toEqual({ rotated: 6, failed: [] });
     expect(await countUnreadableSecrets(b.db, onlyB)).toBe(0);
     // The invite link is readable under the new key alone, and is the same link.
     expect(await listedLink()).toBe(invite.token);
     expect((await new Client(b).get(`/api/invites/${invite.token}`)).statusCode).toBe(200);
-    const [user] = await b.db.select().from(users).where(eq(users.id, id));
-    expect(onlyB.decrypt(user!.totpSecret!, `users:${id}:totp_secret`)).toBe('JBSWY3DPEHPK3PXP');
-    const [key] = await b.db.select().from(instanceKeys).where(eq(instanceKeys.key, 'test'));
-    expect(onlyB.decrypt(key!.value, 'instance_keys:test:value')).toBe('{"k":1}');
-    expect(onlyB.decrypt(b.settings.get('smtp')!.url, 'instance_settings:smtp:url')).toContain(
-      's3cret',
-    );
-    expect(onlyB.decrypt(b.settings.get('ai')!.apiKey!, 'instance_settings:ai:apiKey')).toBe(
-      'local-key',
-    );
     // Nothing left: a second run does nothing.
     expect(await rotateSecrets(b.db, b.settings, both)).toEqual({ rotated: 0, failed: [] });
+
+    // A server that only has the new key reads everything back through its usual code paths.
+    const c = await open(url, KEY_B);
+    const [user] = await c.db.select().from(users).where(eq(users.id, id));
+    const code = new TOTP({ secret: Secret.fromBase32(totp), digits: 6, period: 30 }).generate();
+    expect(verifyTotp(c.keyring, { ...user!, email: tess.email }, code)).toBe(true);
+    const owner = new Client(c);
+    const login = await owner.post('/api/auth/login', {
+      email: tess.email,
+      password: 'correct horse battery',
+    });
+    expect(login.statusCode, login.body).toBe(200);
+    const hookSecret = await owner.get(`/api/w/${slug}/webhooks/${hook.data.webhook.id}/secret`);
+    expect(hookSecret.statusCode, hookSecret.body).toBe(200);
+    expect(hookSecret.data.secret).toBe(hook.data.secret);
+    expect(decryptAiKey(c, c.settings.get('ai')!.apiKey)).toBe('local-key');
+    const root = await admin(c);
+    const settings = (await root.get('/api/admin/settings')).data as {
+      key: string;
+      unreadable?: boolean;
+      value: { url?: string };
+    }[];
+    expect(settings.filter((e) => e.unreadable)).toEqual([]);
+    expect(settings.find((e) => e.key === 'smtp')!.value.url).toContain('smtp.example.com');
+    const invites = (await root.get('/api/admin/invites')).data as SiteInvite[];
+    expect(invites.find((i) => i.id === invite.id)!.token).toBe(invite.token);
+    expect((await root.get('/api/admin/overview')).data).toMatchObject({
+      secretKey: 'ok',
+      unreadableSecrets: 0,
+    });
+    const [key] = await c.db.select().from(instanceKeys).where(eq(instanceKeys.key, 'test'));
+    expect(c.keyring.decrypt(key!.value, instanceKeyAad('test'))).toBe('{"k":1}');
 
     // A value under a key it doesn't know is reported, not dropped.
     const stranger = new Keyring(randomBytes(32));
     await b.db
       .update(instanceKeys)
-      .set({ value: stranger.encrypt('{"k":2}', 'instance_keys:test:value') })
+      .set({ value: stranger.encrypt('{"k":2}', instanceKeyAad('test')) })
       .where(eq(instanceKeys.key, 'test'));
     expect(await rotateSecrets(b.db, b.settings, both)).toEqual({
       rotated: 0,

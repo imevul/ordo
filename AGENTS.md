@@ -66,8 +66,12 @@ Before you finish: `pnpm typecheck && pnpm test && pnpm lint` must pass.
   `integration:<id>`); `silent` suppresses notifications.
 - **Audit security-relevant actions** with `audit(tx, entry, meta)` / `auditCtx(ctx, entry)`
   (`services/audit.ts`) in the same transaction as the change. Add new action names to `AUDIT_ACTIONS` in shared.
-- **Secrets at rest** (tokens, client secrets) are encrypted with `app.keyring.encrypt(value, 'table:id:column')`.
-  Never store them in plain text and never return them from the API.
+- **Secrets at rest** (tokens, client secrets) are encrypted with `app.keyring.encrypt(value, aad)`, where the AAD
+  (`table:id:column`) comes from a helper in `services/secretKey.ts` (`webhookSecretAad(id)`, `SMTP_URL_AAD`…).
+  A new encrypted column or setting needs a helper there and an entry in `ENCRYPTED_COLUMNS` /
+  `ENCRYPTED_SETTINGS`, or `rotate-key` won't re-encrypt it; `test/secret-key.test.ts` fails on AADs written
+  anywhere else. Never change an existing AAD string: old ciphertexts stop decrypting. Never store secrets in
+  plain text and never return them from the API.
 - **Outbound requests to URLs a user typed** must use `safeFetch` (`lib/safeFetch.ts`) with
   `allowPrivate: app.settings.get('allowPrivateNetworkTargets')`. Plain `fetch` is only for fixed, well-known hosts.
 - **Instance settings** come from `app.settings.get(key)` (env → DB → default), never from `app.env` directly.

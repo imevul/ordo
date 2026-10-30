@@ -4,6 +4,7 @@ import {
   type Notification,
   type NotificationType,
   notificationBulkSchema,
+  notificationsQuerySchema,
   snoozeSchema,
 } from '@ordo/shared';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, type SQL, sql } from 'drizzle-orm';
@@ -19,7 +20,7 @@ const list = (v: unknown) =>
   typeof v === 'string' && v !== '' ? v.split(',').map((x) => x.trim()) : undefined;
 
 /** `?types=a,b&unread=1…` as an `InboxFilter`. */
-function filterFromQuery(q: Record<string, string | undefined>): InboxFilter {
+function filterFromQuery(q: Record<string, unknown>): InboxFilter {
   return parse(inboxFilterSchema, {
     types: list(q.types),
     teams: list(q.teams),
@@ -79,8 +80,7 @@ export async function notificationRoutes(app: FastifyInstance) {
    * `InboxFilter` query parameters (`types`, `teams`, `actors`, `from`, `priorities`, `reasons`, `unread`).
    */
   app.get('/notifications', async (req): Promise<Notification[]> => {
-    const query = req.query as Record<string, string | undefined>;
-    const snoozed = query.snoozed === '1';
+    const snoozed = parse(notificationsQuerySchema, req.query).snoozed === '1';
     const rows = await app.db
       .select({
         n: notifications,
@@ -97,7 +97,7 @@ export async function notificationRoutes(app: FastifyInstance) {
       .leftJoin(issues, eq(issues.id, notifications.issueId))
       .leftJoin(teams, eq(teams.id, issues.teamId))
       .leftJoin(users, eq(users.id, notifications.actorId))
-      .where(inboxWhere(req, snoozed, filterFromQuery(query)))
+      .where(inboxWhere(req, snoozed, filterFromQuery(req.query as Record<string, unknown>)))
       .orderBy(
         snoozed
           ? asc(notifications.snoozedUntil)

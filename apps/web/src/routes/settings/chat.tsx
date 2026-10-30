@@ -15,7 +15,7 @@ import { confirmDialog } from '../../components/ui/Modal.tsx';
 import { t, tx } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
-import { FormRow, SettingsCard } from './ui.tsx';
+import { FormRow, SettingsCard, TeamSelect } from './ui.tsx';
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : t('common.error'));
 
@@ -277,18 +277,12 @@ function ChannelsEditor({
           <label className="flex flex-wrap items-center gap-2 text-[12px] text-muted">
             {tx('integrations.chat.newIssuesGoTo', {
               select: (
-                <select
+                <TeamSelect
                   className="input h-7 w-auto min-w-0 max-w-full py-0 text-[12px]"
-                  value={c.defaultTeamId ?? ''}
-                  onChange={(e) => set(i, { defaultTeamId: e.target.value || null })}
-                >
-                  <option value="">{t('integrations.chat.defaultTeam')}</option>
-                  {teams.map((team) => (
-                    <option key={team.id} value={team.id}>
-                      {team.name}
-                    </option>
-                  ))}
-                </select>
+                  none={t('integrations.chat.defaultTeam')}
+                  value={c.defaultTeamId}
+                  onChange={(defaultTeamId) => set(i, { defaultTeamId })}
+                />
               ),
             })}
           </label>

@@ -1,4 +1,4 @@
-import { AVATAR_COLORS, type ScimToken, scimQuerySchema } from '@ordo/shared';
+import { AVATAR_COLORS, isOwnerRole, type ScimToken, scimQuerySchema } from '@ordo/shared';
 import { and, asc, count, eq, inArray, isNotNull, or, type SQL, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import type { DbOrTx } from '../db/client.ts';
@@ -474,7 +474,7 @@ export async function createScimUser(ctx: Ctx, baseUrl: string, body: unknown) {
   }
   await attach(ctx, userId, changes.externalId);
   if (changes.active === false) {
-    if (member?.role === 'owner')
+    if (isOwnerRole(member?.role))
       throw new ScimError(403, "Owners can't be suspended", 'mutability');
     await setSuspended(ctx, userId, true);
   }
@@ -491,7 +491,7 @@ export async function updateScimUser(
 ) {
   const row = await loadUser(ctx, id);
   const changes = kind === 'put' ? resourceChanges(body) : patchChanges(body);
-  const owner = row.role === 'owner';
+  const owner = isOwnerRole(row.role);
   if (changes.active === false && owner)
     throw new ScimError(403, "Owners can't be suspended from the directory", 'mutability');
 
@@ -531,7 +531,7 @@ export async function updateScimUser(
 /** DELETE /Users/:id: takes them out of the workspace (their account stays). */
 export async function deleteScimUser(ctx: Ctx, id: string) {
   const row = await loadUser(ctx, id);
-  if (row.role === 'owner')
+  if (isOwnerRole(row.role))
     throw new ScimError(403, "Owners can't be removed from the directory", 'mutability');
   await removeMember(ctx, id);
   await ctx.tx

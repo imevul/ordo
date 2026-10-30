@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { type MatrixConfig, matrixSettingsSchema } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import { matrixCryptoStores } from '../db/schema.ts';
+import { escapeHtml as html } from '../lib/html.ts';
 import {
   type ChatIncoming,
   chatFeed,
@@ -78,9 +79,6 @@ async function roomMembers(ictx: IntegrationContext, room: string) {
     .filter((m) => m.content.membership === 'join' || m.content.membership === 'invite')
     .map((m) => m.state_key);
 }
-
-const html = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 export function matrixContent(m: ChatMessage) {
   const plain = [m.headline, m.title && `${m.title}${m.url ? ` ${m.url}` : ''}`, m.body, m.context]
