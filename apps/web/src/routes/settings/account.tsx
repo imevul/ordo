@@ -1,6 +1,5 @@
 import {
   type Account,
-  AVATAR_COLORS,
   type EmailDigest,
   INBOX_ONLY_TYPES,
   LOCALE_NAMES,
@@ -32,6 +31,7 @@ import { api, upload } from '../../api/client.ts';
 import { keys, useAccount, useApiKeys, useConfig, useSessions } from '../../api/queries.ts';
 import { Spinner } from '../../components/PageHeader.tsx';
 import { Avatar } from '../../components/ui/Avatar.tsx';
+import { AvatarColorPicker } from '../../components/ui/AvatarColorPicker.tsx';
 import { confirmDialog, Modal } from '../../components/ui/Modal.tsx';
 import { switchLocale, t, tx } from '../../i18n/index.ts';
 import { relativeTime } from '../../lib/format.ts';
@@ -259,22 +259,11 @@ function ProfileCard({ account }: { account: Account }) {
             className="hidden"
             onChange={(e) => onFile(e.target.files?.[0])}
           />
-          <div
-            className="flex flex-wrap gap-1.5"
-            role="group"
-            aria-label={t('settings.profile.initialsColour')}
-          >
-            {AVATAR_COLORS.map((c) => (
-              <button
-                type="button"
-                key={c}
-                onClick={() => setColor(c)}
-                className={`h-5 w-5 ${color === c ? 'outline-2 outline-offset-2 outline-text' : ''}`}
-                style={{ background: c }}
-                aria-label={t('settings.profile.colour', { color: c })}
-              />
-            ))}
-          </div>
+          <AvatarColorPicker
+            value={color}
+            onChange={setColor}
+            label={t('settings.profile.initialsColour')}
+          />
         </div>
       </div>
       <form onSubmit={saveProfile}>

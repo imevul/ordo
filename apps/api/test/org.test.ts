@@ -129,6 +129,30 @@ describe('members', () => {
     expect(await onTeam()).toBe(false);
   });
 
+  it('names removed members who are still assigned issues', async () => {
+    const teamId = boot.teams[0]!.id;
+    const assigned = await join('member', [teamId]);
+    const idle = await join('member', [teamId]);
+    const assignedId = (await me(assigned.client)).id;
+    const idleId = (await me(idle.client)).id;
+    const res = await owner.post(`${ws}/issues`, {
+      teamId,
+      title: 'Theirs',
+      assigneeId: assignedId,
+    });
+    expect(res.statusCode).toBe(200);
+    await owner.del(`${ws}/members/${assignedId}`);
+    await owner.del(`${ws}/members/${idleId}`);
+    const former = ((await owner.get(`${ws}/bootstrap`)).data as Bootstrap).formerMembers;
+    expect(former.map((p) => p.id)).toContain(assignedId);
+    expect(former.map((p) => p.id)).not.toContain(idleId);
+    expect(former.find((p) => p.id === assignedId)).toMatchObject({
+      name: 'member person',
+      kind: 'human',
+      email: '',
+    });
+  });
+
   it('transfers ownership, then lets the new owner delete the workspace', async () => {
     const o2 = (await signup(app, 'Second Owner')).client;
     await o2.post('/api/workspaces', {
@@ -263,7 +287,7 @@ describe('instance admin', () => {
     expect((await owner.get('/api/admin/overview')).statusCode).toBe(403);
     expect((await admin.get('/api/admin/overview')).data).toMatchObject({
       emailEnabled: true,
-      secretKey: true,
+      secretKey: 'ok',
     });
   });
 

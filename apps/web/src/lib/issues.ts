@@ -97,14 +97,46 @@ export function groupIssues(
         add({ key: `p${p}`, label: priorityLabel(p), value: p }, (i) => i.priority === p);
       }
       break;
-    case 'assignee':
+    case 'assignee': {
       for (const m of ws.members)
         add(
           { key: m.id, label: m.name, value: m.id, color: m.avatarColor },
           (i) => i.assigneeId === m.id,
         );
+      // Placeholders and people who left aren't members, but their issues still need a group.
+      const memberIds = new Set(ws.members.map((m) => m.id));
+      const others = [
+        ...new Set(
+          issues.flatMap((i) =>
+            i.assigneeId && !memberIds.has(i.assigneeId) ? [i.assigneeId] : [],
+          ),
+        ),
+      ]
+        .map((id) => ({ id, person: ws.memberById.get(id) }))
+        .sort(
+          (a, b) =>
+            Number(!a.person) - Number(!b.person) ||
+            (a.person?.name ?? '').localeCompare(b.person?.name ?? ''),
+        );
+      for (const { id, person } of others)
+        add(
+          {
+            key: id,
+            label: !person
+              ? t('issues.group.someone')
+              : person.placeholder
+                ? t('issues.group.placeholder', { name: person.name })
+                : person.former
+                  ? t('issues.group.formerMember', { name: person.name })
+                  : person.name,
+            value: id,
+            color: person?.avatarColor,
+          },
+          (i) => i.assigneeId === id,
+        );
       add({ key: 'none', label: t('issues.none.assignee'), value: null }, (i) => !i.assigneeId);
       break;
+    }
     case 'project':
       for (const p of ws.projects)
         add({ key: p.id, label: p.name, value: p.id, color: p.color }, (i) => i.projectId === p.id);
@@ -186,6 +218,8 @@ export function patchForGroup(
     case 'priority':
       return { priority: group.value as number };
     case 'assignee':
+      // Placeholders and former members can't be picked, so their groups take no new issues.
+      if (group.value !== null && !ws.members.some((m) => m.id === group.value)) return null;
       return { assigneeId: group.value as string | null };
     case 'project':
       return { projectId: group.value as string | null };

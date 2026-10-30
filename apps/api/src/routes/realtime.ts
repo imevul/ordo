@@ -1,10 +1,13 @@
+import { realtimeQuerySchema } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { authInfo, authorizeWorkspace } from '../lib/auth.ts';
+import { tryParse } from '../lib/errors.ts';
 
 /** GET /api/ws?workspace=<slug> — a WebSocket that streams RealtimeEvents for one workspace. */
 export async function realtimeRoutes(app: FastifyInstance) {
   app.get('/ws', { websocket: true }, async (socket, req) => {
-    const { workspace } = req.query as { workspace?: string };
+    // A socket can't answer 400. 4401 is a close the client doesn't retry, which suits a bad query too.
+    const workspace = tryParse(realtimeQuerySchema, req.query)?.workspace;
     if (!req.user || !workspace) {
       socket.close(4401, 'unauthorized');
       return;
