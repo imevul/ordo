@@ -1,4 +1,4 @@
-import { AVATAR_COLORS, type MemberRole } from '@ordo/shared';
+import { AVATAR_COLORS, isOwnerRole, type MemberRole } from '@ordo/shared';
 import { and, eq, isNotNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
@@ -228,7 +228,7 @@ export async function resolveSsoUser(
         );
         membershipChanged = true;
       }
-    } else if (mapped && membership.role !== 'owner' && membership.role !== mapped) {
+    } else if (mapped && !isOwnerRole(membership.role) && membership.role !== mapped) {
       membershipChanged = true;
       await tx
         .update(workspaceMembers)

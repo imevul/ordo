@@ -115,10 +115,15 @@ export const MEMBER_ROLE_LABELS = {
   member: 'Member',
   guest: 'Guest',
 } as const;
-export const isAdminRole = (role: string) => role === 'owner' || role === 'admin';
+// Role checks go through these helpers, never string comparisons.
+type MaybeRole = string | null | undefined;
+export const isOwnerRole = (role: MaybeRole) => role === 'owner';
+export const isAdminRole = (role: MaybeRole) => role === 'owner' || role === 'admin';
+export const isGuestRole = (role: MaybeRole) => role === 'guest';
 
 export const TEAM_ROLES = ['admin', 'member'] as const;
 export type TeamRole = (typeof TEAM_ROLES)[number];
+export const isTeamAdminRole = (role: MaybeRole) => role === 'admin';
 
 /**
  * Only humans sign in. Agents are assignable members that act through an API key (a runner does

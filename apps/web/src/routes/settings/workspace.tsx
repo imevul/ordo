@@ -6,6 +6,8 @@ import {
   DEFAULT_ACCENT,
   HEX_COLOR,
   type Invite,
+  isGuestRole,
+  isOwnerRole,
   MEMBER_ROLES,
   type MemberRole,
   THEME_BACKGROUND,
@@ -386,7 +388,7 @@ function DangerZone() {
   const [confirm, setConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
   const candidates = ws.members.filter(
-    (m) => m.id !== ws.me.id && m.role !== 'guest' && !m.suspended,
+    (m) => m.id !== ws.me.id && !isGuestRole(m.role) && !m.suspended,
   );
 
   return (
@@ -592,7 +594,7 @@ function InviteForm() {
               : t('workspaceSettings.invite.createLink')}
           </button>
         </div>
-        {role === 'guest' && (
+        {isGuestRole(role) && (
           <p className="mt-2 text-[12px] text-index">{t('workspaceSettings.invite.guestHint')}</p>
         )}
       </form>
@@ -726,14 +728,14 @@ export function MembersSection() {
               {t('workspaceSettings.members.joined', { time: relativeTime(m.joinedAt) })}
             </span>
             {/* Admins manage roles; only owners can grant or take away ownership. */}
-            {isAdmin && (ws.isOwner || m.role !== 'owner') ? (
+            {isAdmin && (ws.isOwner || !isOwnerRole(m.role)) ? (
               <select
                 className="h-7 border border-border bg-bg px-2 text-[12px] outline-none focus:border-primary"
                 value={m.role}
                 onChange={(e) => update.mutate({ userId: m.id, role: e.target.value })}
                 aria-label={t('workspaceSettings.members.roleOf', { name: m.name })}
               >
-                {MEMBER_ROLES.filter((r) => ws.isOwner || r !== 'owner').map((r) => (
+                {MEMBER_ROLES.filter((r) => ws.isOwner || !isOwnerRole(r)).map((r) => (
                   <option key={r} value={r}>
                     {roleLabel(r)}
                   </option>
@@ -742,7 +744,7 @@ export function MembersSection() {
             ) : (
               <span className="tag font-mono">{roleLabel(m.role)}</span>
             )}
-            {isAdmin && m.id !== ws.me.id && (ws.isOwner || m.role !== 'owner') && (
+            {isAdmin && m.id !== ws.me.id && (ws.isOwner || !isOwnerRole(m.role)) && (
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
