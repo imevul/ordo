@@ -1179,8 +1179,12 @@ export async function releaseTriage(ctx: Ctx, teamId: string) {
     .where(
       and(eq(issues.teamId, team.id), inArray(issues.stateId, triage), isNull(issues.deletedAt)),
     );
-  for (const issue of waiting) await updateIssue(ctx, issue.id, { stateId: target.id });
-  return waiting.length;
+  const moved = await bulkUpdateIssues(
+    ctx,
+    waiting.map((i) => i.id),
+    { stateId: target.id },
+  );
+  return moved.length;
 }
 
 /**
