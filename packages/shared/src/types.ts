@@ -627,6 +627,8 @@ export interface Bootstrap {
   bots: Bot[];
   /** People from imports who aren't members (yet): shown on what they did and were assigned. */
   placeholders: User[];
+  /** People who left the workspace but are still assigned issues the requester can see. */
+  formerMembers: (User & Pick<Member, 'kind'>)[];
   repositories: Repository[];
   teams: Team[];
   labels: Label[];
