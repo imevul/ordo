@@ -96,6 +96,23 @@ async function assertPublicHost(host: string) {
   if (addresses.some((a) => isPrivateAddress(a.address))) throw new BlockedTargetError(host);
 }
 
+/** Credentials the fetch spec drops when a redirect leaves the origin they were meant for. */
+const CREDENTIAL_HEADERS = new Set(['authorization', 'cookie', 'proxy-authorization']);
+/** Describe the body, so they go when a redirect turns the request into a bodiless GET. */
+const BODY_HEADERS = new Set([
+  'content-type',
+  'content-length',
+  'content-encoding',
+  'content-language',
+  'content-location',
+]);
+
+function withoutHeaders(headers: Record<string, string>, names: Set<string>) {
+  return Object.fromEntries(
+    Object.entries(headers).filter(([name]) => !names.has(name.toLowerCase())),
+  );
+}
+
 export interface SafeFetchOptions {
   method?: string;
   headers?: Record<string, string>;
@@ -131,6 +148,7 @@ export async function safeFetch(input: string, opts: SafeFetchOptions = {}): Pro
   let url = new URL(input);
   let method = opts.method ?? 'GET';
   let body = opts.body;
+  let headers = opts.headers ?? {};
 
   for (let hop = 0; ; hop++) {
     if (url.protocol !== 'https:' && url.protocol !== 'http:')
@@ -146,7 +164,7 @@ export async function safeFetch(input: string, opts: SafeFetchOptions = {}): Pro
 
     const res = await undiciFetch(url, {
       method,
-      headers: opts.headers,
+      headers,
       body,
       redirect: 'manual',
       signal,
@@ -156,10 +174,14 @@ export async function safeFetch(input: string, opts: SafeFetchOptions = {}): Pro
     if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
       await res.body?.cancel();
       if (hop >= maxRedirects) throw new Error('Too many redirects');
-      url = new URL(res.headers.get('location')!, url);
+      const next = new URL(res.headers.get('location')!, url);
+      // A token for one host must not reach another, even when the first one sends us there.
+      if (next.origin !== url.origin) headers = withoutHeaders(headers, CREDENTIAL_HEADERS);
+      url = next;
       if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === 'POST')) {
         method = 'GET';
         body = undefined;
+        headers = withoutHeaders(headers, BODY_HEADERS);
       }
       continue;
     }
