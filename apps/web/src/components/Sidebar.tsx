@@ -26,6 +26,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useActiveAgentRunCount } from '../api/queries.ts';
 import type { RealtimeStatus } from '../api/realtime.ts';
 import { t } from '../i18n/index.ts';
 import { signOut } from '../lib/signOut.ts';
@@ -104,6 +105,9 @@ export function Sidebar({
   };
   const p = { slug: ws.slug };
   const isAdmin = ws.isAdmin;
+  // Only once there are agents: otherwise there's nothing to show.
+  const hasAgents = ws.members.some((m) => m.kind === 'agent');
+  const { data: activeRuns } = useActiveAgentRunCount(ws.slug, hasAgents);
 
   const logout = () => signOut(qc);
 
@@ -246,11 +250,15 @@ export function Sidebar({
               {t('shell.nav.customers')}
             </Link>
           )}
-          {/* Only once there are agents: otherwise there's nothing to show. */}
-          {ws.members.some((m) => m.kind === 'agent') && (
+          {hasAgents && (
             <Link to="/$slug/agent-runs" params={p} className="nav-item">
               <Bot size={15} />
               {t('agents.runsPage.nav')}
+              {!!activeRuns && (
+                <span className="ml-auto bg-primary px-1.5 font-mono text-[10.5px] font-semibold text-on-primary">
+                  {activeRuns}
+                </span>
+              )}
             </Link>
           )}
           <Link to="/$slug/views" params={p} className="nav-item">
