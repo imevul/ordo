@@ -1,6 +1,8 @@
 import type { Bootstrap, Issue, IssueDetail } from '@ordo/shared';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { domainEvents } from '../src/db/schema.ts';
 import { deriveKey } from '../src/routes/auth.ts';
 import { extractMentions } from '../src/services/comments.ts';
 import { type Client, signup, testApp } from './helpers.ts';
@@ -140,7 +142,10 @@ describe('issues', () => {
         .sort(),
     ).toEqual(['assignee', 'state']);
     const inbox = (await grace.get(`${ws}/notifications`)).data;
-    expect(inbox[0]).toMatchObject({ type: 'issue_assigned', issueId: first.id });
+    // The update also notifies about the status change, at the same instant, so order is arbitrary.
+    expect(inbox).toContainEqual(
+      expect.objectContaining({ type: 'issue_assigned', issueId: first.id }),
+    );
   });
 
   it('filters issues', async () => {
@@ -223,6 +228,114 @@ describe('issues', () => {
     const moved = await ada.patch(`${ws}/issues/ENG-2`, { teamId: ops.id });
     expect(moved.data.identifier).toBe('OPS-1');
     expect(ops.states.map((s: { id: string }) => s.id)).toContain(moved.data.stateId);
+  });
+
+  describe('status on a team move', () => {
+    let target: Bootstrap['teams'][number];
+    const targetState = (type: string) => target.states.find((s) => s.type === type)!;
+    const lastChanges = async (id: string) =>
+      (await ada.get(`${ws}/issues/${id}/history`)).data.at(-1).changes as {
+        field: string;
+        from: unknown;
+        to: unknown;
+      }[];
+    const lastEvent = async (id: string) =>
+      (
+        await app.db
+          .select()
+          .from(domainEvents)
+          .where(
+            and(eq(domainEvents.type, 'issue.updated'), sql`${domainEvents.data}->>'id' = ${id}`),
+          )
+          .orderBy(desc(domainEvents.id))
+          .limit(1)
+      )[0]!;
+    const statusNotices = async (id: string) =>
+      ((await grace.get(`${ws}/notifications`)).data as { type: string; issueId: string }[]).filter(
+        (n) => n.type === 'issue_status_changed' && n.issueId === id,
+      ).length;
+
+    beforeAll(async () => {
+      target = (await ada.post(`${ws}/teams`, { name: 'Support', key: 'SUP' })).data;
+    });
+
+    it('treats completed → completed as a status change and keeps when it was done', async () => {
+      const issue = (
+        await ada.post(`${ws}/issues`, {
+          teamId: team().id,
+          title: 'Done elsewhere',
+          stateId: state('completed').id,
+          assigneeId: graceId,
+        })
+      ).data as Issue;
+      expect(issue.completedAt).not.toBeNull();
+      const before = await statusNotices(issue.id);
+
+      const moved = (await ada.patch(`${ws}/issues/${issue.id}`, { teamId: target.id }))
+        .data as Issue;
+      expect(moved.stateId).toBe(targetState('completed').id);
+      expect(moved.startedAt).toBe(issue.startedAt);
+      expect(moved.completedAt).toBe(issue.completedAt);
+      expect(moved.canceledAt).toBeNull();
+
+      const stateChange = { field: 'state', from: issue.stateId, to: moved.stateId };
+      expect(await lastChanges(issue.id)).toContainEqual(stateChange);
+      expect((await lastEvent(issue.id)).changes).toContainEqual(stateChange);
+      expect(await statusNotices(issue.id)).toBe(before + 1);
+    });
+
+    it('treats started → completed as a status change and stamps completedAt', async () => {
+      const issue = (
+        await ada.post(`${ws}/issues`, {
+          teamId: team().id,
+          title: 'Finish elsewhere',
+          stateId: state('started').id,
+          assigneeId: graceId,
+        })
+      ).data as Issue;
+      expect(issue.startedAt).not.toBeNull();
+      expect(issue.completedAt).toBeNull();
+      const before = await statusNotices(issue.id);
+
+      const moved = (
+        await ada.patch(`${ws}/issues/${issue.id}`, {
+          teamId: target.id,
+          stateId: targetState('completed').id,
+        })
+      ).data as Issue;
+      expect(moved.stateId).toBe(targetState('completed').id);
+      expect(moved.startedAt).toBe(issue.startedAt);
+      expect(moved.completedAt).not.toBeNull();
+      expect(moved.canceledAt).toBeNull();
+
+      const stateChange = { field: 'state', from: issue.stateId, to: moved.stateId };
+      expect(await lastChanges(issue.id)).toContainEqual(stateChange);
+      expect((await lastEvent(issue.id)).changes).toContainEqual(stateChange);
+      expect(await statusNotices(issue.id)).toBe(before + 1);
+    });
+
+    it('clears completedAt when a move lands on a status of another type', async () => {
+      const issue = (
+        await ada.post(`${ws}/issues`, {
+          teamId: team().id,
+          title: 'Reopen elsewhere',
+          stateId: state('completed').id,
+        })
+      ).data as Issue;
+      const moved = (
+        await ada.patch(`${ws}/issues/${issue.id}`, {
+          teamId: target.id,
+          stateId: targetState('started').id,
+        })
+      ).data as Issue;
+      expect(moved.completedAt).toBeNull();
+      expect(moved.startedAt).toBe(issue.startedAt);
+      const done = (
+        await ada.patch(`${ws}/issues/${issue.id}`, { stateId: targetState('completed').id })
+      ).data as Issue;
+      expect(done.completedAt).not.toBeNull();
+      expect(done.completedAt).not.toBe(issue.completedAt);
+    });
   });
 
   it('trashes and restores issues', async () => {
