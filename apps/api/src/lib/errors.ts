@@ -54,6 +54,12 @@ export function parse<S extends ZodType>(schema: S, data: unknown): z.infer<S> {
   return result.data;
 }
 
+/** parse() for routes that answer bad input their own way (a redirect, a 404, a closed socket). */
+export function tryParse<S extends ZodType>(schema: S, data: unknown): z.infer<S> | null {
+  const result = schema.safeParse(data ?? {});
+  return result.success ? result.data : null;
+}
+
 export function validationError(error: ZodError) {
   const first = error.issues[0];
   const where = first?.path.length ? `${first.path.join('.')}: ` : '';

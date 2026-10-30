@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AVATAR_COLORS, type PlaceholderSummary, type User } from '@ordo/shared';
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import {
   attachments,
@@ -22,6 +22,7 @@ import { badRequest, notFound } from '../lib/errors.ts';
 import { usersWithTeamAccess } from './access.ts';
 import { auditCtx } from './audit.ts';
 import { type Ctx, emit } from './context.ts';
+import { bulkUpdateIssues } from './issues.ts';
 
 /**
  * Placeholders stand in for people an import brought along who aren't members. They're named on
@@ -209,7 +210,7 @@ export async function mergePlaceholder(ctx: Ctx, placeholderId: string, userId: 
     );
   if (!member) throw badRequest('Pick a member of this workspace').as('pick_member');
 
-  // A people-level rewrite, not an issue change: no history entries, nobody notified.
+  // Issue history shows the hand-over; nobody is notified (bulkUpdateIssues never does).
   const assigned = await ctx.tx
     .select({ id: issues.id, teamId: issues.teamId })
     .from(issues)
@@ -221,10 +222,8 @@ export async function mergePlaceholder(ctx: Ctx, placeholderId: string, userId: 
   }
   const keep = assigned.filter((a) => visible.has(a.teamId)).map((a) => a.id);
   const drop = assigned.filter((a) => !visible.has(a.teamId)).map((a) => a.id);
-  if (keep.length)
-    await ctx.tx.update(issues).set({ assigneeId: member.id }).where(inArray(issues.id, keep));
-  if (drop.length)
-    await ctx.tx.update(issues).set({ assigneeId: null }).where(inArray(issues.id, drop));
+  await bulkUpdateIssues(ctx, keep, { assigneeId: member.id });
+  await bulkUpdateIssues(ctx, drop, { assigneeId: null });
 
   for (const column of MERGED_COLUMNS) {
     await ctx.tx.execute(

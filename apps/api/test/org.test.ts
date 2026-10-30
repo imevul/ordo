@@ -263,7 +263,7 @@ describe('instance admin', () => {
     expect((await owner.get('/api/admin/overview')).statusCode).toBe(403);
     expect((await admin.get('/api/admin/overview')).data).toMatchObject({
       emailEnabled: true,
-      secretKey: true,
+      secretKey: 'ok',
     });
   });
 
