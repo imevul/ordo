@@ -286,7 +286,11 @@ export class Engine {
     if (delta.outbox) {
       // Another tab queued or sent something: read the queue again, and send it if we lead.
       void this.opts.store.outbox().then((outbox) => {
-        this.pending = outbox.filter((p) => p.userId === this.opts.userId);
+        // Keep this tab's changes still being saved: the store doesn't have them yet.
+        const unsaved = this.pending.filter((p) => p.key === Number.MAX_SAFE_INTEGER);
+        this.pending = [...outbox.filter((p) => p.userId === this.opts.userId), ...unsaved].sort(
+          (a, b) => a.key - b.key,
+        );
         this.show();
         if (this.leader) void this.flush();
       });
@@ -321,7 +325,16 @@ export class Engine {
     this.show();
     return (async () => {
       const { key: _unsaved, ...rest } = entry;
-      entry.key = (await this.opts.store.enqueue(rest)).key;
+      try {
+        entry.key = (await this.opts.store.enqueue(rest)).key;
+      } catch (err) {
+        // Not kept: take it off the screen, or everything queued after it waits behind it.
+        this.pending = this.pending.filter((p) => p !== entry);
+        this.show();
+        throw err;
+      }
+      // Another tab's broadcast may have read it from the store meanwhile: keep one of it.
+      this.pending = this.pending.filter((p) => p === entry || p.key !== entry.key);
       this.opts.onDelta?.({ outbox: true });
       if (!this.leader) return undefined;
       const done = new Promise((resolve, reject) =>

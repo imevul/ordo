@@ -49,7 +49,10 @@ export function SyncProvider({
     let session: SyncSession | null = null;
     let cancelled = false;
     setValue({ status: 'starting' });
-    startSync(slug, userId)
+    startSync(slug, userId, () => {
+      session = null;
+      if (!cancelled) setValue({ status: 'off' });
+    })
       .then((s) => {
         if (cancelled) s.stop();
         else {

@@ -17,7 +17,11 @@ interface Schema extends DBSchema {
 export class IdbStore implements SyncStore {
   private constructor(private db: IDBPDatabase<Schema>) {}
 
-  static async open(name: string) {
+  /**
+   * `onVersionChange`: another tab is upgrading (or deleting) the database. This one closes it so
+   * that can go ahead, after which every read and write here fails: stop using the store then.
+   */
+  static async open(name: string, onVersionChange?: () => void) {
     const db = await openDB<Schema>(name, 2, {
       upgrade(db, from) {
         if (from < 1) {
@@ -30,9 +34,9 @@ export class IdbStore implements SyncStore {
         if (db.objectStoreNames.contains('outbox')) db.deleteObjectStore('outbox');
         db.createObjectStore('outbox', { keyPath: 'key', autoIncrement: true });
       },
-      // Another tab is upgrading (or deleting) the database: let it.
       blocking() {
         db.close();
+        onVersionChange?.();
       },
     });
     return new IdbStore(db);
