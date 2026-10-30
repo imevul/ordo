@@ -1,7 +1,7 @@
 import type { CreateRelationInput } from '@ordo/shared';
 import { and, asc, eq, inArray, or } from 'drizzle-orm';
 import { issueRelations, issues, workflowStates } from '../db/schema.ts';
-import { badRequest, notFound } from '../lib/errors.ts';
+import { badRequest, notFound, one } from '../lib/errors.ts';
 import { canReadTeam } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { getIssue, retriedCreate, updateIssue } from './issues.ts';
@@ -50,16 +50,18 @@ export async function createRelation(
       ),
     );
   }
-  const [row] = await ctx.tx
-    .insert(issueRelations)
-    .values({
-      ...(input.id && { id: input.id }),
-      issueId: from.id,
-      relatedIssueId: to.id,
-      type,
-      createdBy: ctx.userId,
-    })
-    .returning();
+  const row = one(
+    await ctx.tx
+      .insert(issueRelations)
+      .values({
+        ...(input.id && { id: input.id }),
+        issueId: from.id,
+        relatedIssueId: to.id,
+        type,
+        createdBy: ctx.userId,
+      })
+      .returning(),
+  );
   // Marking a duplicate closes it: the original is where the work happens.
   if (type === 'duplicate' && !imported) {
     const states = await ctx.tx
@@ -76,10 +78,10 @@ export async function createRelation(
   record(
     ctx,
     'relation.created',
-    { id: row!.id, type, issueId: row!.issueId, relatedIssueId: row!.relatedIssueId },
+    { id: row.id, type, issueId: row.issueId, relatedIssueId: row.relatedIssueId },
     { teamIds: [issue.teamId, other.teamId] },
   );
-  return row!;
+  return row;
 }
 
 /** Removes a relation; the caller must be able to read both issues. */

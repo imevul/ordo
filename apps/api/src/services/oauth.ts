@@ -12,6 +12,7 @@ import {
   workspaces,
 } from '../db/schema.ts';
 import { randomToken, sha256 } from '../lib/crypto.ts';
+import { one } from '../lib/errors.ts';
 import { safeFetch } from '../lib/safeFetch.ts';
 
 /**
@@ -202,12 +203,14 @@ export async function findClient(
   if (row?.fetchedAt && Date.now() - new Date(row.fetchedAt).getTime() < METADATA_TTL) return row;
   const doc = await fetchClientMetadata(app, clientId);
   const fetchedAt = new Date().toISOString();
-  const [saved] = await app.db
-    .insert(oauthClients)
-    .values({ clientId, authMethod: 'none', ...doc, fetchedAt })
-    .onConflictDoUpdate({ target: oauthClients.clientId, set: { ...doc, fetchedAt } })
-    .returning();
-  return saved!;
+  const saved = one(
+    await app.db
+      .insert(oauthClients)
+      .values({ clientId, authMethod: 'none', ...doc, fetchedAt })
+      .onConflictDoUpdate({ target: oauthClients.clientId, set: { ...doc, fetchedAt } })
+      .returning(),
+  );
+  return saved;
 }
 
 /** How the consent screen and the connected-apps list name an app. */
@@ -453,21 +456,23 @@ export async function exchangeCode(app: FastifyInstance, client: Client, body: P
       throw new OAuthError('invalid_target', 'resource differs from the authorization request');
   }
   return app.db.transaction(async (tx) => {
-    const [grant] = await tx
-      .insert(oauthGrants)
-      .values({
-        clientId: client.id,
-        userId: row.userId,
-        workspaceId: row.workspaceId,
-        ssoProviderId: row.ssoProviderId,
-        ssoExpiresAt: row.ssoExpiresAt,
-      })
-      .returning({ id: oauthGrants.id });
+    const grant = one(
+      await tx
+        .insert(oauthGrants)
+        .values({
+          clientId: client.id,
+          userId: row.userId,
+          workspaceId: row.workspaceId,
+          ssoProviderId: row.ssoProviderId,
+          ssoExpiresAt: row.ssoExpiresAt,
+        })
+        .returning({ id: oauthGrants.id }),
+    );
     await tx
       .update(oauthClients)
       .set({ lastUsedAt: new Date().toISOString() })
       .where(eq(oauthClients.id, client.id));
-    return issueTokens(tx, grant!.id);
+    return issueTokens(tx, grant.id);
   });
 }
 

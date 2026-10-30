@@ -9,7 +9,7 @@ import { desc, eq, max } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { projectMilestones, projects, projectTeams, projectUpdates } from '../db/schema.ts';
 import { requireAccess } from '../lib/auth.ts';
-import { forbidden, notFound, parse } from '../lib/errors.ts';
+import { forbidden, notFound, one, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertCan } from '../services/access.ts';
 import { type Ctx, emit, record } from '../services/context.ts';
@@ -172,17 +172,19 @@ export async function projectRoutes(app: FastifyInstance) {
     const input = parse(createProjectUpdateSchema, req.body);
     return mutate(app, req, async (ctx) => {
       await loadProject(ctx, id);
-      const [row] = await ctx.tx
-        .insert(projectUpdates)
-        .values({ projectId: id, authorId: ctx.userId, body: input.body, health: input.health })
-        .returning();
-      emit(ctx, { kind: 'projectUpdate', action: 'created', id: row!.id });
+      const row = one(
+        await ctx.tx
+          .insert(projectUpdates)
+          .values({ projectId: id, authorId: ctx.userId, body: input.body, health: input.health })
+          .returning(),
+      );
+      emit(ctx, { kind: 'projectUpdate', action: 'created', id: row.id });
       emit(ctx, { kind: 'project', action: 'updated', id });
       const [project] = await listProjects(ctx.tx, ctx.access, id);
       record(
         ctx,
         'project_update.created',
-        { update: row!, project: { id, name: project?.name } },
+        { update: row, project: { id, name: project?.name } },
         { teamIds: project?.teamIds },
       );
       return row;

@@ -1,5 +1,5 @@
 import type { Bootstrap, Cycle, Label, Me, Project, Team, View, WorkflowState } from '@ordo/shared';
-import { accentVariables, defaultAssigneeFor, isAdminRole } from '@ordo/shared';
+import { accentVariables, defaultAssigneeFor, isAdminRole, isCycleCurrent } from '@ordo/shared';
 import { createContext, type ReactNode, useContext, useEffect, useMemo } from 'react';
 import type { Person } from '../components/ui/ActorName.tsx';
 import { t } from '../i18n/index.ts';
@@ -108,7 +108,7 @@ export function currentCycle(
   teamId: string,
   today = new Date().toISOString().slice(0, 10),
 ) {
-  return cycles.find((c) => c.teamId === teamId && c.startsAt <= today && c.endsAt > today) ?? null;
+  return cycles.find((c) => c.teamId === teamId && isCycleCurrent(c, today)) ?? null;
 }
 
 export function upcomingCycles(

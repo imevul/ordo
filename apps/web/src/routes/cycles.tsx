@@ -1,4 +1,4 @@
-import type { Cycle } from '@ordo/shared';
+import { type Cycle, isCycleCurrent } from '@ordo/shared';
 import { Link, useParams } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
@@ -140,7 +140,7 @@ export function CyclesPage() {
   if (!team) return <EmptyState title={t('cycles.teamNotFound')} />;
   const now = today();
   const cycles = ws.cycles.filter((c) => c.teamId === team.id);
-  const current = cycles.filter((c) => c.startsAt <= now && c.endsAt > now);
+  const current = cycles.filter((c) => isCycleCurrent(c, now));
   const upcoming = cycles.filter((c) => c.startsAt > now);
   const past = cycles.filter((c) => c.endsAt <= now).reverse();
   return (
