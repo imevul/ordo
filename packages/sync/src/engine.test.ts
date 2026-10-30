@@ -1,7 +1,9 @@
 import 'fake-indexeddb/auto';
+import { openDB } from 'idb';
 import { describe, expect, it, vi } from 'vitest';
 import { type Delta, Engine } from './engine.ts';
 import { IdbStore } from './idb.ts';
+import { type Locks, lead } from './leader.ts';
 import { dbName, MemoryStore, type SyncStore } from './store.ts';
 import { comment, FakeServer, issue } from './testing.ts';
 
@@ -297,5 +299,109 @@ describe('outbox', () => {
     for (const d of follower.deltas) leader.engine.receive(d);
     await vi.waitFor(() => expect(leader.server.sent).toHaveLength(1));
     expect(leader.server.issues.get('a')!.title).toBe('From B');
+  });
+
+  it("takes a change it couldn't save off the screen, and sends the next ones", async () => {
+    const store = new MemoryStore();
+    const { server, engine } = setup(new FakeServer(), store);
+    server.put(issue('a'));
+    await engine.sync();
+    const enqueue = store.enqueue.bind(store);
+    store.enqueue = async () => {
+      throw new Error('disk gone');
+    };
+    await expect(
+      engine.mutate({ kind: 'issue.update', ids: ['a'], patch: { title: 'Lost' } }),
+    ).rejects.toThrow('disk gone');
+    expect(engine.issue('a')!.title).toBe('Issue a');
+    expect(engine.getState().waiting).toBe(0);
+
+    store.enqueue = enqueue;
+    expect(
+      await engine.mutate({ kind: 'issue.update', ids: ['a'], patch: { priority: 2 } }),
+    ).toMatchObject({ priority: 2 });
+    expect(server.sent).toHaveLength(1);
+  });
+
+  it("keeps its unsaved changes when another tab's outbox news arrives first", async () => {
+    const store = new MemoryStore();
+    const { server, engine } = setup(new FakeServer(), store);
+    server.put(issue('a'));
+    await engine.sync();
+    // Another tab queues a change; this tab's own is still being saved when it hears of it.
+    const other = setup(server, store);
+    other.engine.leader = false;
+    await other.engine.open();
+    let saved!: () => void;
+    const enqueue = store.enqueue.bind(store);
+    store.enqueue = async (op) => {
+      await new Promise<void>((r) => {
+        saved = r;
+      });
+      return enqueue(op);
+    };
+    const mine = engine.mutate({ kind: 'issue.update', ids: ['a'], patch: { title: 'Mine' } });
+    store.enqueue = enqueue;
+    await other.engine.mutate({ kind: 'issue.update', ids: ['a'], patch: { priority: 4 } });
+    for (const d of other.deltas) engine.receive(d);
+    await vi.waitFor(() => expect(server.sent).toHaveLength(1));
+    expect(engine.issue('a')).toMatchObject({ title: 'Mine', priority: 4 });
+
+    saved();
+    expect(await mine).toMatchObject({ title: 'Mine', priority: 4 });
+    expect(server.sent.map((o) => o.kind === 'issue.update' && o.patch)).toEqual([
+      { priority: 4 },
+      { title: 'Mine' },
+    ]);
+    expect(engine.getState().waiting).toBe(0);
+    expect(await store.outbox()).toEqual([]);
+  });
+});
+
+describe('leading', () => {
+  /** Web Locks, roughly: one holder per name, the rest in line. */
+  class FakeLocks implements Locks {
+    private held = new Map<string, Promise<unknown>>();
+    request(name: string, { signal }: { signal: AbortSignal }, fn: () => Promise<void> | void) {
+      const before = this.held.get(name) ?? Promise.resolve();
+      const mine = before.then(() => {
+        if (signal.aborted) throw new DOMException('aborted', 'AbortError');
+        return fn();
+      });
+      this.held.set(
+        name,
+        mine.catch(() => {}),
+      );
+      return mine;
+    }
+  }
+
+  it('lets go of the lock when another tab upgrades the database', async () => {
+    const server = new FakeServer();
+    server.put(issue('a'));
+    const name = dbName('me', `upgrade-${Date.now()}`);
+    const locks = new FakeLocks();
+    let release = () => {};
+    const old = setup(
+      server,
+      await IdbStore.open(name, () => {
+        release();
+        old.engine.close();
+      }),
+    );
+    await old.engine.open();
+    release = lead(old.engine, locks, 'leader');
+    await vi.waitFor(() => expect(old.engine.getState().ready).toBe(true));
+    expect(old.engine.leader).toBe(true);
+
+    // A newer version of the app opens the same database: the old tab steps aside.
+    const upgraded = await openDB(name, 99);
+    expect(old.engine.leader).toBe(false);
+    upgraded.close();
+
+    const next = setup(server, new MemoryStore());
+    lead(next.engine, locks, 'leader');
+    await vi.waitFor(() => expect(next.engine.leader).toBe(true));
+    await vi.waitFor(() => expect(ids(next.engine)).toEqual(['a']));
   });
 });
