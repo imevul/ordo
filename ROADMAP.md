@@ -153,7 +153,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [x] ✅ Clear an integration's stored secrets when its base or API URL changes
   - [x] ✅ `safeRedirect` rejects `/\…`; TOTP codes can't be reused; invite tokens and other URL secrets kept out of
     request logs
-  - [ ] ⬜ Invite tokens at rest: store a hash for lookup and the link encrypted, so admins can still copy and resend it
+  - [x] ✅ Invite tokens at rest: store a hash for lookup and the link encrypted, so admins can still copy and resend it
 - [ ] ⬜ Bugs
   - [ ] ⬜ Hotkeys: a matching `g x` sequence wins over a newer single-key binding
   - [ ] ⬜ `rotate-key` re-encrypts every secret (SSO, webhooks, integrations, AI, VAPID, Matrix store, imports)

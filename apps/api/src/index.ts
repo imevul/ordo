@@ -9,7 +9,7 @@ const app = await buildApp(env);
 if (proxy) app.log.info(`Outgoing requests go through ${proxy} (except NO_PROXY hosts)`);
 
 try {
-  await runMigrations(app.db);
+  await runMigrations(app.db, app.keyring);
   await app.settings.start();
   await app.realtime.start();
   await app.jobs.start();
