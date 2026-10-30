@@ -5,6 +5,7 @@ import {
   type Bootstrap,
   createFavoriteSchema,
   deleteWorkspaceSchema,
+  isGuestRole,
   transferOwnershipSchema,
   updateWorkspaceSchema,
 } from '@ordo/shared';
@@ -261,7 +262,7 @@ export async function workspaceRoutes(app: FastifyInstance) {
         throw badRequest('You already own this workspace').as('already_owner');
       const role = await memberRole(ctx.tx, ctx.workspaceId, input.userId);
       if (!role) throw notFound('Member');
-      if (role === 'guest') throw badRequest('Guests cannot own a workspace').as('guests_own');
+      if (isGuestRole(role)) throw badRequest('Guests cannot own a workspace').as('guests_own');
       const member = (userId: string) =>
         and(eq(workspaceMembers.workspaceId, ctx.workspaceId), eq(workspaceMembers.userId, userId));
       await ctx.tx

@@ -1,5 +1,6 @@
 import type { Locale } from '@ordo/shared';
 import { serverT } from '../i18n/index.ts';
+import { escapeHtml as esc } from '../lib/html.ts';
 
 /**
  * Email templates in the Hotline Pink style. Email clients ignore stylesheets and most CSS,
@@ -11,12 +12,6 @@ export interface Email {
   html: string;
   text: string;
 }
-
-const esc = (s: string) =>
-  s.replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
-  );
 
 function layout(opts: {
   kicker: string;

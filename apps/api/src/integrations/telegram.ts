@@ -1,4 +1,5 @@
 import { type TelegramConfig, telegramSettingsSchema } from '@ordo/shared';
+import { escapeHtml as html } from '../lib/html.ts';
 import {
   type ChatIncoming,
   chatFeed,
@@ -43,8 +44,6 @@ async function tg<T = unknown>(
   if (!data.ok) throw new Error(`Telegram ${method}: ${data.description ?? 'failed'}`);
   return data.result;
 }
-
-const html = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export function telegramText(m: ChatMessage) {
   const parts = [`<b>${html(m.headline)}</b>`];

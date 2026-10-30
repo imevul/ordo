@@ -25,7 +25,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "a11y": {
         "noAutofocus": "off",
         "useKeyWithClickEvents": "off",
@@ -43,5 +43,11 @@
       "complexity": { "noImportantStyles": "off" },
       "style": { "noNonNullAssertion": "off" }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/web/**"],
+      "linter": { "domains": { "react": "recommended" } }
+    }
+  ]
 }

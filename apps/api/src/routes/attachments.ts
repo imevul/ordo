@@ -1,7 +1,8 @@
 import multipart from '@fastify/multipart';
+import { attachmentUploadQuerySchema } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { authInfo, authorizeWorkspace, requireAccess, requireUser } from '../lib/auth.ts';
-import { badRequest, HttpError, notFound } from '../lib/errors.ts';
+import { badRequest, HttpError, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { canReadTeam } from '../services/access.ts';
 import {
@@ -21,7 +22,7 @@ export async function attachmentRoutes(app: FastifyInstance) {
     /** POST /attachments?issueId= — without an issue, the upload waits for a description to claim it. */
     uploads.post('/attachments', async (req) => {
       const access = requireAccess(req);
-      const { issueId } = req.query as { issueId?: string };
+      const { issueId } = parse(attachmentUploadQuerySchema, req.query);
       const issue = issueId ? await getIssue(app.db, access, issueId) : null;
       const maxMb = app.settings.get('maxAttachmentMb');
       const file = await req.file({ limits: { fileSize: maxMb * 1024 * 1024 } });

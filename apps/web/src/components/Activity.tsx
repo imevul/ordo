@@ -202,7 +202,7 @@ function CommentItem({
   const [body, setBody] = useState(comment.body);
   const [replying, setReplying] = useState(false);
   const [reply, setReply] = useState('');
-  const inv = [keys.comments(ws.slug, issueId) as unknown as unknown[]];
+  const inv = [keys.comments(ws.slug, issueId)];
   // With a local copy, comments go through its outbox (and work offline).
   const engine = useSyncEngine();
   const save = useWsMutation(
@@ -419,7 +419,7 @@ export function Activity({
           })
         : api.post(wsPath(ws.slug, `/issues/${issue.id}/comments`), { body }),
     {
-      invalidate: [keys.comments(ws.slug, issue.id) as unknown as unknown[]],
+      invalidate: [keys.comments(ws.slug, issue.id)],
     },
   );
 

@@ -1,4 +1,4 @@
-import type { MemberRole, UserKind } from '@ordo/shared';
+import { isOwnerRole, type MemberRole, type UserKind } from '@ordo/shared';
 import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Db } from '../db/client.ts';
@@ -346,7 +346,7 @@ async function assertSso(
   },
   auth: AuthInfo,
 ) {
-  if (ws.role === 'owner') return;
+  if (isOwnerRole(ws.role)) return;
   if (auth.method === 'api_key') {
     if (ws.settings?.allowApiKeysUnderSso) return;
     throw new HttpError(403, `${ws.name} doesn't allow API keys`, 'sso_required').as(
