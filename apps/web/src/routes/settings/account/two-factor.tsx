@@ -8,7 +8,7 @@ import { Modal } from '../../../components/ui/Modal.tsx';
 import { t } from '../../../i18n/index.ts';
 import { FormRow, SettingsCard } from '../ui.tsx';
 
-import { errMsg, useRefreshAccount } from './shared.ts';
+import { errMsg, useRefreshAccount, useRefreshCredentials } from './shared.ts';
 
 export function RecoveryCodes({ codes }: { codes: string[] }) {
   const text = codes.join('\n');
@@ -45,7 +45,9 @@ export function RecoveryCodes({ codes }: { codes: string[] }) {
 
 export function TwoFactorCard({ account }: { account: Account }) {
   const refresh = useRefreshAccount();
+  const refreshCredentials = useRefreshCredentials();
   const [setup, setSetup] = useState<{ secret: string; uri: string; qr: string } | null>(null);
+  const [revoke, setRevoke] = useState(true);
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [codes, setCodes] = useState<string[] | null>(null);
@@ -71,11 +73,15 @@ export function TwoFactorCard({ account }: { account: Account }) {
   const enable = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      const res = await api.post<{ recoveryCodes: string[] }>('/me/2fa/enable', { code });
+      const res = await api.post<{ recoveryCodes: string[] }>('/me/2fa/enable', {
+        code,
+        revokeCredentials: revoke,
+      });
       setCodes(res.recoveryCodes);
       setSetup(null);
       setCode('');
       refresh();
+      if (revoke) refreshCredentials();
     } catch (err) {
       toast.error(errMsg(err));
     }
@@ -190,6 +196,15 @@ export function TwoFactorCard({ account }: { account: Account }) {
                 required
               />
             </FormRow>
+            <label className="mb-4 flex items-center gap-2 text-[13px]">
+              <input
+                type="checkbox"
+                className="accent-primary"
+                checked={revoke}
+                onChange={(e) => setRevoke(e.target.checked)}
+              />
+              {t('settings.revokeCredentials')}
+            </label>
             <div className="flex justify-end gap-2">
               <button type="button" className="btn btn-ghost" onClick={() => setSetup(null)}>
                 {t('common.cancel')}

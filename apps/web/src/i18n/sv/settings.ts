@@ -53,6 +53,7 @@ export default {
   turnOn: 'Slå på',
   turnOff: 'Stäng av',
   currentPassword: 'Nuvarande lösenord',
+  revokeCredentials: 'Återkalla även mina API-nycklar och anslutna appar',
   profile: {
     title: 'Profil',
     saved: 'Profilen har sparats',

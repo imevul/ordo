@@ -10,7 +10,7 @@ import { t } from '../../../i18n/index.ts';
 import { relativeTime } from '../../../lib/format.ts';
 import { FormRow, SettingsCard } from '../ui.tsx';
 import { PasskeysCard } from './passkeys.tsx';
-import { errMsg } from './shared.ts';
+import { errMsg, useRefreshCredentials } from './shared.ts';
 import { TwoFactorCard } from './two-factor.tsx';
 
 export function SecuritySection() {
@@ -27,7 +27,9 @@ export function SecuritySection() {
 }
 
 function PasswordCard({ account }: { account: Account }) {
+  const refreshCredentials = useRefreshCredentials();
   const [pw, setPw] = useState({ currentPassword: '', newPassword: '' });
+  const [revoke, setRevoke] = useState(true);
   if (!account.hasPassword) {
     return (
       <SettingsCard title={t('settings.password.title')}>
@@ -38,8 +40,9 @@ function PasswordCard({ account }: { account: Account }) {
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/me/password', pw);
+      await api.post('/me/password', { ...pw, revokeCredentials: revoke });
       setPw({ currentPassword: '', newPassword: '' });
+      if (revoke) refreshCredentials();
       toast.success(t('settings.password.changed'));
     } catch (err) {
       toast.error(errMsg(err));
@@ -69,6 +72,15 @@ function PasswordCard({ account }: { account: Account }) {
             required
           />
         </FormRow>
+        <label className="mb-4 flex items-center gap-2 text-[13px]">
+          <input
+            type="checkbox"
+            className="accent-primary"
+            checked={revoke}
+            onChange={(e) => setRevoke(e.target.checked)}
+          />
+          {t('settings.revokeCredentials')}
+        </label>
         <button className="btn btn-ghost">{t('settings.password.change')}</button>
       </form>
     </SettingsCard>

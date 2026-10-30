@@ -344,7 +344,11 @@ Open **Settings** (workspace menu, or `G` then `S`):
   ([chat](integrations/chat.md)).
 - **Notifications** — everything lands in your Inbox; choose which kinds are also emailed and how often (within a few
   minutes, hourly, daily, or never). Anything you read in the app first isn't emailed.
-- **API keys** — personal keys for scripts and integrations ([API docs](api.md)).
+- **API keys** — personal keys for scripts and integrations ([API docs](api.md)). Resetting your password with
+  **Forgot password?** revokes all of them, along with every app you've connected (below), so nothing someone else
+  set up while they had your account keeps working. Changing your password or turning on the authenticator app
+  offers the same (_Also revoke my API keys and connected apps_, on by default). Each revoked key and app shows in
+  the audit log.
 - **AI agents** — connect Claude, Claude Code, Cursor or VS Code to Ordo's MCP server: the URL, setup snippets for
   OAuth sign-in or an API key, a prompt that lets your agent set itself up, and the apps you've connected, which you
   can disconnect ([MCP docs](mcp.md)). When an app signs in with OAuth, Ordo shows which app is asking and for
