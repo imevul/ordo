@@ -5,14 +5,10 @@ import { PageHeader, Sep } from '../../components/PageHeader.tsx';
 import { type Catalog, t } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { useOnline } from '../../sync/context.tsx';
-import {
-  AccountSection,
-  ApiKeysSection,
-  CliCard,
-  NotificationsSection,
-  PushCard,
-  SecuritySection,
-} from './account.tsx';
+import { ApiKeysSection, CliCard } from './account/api-keys.tsx';
+import { NotificationsSection, PushCard } from './account/notifications.tsx';
+import { AccountSection } from './account/profile.tsx';
+import { SecuritySection } from './account/security.tsx';
 import { AgentsSection, RepositoriesSection } from './agents.tsx';
 import { AiSection } from './ai.tsx';
 import { AuditSection } from './audit.tsx';

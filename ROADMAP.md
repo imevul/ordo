@@ -179,7 +179,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [ ] ⬜ `bulkUpdateIssues` in `services/issues.ts` for the direct issue writes (cycles, statuses, placeholders,
     SLA, comments)
   - [ ] ⬜ A `one(rows)` helper for `.returning()`; handle a missing team in the issue view instead of `!`
-  - [ ] ⬜ Split `IssueDetailView`, `auth.tsx`, `admin.tsx` and `account.tsx`
+  - [x] ✅ Split `IssueDetailView`, `auth.tsx`, `admin.tsx` and `account.tsx`
   - [ ] ⬜ Small cleanups: `<TeamSelect>`, `useWsMutation` key type, role helpers, parsed query strings, one
     `escapeHtml`, dead label maps, unused `clsx`, current lint warnings
   - [ ] ⬜ Unit tests for `apps/web/src/lib/issues.ts`
