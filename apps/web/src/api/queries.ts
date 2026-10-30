@@ -252,6 +252,15 @@ export const useNotifications = (slug: string, snoozed = false) =>
       api.get<Notification[]>(wsPath(slug, `/notifications${snoozed ? '?snoozed=1' : ''}`)),
   });
 
+// Under the 'agentRuns' key so realtime agentRun events refetch it.
+export const useActiveAgentRunCount = (slug: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['ws', slug, 'agentRuns', 'activeCount'],
+    queryFn: () => api.get<{ count: number }>(wsPath(slug, '/agent-runs/active-count')),
+    select: (d) => d.count,
+    enabled,
+  });
+
 export const useProjectUpdates = (slug: string, projectId: string) =>
   useQuery({
     queryKey: keys.projectUpdates(slug, projectId),

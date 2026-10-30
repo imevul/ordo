@@ -657,4 +657,13 @@ describe('the workspace run list', () => {
     expect(memberView.some((r) => r.issue.teamId === prv)).toBe(false);
     expect(memberView.length).toBe(ownerView.filter((r) => r.issue.teamId !== prv).length);
   });
+
+  it('counts the active runs each caller can see', async () => {
+    const activeCount = async (who: Client) =>
+      ((await who.get(`${ws}/agent-runs/active-count`)).data as { count: number }).count;
+    const ownerActive = await list(owner, '?status=active&limit=500');
+    const memberActive = await list(member, '?status=active&limit=500');
+    expect(await activeCount(owner)).toBe(ownerActive.length);
+    expect(await activeCount(member)).toBe(memberActive.length);
+  });
 });
