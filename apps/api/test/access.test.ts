@@ -703,6 +703,8 @@ describe('route inventory', () => {
     'POST /issues/:id/agent-runs': "getIssue with the caller's access (agents.test.ts)",
     'POST /agent-runs/:id/cancel': "loadRun is scoped to the caller's teams (agents.test.ts)",
     'GET /agent-runs': "listWorkspaceRuns is scoped to the caller's teams (agents.test.ts)",
+    'GET /agent-runs/active-count':
+      "countActiveRuns is scoped to the caller's teams (agents.test.ts)",
     'GET /agent/me': "the calling agent's own teams (agents.test.ts)",
     'POST /agent/claim':
       "the calling agent's runs; the issue is loaded with its access, else the run is cancelled (agents.test.ts)",

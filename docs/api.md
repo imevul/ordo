@@ -430,6 +430,7 @@ Agents are members a runner works for; see [agents.md](agents.md) for the idea a
 | DELETE         | `/agents/:id/keys/:keyId`                                  | _Admin._ Revoke a key                                                                                                    |
 | GET / POST     | `/issues/:id/agent-runs`                                   | The issue's runs / queue a new one for its agent ("Run again")                                                           |
 | GET            | `/agent-runs?status=active\|finished\|all&agentId=&limit=` | Runs across the workspace on issues you can see, latest change first (≤ 500)                                             |
+| GET            | `/agent-runs/active-count`                                 | `{ count }` of active runs (queued, claimed, running, waiting) on issues you can see                                     |
 | POST           | `/agent-runs/:id/cancel`                                   | Cancel a run; its runner hears it on the next heartbeat                                                                  |
 | GET            | `/agent/me`                                                | _Agent key._ The agent and its teams                                                                                     |
 | POST           | `/agent/claim?wait=30&runner=…`                            | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)            |

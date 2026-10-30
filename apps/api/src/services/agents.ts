@@ -14,7 +14,7 @@ import {
   type RealtimeEvent,
   type updateAgentSchema,
 } from '@ordo/shared';
-import { and, asc, desc, eq, inArray, isNull, lt, not, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, inArray, isNull, lt, not, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
 import type { DbOrTx } from '../db/client.ts';
@@ -607,6 +607,22 @@ export async function listWorkspaceRuns(
       teamId: r.teamId,
     },
   }));
+}
+
+/** How many runs `listWorkspaceRuns` would call active: the sidebar's Agent runs chip. */
+export async function countActiveRuns(db: DbOrTx, access: Access): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(agentRuns)
+    .innerJoin(issues, eq(issues.id, agentRuns.issueId))
+    .where(
+      and(
+        eq(agentRuns.workspaceId, access.workspaceId),
+        teamScope(access, issues.teamId),
+        inArray(agentRuns.status, [...AGENT_RUN_OPEN]),
+      ),
+    );
+  return row?.n ?? 0;
 }
 
 /** The runs an agent holds now (claimed or running), oldest first. */

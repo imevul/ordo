@@ -13,6 +13,7 @@ import { mutate } from '../lib/mutate.ts';
 import {
   cancelRun,
   claimRun,
+  countActiveRuns,
   createAgent,
   createAgentKey,
   describeAgent,
@@ -96,6 +97,10 @@ export async function agentRoutes(app: FastifyInstance) {
   app.get('/agent-runs', async (req) =>
     listWorkspaceRuns(db, requireAccess(req), parse(agentRunsQuerySchema, req.query)),
   );
+
+  app.get('/agent-runs/active-count', async (req) => ({
+    count: await countActiveRuns(db, requireAccess(req)),
+  }));
 
   app.post('/agent-runs/:id/cancel', async (req) => {
     const { id } = req.params as { id: string };
