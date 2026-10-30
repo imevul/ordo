@@ -43,5 +43,11 @@
       "complexity": { "noImportantStyles": "off" },
       "style": { "noNonNullAssertion": "off" }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["apps/web/**"],
+      "linter": { "domains": { "react": "recommended" } }
+    }
+  ]
 }

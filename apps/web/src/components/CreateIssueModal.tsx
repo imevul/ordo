@@ -79,7 +79,7 @@ export function CreateIssueModal() {
     };
   };
 
-  // Only re-initialise when the modal is (re)opened.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-initialise when the modal is (re)opened
   useEffect(() => {
     setForm(defaults ? initial(defaults) : null);
   }, [defaults]);

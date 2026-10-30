@@ -176,7 +176,7 @@ function MarkdownSource({
   const [active, setActive] = useState(0);
   const ws = useWorkspace();
 
-  // Resize whenever the text or mode changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the text or mode changes
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;

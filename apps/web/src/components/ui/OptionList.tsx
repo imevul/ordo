@@ -48,7 +48,7 @@ export function OptionList({
     !filtered.some((o) => o.label.toLowerCase() === query.trim().toLowerCase());
   const count = filtered.length + (showCreate ? 1 : 0);
 
-  // Jump back to the first match when the query changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: jump back to the first match when the query changes
   useEffect(() => setActive(0), [query]);
   useEffect(() => {
     listRef.current

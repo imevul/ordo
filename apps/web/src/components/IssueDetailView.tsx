@@ -77,7 +77,7 @@ function Title({ issue, onSave }: { issue: IssueDetail; onSave: (title: string) 
   const [value, setValue] = useState(issue.title);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => setValue(issue.title), [issue.title]);
-  // Resize whenever the text changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the text changes
   useLayoutEffect(() => {
     if (ref.current) {
       ref.current.style.height = 'auto';
@@ -194,7 +194,7 @@ export function IssueDetailView({
   const aiEnabled = useAiEnabled();
   const [aiPanel, setAiPanel] = useState<AiPanelKind | null>(null);
   // A panel belongs to the issue it was opened on.
-  // Reset when the issue changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset when the issue changes
   useEffect(() => setAiPanel(null), [issue.id]);
   const patch = (p: UpdateIssueInput) => update.mutate({ id: issue.id, patch: p });
   const sla = slaState(issue, isDone(ws, issue));
