@@ -1,4 +1,4 @@
-import type { IssueLink, IssueLinkKind } from '@ordo/shared';
+import type { IssueLink, IssueLinkKind, PullRequestChecks, PullRequestReview } from '@ordo/shared';
 import { and, asc, eq } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { issueLinks, issues } from '../db/schema.ts';
@@ -7,18 +7,48 @@ import { type Ctx, emit } from './context.ts';
 
 /** Pull requests, branches, commits, chat messages and plain links attached to issues. */
 
-const toLink = (r: typeof issueLinks.$inferSelect): IssueLink => ({
-  id: r.id,
-  issueId: r.issueId,
-  provider: r.provider,
-  kind: r.kind,
-  url: r.url,
-  title: r.title,
-  state: r.state,
-  author: r.author,
-  createdAt: r.createdAt,
-  updatedAt: r.updatedAt,
-});
+/** What `issue_links.data` holds for a pull request (see services/forge.ts). */
+export interface PullRequestData {
+  repo: string;
+  number: number;
+  branch: string;
+  /** Head commit; checks belong to it. */
+  head?: string;
+  checks?: PullRequestChecks | null;
+  review?: PullRequestReview | null;
+  /** Linked by a closing reference (or created for it), so its events move the issue. */
+  closes?: boolean;
+  /** The project's pull request agent it was handed to, once. */
+  handedOffTo?: string;
+  /** The run after which follow-ups stopped (services/pullRequests.ts), so that's said once. */
+  stoppedAfter?: string;
+}
+
+const toLink = (r: typeof issueLinks.$inferSelect): IssueLink => {
+  const pr = r.kind === 'pull_request' ? (r.data as Partial<PullRequestData> | null) : null;
+  return {
+    id: r.id,
+    issueId: r.issueId,
+    provider: r.provider,
+    kind: r.kind,
+    url: r.url,
+    title: r.title,
+    state: r.state,
+    author: r.author,
+    ...(pr?.repo &&
+      pr.number !== undefined && {
+        pullRequest: {
+          repo: pr.repo,
+          number: pr.number,
+          branch: pr.branch ?? '',
+          checks: pr.checks ?? null,
+          review: pr.review ?? null,
+        },
+      }),
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+  };
+};
 
 export async function listIssueLinks(db: DbOrTx, issueId: string): Promise<IssueLink[]> {
   const rows = await db

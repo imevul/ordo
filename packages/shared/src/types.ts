@@ -20,7 +20,14 @@ import type {
   UserKind,
 } from './constants.ts';
 import { DEFAULT_LOCALE } from './constants.ts';
-import { DEFAULT_BRANCH_FORMAT, type GitAutomation } from './git.ts';
+import {
+  DEFAULT_BRANCH_FORMAT,
+  type GitAutomation,
+  type PullRequestChecks,
+  type PullRequestReview,
+  type PullRequestRunEvent,
+  type PullRequestScope,
+} from './git.ts';
 import type { IssueDisplay, IssueFilter } from './schemas.ts';
 
 /** API response shapes. Dates are ISO strings on the wire. */
@@ -252,6 +259,9 @@ export interface Project {
   repositoryIds: string[];
   /** Who its new issues go to: the workspace's default, nobody, or a member's id. */
   defaultAssignee: ProjectDefaultAssignee;
+  /** The agent that gets the project's pull requests when they're ready for review. */
+  pullRequestAgentId: string | null;
+  pullRequestScope: PullRequestScope;
 }
 
 export type ProjectDefaultAssignee = 'workspace' | 'none' | (string & {});
@@ -1034,8 +1044,21 @@ export interface IssueLink {
   state: string | null;
   /** Display name at the provider. */
   author: string | null;
+  /** For `pull_request` links. */
+  pullRequest?: PullRequestInfo;
   createdAt: string;
   updatedAt: string;
+}
+
+/** What Ordo knows about a linked pull request beyond its state. */
+export interface PullRequestInfo {
+  /** "owner/name" at the forge. */
+  repo: string;
+  number: number;
+  branch: string;
+  /** Null until the forge reports checks (or when it doesn't). */
+  checks: PullRequestChecks | null;
+  review: PullRequestReview | null;
 }
 
 /** The body of every webhook delivery. */
@@ -1173,6 +1196,8 @@ export interface Agent {
   instructions: string;
   /** Runs one agent works on at once, across all its runners. */
   concurrency: number;
+  /** Whether failing checks and requested changes on its issues' pull requests give it a run. */
+  followPullRequests: boolean;
   disabled: boolean;
   keys: {
     id: string;
@@ -1199,6 +1224,8 @@ export interface AgentRun {
   trigger: AgentRunTrigger;
   /** For `mention`: the comment that mentioned the agent. */
   triggerCommentId: string | null;
+  /** For `pull_request`: which pull request, and what happened to it. */
+  triggerDetail: AgentRunPullRequest | null;
   /** What the agent asked when it last paused (the run is `waiting` until a person answers). */
   question: string | null;
   /** Opaque to Ordo: what the runner needs to continue the agent's session on the next pickup. */
@@ -1209,6 +1236,14 @@ export interface AgentRun {
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;
+}
+
+export interface AgentRunPullRequest {
+  event: PullRequestRunEvent;
+  repo: string;
+  number: number;
+  url: string;
+  branch: string;
 }
 
 /** A run with the issue it's about, for workspace-wide run lists. */
@@ -1234,10 +1269,13 @@ export interface AgentRunContext {
   comments: (Comment & { author: string | null })[];
   project: { id: string; name: string; description: string | null } | null;
   repositories: AgentRunRepository[];
+  /** The issue's linked pull requests, newest first. */
+  pullRequests: (PullRequestInfo & { url: string; title: string; state: string | null })[];
   /** Why the agent is here; for a mention, the comment that asked for it. */
   trigger: {
     kind: AgentRunTrigger;
     comment: { id: string; author: string | null; body: string } | null;
+    pullRequest: AgentRunPullRequest | null;
   };
   /** Whether the issue is the agent's (assigned to it), or it was only asked to help. */
   assigned: boolean;

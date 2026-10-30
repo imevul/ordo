@@ -225,7 +225,56 @@ A person **@mentioning an agent** in a comment asks it for something, whether or
 - A mention while the agent is working on the issue queues one follow-up run, which starts once the current one ends. An agent never works on the same issue twice at once.
 - Agents' mentions start nothing, so two agents can't keep starting each other. Agents hand work on by assigning the issue.
 
-The run's `trigger` says why it exists (`assigned`, `mention`, or `rerun` for Run again), with `triggerCommentId` for a mention. The context adds `trigger.comment` (author and body) and `assigned` (whether the issue is the agent's).
+The run's `trigger` says why it exists (`assigned`, `mention`, `rerun` for Run again, or `pull_request`, see [Pull requests](#pull-requests)), with `triggerCommentId` for a mention and `triggerDetail` for a pull request. The context adds `trigger.comment` (author and body), `trigger.pullRequest`, and `assigned` (whether the issue is the agent's).
+
+## Pull requests
+
+An issue's pull requests show in its sidebar, with their checks and the latest review, when the forge reports them
+(see the [GitHub](integrations/github.md), [GitLab](integrations/gitlab.md) and
+[Forgejo](integrations/forgejo.md) pages). Agents get two more things from them.
+
+**A project's pull request agent.** In a project's overview, an admin can pick an agent (one that works in one of
+the project's teams) as its **Pull request agent**, and say which pull requests it gets:
+
+- **Linked to the project's issues** (the default): pull requests that link an issue of the project, in one of the
+  project's repositories (a repository's forge and `owner/name` must be set, so Ordo can match them).
+- **All in the project's repositories**: also pull requests that link no issue, such as a contributor's or
+  Dependabot's. Ordo makes an issue for each one in the project, titled `owner/name#57: <title>`, in the first of
+  the project's teams the agent works in. When several projects list the same repository, the first in the
+  project list that takes all pull requests gets it.
+
+When a pull request becomes **ready for review** (it's opened, or moved out of draft), it's handed to that agent,
+once:
+
+- If an agent or nobody has the issue, it's reassigned to the pull request agent, like any hand-off: the previous
+  agent's open runs stop, and the new one gets a run.
+- If a person has it, they keep it, and the agent gets a run beside them.
+
+The run's `trigger` is `pull_request`, and its `triggerDetail` says which pull request (`repo`, `number`, `url`,
+`branch`) and what happened (`event`: `ready_for_review`). The prompt says it's the project's pull request agent,
+and to handle the pull request as its instructions say. Ordo doesn't review or merge anything itself: what
+"handle" means is up to the agent's instructions. Two set-ups, for example:
+
+- **Coder → reviewer → pull request → integrator.** The coder opens a draft pull request and hands the issue to a
+  reviewer agent, which marks it ready when it's happy. The project's pull request agent is an integrator: "Merge
+  the pull request once its checks pass, with `gh pr merge --squash`. Resolve merge conflicts by rebasing on the
+  default branch. If it can't be merged, say why in a comment and assign the issue to a person."
+- **Coder → pull request → review and merge.** The coder opens the pull request when it's done. The pull request
+  agent reviews and merges in one run: "Review the pull request. If it's good, approve and merge it. Otherwise
+  request changes on the forge, explain on the issue, and assign the issue back to @coder."
+
+Without a pull request agent, pull requests go to people, as before.
+
+**Following up.** When checks start failing on a pull request, or a reviewer requests changes, the issue's
+assignee gets a run if it's an agent (event `checks_failed` or `changes_requested`). Its prompt says to fix it and
+push to the same branch, and the runner checks out that branch: a repository's `suggestedBranch` is the issue's
+open pull request's branch, when it has one. After three such runs in a row, Ordo stops and says so in a comment,
+so two agents can't keep bouncing a pull request between them; Run again or a mention starts it again. Turn it off
+per agent with **Follow up on pull requests** in its settings.
+
+Asking for anything else is a comment: "@integrator rebase this on main and merge it when checks pass" (an agent
+with `gh` can use `gh pr merge --auto`). The context's `pullRequests` lists the issue's pull requests with their
+state, checks and review, and the prompt has them under "Pull requests".
 
 ## Questions
 

@@ -6,10 +6,13 @@ Works with GitLab.com and self-managed GitLab.
    Maintainer role (needed to add webhooks).
 2. **Settings → Integrations → GitLab → Connect**: the GitLab URL (`https://gitlab.com` or yours), the token, and
    the projects as `group/project` paths, one per line.
-3. Pick **Webhooks** (Ordo adds a project webhook for merge request and push events, authenticated with a secret
-   token) or **Polling** when GitLab can't reach Ordo.
+3. Pick **Webhooks** (Ordo adds a project webhook for merge request, push and pipeline events, authenticated with
+   a secret token) or **Polling** when GitLab can't reach Ordo.
 
-Merge requests map to pull requests: drafts are drafts, MRs with reviewers are "in review", merged is merged.
+Merge requests map to pull requests: drafts are drafts, MRs with reviewers are "in review", merged is merged. A merge
+request's latest pipeline shows as its checks, and approving it as "approved". GitLab has no "changes requested"
+verdict, so agents only follow up on failed pipelines there (see [Agents → Pull requests](../agents.md#pull-requests)).
+Saving the settings again updates webhooks made before Ordo listened for pipelines. Polling follows MR states only.
 
 GitLab's merge request webhooks only name the author when the MR is opened; Ordo keeps that author afterwards.
 

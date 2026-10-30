@@ -5,6 +5,7 @@ import {
   type AgentIdentity,
   type AgentRun,
   type AgentRunContext,
+  type AgentRunPullRequest,
   type AgentRunTrigger,
   type AgentRunWithIssue,
   AVATAR_COLORS,
@@ -92,6 +93,7 @@ export async function listAgents(db: DbOrTx, workspaceId: string): Promise<Agent
       disabledAt: users.disabledAt,
       instructions: agents.instructions,
       concurrency: agents.concurrency,
+      followPullRequests: agents.followPullRequests,
       createdAt: agents.createdAt,
     })
     .from(agents)
@@ -163,6 +165,7 @@ export async function createAgent(ctx: Ctx, input: CreateAgentInput): Promise<Ag
     workspaceId: ctx.workspaceId,
     instructions: input.instructions,
     concurrency: input.concurrency,
+    followPullRequests: input.followPullRequests,
     createdById: ctx.userId,
   });
   await auditCtx(ctx, {
@@ -189,12 +192,19 @@ export async function updateAgent(ctx: Ctx, agentId: string, input: UpdateAgentI
       .update(users)
       .set({ ...userPatch, updatedAt: new Date().toISOString() })
       .where(eq(users.id, agentId));
-  if (input.instructions !== undefined || input.concurrency !== undefined)
+  if (
+    input.instructions !== undefined ||
+    input.concurrency !== undefined ||
+    input.followPullRequests !== undefined
+  )
     await ctx.tx
       .update(agents)
       .set({
         ...(input.instructions !== undefined && { instructions: input.instructions }),
         ...(input.concurrency !== undefined && { concurrency: input.concurrency }),
+        ...(input.followPullRequests !== undefined && {
+          followPullRequests: input.followPullRequests,
+        }),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(agents.userId, agentId));
@@ -311,6 +321,7 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
   resume: r.resume,
   trigger: r.trigger,
   triggerCommentId: r.triggerCommentId,
+  triggerDetail: r.triggerDetail ?? null,
   requestedById: r.requestedById,
   leaseExpiresAt: r.leaseExpiresAt,
   startedAt: r.startedAt,
@@ -333,7 +344,7 @@ async function changed(ctx: Ctx, run: RunRow) {
 }
 
 /** Whether `userId` is an enabled agent of this workspace. */
-async function isActiveAgent(tx: DbOrTx, workspaceId: string, userId: string) {
+export async function isActiveAgent(tx: DbOrTx, workspaceId: string, userId: string) {
   const [row] = await tx
     .select({ id: agents.userId })
     .from(agents)
@@ -349,11 +360,15 @@ async function isActiveAgent(tx: DbOrTx, workspaceId: string, userId: string) {
  * see whatever prompted this. A run that's working right now covers it too, except for a
  * `followUp` (a mention made meanwhile), which queues one more to start after it.
  */
-async function queueRun(
+export async function queueRun(
   ctx: Ctx,
   issueId: string,
   agentId: string,
-  trigger: { kind: AgentRunTrigger; commentId?: string } = { kind: 'assigned' },
+  trigger: {
+    kind: AgentRunTrigger;
+    commentId?: string;
+    pullRequest?: AgentRunPullRequest;
+  } = { kind: 'assigned' },
   opts: { followUp?: boolean } = {},
 ) {
   const open = await ctx.tx
@@ -378,6 +393,7 @@ async function queueRun(
       requestedById: ctx.userId,
       trigger: trigger.kind,
       triggerCommentId: trigger.commentId ?? null,
+      triggerDetail: trigger.pullRequest ?? null,
     })
     .returning();
   await changed(ctx, run!);
@@ -970,9 +986,19 @@ async function runContext(
     title: detail.title,
     username: agent!.username,
   });
-  const repositories = (await repositoriesForIssue(ctx.tx, detail)).map((r) => ({
+  const pullRequests = detail.links
+    .filter((l) => l.kind === 'pull_request' && l.pullRequest)
+    .map((l) => ({ ...l.pullRequest!, url: l.url, title: l.title, state: l.state }))
+    .reverse();
+  const open = pullRequests.filter((p) => p.state !== 'merged' && p.state !== 'closed');
+  const repoList = await repositoriesForIssue(ctx.tx, detail);
+  // Work on a pull request continues on its branch; a lone repository takes a lone open PR's.
+  const prBranch = (externalRepo: string | null) =>
+    open.find((p) => externalRepo && p.repo === externalRepo)?.branch ??
+    (repoList.length === 1 && open.length === 1 ? open[0]!.branch : null);
+  const repositories = repoList.map((r) => ({
     ...r,
-    suggestedBranch: branch,
+    suggestedBranch: prBranch(r.externalRepo) ?? branch,
   }));
   const url = `${app.env.publicUrl}/${ws!.slug}/issue/${detail.identifier}`;
   const context: Omit<AgentRunContext, 'prompt'> = {
@@ -990,9 +1016,11 @@ async function runContext(
     comments: commentRows.map((c) => ({ ...c, reactions: [] })),
     project: project ?? null,
     repositories,
+    pullRequests,
     states,
     trigger: {
       kind: run.trigger,
+      pullRequest: run.triggerDetail ?? null,
       comment: (() => {
         const c = run.triggerCommentId
           ? commentRows.find((x) => x.id === run.triggerCommentId)
@@ -1010,6 +1038,18 @@ async function runContext(
       labels: labelRows.map((l) => l.name),
     }),
   };
+}
+
+function pullRequestReason(pr: AgentRunPullRequest) {
+  const ref = `${pr.repo}#${pr.number} (${pr.url}, branch \`${pr.branch}\`)`;
+  switch (pr.event) {
+    case 'ready_for_review':
+      return `Pull request ${ref} is ready for review, and you are this project's pull request agent. Handle it as your instructions say.`;
+    case 'checks_failed':
+      return `Checks are failing on pull request ${ref}. Find out why, fix it and push to the same branch. Don't open a new pull request.`;
+    case 'changes_requested':
+      return `A reviewer requested changes on pull request ${ref}. Read the review on the forge, address it and push to the same branch. Don't open a new pull request.`;
+  }
 }
 
 const PRIORITY_NAMES = ['No priority', 'Urgent', 'High', 'Medium', 'Low'];
@@ -1053,6 +1093,19 @@ export function renderPrompt(
         )
         .join('\n\n')}`,
     );
+  if (c.pullRequests.length)
+    out.push(
+      `## Pull requests\n${c.pullRequests
+        .map((p) => {
+          const signals = [
+            p.state,
+            p.checks && `checks ${p.checks}`,
+            p.review?.replace('_', ' '),
+          ].filter(Boolean);
+          return `- ${p.repo}#${p.number} (${signals.join(', ')}), branch \`${p.branch}\`: ${p.url}`;
+        })
+        .join('\n')}`,
+    );
   if (c.repositories.length)
     out.push(
       `## Repositories\n${c.repositories
@@ -1076,6 +1129,8 @@ export function renderPrompt(
           : "Do what it asks and answer in a comment. The issue isn't yours: don't change its status or assignee, or take on the work itself, unless the comment asks you to."
       }`,
     );
+  const pr = c.trigger.kind === 'pull_request' ? c.trigger.pullRequest : null;
+  if (pr) out.push(`## Why you're here\n${pullRequestReason(pr)}`);
   if (c.run.question)
     out.push(
       `## You asked\n${c.run.question}\n\nThe answer is in the comments after your question. Continue from there.`,

@@ -1,4 +1,5 @@
 import { createPrivateKey, randomBytes } from 'node:crypto';
+import type { PullRequestReview } from '@ordo/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { SignJWT } from 'jose';
@@ -7,6 +8,7 @@ import {
   applyBranch,
   applyCommits,
   applyPullRequest,
+  applyPullRequestChecks,
   collectRepositories,
   type ForgePullRequest,
   type ForgeRepoPayload,
@@ -14,6 +16,7 @@ import {
   linkedComment,
   mentionsIssue,
   type PullRequestState,
+  summarizeChecks,
 } from '../services/forge.ts';
 import { readAppSecrets } from '../services/integrations.ts';
 import { callApi, hmacHex, repoList, safeEqual, trimUrl } from './http.ts';
@@ -118,7 +121,7 @@ interface GhPull {
   merged?: boolean;
   merged_at?: string | null;
   updated_at: string;
-  head: { ref: string };
+  head: { ref: string; sha?: string };
   user: { id: number; login: string } | null;
   requested_reviewers?: unknown[];
   requested_teams?: unknown[];
@@ -142,7 +145,53 @@ const toPull = (pr: GhPull, repo: string, state: PullRequestState): ForgePullReq
   branch: pr.head.ref,
   state,
   author: pr.user ? { id: String(pr.user.id), login: pr.user.login } : null,
+  head: pr.head.sha,
 });
+
+const REVIEW_VERDICTS: Record<string, PullRequestReview> = {
+  approved: 'approved',
+  changes_requested: 'changes_requested',
+};
+
+/** Webhook events GitHub sends us: linking, reviews, and checks. */
+export const GITHUB_EVENTS = [
+  'pull_request',
+  'pull_request_review',
+  'push',
+  'check_suite',
+  'status',
+];
+
+interface GhCheckRun {
+  status: string;
+  conclusion: string | null;
+}
+
+/** All check runs and commit statuses on a commit, summed up. */
+async function checksFor(ictx: IntegrationContext, repo: string, sha: string) {
+  const [{ data: runs }, { data: combined }] = await Promise.all([
+    gh<{ check_runs: GhCheckRun[] }>(ictx, `/repos/${repo}/commits/${sha}/check-runs?per_page=100`),
+    gh<{ statuses: { state: string }[] }>(ictx, `/repos/${repo}/commits/${sha}/status`),
+  ]);
+  return summarizeChecks([
+    ...runs.check_runs.map((r) =>
+      r.status !== 'completed'
+        ? ('pending' as const)
+        : r.conclusion === 'success'
+          ? ('success' as const)
+          : r.conclusion === 'neutral' || r.conclusion === 'skipped'
+            ? ('skipped' as const)
+            : ('failure' as const),
+    ),
+    ...combined.statuses.map((st) =>
+      st.state === 'success'
+        ? ('success' as const)
+        : st.state === 'pending'
+          ? ('pending' as const)
+          : ('failure' as const),
+    ),
+  ]);
+}
 
 async function handlePull(ictx: IntegrationContext, pr: ForgePullRequest) {
   const linked = await applyPullRequest(ictx, githubHost(ictx.integration), pr);
@@ -270,13 +319,21 @@ export const github: IntegrationProvider = {
     }
     for (const repo of c.repos) {
       await gh(ictx, `/repos/${repo}`); // fails early with a clear message if the token can't see it
-      if (c.delivery !== 'webhook' || hooks[repo]) continue;
+      if (c.delivery !== 'webhook') continue;
+      if (hooks[repo]) {
+        // Hooks made before Ordo listened for checks get the newer events.
+        await gh(ictx, `/repos/${repo}/hooks/${hooks[repo]}`, {
+          method: 'PATCH',
+          body: { events: GITHUB_EVENTS },
+        });
+        continue;
+      }
       const { data } = await gh<{ id: number }>(ictx, `/repos/${repo}/hooks`, {
         method: 'POST',
         body: {
           name: 'web',
           active: true,
-          events: ['pull_request', 'pull_request_review', 'push'],
+          events: GITHUB_EVENTS,
           config: {
             url: `${ictx.app.env.publicUrl}/api/hooks/github/${ictx.integration.inboundToken}`,
             content_type: 'json',
@@ -340,9 +397,30 @@ export const github: IntegrationProvider = {
     if (event === 'pull_request' || event === 'pull_request_review') {
       const pr = body.pull_request as GhPull;
       let state = pullState(pr, body.action);
+      const reviewed = event === 'pull_request_review' && body.action === 'submitted';
       // Someone reviewing an open PR means it's in review.
       if (event === 'pull_request_review' && state === 'open') state = 'review';
-      await handlePull(ictx, toPull(pr, body.repository.full_name, state));
+      const verdict = reviewed ? REVIEW_VERDICTS[body.review?.state] : undefined;
+      await handlePull(ictx, {
+        ...toPull(pr, body.repository.full_name, state),
+        ...(verdict && { review: verdict, reviewed: true }),
+      });
+    } else if (event === 'check_suite' || event === 'status') {
+      const repo = body.repository.full_name as string;
+      const sha = (event === 'status' ? body.sha : body.check_suite?.head_sha) as
+        | string
+        | undefined;
+      if (!sha) return;
+      const numbers =
+        event === 'check_suite'
+          ? (body.check_suite.pull_requests as { number: number }[]).map((p) => p.number)
+          : [];
+      await applyPullRequestChecks(ictx, {
+        sha,
+        checks: await checksFor(ictx, repo, sha),
+        repo,
+        numbers,
+      });
     } else if (event === 'push') {
       await handlePush(ictx, body as GhPush);
     } else if (event === 'installation') {

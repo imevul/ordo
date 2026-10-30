@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto';
+import type { PullRequestChecks } from '@ordo/shared';
 import {
   applyBranch,
   applyCommits,
   applyPullRequest,
+  applyPullRequestChecks,
   collectRepositories,
   type ForgePullRequest,
   type ForgeRepoPayload,
@@ -49,7 +51,7 @@ interface FjPull {
   merged?: boolean;
   merged_at?: string | null;
   updated_at: string;
-  head: { ref: string };
+  head: { ref: string; sha?: string };
   user: { id: number; login: string } | null;
   requested_reviewers?: unknown[] | null;
 }
@@ -72,7 +74,26 @@ const toPull = (pr: FjPull, repo: string, state: PullRequestState): ForgePullReq
   branch: pr.head.ref,
   state,
   author: pr.user ? { id: String(pr.user.id), login: pr.user.login } : null,
+  head: pr.head.sha,
 });
+
+/** Webhook events Ordo asks for. `status` (commit statuses) needs Gitea 1.21 or Forgejo 1.21. */
+const FORGEJO_EVENTS = [
+  'push',
+  'pull_request',
+  'pull_request_sync',
+  'pull_request_review_request',
+  'pull_request_review_approved',
+  'pull_request_review_rejected',
+  'status',
+];
+
+const COMBINED_CHECKS: Record<string, PullRequestChecks> = {
+  success: 'passing',
+  pending: 'pending',
+  failure: 'failing',
+  error: 'failing',
+};
 
 async function handlePull(ictx: IntegrationContext, pr: ForgePullRequest) {
   const linked = await applyPullRequest(ictx, host(ictx.integration), pr);
@@ -142,13 +163,21 @@ export const forgejo: IntegrationProvider = {
     }
     for (const repo of c.repos) {
       await api(ictx, `/repos/${repo}`);
-      if (c.delivery !== 'webhook' || hooks[repo]) continue;
+      if (c.delivery !== 'webhook') continue;
+      if (hooks[repo]) {
+        // Hooks made before Ordo listened for reviews and statuses get them too.
+        await api(ictx, `/repos/${repo}/hooks/${hooks[repo]}`, {
+          method: 'PATCH',
+          body: { events: FORGEJO_EVENTS },
+        });
+        continue;
+      }
       const { data } = await api<{ id: number }>(ictx, `/repos/${repo}/hooks`, {
         method: 'POST',
         body: {
           type: 'gitea',
           active: true,
-          events: ['push', 'pull_request', 'pull_request_sync', 'pull_request_review_request'],
+          events: FORGEJO_EVENTS,
           config: {
             url: `${ictx.app.env.publicUrl}/api/hooks/forgejo/${ictx.integration.inboundToken}`,
             content_type: 'json',
@@ -180,7 +209,23 @@ export const forgejo: IntegrationProvider = {
     const repo = body.repository?.full_name as string;
     if (event?.startsWith('pull_request')) {
       const pr = body.pull_request as FjPull;
-      await handlePull(ictx, toPull(pr, repo, forgejoPullState(pr, body.action)));
+      const verdict =
+        event === 'pull_request_review_approved'
+          ? ('approved' as const)
+          : event === 'pull_request_review_rejected'
+            ? ('changes_requested' as const)
+            : undefined;
+      let state = forgejoPullState(pr, body.action);
+      if (verdict && state === 'open') state = 'review';
+      await handlePull(ictx, {
+        ...toPull(pr, repo, state),
+        ...(verdict && { review: verdict, reviewed: true }),
+      });
+    } else if (event === 'status') {
+      const sha = body.sha as string | undefined;
+      if (!sha) return;
+      const { data } = await api<{ state: string }>(ictx, `/repos/${repo}/commits/${sha}/status`);
+      await applyPullRequestChecks(ictx, { sha, checks: COMBINED_CHECKS[data.state] ?? null });
     } else if (event === 'push') {
       if (!String(body.ref).startsWith('refs/heads/') || /^0+$/.test(body.after ?? '')) return;
       const branch = String(body.ref).slice('refs/heads/'.length);

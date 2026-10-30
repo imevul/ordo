@@ -19,7 +19,7 @@ import {
   TEAM_ROLES,
   USERNAME_PATTERN,
 } from './constants.ts';
-import { GIT_EVENTS } from './git.ts';
+import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
 import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
 import { HEX_COLOR } from './theme.ts';
 import { OFFLINE_SYNC_MODES, WORKSPACE_AI_POLICIES } from './types.ts';
@@ -541,6 +541,9 @@ export const createProjectSchema = z.object({
   repositoryIds: z.array(id).max(20).optional(),
   /** `workspace`: the workspace's default assignee; `none`: nobody; else a member's id. */
   defaultAssignee: z.union([z.enum(['workspace', 'none']), id]).optional(),
+  /** An agent that gets the project's pull requests once they're ready for review. Admins only. */
+  pullRequestAgentId: id.nullish(),
+  pullRequestScope: z.enum(PULL_REQUEST_SCOPES).optional(),
 });
 
 const domain = z
@@ -1019,6 +1022,7 @@ const agentFields = {
   teamIds: z.array(id).min(1).max(100),
   instructions: z.string().max(20_000),
   concurrency: z.number().int().min(1).max(20),
+  followPullRequests: z.boolean(),
 };
 export const createAgentSchema = z.object({
   ...agentFields,
@@ -1026,6 +1030,7 @@ export const createAgentSchema = z.object({
   avatarColor: agentFields.avatarColor.optional(),
   instructions: agentFields.instructions.default(''),
   concurrency: agentFields.concurrency.default(1),
+  followPullRequests: agentFields.followPullRequests.default(true),
 });
 // No defaults here: in Zod 4 `.partial()` keeps them, and a PATCH would reset what it didn't send.
 export const updateAgentSchema = z

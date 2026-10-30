@@ -56,6 +56,13 @@ export default {
     targetDate: 'Target date',
     initiative: 'Initiative',
     teams: 'Teams',
+    pullRequestAgent: 'Pull request agent',
+    pullRequestAgentHint:
+      "When a pull request in the project's repositories is ready for review, its issue goes to this agent.",
+    noPullRequestAgent: 'Nobody (people review)',
+    pullRequestScope: 'Which pull requests',
+    pullRequestScopeLinked: "Linked to the project's issues",
+    pullRequestScopeAll: "All in the project's repositories",
     defaultAssignee: 'Default assignee',
     defaultAssigneeHint: 'Who new issues in this project go to.',
     /** {name} is the workspace's default assignee, or "no assignee" */

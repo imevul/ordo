@@ -1,4 +1,5 @@
 import type {
+  AgentRunPullRequest,
   AgentRunStatus,
   AgentRunTrigger,
   AuditAction,
@@ -23,6 +24,7 @@ import type {
   NotificationType,
   ProjectHealth,
   ProjectStatus,
+  PullRequestScope,
   RecurrenceUnit,
   RelationType,
   SamlSettings,
@@ -463,6 +465,15 @@ export const projects = pgTable(
     defaultAssigneeId: uuid('default_assignee_id').references(() => users.id, {
       onDelete: 'set null',
     }),
+    /** The agent that gets the project's pull requests once they're ready for review. */
+    pullRequestAgentId: uuid('pull_request_agent_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    /** Which: PRs linked to the project's issues, or every PR in its repositories. */
+    pullRequestScope: text('pull_request_scope')
+      .$type<PullRequestScope>()
+      .notNull()
+      .default('linked'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -1693,6 +1704,8 @@ export const agents = pgTable('agents', {
   instructions: text('instructions').notNull().default(''),
   /** Runs it works on at once, across its runners. */
   concurrency: integer('concurrency').notNull().default(1),
+  /** Whether failing checks and requested changes on its issues' pull requests give it a run. */
+  followPullRequests: boolean('follow_pull_requests').notNull().default(true),
   createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -1728,6 +1741,8 @@ export const agentRuns = pgTable(
     triggerCommentId: uuid('trigger_comment_id').references(() => comments.id, {
       onDelete: 'set null',
     }),
+    /** For a `pull_request` run: which pull request and what happened to it. */
+    triggerDetail: jsonb('trigger_detail').$type<AgentRunPullRequest>(),
     /** The agent's last question; set while `waiting`, kept after it resumes. */
     question: text('question'),
     /** Opaque to Ordo: the runner's handle on the agent's session, returned on the next pickup. */

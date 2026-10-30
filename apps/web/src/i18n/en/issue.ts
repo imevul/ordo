@@ -55,12 +55,24 @@ export default {
     remove: 'Remove {name}',
   },
   uploadFailed: 'Could not upload {name}',
+  pullRequests: {
+    title: 'Pull requests',
+    checks: {
+      passing: 'Checks passing',
+      failing: 'Checks failing',
+      pending: 'Checks running',
+    },
+    review: {
+      approved: 'Approved',
+      changes_requested: 'Changes requested',
+    },
+  },
   links: {
     title: 'Links',
     add: 'Add link',
     titleOptional: 'Title (optional)',
     titleLabel: 'Title',
-    empty: '// pull requests and links show up here',
+    empty: '// branches, commits and links show up here',
     addFailed: 'Could not add the link',
     remove: 'Remove link',
     state: {

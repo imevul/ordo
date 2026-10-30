@@ -170,29 +170,32 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 
 ### Issues
 
-| Method         | Path                                |                                                                                              |
-| -------------- | ----------------------------------- | -------------------------------------------------------------------------------------------- |
-| POST           | `/issues/query`                     | `{ filter, limit?, after? }` → `Issue[]` (see below)                                         |
-| GET            | `/issues/:idOrIdentifier`           | Issue with parent, sub-issues, relations, subscribers, links, attachments                    |
-| POST           | `/issues`                           | Create (see example)                                                                         |
-| PATCH          | `/issues/:id`                       | Any of the create fields, plus `teamId` (move), `addLabelIds`, `removeLabelIds`, `sortOrder` |
-| POST           | `/issues/batch`                     | `{ ids, patch }` — same patch on up to 250 issues                                            |
-| DELETE         | `/issues/:id`                       | Move to trash                                                                                |
-| POST           | `/issues/batch-delete`              | `{ ids }`                                                                                    |
-| POST           | `/issues/:id/restore`               | Restore from trash                                                                           |
-| POST           | `/issues/:id/archive`, `/unarchive` | Archive (out of lists, still readable) / bring back                                          |
-| POST           | `/issues/:id/links`                 | Attach a link `{ url, title? }`                                                              |
-| DELETE         | `/issue-links/:id`                  | Remove a link (any kind)                                                                     |
-| POST           | `/attachments?issueId=`             | Upload one file (multipart field `file`) → `Attachment`; see below                           |
-| DELETE         | `/attachments/:id`                  | Remove an attachment (uploader, team admin or admin)                                         |
-| DELETE         | `/issues/:id/purge`                 | _Admin._ Permanently delete a trashed issue                                                  |
-| GET            | `/issues/:id/history`               | Change log                                                                                   |
-| POST / DELETE  | `/issues/:id/subscription`          | Subscribe / unsubscribe yourself                                                             |
-| POST           | `/issues/:id/relations`             | `{ type: "blocks" \| "blocked_by" \| "related" \| "duplicate_of", relatedIssueId }`          |
-| DELETE         | `/relations/:id`                    |                                                                                              |
-| GET / POST     | `/issues/:id/comments`              | List / create `{ body, parentId? }` (`@username` notifies)                                   |
-| PATCH / DELETE | `/comments/:id`                     | Edit (author) / delete (author or admin)                                                     |
-| PUT / DELETE   | `/comments/:id/reactions/:emoji`    | Add / remove your reaction (one URL-encoded emoji); returns the comment's `reactions`        |
+| Method | Path                                |                                                                                              |
+| ------ | ----------------------------------- | -------------------------------------------------------------------------------------------- |
+| POST   | `/issues/query`                     | `{ filter, limit?, after? }` → `Issue[]` (see below)                                         |
+| GET    | `/issues/:idOrIdentifier`           | Issue with parent, sub-issues, relations, subscribers, links, attachments                    |
+| POST   | `/issues`                           | Create (see example)                                                                         |
+| PATCH  | `/issues/:id`                       | Any of the create fields, plus `teamId` (move), `addLabelIds`, `removeLabelIds`, `sortOrder` |
+| POST   | `/issues/batch`                     | `{ ids, patch }` — same patch on up to 250 issues                                            |
+| DELETE | `/issues/:id`                       | Move to trash                                                                                |
+| POST   | `/issues/batch-delete`              | `{ ids }`                                                                                    |
+| POST   | `/issues/:id/restore`               | Restore from trash                                                                           |
+| POST   | `/issues/:id/archive`, `/unarchive` | Archive (out of lists, still readable) / bring back                                          |
+| POST   | `/issues/:id/links`                 | Attach a link `{ url, title? }`                                                              |
+| DELETE | `/issue-links/:id`                  | Remove a link (any kind)                                                                     |
+
+Pull request links (`kind: "pull_request"`) have `pullRequest: { repo, number, branch, checks, review }`: `checks` is
+`pending`, `passing`, `failing` or `null` (not reported), `review` is `approved`, `changes_requested` or `null`.
+| POST | `/attachments?issueId=` | Upload one file (multipart field `file`) → `Attachment`; see below |
+| DELETE | `/attachments/:id` | Remove an attachment (uploader, team admin or admin) |
+| DELETE | `/issues/:id/purge` | _Admin._ Permanently delete a trashed issue |
+| GET | `/issues/:id/history` | Change log |
+| POST / DELETE | `/issues/:id/subscription` | Subscribe / unsubscribe yourself |
+| POST | `/issues/:id/relations` | `{ type: "blocks" \| "blocked_by" \| "related" \| "duplicate_of", relatedIssueId }` |
+| DELETE | `/relations/:id` | |
+| GET / POST | `/issues/:id/comments` | List / create `{ body, parentId? }` (`@username` notifies) |
+| PATCH / DELETE | `/comments/:id` | Edit (author) / delete (author or admin) |
+| PUT / DELETE | `/comments/:id/reactions/:emoji` | Add / remove your reaction (one URL-encoded emoji); returns the comment's `reactions` |
 
 Create an issue:
 
@@ -424,8 +427,8 @@ Agents are members a runner works for; see [agents.md](agents.md) for the idea a
 
 | Method         | Path                                                       | What                                                                                                                     |
 | -------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| GET / POST     | `/agents`                                                  | _Admin._ List / create `{ name, teamIds, instructions?, concurrency?, username? }`                                       |
-| PATCH          | `/agents/:id`                                              | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, disabled? }`                                                   |
+| GET / POST     | `/agents`                                                  | _Admin._ List / create `{ name, teamIds, instructions?, concurrency?, followPullRequests?, username? }`                  |
+| PATCH          | `/agents/:id`                                              | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, followPullRequests?, disabled? }`                              |
 | POST           | `/agents/:id/keys`                                         | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                           |
 | DELETE         | `/agents/:id/keys/:keyId`                                  | _Admin._ Revoke a key                                                                                                    |
 | GET / POST     | `/issues/:id/agent-runs`                                   | The issue's runs / queue a new one for its agent ("Run again")                                                           |
@@ -440,7 +443,12 @@ Agents are members a runner works for; see [agents.md](agents.md) for the idea a
 | POST           | `/repositories`                                            | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo? }`                                                  |
 | PATCH / DELETE | `/repositories/:id`                                        | _Admin._ Update / delete                                                                                                 |
 
-Projects take `repositoryIds` (in order) on create and update; teams take `defaultRepositoryId`.
+Projects take `repositoryIds` (in order) on create and update; teams take `defaultRepositoryId`. Admins can set a
+project's `pullRequestAgentId` (an agent in one of its teams, or `null`) and `pullRequestScope` (`"linked"` or
+`"all"`): who gets its pull requests when they're ready for review ([agents.md](agents.md#pull-requests)).
+
+A run's `trigger` is `assigned`, `mention`, `rerun` or `pull_request`; for `pull_request`, `triggerDetail` is
+`{ event: "ready_for_review" | "checks_failed" | "changes_requested", repo, number, url, branch }`.
 
 **Default assignee.** An issue created without `assigneeId` goes to the default assignee: its project's
 `defaultAssignee` (`"workspace"`, `"none"`, or a member's id) or else the workspace's `settings.defaultAssigneeId`,

@@ -210,6 +210,7 @@ function AgentModal({
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [instructions, setInstructions] = useState('');
   const [concurrency, setConcurrency] = useState(1);
+  const [followPullRequests, setFollowPullRequests] = useState(true);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!agent) return;
@@ -217,6 +218,7 @@ function AgentModal({
     setTeamIds(existing?.teamIds ?? (ws.teams[0] ? [ws.teams[0].id] : []));
     setInstructions(existing?.instructions ?? '');
     setConcurrency(existing?.concurrency ?? 1);
+    setFollowPullRequests(existing?.followPullRequests ?? true);
   }, [agent, existing, ws.teams]);
 
   const submit = async (e: FormEvent) => {
@@ -226,7 +228,7 @@ function AgentModal({
       return;
     }
     setBusy(true);
-    const body = { name, teamIds, instructions, concurrency };
+    const body = { name, teamIds, instructions, concurrency, followPullRequests };
     try {
       if (existing) {
         await api.patch(wsPath(ws.slug, `/agents/${existing.id}`), body);
@@ -295,6 +297,20 @@ function AgentModal({
             onChange={(e) => setConcurrency(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
           />
         </FormRow>
+        <label className="mt-4 flex items-start gap-2 text-[13px]">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-primary"
+            checked={followPullRequests}
+            onChange={(e) => setFollowPullRequests(e.target.checked)}
+          />
+          <span>
+            {t('agents.form.followPullRequests')}
+            <span className="block text-[11.5px] text-index">
+              {t('agents.form.followPullRequestsHint')}
+            </span>
+          </span>
+        </label>
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             {t('common.cancel')}

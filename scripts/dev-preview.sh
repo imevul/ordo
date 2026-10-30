@@ -87,8 +87,9 @@ DATABASE_URL="$url" pnpm --silent db:seed >"$logs/seed.log" 2>&1 || {
   exit 1
 }
 
-api_port=$(free_port)
-web_port=$(free_port)
+# Fixed ports when a launcher needs to know them (ORDO_PREVIEW_API_PORT / ORDO_PREVIEW_WEB_PORT).
+api_port=${ORDO_PREVIEW_API_PORT:-$(free_port)}
+web_port=${ORDO_PREVIEW_WEB_PORT:-$(free_port)}
 while [ "$web_port" = "$api_port" ]; do web_port=$(free_port); done
 public="http://localhost:$web_port"
 

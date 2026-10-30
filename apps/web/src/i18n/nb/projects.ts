@@ -41,6 +41,13 @@ export default {
     completed: 'Fullført',
   },
   overview: {
+    pullRequestAgent: 'Agent for pull requests',
+    pullRequestAgentHint:
+      'Når en pull request i prosjektets repoer er klar for gjennomgang, går saken til denne agenten.',
+    noPullRequestAgent: 'Ingen (mennesker går gjennom)',
+    pullRequestScope: 'Hvilke pull requests',
+    pullRequestScopeLinked: 'Koblet til prosjektets saker',
+    pullRequestScopeAll: 'Alle i prosjektets repoer',
     nameLabel: 'Prosjektnavn',
     addBrief: 'Legg til en prosjektbeskrivelse…',
     progress: 'Fremdrift',

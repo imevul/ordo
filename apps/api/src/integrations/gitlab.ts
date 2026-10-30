@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto';
+import type { PullRequestChecks } from '@ordo/shared';
 import {
   applyBranch,
   applyCommits,
   applyPullRequest,
+  applyPullRequestChecks,
   type ForgePullRequest,
   issueSummaries,
   linkedComment,
@@ -51,6 +53,7 @@ interface GlMergeRequest {
   updated_at: string;
   reviewers?: unknown[];
   author?: { id: number; username: string };
+  last_commit?: { id: string };
 }
 
 export function mergeRequestState(mr: GlMergeRequest, reviewers?: unknown[]): PullRequestState {
@@ -77,7 +80,22 @@ const toPull = (
     branch: mr.source_branch,
     state,
     author: who ? { id: String(who.id), login: who.username } : null,
+    head: mr.last_commit?.id,
   };
+};
+
+const PIPELINE_CHECKS: Record<string, PullRequestChecks | null> = {
+  success: 'passing',
+  failed: 'failing',
+  canceled: 'failing',
+  created: 'pending',
+  waiting_for_resource: 'pending',
+  preparing: 'pending',
+  pending: 'pending',
+  running: 'pending',
+  scheduled: 'pending',
+  manual: 'pending',
+  skipped: null,
 };
 
 async function handleMergeRequest(ictx: IntegrationContext, pr: ForgePullRequest) {
@@ -136,16 +154,26 @@ export const gitlab: IntegrationProvider = {
     }
     for (const path of c.projects) {
       await api(ictx, `/projects/${project(path)}`);
-      if (c.delivery !== 'webhook' || hooks[path]) continue;
+      if (c.delivery !== 'webhook') continue;
+      const hook = {
+        url: `${ictx.app.env.publicUrl}/api/hooks/gitlab/${ictx.integration.inboundToken}`,
+        token: ictx.secrets.webhookSecret,
+        merge_requests_events: true,
+        push_events: true,
+        pipeline_events: true,
+        enable_ssl_verification: true,
+      };
+      if (hooks[path]) {
+        // Hooks made before Ordo listened for pipelines get them too.
+        await api(ictx, `/projects/${project(path)}/hooks/${hooks[path]}`, {
+          method: 'PUT',
+          body: hook,
+        });
+        continue;
+      }
       const { data } = await api<{ id: number }>(ictx, `/projects/${project(path)}/hooks`, {
         method: 'POST',
-        body: {
-          url: `${ictx.app.env.publicUrl}/api/hooks/gitlab/${ictx.integration.inboundToken}`,
-          token: ictx.secrets.webhookSecret,
-          merge_requests_events: true,
-          push_events: true,
-          enable_ssl_verification: true,
-        },
+        body: hook,
       });
       hooks[path] = data.id;
     }
@@ -179,7 +207,22 @@ export const gitlab: IntegrationProvider = {
         mergeRequestState(mr, body.reviewers),
         mr.author ?? (body.object_attributes?.action === 'open' ? author : null),
       );
-      await handleMergeRequest(ictx, pr);
+      const action = body.object_attributes?.action;
+      await handleMergeRequest(ictx, {
+        ...pr,
+        ...(action === 'approved' && { review: 'approved', reviewed: true }),
+        ...(action === 'unapproved' && { review: null }),
+      });
+    } else if (event === 'Pipeline Hook') {
+      const pipeline = body.object_attributes as { sha?: string; status?: string };
+      if (!pipeline?.sha || !pipeline.status || !(pipeline.status in PIPELINE_CHECKS)) return;
+      const iid = body.merge_request?.iid as number | undefined;
+      await applyPullRequestChecks(ictx, {
+        sha: pipeline.sha,
+        checks: PIPELINE_CHECKS[pipeline.status]!,
+        repo,
+        numbers: iid ? [iid] : [],
+      });
     } else if (event === 'Push Hook') {
       if (!String(body.ref).startsWith('refs/heads/') || /^0+$/.test(body.after)) return;
       const branch = String(body.ref).slice('refs/heads/'.length);

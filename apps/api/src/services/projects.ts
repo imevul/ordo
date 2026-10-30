@@ -9,11 +9,12 @@ import {
   teams,
   workspaceMembers,
 } from '../db/schema.ts';
-import { badRequest } from '../lib/errors.ts';
+import { badRequest, forbidden } from '../lib/errors.ts';
 import { type Access, assertCan, canReadTeam } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { assertInitiative } from './initiatives.ts';
 import { progressBy } from './progress.ts';
+import { canTakePullRequests } from './pullRequests.ts';
 import { projectRepositoryIds, setProjectRepositories } from './repositories.ts';
 import { toMilestone, toProject } from './serialize.ts';
 
@@ -57,6 +58,33 @@ export async function defaultAssigneeColumns(
   return { defaultAssigneeMode: 'member', defaultAssigneeId: value };
 }
 
+/**
+ * Sets who gets the project's pull requests. Admins only; the agent must work in one of the
+ * project's teams, so call it after the teams are saved.
+ */
+export async function setPullRequestAgent(
+  ctx: Ctx,
+  projectId: string,
+  input: Pick<CreateProjectInput, 'pullRequestAgentId' | 'pullRequestScope'>,
+) {
+  if (input.pullRequestAgentId === undefined && input.pullRequestScope === undefined) return;
+  if (!ctx.access.isAdmin) throw forbidden('Only admins can choose a pull request agent');
+  if (
+    input.pullRequestAgentId &&
+    !(await canTakePullRequests(ctx, projectId, input.pullRequestAgentId))
+  )
+    throw badRequest("The pull request agent must be an agent in one of the project's teams");
+  await ctx.tx
+    .update(projects)
+    .set({
+      ...(input.pullRequestAgentId !== undefined && {
+        pullRequestAgentId: input.pullRequestAgentId,
+      }),
+      ...(input.pullRequestScope !== undefined && { pullRequestScope: input.pullRequestScope }),
+    })
+    .where(eq(projects.id, projectId));
+}
+
 /** Creates a project at the top of the list; returns its id. */
 export async function createProject(ctx: Ctx, input: CreateProjectInput): Promise<string> {
   assertCan(ctx.access, 'projects.create', 'Guests cannot create projects');
@@ -67,7 +95,8 @@ export async function createProject(ctx: Ctx, input: CreateProjectInput): Promis
     .select({ first: min(projects.sortOrder) })
     .from(projects)
     .where(eq(projects.workspaceId, ctx.workspaceId))) as [{ first: number | null }];
-  const { teamIds, repositoryIds, defaultAssignee, ...rest } = input;
+  const { teamIds, repositoryIds, defaultAssignee, pullRequestAgentId, pullRequestScope, ...rest } =
+    input;
   const [row] = await ctx.tx
     .insert(projects)
     .values({
@@ -82,6 +111,7 @@ export async function createProject(ctx: Ctx, input: CreateProjectInput): Promis
     .insert(projectTeams)
     .values(teamIds.map((teamId) => ({ projectId: row!.id, teamId })));
   if (repositoryIds?.length) await setProjectRepositories(ctx, row!.id, repositoryIds);
+  await setPullRequestAgent(ctx, row!.id, { pullRequestAgentId, pullRequestScope });
   emit(ctx, { kind: 'project', action: 'created', id: row!.id });
   const [project] = await listProjects(ctx.tx, ctx.access, row!.id);
   record(ctx, 'project.created', project!, { teamIds: project!.teamIds });
