@@ -408,16 +408,9 @@ export function Activity({
   focusCommentId?: string | null;
 }) {
   const ws = useWorkspace();
-  const { data: history = [] } = useHistory(ws.slug, issue.id);
+  const historyQuery = useHistory(ws.slug, issue.id);
+  const history = historyQuery.data ?? [];
   const { data: comments = [] } = useComments(ws.slug, issue.id);
-  const focusLoaded = comments.some((c) => c.id === focusCommentId);
-  // Scroll once the comment has rendered, not again on every refetch.
-  useEffect(() => {
-    if (!focusCommentId || !focusLoaded) return;
-    document
-      .getElementById(`comment-${focusCommentId}`)
-      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  }, [focusCommentId, focusLoaded]);
   const [draft, setDraft] = useState('');
   const upload = useAttachmentUpload(ws.slug, issue.id);
   const engine = useSyncEngine();
@@ -446,6 +439,18 @@ export function Activity({
     ];
     return all.sort((a, b) => a.at.localeCompare(b.at));
   }, [history, comments]);
+
+  // History rows sort in above comments, and with offline sync the comments can arrive from
+  // IndexedDB long before /history does, so wait for both or the comment moves after scrolling.
+  // Scroll once, not again on every refetch.
+  const focusReady =
+    !historyQuery.isPending && comments.some((c) => c.id === focusCommentId);
+  useEffect(() => {
+    if (!focusCommentId || !focusReady) return;
+    document
+      .getElementById(`comment-${focusCommentId}`)
+      ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [focusCommentId, focusReady]);
 
   const submit = () => {
     if (!draft.trim()) return;
