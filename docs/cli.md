@@ -27,31 +27,35 @@ In a checkout of the Ordo repository, `pnpm ordo <command>` runs the CLI from so
 
 ### Commands
 
-| Command                          | What it does                                                                                              |
-| -------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `ordo whoami`                    | Who the key belongs to                                                                                    |
-| `ordo workspaces`                | Your workspaces; `*` marks the default                                                                    |
-| `ordo use <slug>`                | Make a workspace the default                                                                              |
-| `ordo teams`                     | Teams with their keys and statuses                                                                        |
-| `ordo issues`                    | Open issues, most urgent first (same as `ordo issue list`)                                                |
-| `ordo issue view <id>`           | One issue in full; `--comments` adds them, `--web` opens it in the browser                                |
-| `ordo issue create [title]`      | File an issue                                                                                             |
-| `ordo issue edit <id>`           | Change fields                                                                                             |
-| `ordo issue comment <id> [text]` | Comment; `--body-file <path>`, or `-` to read stdin; `--attach <file>` adds files (images show inline)    |
-| `ordo issue attach <id> <file…>` | Upload files to the issue and print the Markdown that shows them, for a comment, description or summary   |
-| `ordo issue start <id>`          | Move to the team's first started status, assign it to you if nobody has it, and print the git branch name |
-| `ordo issue close <id>`          | Move to the first completed status (`--canceled` for the canceled one)                                    |
-| `ordo issue branch <id>`         | Print the git branch name (the workspace's branch format)                                                 |
-| `ordo search <words>`            | Issues and projects                                                                                       |
-| `ordo api <method> <path>`       | Call any [REST endpoint](api.md); path relative to `/api`; `--data <json \| @file \| ->`                  |
-| `ordo agent run …`               | Work on an agent's runs: launch a command of yours for each one (see [agents](agents.md))                 |
-| `ordo agent check --file <yaml>` | Validate a runner file and its keys without claiming anything                                             |
-| `ordo agent ask <question>`      | Inside a run: ask a person and pause the run until they reply (`-` reads stdin)                           |
+| Command                          | What it does                                                                                                   |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `ordo login [url]`               | Save the instance's address and a personal API key (asks for what's missing; `--token <key>` skips the prompt) |
+| `ordo logout`                    | Delete the saved login                                                                                         |
+| `ordo whoami`                    | Who the key belongs to                                                                                         |
+| `ordo workspaces`                | Your workspaces; `*` marks the default                                                                         |
+| `ordo use <slug>`                | Make a workspace the default                                                                                   |
+| `ordo teams`                     | Teams with their keys and statuses                                                                             |
+| `ordo issues`                    | Open issues, most urgent first (same as `ordo issue list`)                                                     |
+| `ordo issue view <id>`           | One issue in full; `--comments` adds them, `--web` opens it in the browser                                     |
+| `ordo issue create [title]`      | File an issue                                                                                                  |
+| `ordo issue edit <id>`           | Change fields                                                                                                  |
+| `ordo issue comment <id> [text]` | Comment; `--body-file <path>`, or `-` to read stdin; `--attach <file>` adds files (images show inline)         |
+| `ordo issue attach <id> <file…>` | Upload files to the issue and print the Markdown that shows them, for a comment, description or summary        |
+| `ordo issue start <id>`          | Move to the team's first started status, assign it to you if nobody has it, and print the git branch name      |
+| `ordo issue close <id>`          | Move to the first completed status (`--canceled` for the canceled one)                                         |
+| `ordo issue branch <id>`         | Print the git branch name (the workspace's branch format)                                                      |
+| `ordo search <words>`            | Issues and projects                                                                                            |
+| `ordo api <method> <path>`       | Call any [REST endpoint](api.md); path relative to `/api`; `--data <json \| @file \| ->`                       |
+| `ordo agent run …`               | Work on an agent's runs: launch a command of yours for each one (see [agents](agents.md))                      |
+| `ordo agent check --file <yaml>` | Validate a runner file and its keys without claiming anything                                                  |
+| `ordo agent ask <question>`      | Inside a run: ask a person and pause the run until they reply (`-` reads stdin)                                |
 
 Every command takes `-w, --workspace <slug>`, `--json` (machine-readable output, the API's own shapes) and
 `-h, --help`. `ordo <command> --help` (or `ordo help <command>`) prints that command's usage and options, e.g.
 `ordo issue create --help`; `ordo issue --help` and `ordo agent --help` list their subcommands. In `ordo agent run --
-<command…>`, a `--help` after `--` goes to your command.
+<command…>`, a `--help` after `--` goes to your command. `ordo help` prints the command list and `ordo --version`
+(`-v`, `version`) the CLI's version. Some issue commands have aliases: `issue ls` for `list`, `show` for `view`, `new`
+for `create` and `update` for `edit`. The options of `agent run` are in [agents](agents.md).
 
 **Filters for `ordo issues`:** `--team ENG`, `--status <name or type>` (`started`, `"In Review"`; repeatable),
 `--assignee <me | username | email | none>` (repeatable), `--mine`, `--label <name>` (repeatable), `--project <name |
@@ -74,6 +78,23 @@ ordo api POST /w/acme/issues/query --data '{"filter":{"assigneeIds":["none"]}}'
 
 A name that matches nothing fails with the names that would have worked (`No team "WBE". Teams: API, WEB`). Exit codes
 are `0` for success, `1` for errors and `2` for a mistake in how the command was called.
+
+## Server maintenance commands
+
+`ordo` talks to an instance over HTTP. For the server itself, when nobody can sign in or after changing the secret
+key, the API bundle ships `cli.mjs`, which connects to the database directly. It runs on the server with the server's
+environment (`DATABASE_URL`, `ORDO_SECRET_KEY`…) and applies pending migrations before it does anything:
+
+| Command                               | What it does                                                                                 |
+| ------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `node cli.mjs promote-admin <email>`  | Make someone an instance admin, and enable the account if it was disabled                    |
+| `node cli.mjs reset-password <email>` | Print a one-hour password reset link (on `ORDO_PUBLIC_URL`)                                  |
+| `node cli.mjs disable-2fa <email>`    | Turn off someone's two-factor authentication: authenticator app, recovery codes and passkeys |
+| `node cli.mjs rotate-key`             | Re-encrypt every stored secret with the current key, and list the ones it can't decrypt      |
+
+With Docker: `make admin EMAIL=…`, `make reset-password EMAIL=…` or `docker compose exec app node cli.mjs <command>`.
+In a checkout: `pnpm --filter @ordo/api cli <command>`. See [admin.md](admin.md#recovery-from-the-command-line) and
+[key rotation](admin.md#rotating-the-secret-key).
 
 ## TypeScript SDK
 
