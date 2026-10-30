@@ -5,7 +5,7 @@ import {
   toCsv,
   type WorkspaceExport,
 } from '@ordo/shared';
-import { and, asc, desc, eq, inArray, lt } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import {
@@ -95,6 +95,8 @@ export async function startExport(
   opts: { workspaceId: string; userId: string; format: ExportFormat; meta: RequestMeta },
 ) {
   return app.db.transaction(async (tx) => {
+    // Under read committed two requests would both see no running export; the lock queues them.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`export:${opts.workspaceId}`}))`);
     const [running] = await tx
       .select({ id: workspaceExports.id })
       .from(workspaceExports)

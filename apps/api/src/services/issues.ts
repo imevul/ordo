@@ -1286,7 +1286,13 @@ export async function purgeIssue(ctx: Ctx, issueId: string) {
     .returning({ id: issues.id, teamId: issues.teamId });
   if (!row) throw notFound('Trashed issue');
   // Children keep living as top-level issues.
-  await ctx.tx.update(issues).set({ parentId: null }).where(eq(issues.parentId, issueId));
+  const children = await ctx.tx
+    .update(issues)
+    .set({ parentId: null, updatedAt: new Date().toISOString() })
+    .where(eq(issues.parentId, issueId))
+    .returning({ id: issues.id, teamId: issues.teamId });
+  for (const child of children)
+    emit(ctx, { kind: 'issue', action: 'updated', id: child.id, teamId: child.teamId });
   emit(ctx, { kind: 'issue', action: 'deleted', id: row.id, teamId: row.teamId });
   record(ctx, 'issue.deleted', { id: row.id }, { teamIds: [row.teamId] });
 }

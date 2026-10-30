@@ -13,6 +13,7 @@ import {
   teams,
   workspaces,
 } from '../src/db/schema.ts';
+import { calendarDate } from '../src/services/imports/csv.ts';
 import { importLimits } from '../src/services/imports/engine.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
@@ -101,7 +102,7 @@ describe('CSV import', () => {
       `WEB-1,Web,Set up the site,"Landing page, docs",Done,High,${memberEmail},${ownerEmail},"frontend, launch",Launch,,3,2024-03-01,2024-01-10T09:00:00Z,2024-02-01T12:00:00Z,https://example.com/WEB-1`,
       'WEB-2,Web,Write docs,,In Progress,Medium,ghost@example.com,,docs,Launch,WEB-1,,,2024-01-11,,',
       'WEB-3,Web,,No title here,Todo,,,,,,,,,,,',
-      'WEB-5,Web,Odd one,,Waiting,whenever,,,,,,,,not a date,,',
+      'WEB-5,Web,Odd one,,Waiting,whenever,,,,,,,03/15/2026,not a date,,',
     ].join('\r\n');
 
   it('is for workspace admins only', async () => {
@@ -182,7 +183,7 @@ describe('CSV import', () => {
     expect(project!.name).toBe('Launch');
 
     // Kept numbers leave a gap where the skipped row was, and new issues continue after them.
-    expect((await issue('WEB-5')).title).toBe('Odd one');
+    expect(await issue('WEB-5')).toMatchObject({ title: 'Odd one', dueDate: '2026-03-15' });
     const boot = (await owner.get(`${ws}/bootstrap`)).data as Bootstrap;
     const web = boot.teams.find((t) => t.key === 'WEB')!;
     const next = await owner.post(`${ws}/issues`, { teamId: web.id, title: 'After the import' });
@@ -231,6 +232,25 @@ describe('CSV import', () => {
     imp = await run(imp.id, 'run');
     expect(imp.report).toMatchObject({ existing: 3, created: { teams: 0, issues: 0 } });
     expect(await issueCount()).toBe(before);
+  });
+});
+
+describe('CSV due dates', () => {
+  it('are the calendar day written, whatever zone the server runs in', () => {
+    const tz = process.env.TZ;
+    try {
+      for (const zone of ['Asia/Tokyo', 'UTC', 'America/Los_Angeles']) {
+        process.env.TZ = zone;
+        expect(calendarDate('03/15/2026'), zone).toBe('2026-03-15');
+        expect(calendarDate('March 15, 2026'), zone).toBe('2026-03-15');
+        expect(calendarDate('2026-03-15'), zone).toBe('2026-03-15');
+        expect(calendarDate('2026-03-15T23:30:00-08:00'), zone).toBe('2026-03-15');
+        expect(calendarDate('someday'), zone).toBeUndefined();
+      }
+    } finally {
+      if (tz === undefined) delete process.env.TZ;
+      else process.env.TZ = tz;
+    }
   });
 });
 
