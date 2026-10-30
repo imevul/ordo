@@ -22,7 +22,6 @@ import type { FastifyInstance } from 'fastify';
 import type { Tx } from '../db/client.ts';
 import {
   apiKeys,
-  auditLog,
   authTokens,
   invites,
   sessions,
@@ -38,7 +37,6 @@ import {
   badRequest,
   conflict,
   forbidden,
-  HttpError,
   isUniqueViolation,
   notFound,
   one,
@@ -52,6 +50,14 @@ import type { Ctx } from '../services/context.ts';
 import { revokeCredentials } from '../services/credentials.ts';
 import { resolvePreferences } from '../services/digest.ts';
 import { signedFileUrl } from '../services/files.ts';
+import {
+  assertNotLockedOut,
+  authLimit,
+  failedAttempts,
+  LOCKOUT_ATTEMPTS,
+  lockedOut,
+  recordFailedCheck,
+} from '../services/lockout.ts';
 import { passwordResetEmail, securityEmail, verifyEmailEmail } from '../services/mail-templates.ts';
 import { queueEmail } from '../services/mailer.ts';
 import { hasSecondFactor, secondFactors, verifySecondFactor } from '../services/mfa.ts';
@@ -70,34 +76,6 @@ import { joinWorkspace, mayCreateWorkspace } from '../services/workspaces.ts';
 // A well-formed hash nobody can match, compared against when the account doesn't exist.
 const DUMMY_HASH =
   'scrypt$32768$8$1$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
-
-const authLimit = { config: { rateLimit: { max: 20, timeWindow: '1 minute' } } };
-
-// Per account, whatever address the attempts come from: wrong passwords and wrong second factors.
-const LOCKOUT_ATTEMPTS = 10;
-const LOCKOUT_MINUTES = 15;
-
-async function failedAttempts(db: FastifyInstance['db'], userId: string) {
-  const since = new Date(Date.now() - LOCKOUT_MINUTES * 60_000).toISOString();
-  const [row] = await db
-    .select({ n: count() })
-    .from(auditLog)
-    .where(
-      and(
-        eq(auditLog.actorId, userId),
-        eq(auditLog.action, 'auth.login_failed'),
-        gt(auditLog.createdAt, since),
-      ),
-    );
-  return row?.n ?? 0;
-}
-
-const lockedOut = () =>
-  new HttpError(
-    429,
-    `Too many failed sign-in attempts. Try again in ${LOCKOUT_MINUTES} minutes.`,
-    'rate_limited',
-  ).as('too_many_attempts', { minutes: LOCKOUT_MINUTES });
 
 async function uniqueUsername(tx: Tx, email: string) {
   const base =
@@ -584,8 +562,11 @@ export async function authRoutes(app: FastifyInstance) {
       throw badRequest('This account signs in through SSO and has no password').as(
         'sso_no_password',
       );
-    if (!(await verifyPassword(input.currentPassword, row.hash)))
+    await assertNotLockedOut(db, user.id);
+    if (!(await verifyPassword(input.currentPassword, row.hash))) {
+      await recordFailedCheck(db, req, user.id, 'password');
       throw badRequest('Current password is wrong').as('current_password_wrong');
+    }
     const passwordHash = await hashPassword(input.newPassword);
     await db.transaction(async (tx) => {
       await tx.update(users).set({ passwordHash }).where(eq(users.id, user.id));
