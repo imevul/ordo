@@ -14,13 +14,16 @@ import { jobs, leases, schedules } from '../../db/schema.ts';
  *   transaction. A crashed worker's jobs become claimable again when `locked_until` passes.
  * - Jobs with the same `orderingKey` run one at a time, oldest first.
  * - `dedupeKey` makes enqueueing idempotent (webhook delivery ids, scheduled ticks).
- * - Failures retry with exponential backoff, then end up `dead` for an admin to inspect.
+ * - Failures retry with exponential backoff, then end up `dead` for an admin to inspect. A lock that
+ *   ran out (the worker crashed, maybe because of the job) used up its attempt too, so a job that
+ *   keeps killing the process ends up dead instead of crashing an instance every few minutes.
  */
 
 const CHANNEL = 'ordo_jobs';
 const VISIBILITY_SECONDS = 300;
 const POLL_MS = 5_000;
 const SCHEDULE_TICK_MS = 15_000;
+const LAPSED_ERROR = 'The worker running it stopped responding on its last attempt';
 
 export interface JobContext {
   attempt: number;
@@ -32,9 +35,13 @@ export interface JobContext {
 
 export type JobHandler<P = unknown> = (payload: P, ctx: JobContext) => Promise<void>;
 
+/** Called once a job has given up, with the last error, to record the failure where people see it. */
+export type DeadHandler<P = unknown> = (payload: P, error: string) => Promise<void>;
+
 interface Definition {
   handler: JobHandler<never>;
   maxAttempts: number;
+  onDead?: DeadHandler<never>;
 }
 
 export interface EnqueueOptions {
@@ -85,10 +92,15 @@ export class JobQueue {
     private concurrency = 4,
   ) {}
 
-  define<P>(name: string, handler: JobHandler<P>, opts: { maxAttempts?: number } = {}) {
+  define<P>(
+    name: string,
+    handler: JobHandler<P>,
+    opts: { maxAttempts?: number; onDead?: DeadHandler<P> } = {},
+  ) {
     this.defs.set(name, {
       handler: handler as JobHandler<never>,
       maxAttempts: opts.maxAttempts ?? 8,
+      onDead: opts.onDead as DeadHandler<never> | undefined,
     });
   }
 
@@ -168,6 +180,7 @@ export class JobQueue {
   private async claim(limit: number) {
     const names = [...this.defs.keys()];
     if (names.length === 0) return [];
+    await this.buryLapsed(names);
     return this.db.execute<typeof jobs.$inferSelect & { max_attempts: number }>(sql`
       update jobs set
         status = 'running',
@@ -182,7 +195,7 @@ export class JobQueue {
         )})
           and (
             (j.status = 'pending' and j.run_at <= now())
-            or (j.status = 'running' and j.locked_until < now())
+            or (j.status = 'running' and j.locked_until < now() and j.attempts < j.max_attempts)
           )
           and (
             j.ordering_key is null
@@ -196,6 +209,42 @@ export class JobQueue {
         for update skip locked
       )
       returning id, name, payload, attempts, max_attempts`);
+  }
+
+  /**
+   * Jobs whose lock ran out on their last attempt: the worker stopped without recording an outcome,
+   * quite possibly because of the job itself (an export running out of memory). Another try would
+   * only crash the next instance, so they're dead.
+   */
+  private async buryLapsed(names: string[]) {
+    const dead = await this.db.execute<{ id: number; name: string; payload: unknown }>(sql`
+      update jobs set
+        status = 'dead',
+        last_error = ${LAPSED_ERROR},
+        locked_until = null,
+        locked_by = null
+      where id in (
+        select j.id from jobs j
+        where j.name in (${sql.join(
+          names.map((n) => sql`${n}`),
+          sql`, `,
+        )})
+          and j.status = 'running' and j.locked_until < now() and j.attempts >= j.max_attempts
+        for update skip locked
+      )
+      returning id, name, payload`);
+    for (const job of dead) {
+      this.log.error({ job: job.name, jobId: job.id }, 'job died: its worker stopped responding');
+      await this.notifyDead(job.name, job.payload, LAPSED_ERROR);
+    }
+  }
+
+  private async notifyDead(name: string, payload: unknown, error: string) {
+    const onDead = this.defs.get(name)?.onDead;
+    if (!onDead) return;
+    await onDead(payload as never, error).catch((err) =>
+      this.log.error({ err, job: name }, 'onDead handler failed'),
+    );
   }
 
   private async execute(job: {
@@ -238,6 +287,7 @@ export class JobQueue {
           runAt: new Date(Date.now() + backoff(job.attempts) * 1000).toISOString(),
         })
         .where(eq(jobs.id, job.id));
+      if (dead) await this.notifyDead(job.name, job.payload, message);
     } finally {
       clearInterval(renew);
       this.running--;

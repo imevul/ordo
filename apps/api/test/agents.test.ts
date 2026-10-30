@@ -380,6 +380,45 @@ describe('runs', () => {
     expect(comments.at(-1)!.body).toContain('failed after 3 attempts');
   });
 
+  it('keeps reaping lapsed runs when one of them fails', async () => {
+    await issue('Poisoned run', { assigneeId: agentId });
+    const poisoned = (await claim()).data.run.id as string;
+    await agent('PATCH', `${ws}/agent/runs/${poisoned}`, { status: 'succeeded' });
+    const good = await issue('Healthy run', { assigneeId: agentId });
+    const { data } = await claim();
+    const lapsed = new Date(Date.now() - 1000).toISOString();
+    await app.db
+      .update(agentRuns)
+      .set({ status: 'running', leaseExpiresAt: lapsed })
+      .where(eq(agentRuns.id, poisoned));
+    await app.db
+      .update(agentRuns)
+      .set({ leaseExpiresAt: lapsed })
+      .where(eq(agentRuns.id, data.run.id));
+    // Reaping the poisoned run throws, whichever order the two come in.
+    await app.db.execute(
+      sql.raw(`create function poison_run() returns trigger language plpgsql as $$
+        begin raise exception 'injected failure'; end $$;
+        create trigger poison_run before update on agent_runs
+          for each row when (old.id = '${poisoned}') execute function poison_run();`),
+    );
+    try {
+      await reapLeases(app);
+    } finally {
+      await app.db.execute(
+        sql.raw('drop trigger poison_run on agent_runs; drop function poison_run();'),
+      );
+    }
+    expect((await runsOf(good.id))[0]).toMatchObject({ status: 'queued' });
+    const [stuck] = await app.db.select().from(agentRuns).where(eq(agentRuns.id, poisoned));
+    expect(stuck!.status).toBe('running');
+    await app.db
+      .update(agentRuns)
+      .set({ status: 'succeeded', leaseExpiresAt: null })
+      .where(eq(agentRuns.id, poisoned));
+    await member.post(`${ws}/agent-runs/${data.run.id}/cancel`);
+  });
+
   it('cancels runs whose issue the agent can no longer see', async () => {
     const i = await issue('Moving away', { assigneeId: agentId });
     // Straight in the database: moving it through the API would unassign it first.

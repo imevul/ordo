@@ -5,6 +5,7 @@ import type { DbOrTx } from '../db/client.ts';
 import { attachments, files, issues } from '../db/schema.ts';
 import { forbidden, notFound, one } from '../lib/errors.ts';
 import { canReadTeam } from './access.ts';
+import { forEachIsolated } from './automation.ts';
 import { type Ctx, emit } from './context.ts';
 import { deleteFile } from './files.ts';
 
@@ -152,5 +153,12 @@ export async function sweepAttachments(app: FastifyInstance) {
       ),
     )
     .limit(500);
-  for (const { id } of orphans) await deleteFile(app, id);
+  // One file that won't delete mustn't keep the rest around; it's retried on the next sweep.
+  await forEachIsolated(
+    app,
+    'attachments.sweep',
+    orphans,
+    ({ id }) => ({ fileId: id }),
+    ({ id }) => deleteFile(app, id),
+  );
 }
