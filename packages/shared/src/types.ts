@@ -835,6 +835,8 @@ export interface InstanceSettingEntry<K extends keyof InstanceSettings = keyof I
   value: InstanceSettings[K];
   /** Where the effective value comes from; `env` values are read-only in the UI. */
   source: 'env' | 'db' | 'default';
+  /** The stored secret in it (SMTP URL, AI key) can't be decrypted with the current key. */
+  unreadable?: true;
 }
 
 export type EmailDigest = 'off' | 'instant' | 'hourly' | 'daily';
