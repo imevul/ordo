@@ -109,8 +109,7 @@ the stored secrets are lost; see [Missing or wrong secret key](#missing-or-wrong
 
    With S3 storage there's no uploads archive: copy the `ORDO_S3_*` settings and the files stay where they are.
 6. **Check it:** `/api/health` answers 200, you can sign in, **Instance admin → Overview** shows the secret key check
-   passing, an issue with an attachment shows its image, and **Admin → Settings** opens (it fails when the stored SMTP
-   or AI secrets can't be decrypted).
+   passing (it counts stored secrets that can't be decrypted), and an issue with an attachment shows its image.
 7. **Switch traffic:** point DNS or your proxy at the new host. When the address changed, also update what outside
    services have stored: the redirect URIs at your SSO providers (Settings → Authentication shows the new ones), webhook
    URLs at your forges and chat apps (`/api/hooks/…`), and any GitHub or Slack app you made for this instance.
@@ -371,7 +370,7 @@ otherwise restore the backup you took before updating.
 | Logged out right after logging in over plain HTTP                                          | `ORDO_PUBLIC_URL` is `https://` but you're using `http://`; fix one of them.                                |
 | App container restarts                                                                     | `make logs` — usually the database is unreachable or a migration failed.                                    |
 | `The operation was aborted due to timeout` connecting an MCP client, SSO or an integration | The server can't reach the internet directly: set `HTTPS_PROXY` (and `NO_PROXY`) in `.env`, then `make up`. |
-| `Encrypted with an unknown key` in the logs, or **Admin → Settings** won't load            | `ORDO_SECRET_KEY` isn't the key the secrets were stored with; see below.                                    |
+| `Encrypted with an unknown key` in the logs, or the Overview's secret key check fails      | `ORDO_SECRET_KEY` isn't the key the secrets were stored with; see below.                                    |
 | `ORDO_SECRET_KEY is not set` at start, profile pictures are gone                           | No key; see below.                                                                                          |
 
 ### Missing or wrong secret key
@@ -391,12 +390,13 @@ saving any secret fails with `ORDO_SECRET_KEY is not set, so secrets cannot be s
 secrets stored earlier can't be read, as with a wrong key.
 
 **Wrong** (a different key from the one the secrets were stored with: a new `.env` on a new host, a regenerated key,
-a typo). The Overview check _passes_, because a key is set. The symptoms are errors with
-`Encrypted with an unknown key (is ORDO_SECRET_KEY_PREVIOUS set?)` in the logs, and:
+a typo, or `ORDO_SECRET_KEY_PREVIOUS` removed before `rotate-key` moved everything to the new key). The Overview's
+secret key check fails with the number of stored secrets that can't be decrypted. The logs show errors with
+`Encrypted with an unknown key (is ORDO_SECRET_KEY_PREVIOUS set?)`, and:
 
 - people with an authenticator app can't finish signing in with a code (recovery codes and passkeys still work);
 - OpenID Connect single sign-on fails (SAML doesn't use a stored secret and keeps working);
-- **Admin → Settings** doesn't load when SMTP or an AI key was saved there, and email stops (jobs end up `dead`);
+- **Admin → Settings** marks a saved SMTP URL or AI key as unreadable, and email stops (jobs end up `dead`);
 - webhook deliveries, integrations (forges, Slack, Matrix…), workspace AI and running imports fail;
 - push notifications fail, and turning them on fails too.
 
@@ -407,15 +407,17 @@ After changing either variable, run `make up` with Docker (`make restart` keeps 
 
 - put it back as `ORDO_SECRET_KEY`; or
 - keep the new key and set the old one as `ORDO_SECRET_KEY_PREVIOUS`, which is a
-  [key rotation](admin.md#rotating-the-secret-key): secrets saved under either key work again.
+  [key rotation](admin.md#rotating-the-secret-key): secrets saved under either key work again, and `rotate-key`
+  moves them all to the new key.
 
 **Recover without it.** The stored secrets are gone for good. Make sure a key is set
-(`head -c 32 /dev/urandom | base64`), keep a copy with your backups, and enter the secrets again:
+(`head -c 32 /dev/urandom | base64`), keep a copy with your backups, and enter the secrets again. `rotate-key` lists
+the ones it can't decrypt:
 
 | What                         | How                                                                                                                                                                           |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Two-factor (authenticator)   | People sign in with a recovery code or passkey and set up the app again, or `node cli.mjs disable-2fa <email>` ([admin.md](admin.md#recovery-from-the-command-line)).         |
-| SMTP and the instance AI key | Save them again in **Admin → Settings**. If the page won't load, clear them first: `ordo api PATCH /admin/settings --data '{"smtp":null,"ai":null}'`, or set `ORDO_SMTP_URL`. |
+| SMTP and the instance AI key | Enter them again in **Admin → Settings** (it marks them as unreadable), or set `ORDO_SMTP_URL`.                                                                               |
 | SSO (OpenID Connect)         | Workspace admins enter the client secret again under **Settings → Authentication**.                                                                                           |
 | Integrations                 | Reconnect them, or enter their tokens again, in the workspace's integration settings.                                                                                         |
 | Webhooks                     | **Rotate the secret** on each webhook and give the new one to its receiver.                                                                                                   |
