@@ -283,7 +283,8 @@ export function IssueDetailView({
       }),
       t('issue.detail.branchCopied'),
     );
-  useHotkey('mod+>', copyBranch, { enabled: !compact });
+  // By physical key: on Nordic layouts Shift+. types ":", so "mod+>" would be unreachable.
+  useHotkey('mod+shift+[Period]', copyBranch, { enabled: !compact });
 
   const [relType, setRelType] = useState<'blocks' | 'blocked_by' | 'related' | 'duplicate_of'>(
     'related',

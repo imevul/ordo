@@ -314,8 +314,9 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 { "kind": "issue", "action": "updated", "id": "…", "teamId": "…", "workspaceId": "…", "actorId": "…" }
 ```
 
-`kind` is one of `issue`, `comment`, `project`, `projectUpdate`, `cycle`, `label`, `team`, `state`, `workspace`,
-`member`, `view`, `favorite`, `notification`, `import`, `export`; `action` is `created`, `updated` or `deleted`. Notification and
+`kind` is one of `issue`, `comment`, `project`, `projectUpdate`, `cycle`, `label`, `template`, `initiative`,
+`customer`, `document`, `team`, `state`, `workspace`, `member`, `view`, `favorite`, `notification`, `import`, `export`,
+`repository`, `agentRun` (`EntityKind` in `packages/shared/src/events.ts`); `action` is `created`, `updated` or `deleted`. Notification and
 favorite events are delivered only to their user. Events are hints — refetch what you display.
 Events also carry `seq` and `epoch`, their place in the workspace's change log (below). An issue that moves to a
 team you can't read arrives as `deleted` from the team you could.
@@ -369,23 +370,26 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 }
 ```
 
-| Type                                                             | `data`                                                                           |
-| ---------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `issue.created` `issue.updated` `issue.trashed` `issue.restored` | The issue (as `GET /issues/:id` without the detail lists); `changes` on updates  |
-| `issue.deleted`                                                  | `{ id }` (permanently deleted from the trash)                                    |
-| `issue.archived` `issue.unarchived`                              | `{ id, identifier, archivedAt }`                                                 |
-| `comment.created` `comment.updated` `comment.deleted`            | `{ comment, issue? }`                                                            |
-| `reaction.created` `reaction.deleted`                            | `{ reaction: { commentId, issueId, userId, emoji } }`                            |
-| `relation.created` `relation.deleted`                            | `{ id, type, issueId, relatedIssueId }`                                          |
-| `project.created` `project.updated` `project.deleted`            | The project (`{ id, name }` when deleted)                                        |
-| `initiative.created` `initiative.updated` `initiative.deleted`   | The initiative (`{ id, name }` when deleted)                                     |
-| `project_update.created`                                         | `{ update, project }`                                                            |
-| `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                        |
-| `agent_run.updated`                                              | The run (queued, claimed, started, finished, cancelled), see [agents](agents.md) |
-| `ping`                                                           | Sent by the "test" button                                                        |
+| Type                                                             | `data`                                                                          |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `issue.created` `issue.updated` `issue.trashed` `issue.restored` | The issue (as `GET /issues/:id` without the detail lists); `changes` on updates |
+| `issue.deleted`                                                  | `{ id }` (permanently deleted from the trash)                                   |
+| `issue.archived` `issue.unarchived`                              | `{ id, identifier, archivedAt }`                                                |
+| `comment.created` `comment.updated` `comment.deleted`            | `{ comment, issue? }`                                                           |
+| `reaction.created` `reaction.deleted`                            | `{ reaction: { commentId, issueId, userId, emoji } }`                           |
+| `relation.created` `relation.deleted`                            | `{ id, type, issueId, relatedIssueId }`                                         |
+| `project.created` `project.updated` `project.deleted`            | The project (`{ id, name }` when deleted)                                       |
+| `initiative.created` `initiative.updated` `initiative.deleted`   | The initiative (`{ id, name }` when deleted)                                    |
+| `project_update.created`                                         | `{ update, project }`                                                           |
+| `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                       |
+| `agent_run.updated`                                              | The run when its status changes (statuses below), see [agents](agents.md)       |
+| `ping`                                                           | Sent by the "test" button                                                       |
 
 `source` says where a change came from: `web`, `api` (an API key), `mcp` (an agent through the [MCP server](mcp.md)),
-`system`, `import` or `integration:<id>`.
+`system`, `import`, `scim` (directory sync through [SCIM](scim.md)) or `integration:<id>`.
+
+A run's `status` is `queued` (waiting for a runner), `claimed` (a runner took it), `running`, `waiting` (the agent
+asked a question; a reply requeues it), or one of the final `succeeded`, `failed` and `cancelled`.
 
 **Headers:** `Ordo-Event` (the type), `Ordo-Delivery` (unique per attempt series; reuse it to deduplicate), and
 `Ordo-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 over `"<t>.<raw body>"` with the webhook's

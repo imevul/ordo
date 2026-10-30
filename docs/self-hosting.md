@@ -71,10 +71,10 @@ make restore FILE=backups/ordo-20260131-120000.sql.gz
 
 Backups are plain `pg_dump` SQL files (with `DROP … IF EXISTS`), so a restore replaces the current data; the
 matching uploads archive is restored too when it sits next to the SQL file. Copy
-the `backups/` directory off the machine. A simple cron entry:
+the `backups/` directory off the machine. A simple cron entry, which also prunes both kinds of file after 14 days:
 
 ```cron
-0 3 * * * cd /opt/ordo && make backup >/dev/null && find backups -name '*.sql.gz' -mtime +14 -delete
+0 3 * * * cd /opt/ordo && make backup >/dev/null && find backups -name 'ordo-*.gz' -mtime +14 -delete
 ```
 
 ## HTTPS and reverse proxies
