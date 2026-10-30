@@ -487,7 +487,8 @@ verified per provider. Integrations that hold their own connection (Socket Mode,
 sync) accept no webhooks.
 
 Team settings take `gitAutomation: { branch?, draft?, open?, review?, merged? }` — a status id or `"none"`; missing
-events use the defaults. Workspace settings take `gitBranchFormat`.
+events use the defaults. Workspace settings take `gitBranchFormat` (for people; agent runs use one branch per issue,
+see [agents.md](agents.md#ordo-agent-run)). Admins can set `agentRunsPaused: true` to stop runners claiming new runs.
 
 ## Imports
 
