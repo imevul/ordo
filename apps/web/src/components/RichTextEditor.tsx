@@ -295,7 +295,7 @@ export function RichTextEditor({
   }, [value, editor]);
 
   // Members load after the editor; refresh the highlights once they do.
-  // Re-run when the workspace lists change.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-run when the workspace lists change
   useEffect(() => {
     if (editor && !editor.isDestroyed)
       editor.view.dispatch(editor.state.tr.setMeta(highlightKey, true));
