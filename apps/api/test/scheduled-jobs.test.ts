@@ -2,10 +2,12 @@ import type { Bootstrap, Cycle, HistoryEntry, Issue, IssueTemplate, Team } from 
 import { dayInZone } from '@ordo/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cycles, issues } from '../src/db/schema.ts';
+import { computeAccess } from '../src/services/access.ts';
 import { autoArchive, runAutomation } from '../src/services/automation.ts';
 import { automateCycles, cycleForStartedIssue } from '../src/services/cycle-automation.ts';
+import { callMcpTool } from '../src/services/mcp.ts';
 import { runRecurring } from '../src/services/recurring.ts';
 import { announceSlaBreaches } from '../src/services/sla.ts';
 import { type Client, signup, testApp } from './helpers.ts';
@@ -250,5 +252,22 @@ describe('cycle automation and time zones', () => {
     await owner.patch(`${ws}/teams/${other.id}`, { cycleAutomation: { enabled: true } });
     const [row] = await app.db.select().from(cycles).where(eq(cycles.id, ending.id));
     expect(row!.completedAt).not.toBeNull();
+  });
+
+  it('agents see the same current cycle as automation', async () => {
+    const access = await computeAccess(app.db, boot.members[0]!.id, boot.workspace.id, 'owner');
+    const caller = { app, access, workspace: boot.workspace, run: () => Promise.reject() };
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(at);
+    try {
+      const listed = (await callMcpTool(caller, 'list_cycles', { team: 'ZON' })) as {
+        startsAt: string;
+        current: boolean;
+      }[];
+      // Still the 8th in UTC, but the cycle starting on the 9th is the one running there.
+      expect(listed.find((c) => c.current)?.startsAt).toBe('2026-11-09');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

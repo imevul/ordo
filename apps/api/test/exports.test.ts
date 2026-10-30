@@ -221,6 +221,45 @@ describe('workspace export', () => {
     await settle();
   });
 
+  it('a run that fails late does not undo one that finished', async () => {
+    const res = await owner.post(`${ws}/exports`, { format: 'json' });
+    // The first export file to be saved fails, but only after a second's wait, by which time the
+    // other run has finished. Sequences aren't rolled back, so exactly one run fails.
+    await app.db.execute(
+      sql.raw(`create sequence export_race;
+        create function export_race() returns trigger language plpgsql as $$
+        begin
+          if new.kind = 'export' and nextval('export_race') = 1 then
+            perform pg_sleep(1);
+            raise exception 'injected failure';
+          end if;
+          return new;
+        end $$;
+        create trigger export_race before insert on files
+          for each row execute function export_race();`),
+    );
+    try {
+      // Both on their last attempt, so the failing one records its failure.
+      const job = { attempt: 8, maxAttempts: 8, jobId: 0, log: app.log };
+      await Promise.all([
+        runExport(app, { exportId: res.data.id }, job),
+        runExport(app, { exportId: res.data.id }, job),
+      ]);
+    } finally {
+      await app.db.execute(
+        sql.raw(`drop trigger export_race on files; drop function export_race();
+          drop sequence export_race;`),
+      );
+    }
+    const [row] = await app.db
+      .select()
+      .from(workspaceExports)
+      .where(eq(workspaceExports.id, res.data.id));
+    expect(row).toMatchObject({ status: 'ready', error: null });
+    expect(row!.fileId).not.toBeNull();
+    await settle();
+  });
+
   it('can be deleted, and is purged after a week', async () => {
     const { done } = await exportAs('json');
     const del = await owner.del(`${ws}/exports/${done.id}`);

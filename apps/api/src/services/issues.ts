@@ -1156,10 +1156,6 @@ export async function setArchived(ctx: Ctx, issueId: string, archived: boolean):
 }
 
 /**
- * Archives a team's issues that closed (completed or canceled) more than `months` ago, in one
- * statement. Returns how many.
- */
-/**
  * When a team turns triage off, nobody looks at its triage column any more: the issues waiting
  * there move to the team's default status (or its first backlog one) so they aren't stranded.
  */
@@ -1187,6 +1183,10 @@ export async function releaseTriage(ctx: Ctx, teamId: string) {
   return waiting.length;
 }
 
+/**
+ * Archives a team's issues that closed (completed or canceled) more than `months` ago, in one
+ * statement. Returns how many.
+ */
 export async function archiveClosedIssues(ctx: Ctx, teamId: string, months: number) {
   const rows = await ctx.tx.execute<{ id: string; number: number; archived_at: string }>(sql`
     update issues set archived_at = now()
