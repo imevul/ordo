@@ -203,7 +203,9 @@ Notable choices:
   so redeliveries are identical) and to `integration.event` jobs (ordered per integration, deduplicated by event).
   An integration never receives events whose `source` is itself.
 - **Integration framework** (`integrations/types.ts`, `services/integrations.ts`): a provider may implement
-  `configure`, `install`/`uninstall`, `verify` + `deliveryId` + `handleInbound` (webhooks at
+  `settings` (a Zod schema over `{ config, secrets }` in shared `integrations.ts`, which the route parses with, so
+  bad input is a 400 naming the field) and `configure` (server-only touches after parsing),
+  `install`/`uninstall`, `verify` + `deliveryId` + `handleInbound` (webhooks at
   `/api/hooks/<provider>/<key>`, raw bodies up to 25 MB, answered 202 and processed in a job), `onDomainEvent`, and
   `poll` (scheduled per `pollIntervalSeconds`, for instances that can't receive webhooks). Each integration has an
   encrypted secrets blob, a bot user (`users.kind = 'bot'`, not a workspace member) that its changes are

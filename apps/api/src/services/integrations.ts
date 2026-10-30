@@ -14,7 +14,7 @@ import type {
 } from '../integrations/types.ts';
 import { randomToken, sha256 } from '../lib/crypto.ts';
 import { secretAad } from '../lib/encryptedColumns.ts';
-import { notFound } from '../lib/errors.ts';
+import { notFound, one } from '../lib/errors.ts';
 import { enqueue, type JobContext } from '../lib/jobs/index.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import { auditCtx } from './audit.ts';
@@ -135,41 +135,45 @@ export async function createIntegration(
 ) {
   const id = randomUUID();
   const short = id.slice(0, 8);
-  const [bot] = await ctx.tx
-    .insert(users)
-    .values({
-      kind: 'bot',
-      botWorkspaceId: ctx.workspaceId,
-      email: `bot-${id}@bots.ordo.invalid`,
-      name: input.name || input.provider.name,
-      username: `${input.provider.key}-bot-${short}`,
-      passwordHash: null,
-      avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
-    })
-    .returning({ id: users.id });
-  const [row] = await ctx.tx
-    .insert(integrations)
-    .values({
-      id,
-      workspaceId: ctx.workspaceId,
-      provider: input.provider.key,
-      appId: input.appId ?? null,
-      name: input.name || input.provider.name,
-      config: input.config,
-      secrets: sealSecrets(app, id, input.secrets),
-      botUserId: bot!.id,
-      inboundToken: randomToken(24),
-      externalId: input.externalId ?? null,
-      createdById: ctx.userId,
-    })
-    .returning();
+  const bot = one(
+    await ctx.tx
+      .insert(users)
+      .values({
+        kind: 'bot',
+        botWorkspaceId: ctx.workspaceId,
+        email: `bot-${id}@bots.ordo.invalid`,
+        name: input.name || input.provider.name,
+        username: `${input.provider.key}-bot-${short}`,
+        passwordHash: null,
+        avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
+      })
+      .returning({ id: users.id }),
+  );
+  const row = one(
+    await ctx.tx
+      .insert(integrations)
+      .values({
+        id,
+        workspaceId: ctx.workspaceId,
+        provider: input.provider.key,
+        appId: input.appId ?? null,
+        name: input.name || input.provider.name,
+        config: input.config,
+        secrets: sealSecrets(app, id, input.secrets),
+        botUserId: bot.id,
+        inboundToken: randomToken(24),
+        externalId: input.externalId ?? null,
+        createdById: ctx.userId,
+      })
+      .returning(),
+  );
   await auditCtx(ctx, {
     action: 'integration.created',
     targetType: 'integration',
     targetId: id,
-    data: { provider: input.provider.key, name: row!.name },
+    data: { provider: input.provider.key, name: row.name },
   });
-  return row!;
+  return row;
 }
 
 export async function loadIntegration(db: DbOrTx, workspaceId: string, id: string) {

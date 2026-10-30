@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import { webhookDeliveries, webhooks } from '../db/schema.ts';
 import { secretAad } from '../lib/encryptedColumns.ts';
+import { one } from '../lib/errors.ts';
 import { enqueue, type JobContext } from '../lib/jobs/index.ts';
 import { safeFetch } from '../lib/safeFetch.ts';
 import { audit } from './audit.ts';
@@ -75,12 +76,14 @@ export async function queueDelivery(
   payload: WebhookPayload,
   eventId: number | null,
 ) {
-  const [row] = await tx
-    .insert(webhookDeliveries)
-    .values({ webhookId, eventId, eventType: payload.type, payload })
-    .returning({ id: webhookDeliveries.id });
-  await enqueue(tx, 'webhook.deliver', { deliveryId: row!.id }, { maxAttempts: DELIVERY_ATTEMPTS });
-  return row!.id;
+  const row = one(
+    await tx
+      .insert(webhookDeliveries)
+      .values({ webhookId, eventId, eventType: payload.type, payload })
+      .returning({ id: webhookDeliveries.id }),
+  );
+  await enqueue(tx, 'webhook.deliver', { deliveryId: row.id }, { maxAttempts: DELIVERY_ATTEMPTS });
+  return row.id;
 }
 
 export async function deliverWebhook(

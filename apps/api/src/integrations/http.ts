@@ -1,6 +1,7 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { safeFetch } from '../lib/safeFetch.ts';
+import type { IntegrationSettings } from './types.ts';
 
 export class ApiCallError extends Error {
   constructor(
@@ -73,21 +74,20 @@ export function safeEqual(a: string | undefined, b: string | undefined) {
 export const hmacHex = (secret: string, body: string) =>
   createHmac('sha256', secret).update(body).digest('hex');
 
+/** Keeps the webhook secret already stored, or makes one: the remote side is told it on install. */
+export const withWebhookSecret = (
+  { config, secrets }: IntegrationSettings,
+  encoding: 'base64url' | 'hex' = 'base64url',
+): IntegrationSettings => ({
+  config,
+  secrets: {
+    ...secrets,
+    webhookSecret: secrets.webhookSecret || randomBytes(24).toString(encoding),
+  },
+});
+
 /** "https://code.example.com/" → "https://code.example.com" */
 export const trimUrl = (url: string) => url.trim().replace(/\/+$/, '');
-
-/** "owner/name" lines or commas → a clean list. */
-export function repoList(value: unknown): string[] {
-  const raw = Array.isArray(value) ? value.join('\n') : String(value ?? '');
-  return [
-    ...new Set(
-      raw
-        .split(/[\s,]+/)
-        .map((r) => r.trim().replace(/^\/+|\/+$/g, ''))
-        .filter(Boolean),
-    ),
-  ];
-}
 
 /** "ECONNREFUSED", "certificate has expired"… out of a fetch error and its causes. */
 export function networkCause(err: unknown): string {

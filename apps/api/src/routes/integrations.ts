@@ -4,7 +4,11 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { externalAccounts, integrations, users } from '../db/schema.ts';
 import { getProvider } from '../integrations/registry.ts';
-import type { IntegrationProvider, IntegrationRow } from '../integrations/types.ts';
+import type {
+  IntegrationProvider,
+  IntegrationRow,
+  IntegrationSettings,
+} from '../integrations/types.ts';
 import { requireAccess, requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { badRequest, conflict, isUniqueViolation, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
@@ -41,13 +45,20 @@ const updateSchema = z.object({
 /** Config fields that say which server an integration talks to (and sends its credentials to). */
 const ADDRESS_KEYS = ['baseUrl', 'apiUrl', 'webUrl', 'siteUrl', 'homeserverUrl', 'host', 'port'];
 
-/** Provider validation errors are the admin's to fix: 400, with the provider's message. */
-function configureOrReject(
+/**
+ * What an admin entered, parsed with the provider's settings schema and finished by its
+ * `configure`. Either one's complaint is the admin's to fix: 400, naming the field where it can.
+ */
+function settle(
   provider: IntegrationProvider,
   input: { config: Record<string, unknown>; secrets: Record<string, unknown> },
-) {
+): IntegrationSettings {
+  const settings = provider.settings
+    ? parse(provider.settings, input)
+    : (input as IntegrationSettings);
+  if (!provider.configure) return settings;
   try {
-    return provider.configure!(input);
+    return provider.configure(settings);
   } catch (err) {
     throw badRequest(err instanceof Error ? err.message : String(err));
   }
@@ -98,8 +109,9 @@ export async function integrationRoutes(app: FastifyInstance) {
       throw badRequest('Set ORDO_SECRET_KEY before connecting integrations');
     const input = parse(createSchema, req.body);
     const provider = getProvider(input.provider);
-    if (!provider?.configure) throw badRequest(`Unknown integration: ${input.provider}`);
-    const { config, secrets } = configureOrReject(provider, input);
+    if (!provider?.settings && !provider?.configure)
+      throw badRequest(`Unknown integration: ${input.provider}`);
+    const { config, secrets } = settle(provider, input);
     const row = await mutate(app, req, (ctx) =>
       createIntegration(app, ctx, { provider, name: input.name, config, secrets }),
     );
@@ -124,17 +136,15 @@ export async function integrationRoutes(app: FastifyInstance) {
         if (row.appId) for (const k of ADDRESS_KEYS) if (k in config) next[k] = config[k];
         const configureWith = (kept: Record<string, unknown>) => {
           const merged = { config: next, secrets: { ...kept, ...fresh } };
-          return provider?.configure
-            ? configureOrReject(provider, merged)
-            : (merged as typeof merged & { secrets: Record<string, string> });
+          return provider ? settle(provider, merged) : (merged as IntegrationSettings);
         };
         // Compared in the provider's own normal form, so a default it fills in isn't a move.
-        const stored = { config, secrets };
         let before = config;
         try {
-          if (provider?.configure) before = provider.configure(stored).config;
+          if (provider) before = settle(provider, { config, secrets }).config;
         } catch {
-          // Settings saved before a stricter check: compare them as stored.
+          // Settings saved before a stricter check: compare them as stored. Saving them still
+          // has to pass the check, so they're a 400 below, never a 500.
         }
         ({ config, secrets } = configureWith(secrets));
         // Stored credentials stay with the server they were entered for: pointing the integration

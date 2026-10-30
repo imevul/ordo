@@ -140,7 +140,9 @@ RS256 ID tokens); set `idp.next` to the claims of the next sign-in and `idp.tamp
   next to its `emit(...)`. New event types go in `DOMAIN_EVENT_TYPES` (shared) and the table in `docs/api.md#webhooks`
   — they're public API, so don't rename them.
 - A new integration is a provider object (`integrations/types.ts`) registered with `registerProvider` (see
-  `integrations/registry.ts`). Do slow or fallible work in its hooks — they all run in jobs. Use `ictx.run(fn)` for
+  `integrations/registry.ts`). Its `settings` schema (config and secrets) goes in shared `integrations.ts`, so
+  the route returns 400s and the web forms can reuse it; read config with `configOf<XConfig>()`. Do slow or
+  fallible work in its hooks — they all run in jobs. Use `ictx.run(fn)` for
   changes so they're attributed to the bot and not echoed back.
 - Forges share `services/forge.ts`; a forge provider only maps payloads and API calls. `test/forges.test.ts` runs
   each forge against `test/mock-forge.ts`, a tiny HTTP stand-in that logs calls.

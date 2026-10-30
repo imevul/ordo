@@ -10,7 +10,7 @@ import type { FastifyInstance } from 'fastify';
 import { authProviders } from '../db/schema.ts';
 import { requireAdmin } from '../lib/auth.ts';
 import { secretAad } from '../lib/encryptedColumns.ts';
-import { badRequest, conflict, notFound, parse } from '../lib/errors.ts';
+import { badRequest, conflict, notFound, one, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { auditCtx } from '../services/audit.ts';
 import {
@@ -75,39 +75,43 @@ export async function authProviderRoutes(app: FastifyInstance) {
             .where(eq(authProviders.id, id));
           if (taken) throw conflict('That provider id is taken');
         }
-        const [row] = await ctx.tx
-          .insert(authProviders)
-          .values({ ...rest, ...(id && { id }), saml: cleanSaml(saml), workspaceId: ws.id })
-          .returning();
+        const row = one(
+          await ctx.tx
+            .insert(authProviders)
+            .values({ ...rest, ...(id && { id }), saml: cleanSaml(saml), workspaceId: ws.id })
+            .returning(),
+        );
         await auditCtx(ctx, {
           action: 'sso.provider_created',
           targetType: 'auth_provider',
-          targetId: row!.id,
+          targetId: row.id,
           data: { name: input.name, protocol: 'saml', idpEntityId: saml.idpEntityId },
         });
-        return toProvider(row!);
+        return toProvider(row);
       }
-      const [row] = await ctx.tx
-        .insert(authProviders)
-        .values({
-          ...input,
-          issuer: input.issuer.trim(),
-          workspaceId: ws.id,
-          clientSecret: 'pending',
-        })
-        .returning();
+      const row = one(
+        await ctx.tx
+          .insert(authProviders)
+          .values({
+            ...input,
+            issuer: input.issuer.trim(),
+            workspaceId: ws.id,
+            clientSecret: 'pending',
+          })
+          .returning(),
+      );
       // The secret is bound to the row id, so encrypt once the id exists.
       const [saved] = await ctx.tx
         .update(authProviders)
         .set({
-          clientSecret: app.keyring.encrypt(input.clientSecret, secretAad.ssoClientSecret(row!.id)),
+          clientSecret: app.keyring.encrypt(input.clientSecret, secretAad.ssoClientSecret(row.id)),
         })
-        .where(eq(authProviders.id, row!.id))
+        .where(eq(authProviders.id, row.id))
         .returning();
       await auditCtx(ctx, {
         action: 'sso.provider_created',
         targetType: 'auth_provider',
-        targetId: row!.id,
+        targetId: row.id,
         data: { name: input.name, issuer: input.issuer },
       });
       return toProvider(saved!);
@@ -128,19 +132,22 @@ export async function authProviderRoutes(app: FastifyInstance) {
       const oidcOnly = rest.issuer ?? rest.clientId ?? rest.scopes ?? clientSecret;
       if (current.protocol === 'saml' ? oidcOnly : saml || rest.trustEmail !== undefined)
         throw badRequest("Those settings don't belong to this provider's protocol");
-      const [row] = await ctx.tx
-        .update(authProviders)
-        .set({
-          ...rest,
-          issuer: rest.issuer?.trim(),
-          clientSecret: clientSecret
-            ? app.keyring.encrypt(clientSecret, secretAad.ssoClientSecret(id))
-            : undefined,
-          saml: saml ? cleanSaml(saml) : undefined,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(and(eq(authProviders.id, id), eq(authProviders.workspaceId, ws.id)))
-        .returning();
+      const row = one(
+        await ctx.tx
+          .update(authProviders)
+          .set({
+            ...rest,
+            issuer: rest.issuer?.trim(),
+            clientSecret: clientSecret
+              ? app.keyring.encrypt(clientSecret, secretAad.ssoClientSecret(id))
+              : undefined,
+            saml: saml ? cleanSaml(saml) : undefined,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(and(eq(authProviders.id, id), eq(authProviders.workspaceId, ws.id)))
+          .returning(),
+        'Sign-in provider',
+      );
       await auditCtx(ctx, {
         action: 'sso.provider_updated',
         targetType: 'auth_provider',
@@ -151,7 +158,7 @@ export async function authProviderRoutes(app: FastifyInstance) {
           saml: saml ? { idpEntityId: saml.idpEntityId, ssoUrl: saml.ssoUrl } : undefined,
         },
       });
-      return toProvider(row!);
+      return toProvider(row);
     });
   });
 

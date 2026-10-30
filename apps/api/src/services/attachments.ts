@@ -3,7 +3,7 @@ import { and, asc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import { attachments, files, issues } from '../db/schema.ts';
-import { forbidden, notFound } from '../lib/errors.ts';
+import { forbidden, notFound, one } from '../lib/errors.ts';
 import { canReadTeam } from './access.ts';
 import { type Ctx, emit } from './context.ts';
 import { deleteFile } from './files.ts';
@@ -39,17 +39,19 @@ export async function createAttachment(
   fileId: string,
   issue: { id: string; teamId: string } | null,
 ): Promise<Attachment> {
-  const [row] = await ctx.tx
-    .insert(attachments)
-    .values({
-      workspaceId: ctx.workspaceId,
-      issueId: issue?.id ?? null,
-      fileId,
-      uploaderId: ctx.userId,
-    })
-    .returning({ id: attachments.id });
+  const row = one(
+    await ctx.tx
+      .insert(attachments)
+      .values({
+        workspaceId: ctx.workspaceId,
+        issueId: issue?.id ?? null,
+        fileId,
+        uploaderId: ctx.userId,
+      })
+      .returning({ id: attachments.id }),
+  );
   if (issue) emit(ctx, { kind: 'issue', action: 'updated', id: issue.id, teamId: issue.teamId });
-  return (await getAttachment(ctx.tx, row!.id))!;
+  return (await getAttachment(ctx.tx, row.id))!;
 }
 
 async function getAttachment(db: DbOrTx, id: string): Promise<Attachment | null> {
