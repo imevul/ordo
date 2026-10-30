@@ -309,7 +309,13 @@ describe('ordo agent', () => {
     await owner.patch(`${ws}/issues/${issue.id}`, { stateId: done });
     const lines: string[] = [];
     const client = new Ordo({ url, token: keys.Claude }).workspace(slug);
-    expect(await pruneWorktrees(client, join(dir, 'repos'), (l) => lines.push(l))).toBe(1);
+    // Agents of one runner sweep the same directory: once is enough, without errors.
+    const [first, second] = await Promise.all([
+      pruneWorktrees(client, join(dir, 'repos'), (l) => lines.push(l)),
+      pruneWorktrees(client, join(dir, 'repos'), (l) => lines.push(l)),
+    ]);
+    expect([first, second]).toEqual([1, 1]);
+    expect(lines).toHaveLength(1);
     expect(existsSync(tree)).toBe(false);
     expect(existsSync(openTree)).toBe(true);
     expect(lines[0]).toContain(`removed the worktree of ${issue.identifier} (done)`);

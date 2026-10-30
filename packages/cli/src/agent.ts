@@ -612,7 +612,22 @@ const ISSUE_IN_BRANCH = /(?:^|\/)([a-z][a-z0-9]{0,6}-\d+)(?:-|$)/i;
  * checkout, often with installed dependencies). Branches stay; worktrees in use, of issues this
  * agent can't see, or whose branch names no issue are left alone.
  */
-export async function pruneWorktrees(
+export function pruneWorktrees(
+  ws: Pick<WorkspaceClient, 'issues'>,
+  reposDir: string,
+  log: (line: string) => void,
+): Promise<number> {
+  // Agents of one runner usually share a repos directory: one sweep at a time does for all.
+  const running = sweeps.get(reposDir);
+  if (running) return running;
+  const sweep = sweepWorktrees(ws, reposDir, log).finally(() => sweeps.delete(reposDir));
+  sweeps.set(reposDir, sweep);
+  return sweep;
+}
+
+const sweeps = new Map<string, Promise<number>>();
+
+async function sweepWorktrees(
   ws: Pick<WorkspaceClient, 'issues'>,
   reposDir: string,
   log: (line: string) => void,
@@ -637,10 +652,12 @@ export async function pruneWorktrees(
       const issue = await ws.issues.get(identifier).catch(() => null);
       if (!issue || (!issue.completedAt && !issue.canceledAt)) continue;
       await locked(clone, async () => {
-        if (inUse.has(tree)) return;
+        if (inUse.has(tree) || !existsSync(tree)) return false;
         await git(['worktree', 'remove', '--force', tree], clone);
+        return true;
       }).then(
-        () => {
+        (done) => {
+          if (!done) return;
           removed++;
           log(
             `removed the worktree of ${identifier} (${issue.completedAt ? 'done' : 'canceled'}): ${tree}`,
