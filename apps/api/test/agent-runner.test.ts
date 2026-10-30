@@ -193,6 +193,44 @@ describe('runner files', () => {
 });
 
 describe('ordo agent', () => {
+  it('waits for Ordo to come back when it starts during a deploy', async () => {
+    let calls = 0;
+    // Two 503s, as a restarting server or proxy answers, then the real thing.
+    const flaky: typeof fetch = (input, init) =>
+      ++calls <= 2
+        ? Promise.resolve(new Response('Service Unavailable', { status: 503 }))
+        : fetch(input, init);
+    const file = write(
+      'flaky.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Claude}\ncheckout: false\ncommand: 'true'\n`,
+    );
+    let stderr = '';
+    let stdout = '';
+    const io: Io = {
+      env: { XDG_CONFIG_HOME: join(dir, 'config'), HOME: dir },
+      stdout: (t) => {
+        stdout += t;
+      },
+      stderr: (t) => {
+        stderr += t;
+      },
+      readStdin: async () => '',
+      prompt: async () => '',
+      openUrl: () => {},
+      color: false,
+      width: 120,
+      fetch: flaky,
+    };
+    expect(await run(['agent', 'run', '--file', file, '--once'], io)).toBe(0);
+    expect(stderr).toMatch(/trying again in 1s[\s\S]*trying again in 2s/);
+    expect(stdout).toContain('Runner Claude');
+    // `check` says what's wrong right away instead.
+    calls = 0;
+    stderr = '';
+    expect(await run(['agent', 'check', '--file', file], io)).not.toBe(0);
+    expect(stderr).not.toContain('trying again');
+  });
+
   it('checks a runner file against Ordo, and runs a subset with --only', async () => {
     write('.env', `CLAUDE_KEY=${keys.Claude}\nDOCS_KEY=${keys.Docs}\n`);
     const file = write(
