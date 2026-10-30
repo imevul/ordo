@@ -40,6 +40,7 @@ import { badRequest, conflict, notFound, one } from '../lib/errors.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import { type Access, teamScope } from './access.ts';
 import { auditCtx } from './audit.ts';
+import { forEachIsolated } from './automation.ts';
 import { createComment } from './comments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { getIssue, getIssueDetail } from './issues.ts';
@@ -857,47 +858,55 @@ export async function reapLeases(app: FastifyInstance) {
       ),
     )
     .limit(100);
-  for (const run of lapsed) {
-    await runInWorkspace(
-      app,
-      { workspaceId: run.workspaceId, actorId: run.agentId, source: 'system' },
-      async (ctx) => {
-        const [current] = await ctx.tx
-          .select()
-          .from(agentRuns)
-          .where(eq(agentRuns.id, run.id))
-          .for('update', { skipLocked: true });
-        if (
-          !current ||
-          (current.status !== 'claimed' && current.status !== 'running') ||
-          !current.leaseExpiresAt ||
-          current.leaseExpiresAt > new Date().toISOString()
+  await forEachIsolated(
+    app,
+    'agents.leases',
+    lapsed,
+    (run) => ({ runId: run.id, workspaceId: run.workspaceId }),
+    (run) => reapLease(app, run),
+  );
+}
+
+async function reapLease(app: FastifyInstance, run: typeof agentRuns.$inferSelect) {
+  await runInWorkspace(
+    app,
+    { workspaceId: run.workspaceId, actorId: run.agentId, source: 'system' },
+    async (ctx) => {
+      const [current] = await ctx.tx
+        .select()
+        .from(agentRuns)
+        .where(eq(agentRuns.id, run.id))
+        .for('update', { skipLocked: true });
+      if (
+        !current ||
+        (current.status !== 'claimed' && current.status !== 'running') ||
+        !current.leaseExpiresAt ||
+        current.leaseExpiresAt > new Date().toISOString()
+      )
+        return;
+      const failed = current.attempts >= MAX_ATTEMPTS;
+      const error = `The runner${current.runnerName ? ` (${current.runnerName})` : ''} stopped responding`;
+      const [saved] = await ctx.tx
+        .update(agentRuns)
+        .set(
+          failed
+            ? {
+                status: 'failed',
+                error,
+                leaseExpiresAt: null,
+                finishedAt: new Date().toISOString(),
+              }
+            : { status: 'queued', error, leaseExpiresAt: null, runnerName: null },
         )
-          return;
-        const failed = current.attempts >= MAX_ATTEMPTS;
-        const error = `The runner${current.runnerName ? ` (${current.runnerName})` : ''} stopped responding`;
-        const [saved] = await ctx.tx
-          .update(agentRuns)
-          .set(
-            failed
-              ? {
-                  status: 'failed',
-                  error,
-                  leaseExpiresAt: null,
-                  finishedAt: new Date().toISOString(),
-                }
-              : { status: 'queued', error, leaseExpiresAt: null, runnerName: null },
-          )
-          .where(eq(agentRuns.id, run.id))
-          .returning();
-        if (failed)
-          await createComment(ctx, run.issueId, {
-            body: `This run failed after ${current.attempts} attempts: ${error.toLowerCase()}.`,
-          }).catch(() => {});
-        await changed(ctx, saved!);
-      },
-    );
-  }
+        .where(eq(agentRuns.id, run.id))
+        .returning();
+      if (failed)
+        await createComment(ctx, run.issueId, {
+          body: `This run failed after ${current.attempts} attempts: ${error.toLowerCase()}.`,
+        }).catch(() => {});
+      await changed(ctx, saved!);
+    },
+  );
 }
 
 /**

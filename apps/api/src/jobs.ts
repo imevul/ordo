@@ -3,12 +3,12 @@ import type { FastifyInstance } from 'fastify';
 import { sessions } from './db/schema.ts';
 import { reapLeases } from './services/agents.ts';
 import { sweepAttachments } from './services/attachments.ts';
-import { autoArchive } from './services/automation.ts';
+import { autoArchive, forEachIsolated } from './services/automation.ts';
 import { runChatNotification, runChatPost } from './services/chat.ts';
 import { automateCycles } from './services/cycle-automation.ts';
 import { sendNotificationEmails } from './services/digest.ts';
 import { dispatchEvents, pruneEvents } from './services/events.ts';
-import { purgeOldExports, runExport } from './services/exports.ts';
+import { failExport, purgeOldExports, runExport } from './services/exports.ts';
 import { runAnalyze, runImport } from './services/imports/engine.ts';
 import { runUndo } from './services/imports/undo.ts';
 import {
@@ -70,7 +70,9 @@ export function registerJobs(app: FastifyInstance) {
   jobs.define<{ importId: string }>('import.analyze', (p, job) => runAnalyze(app, p, job));
   jobs.define<Parameters<typeof runImport>[1]>('import.run', (p, job) => runImport(app, p, job));
   jobs.define<{ importId: string }>('import.undo', (p, job) => runUndo(app, p, job));
-  jobs.define<{ exportId: string }>('export.run', (p, job) => runExport(app, p, job));
+  jobs.define<{ exportId: string }>('export.run', (p, job) => runExport(app, p, job), {
+    onDead: (p, error) => failExport(app, p, error),
+  });
 
   // Cycle dates are days, so hourly is plenty; a missed run catches up on the next.
   jobs.define('cycles.automate', () => automateCycles(app));
@@ -83,19 +85,40 @@ export function registerJobs(app: FastifyInstance) {
   jobs.every('issues.autoArchive', 3600);
 
   jobs.define('maintenance.cleanup', async () => {
-    await pruneEvents(app);
-    await purgeExpiredTokens(app.db);
-    await purgeExpiredChallenges(app.db);
-    await pruneOAuth(app.db);
-    await purgeExpiredStates(app);
-    await pruneChanges(app.db);
-    await purgeOldExports(app);
-    await sweepAttachments(app);
-    await app.db.delete(sessions).where(lt(sessions.expiresAt, new Date().toISOString()));
-    // Dead jobs stay for a week so admins can see what failed.
-    await app.db.execute(
-      sql`delete from jobs where status = 'dead' and created_at < now() - interval '7 days'`,
-    );
+    await runMaintenance(app);
   });
   jobs.every('maintenance.cleanup', 3600);
+}
+
+/** Hourly housekeeping. The steps are independent, so one that fails doesn't skip the rest. */
+export async function runMaintenance(app: FastifyInstance) {
+  const steps: [string, () => Promise<unknown>][] = [
+    ['events', () => pruneEvents(app)],
+    ['tokens', () => purgeExpiredTokens(app.db)],
+    ['challenges', () => purgeExpiredChallenges(app.db)],
+    ['oauth', () => pruneOAuth(app.db)],
+    ['ssoStates', () => purgeExpiredStates(app)],
+    ['changes', () => pruneChanges(app.db)],
+    ['exports', () => purgeOldExports(app)],
+    ['attachments', () => sweepAttachments(app)],
+    [
+      'sessions',
+      () => app.db.delete(sessions).where(lt(sessions.expiresAt, new Date().toISOString())),
+    ],
+    // Dead jobs stay for a week so admins can see what failed.
+    [
+      'deadJobs',
+      () =>
+        app.db.execute(
+          sql`delete from jobs where status = 'dead' and created_at < now() - interval '7 days'`,
+        ),
+    ],
+  ];
+  return forEachIsolated(
+    app,
+    'maintenance.cleanup',
+    steps,
+    ([step]) => ({ step }),
+    ([, run]) => run(),
+  );
 }

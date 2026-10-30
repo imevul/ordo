@@ -260,6 +260,26 @@ describe('workspace export', () => {
     await settle();
   });
 
+  it('fails, rather than retrying forever, when every attempt takes its worker down', async () => {
+    const res = await owner.post(`${ws}/exports`, { format: 'json' });
+    // The last attempt's worker died (out of memory) and its lock ran out.
+    await app.db.execute(sql`
+      update jobs set status = 'running', attempts = max_attempts,
+        locked_until = now() - interval '1 second'
+      where name = 'export.run' and payload->>'exportId' = ${res.data.id}`);
+    await app.jobs.drain();
+    const [row] = await app.db
+      .select()
+      .from(workspaceExports)
+      .where(eq(workspaceExports.id, res.data.id));
+    expect(row).toMatchObject({ status: 'failed', fileId: null });
+    expect(row!.error).toContain('stopped responding');
+    const [job] = await app.db.execute<{ status: string }>(
+      sql`select status from jobs where payload->>'exportId' = ${res.data.id}`,
+    );
+    expect(job!.status).toBe('dead');
+  });
+
   it('can be deleted, and is purged after a week', async () => {
     const { done } = await exportAs('json');
     const del = await owner.del(`${ws}/exports/${done.id}`);

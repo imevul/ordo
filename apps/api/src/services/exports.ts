@@ -174,17 +174,28 @@ export async function runExport(
     if (done.length === 0) return deleteFile(app, file.id);
   } catch (err) {
     if (job.attempt < job.maxAttempts) throw err;
-    // Another run may have finished it meanwhile; a late failure mustn't undo that.
-    await app.db
-      .update(workspaceExports)
-      .set({
-        status: 'failed',
-        error: (err instanceof Error ? err.message : String(err)).slice(0, 1000),
-        completedAt: new Date().toISOString(),
-      })
-      .where(and(eq(workspaceExports.id, row.id), eq(workspaceExports.status, 'running')));
+    return failExport(app, { exportId }, err instanceof Error ? err.message : String(err));
   }
   await publish(app, row);
+}
+
+/**
+ * Marks a still-running export failed: after its last attempt threw, or when the job died with
+ * its worker (an export too big for memory takes the process with it, so `runExport` never gets
+ * to record anything).
+ */
+export async function failExport(
+  app: FastifyInstance,
+  { exportId }: { exportId: string },
+  error: string,
+) {
+  // Another run may have finished it meanwhile; a late failure mustn't undo that.
+  const [row] = await app.db
+    .update(workspaceExports)
+    .set({ status: 'failed', error: error.slice(0, 1000), completedAt: new Date().toISOString() })
+    .where(and(eq(workspaceExports.id, exportId), eq(workspaceExports.status, 'running')))
+    .returning();
+  if (row) await publish(app, row);
 }
 
 /** Exports older than a week go, files and all. */

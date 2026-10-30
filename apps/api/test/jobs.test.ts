@@ -1,9 +1,10 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { jobs } from '../src/db/schema.ts';
+import { attachments, files, jobs, sessions, users, workspaces } from '../src/db/schema.ts';
+import { runMaintenance } from '../src/jobs.ts';
 import { enqueue, JobQueue, Leases } from '../src/lib/jobs/index.ts';
-import { testApp } from './helpers.ts';
+import { signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
 
@@ -130,6 +131,58 @@ describe('job queue', () => {
     expect(await app.db.select().from(jobs).where(eq(jobs.id, id))).toHaveLength(0);
   });
 
+  it('counts a lapsed lock as an attempt and buries a job that keeps killing its worker', async () => {
+    const q = queue();
+    let calls = 0;
+    const dead: [unknown, string][] = [];
+    q.define<{ n: number }>(
+      'test.crash',
+      async () => {
+        calls++;
+      },
+      { onDead: async (p, error) => void dead.push([p, error]) },
+    );
+    await enqueue(app.db, 'test.crash', { n: 7 }, { maxAttempts: 2 });
+    // As if a worker had claimed it and then died (out of memory) mid-job.
+    const crash = (attempts: number) =>
+      app.db
+        .update(jobs)
+        .set({ status: 'running', attempts, lockedUntil: sql`now() - interval '1 second'` })
+        .where(eq(jobs.name, 'test.crash'));
+    await crash(1);
+    // One attempt left: it's taken again, and that counts.
+    await q.drain();
+    expect(calls).toBe(1);
+    expect(await app.db.select().from(jobs).where(eq(jobs.name, 'test.crash'))).toHaveLength(0);
+
+    await enqueue(app.db, 'test.crash', { n: 8 }, { maxAttempts: 2 });
+    await crash(2);
+    await q.drain();
+    expect(calls).toBe(1);
+    const [row] = await app.db.select().from(jobs).where(eq(jobs.name, 'test.crash'));
+    expect(row).toMatchObject({ status: 'dead', attempts: 2, lockedUntil: null });
+    expect(row!.lastError).toContain('stopped responding');
+    expect(dead).toEqual([[{ n: 8 }, row!.lastError]]);
+    await app.db.delete(jobs).where(eq(jobs.name, 'test.crash'));
+  });
+
+  it('tells the handler when a job dies after failing', async () => {
+    const q = queue();
+    const dead: string[] = [];
+    q.define(
+      'test.doomed',
+      async () => {
+        throw new Error('boom');
+      },
+      { onDead: async (_p, error) => void dead.push(error) },
+    );
+    await enqueue(app.db, 'test.doomed', {}, { maxAttempts: 1 });
+    await q.drain();
+    expect(dead).toHaveLength(1);
+    expect(dead[0]).toContain('boom');
+    await app.db.delete(jobs).where(eq(jobs.name, 'test.doomed'));
+  });
+
   it('runs a schedule once per interval across instances', async () => {
     const a = queue();
     const b = queue();
@@ -144,6 +197,61 @@ describe('job queue', () => {
     await b.drain();
     await a.drain();
     expect(runs).toBe(1);
+  });
+});
+
+describe('maintenance', () => {
+  it('runs every cleanup step even when one of them fails', async () => {
+    const { client, email } = await signup(app, 'Maya Maintenance');
+    const slug = `maint-${Date.now()}`;
+    await client.post('/api/workspaces', { name: 'Maint', slug, teamName: 'Ops', teamKey: 'OPS' });
+    const [user] = await app.db.select().from(users).where(eq(users.email, email));
+    const [ws] = await app.db.select().from(workspaces).where(eq(workspaces.slug, slug));
+    await app.db.insert(sessions).values({
+      id: `expired-${Date.now()}`,
+      userId: user!.id,
+      expiresAt: new Date(Date.now() - 1000).toISOString(),
+    });
+    // An abandoned upload whose removal breaks the attachment sweep, which runs before session
+    // expiry. The trigger only fires for that row, so tests running alongside aren't affected.
+    const [file] = await app.db
+      .insert(files)
+      .values({
+        workspaceId: ws!.id,
+        kind: 'attachment',
+        storageKey: `maint-${Date.now()}`,
+        filename: 'x.txt',
+        contentType: 'text/plain',
+        size: 1,
+      })
+      .returning();
+    const [orphan] = await app.db
+      .insert(attachments)
+      .values({
+        workspaceId: ws!.id,
+        fileId: file!.id,
+        createdAt: new Date(Date.now() - 2 * 86_400_000).toISOString(),
+      })
+      .returning();
+    await app.db.execute(
+      sql.raw(`create function broken_sweep() returns trigger language plpgsql as $$
+        begin raise exception 'injected failure'; end $$;
+        create trigger broken_sweep before delete on attachments
+          for each row when (old.id = '${orphan!.id}') execute function broken_sweep();`),
+    );
+    try {
+      expect(await runMaintenance(app)).toBe(1);
+    } finally {
+      await app.db.execute(
+        sql.raw('drop trigger broken_sweep on attachments; drop function broken_sweep();'),
+      );
+    }
+    const left = await app.db
+      .select()
+      .from(sessions)
+      .where(and(eq(sessions.userId, user!.id), lt(sessions.expiresAt, sql`now()`)));
+    expect(left).toHaveLength(0);
+    await app.db.delete(files).where(eq(files.id, file!.id));
   });
 });
 
