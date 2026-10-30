@@ -1,5 +1,4 @@
-import { randomBytes } from 'node:crypto';
-import type { PullRequestChecks } from '@ordo/shared';
+import { type GitlabConfig, gitlabSettingsSchema, type PullRequestChecks } from '@ordo/shared';
 import {
   applyBranch,
   applyCommits,
@@ -11,22 +10,20 @@ import {
   mentionsIssue,
   type PullRequestState,
 } from '../services/forge.ts';
-import { callApi, repoList, safeEqual, trimUrl } from './http.ts';
-import type { IntegrationContext, IntegrationProvider, IntegrationRow } from './types.ts';
+import { callApi, safeEqual, withWebhookSecret } from './http.ts';
+import {
+  configOf,
+  type IntegrationContext,
+  type IntegrationProvider,
+  type IntegrationRow,
+} from './types.ts';
 
 /**
  * GitLab (gitlab.com or self-managed) with an access token (`api` scope) and a list of projects.
  * Ordo adds project webhooks, or polls merge requests when GitLab can't reach it.
  */
 
-interface GitlabConfig {
-  baseUrl: string;
-  projects: string[];
-  delivery: 'webhook' | 'poll';
-  commentOnPullRequests: boolean;
-}
-
-const cfg = (row: IntegrationRow) => row.config as unknown as GitlabConfig;
+const cfg = configOf<GitlabConfig>();
 const host = (row: IntegrationRow) => new URL(cfg(row).baseUrl).host;
 const project = (path: string) => encodeURIComponent(path);
 
@@ -117,29 +114,8 @@ export const gitlab: IntegrationProvider = {
 
   accountHost: host,
 
-  configure({ config, secrets }) {
-    const projects = repoList(config.projects);
-    if (!secrets.token) throw new Error('An access token with the "api" scope is required');
-    if (!projects.length) throw new Error('List at least one project (group/project)');
-    let baseUrl: string;
-    try {
-      baseUrl = trimUrl(new URL(String(config.baseUrl || 'https://gitlab.com')).toString());
-    } catch {
-      throw new Error('The GitLab URL is not valid');
-    }
-    return {
-      config: {
-        baseUrl,
-        projects,
-        delivery: config.delivery === 'poll' ? 'poll' : 'webhook',
-        commentOnPullRequests: config.commentOnPullRequests === true,
-      },
-      secrets: {
-        token: String(secrets.token),
-        webhookSecret: String(secrets.webhookSecret || randomBytes(24).toString('base64url')),
-      },
-    };
-  },
+  settings: gitlabSettingsSchema,
+  configure: (settings) => withWebhookSecret(settings),
 
   async install(ictx) {
     const c = cfg(ictx.integration);

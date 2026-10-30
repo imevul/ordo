@@ -1,19 +1,19 @@
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
+import { type DiscordConfig, discordSettingsSchema } from '@ordo/shared';
 import {
   type ChatIncoming,
   chatFeed,
-  parseChannels,
   runChatCommand,
   syncThreadReply,
   unfurl,
 } from '../services/chat.ts';
 import { ApiCallError, callApi } from './http.ts';
 import { runSocket } from './socket.ts';
-import type {
-  ChatMessage,
-  IntegrationContext,
-  IntegrationProvider,
-  IntegrationRow,
+import {
+  type ChatMessage,
+  configOf,
+  type IntegrationContext,
+  type IntegrationProvider,
 } from './types.ts';
 
 /**
@@ -23,12 +23,7 @@ import type {
  * Ordo registers `/ordo` and a "Create Ordo issue" message command on install.
  */
 
-interface DiscordConfig {
-  delivery: 'interactions' | 'gateway';
-  applicationId: string;
-}
-
-const cfg = (row: IntegrationRow) => row.config as unknown as DiscordConfig;
+const cfg = configOf<DiscordConfig>();
 // Overridable for tests (a mock Discord) and nothing else.
 const apiUrl = () => process.env.ORDO_DISCORD_API_URL ?? 'https://discord.com/api/v10';
 
@@ -225,24 +220,7 @@ export const discordProvider: IntegrationProvider = {
     'Post issue activity to channels, DM people their notifications, create issues from messages and preview links.',
   category: 'chat',
 
-  configure({ config, secrets }) {
-    const delivery = config.delivery === 'gateway' ? 'gateway' : 'interactions';
-    const applicationId = String(config.applicationId ?? '').trim();
-    if (!/^\d{5,25}$/.test(applicationId)) throw new Error('The application id is a number');
-    if (!secrets.botToken) throw new Error('The bot token is required');
-    const key = String(secrets.publicKey ?? '').trim();
-    if (delivery === 'interactions' && !/^[0-9a-f]{64}$/i.test(key))
-      throw new Error(
-        'The public key (64 hex characters) is required for the interactions endpoint',
-      );
-    return {
-      config: { delivery, applicationId, channels: parseChannels(config.channels) },
-      secrets: {
-        botToken: String(secrets.botToken),
-        ...(key && { publicKey: key.toLowerCase() }),
-      },
-    };
-  },
+  settings: discordSettingsSchema,
 
   async install(ictx) {
     const { data: me } = await api<DiscordUser>(ictx, '/users/@me');
