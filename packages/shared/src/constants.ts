@@ -9,15 +9,6 @@ export const STATE_TYPES = [
 ] as const;
 export type StateType = (typeof STATE_TYPES)[number];
 
-export const STATE_TYPE_LABELS: Record<StateType, string> = {
-  triage: 'Triage',
-  backlog: 'Backlog',
-  unstarted: 'Unstarted',
-  started: 'Started',
-  completed: 'Completed',
-  canceled: 'Canceled',
-};
-
 /** States created for every new team. */
 export const DEFAULT_WORKFLOW_STATES: { name: string; type: StateType; color: string }[] = [
   { name: 'Triage', type: 'triage', color: '#f59e0b' },
@@ -72,33 +63,15 @@ export const PROJECT_STATUSES = [
   'canceled',
 ] as const;
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
-export const PROJECT_STATUS_LABELS: Record<ProjectStatus, string> = {
-  backlog: 'Backlog',
-  planned: 'Planned',
-  started: 'In Progress',
-  paused: 'Paused',
-  completed: 'Completed',
-  canceled: 'Canceled',
-};
 
 export const RECURRENCE_UNITS = ['day', 'week', 'month'] as const;
 export type RecurrenceUnit = (typeof RECURRENCE_UNITS)[number];
 
 export const INITIATIVE_STATUSES = ['planned', 'active', 'completed'] as const;
 export type InitiativeStatus = (typeof INITIATIVE_STATUSES)[number];
-export const INITIATIVE_STATUS_LABELS: Record<InitiativeStatus, string> = {
-  planned: 'Planned',
-  active: 'Active',
-  completed: 'Completed',
-};
 
 export const PROJECT_HEALTH = ['on_track', 'at_risk', 'off_track'] as const;
 export type ProjectHealth = (typeof PROJECT_HEALTH)[number];
-export const PROJECT_HEALTH_LABELS: Record<ProjectHealth, string> = {
-  on_track: 'On track',
-  at_risk: 'At risk',
-  off_track: 'Off track',
-};
 
 /** Stored relation types. "blocked by" is the inverse of "blocks". */
 export const RELATION_TYPES = ['blocks', 'related', 'duplicate'] as const;
@@ -109,12 +82,6 @@ export type RelationType = (typeof RELATION_TYPES)[number];
  * member: work in every public team and their private teams. guest: only teams they were added to.
  */
 export const MEMBER_ROLES = ['owner', 'admin', 'member', 'guest'] as const;
-export const MEMBER_ROLE_LABELS = {
-  owner: 'Owner',
-  admin: 'Admin',
-  member: 'Member',
-  guest: 'Guest',
-} as const;
 // Role checks go through these helpers, never string comparisons.
 type MaybeRole = string | null | undefined;
 export const isOwnerRole = (role: MaybeRole) => role === 'owner';
