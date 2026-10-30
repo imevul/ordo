@@ -160,7 +160,7 @@ export function LoginPage() {
   const [passkeyRound, setPasskeyRound] = useState(0);
 
   // Offers passkeys in the email field's autofill, where the browser supports it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `done` changes every render
+  // `done` changes every render, so it stays out of the dependencies.
   useEffect(() => {
     if (step !== 'email' || !passkeys) return;
     let live = true;
@@ -530,7 +530,7 @@ function WorkspaceSso({
       setBusy(false);
     }
   };
-  // biome-ignore lint/correctness/useExhaustiveDependencies: look up a workspace from the link once
+  // Look up a workspace from the link once.
   useEffect(() => {
     if (initial) lookUp(initial);
   }, []);

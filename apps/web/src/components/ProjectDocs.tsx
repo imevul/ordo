@@ -151,7 +151,7 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
     }
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: save after each pause in typing
+  // Save after each pause in typing.
   useEffect(() => {
     if (state !== 'dirty') return;
     const timer = setTimeout(() => save(), SAVE_AFTER_MS);
