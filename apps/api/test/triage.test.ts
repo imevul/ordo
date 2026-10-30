@@ -1,6 +1,8 @@
 import type { Bootstrap, HistoryEntry, Issue, Team, TriageRule } from '@ordo/shared';
+import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { users } from '../src/db/schema.ts';
 import { automationBot } from '../src/services/automation.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
@@ -40,6 +42,9 @@ beforeAll(async () => {
   ids.alan = (await alan.get('/api/auth/me')).data.id;
   boot = (await owner.get(`${ws}/bootstrap`)).data;
   team = boot.teams[0]!;
+  // Take the bot's default username before the bot exists, so creating it has to pick another.
+  ids.squatted = `ordo-${boot.workspace.id.slice(0, 8)}`;
+  expect((await member.patch('/api/me', { username: ids.squatted })).statusCode).toBe(200);
   team = (await owner.patch(`${ws}/teams/${team.id}`, { triageEnabled: true })).data as Team;
   ids.triage = team.states.find((s) => s.type === 'triage')!.id;
   ids.todo = team.states.find((s) => s.type === 'unstarted')!.id;
@@ -89,7 +94,11 @@ describe('triage rules', () => {
     const third = await file('Another one');
     expect(third.assigneeId).toBe(ids.ada);
     const history = (await owner.get(`${ws}/issues/${crash.id}/history`)).data as HistoryEntry[];
-    expect(history.at(-1)!.actorId).toBe(await automationBot(app.db, boot.workspace.id));
+    const botId = await automationBot(app.db, boot.workspace.id);
+    expect(history.at(-1)!.actorId).toBe(botId);
+    const [bot] = await app.db.select().from(users).where(eq(users.id, botId));
+    expect(bot).toMatchObject({ kind: 'bot', name: 'Ordo', username: `${ids.squatted}2` });
+    expect((await member.get('/api/auth/me')).data.username).toBe(ids.squatted);
   });
 
   it('leave issues outside triage alone, and skip disabled rules', async () => {
