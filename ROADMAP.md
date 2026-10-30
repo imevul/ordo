@@ -1,7 +1,7 @@
 # Roadmap
 
-This file tracks where
-we are. ✅ shipped · 🟡 partial · ⬜ planned. Items within a milestone are roughly in priority order.
+This file tracks where Ordo is and what's next. ✅ shipped · 🟡 partial · ⬜ planned. Items within a milestone are
+roughly in priority order.
 
 ## v0.1 — Core tracker (current)
 
@@ -142,9 +142,9 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [x] ✅ SCIM 2.0 provisioning: users to members (deactivating suspends), groups to teams (Okta, Entra ID, Authentik)
 - [x] ✅ Offline-first sync: a local copy of the workspace, a change feed, offline edits replayed on reconnect
 
-### Hardening — findings from the 2026-10-30 review
+### Hardening — findings from the 2026-10-30 review ✅
 
-- [~] 🟡 Security
+- [x] ✅ Security
   - [x] ✅ SSO account linking: POST with an Origin check, only providers of workspaces the user belongs to
   - [x] ✅ GitHub App setup: confirm the user can access `installation_id` with GitHub, refuse one another
     workspace already holds
@@ -154,35 +154,95 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [x] ✅ `safeRedirect` rejects `/\…`; TOTP codes can't be reused; invite tokens and other URL secrets kept out of
     request logs
   - [x] ✅ Invite tokens at rest: store a hash for lookup and the link encrypted, so admins can still copy and resend it
-- [ ] ⬜ Bugs
-  - [ ] ⬜ Hotkeys: a matching `g x` sequence wins over a newer single-key binding
-  - [ ] ⬜ `rotate-key` re-encrypts every secret (SSO, webhooks, integrations, AI, VAPID, Matrix store, imports)
-  - [ ] ⬜ Moving an issue to another team keeps `completedAt`/`canceledAt` and sends no status change when the state
+- [x] ✅ Bugs
+  - [x] ✅ Hotkeys: a matching `g x` sequence wins over a newer single-key binding
+  - [x] ✅ `rotate-key` re-encrypts every secret (SSO, webhooks, integrations, AI, VAPID, Matrix store, imports)
+  - [x] ✅ Moving an issue to another team keeps `completedAt`/`canceledAt` and sends no status change when the state
     type is the same
-  - [ ] ⬜ Deleting a cycle or a status updates issues through `services/issues.ts` and emits their real ids
-  - [ ] ⬜ SDK/CLI `--cycle current` treats `endsAt` as exclusive, like the API
-  - [ ] ⬜ Grouping by assignee keeps issues assigned to placeholders and removed members
-  - [ ] ⬜ `ordo agent run`: Ctrl-C drains without killing agents; cancel and timeout stop the whole process group
-  - [ ] ⬜ Digests: ordered pending query, emailed state recorded with each queued email
-  - [ ] ⬜ Scheduled jobs survive one failing team or issue; long exports don't run twice; re-trashing keeps the
+  - [x] ✅ Deleting a cycle or a status updates issues through `services/issues.ts` and emits their real ids
+  - [x] ✅ SDK/CLI `--cycle current` treats `endsAt` as exclusive, like the API
+  - [x] ✅ Grouping by assignee keeps issues assigned to placeholders and removed members
+  - [x] ✅ `ordo agent run`: Ctrl-C drains without killing agents; cancel and timeout stop the whole process group
+  - [x] ✅ Digests: ordered pending query, emailed state recorded with each queued email
+  - [x] ✅ Scheduled jobs survive one failing team or issue; long exports don't run twice; re-trashing keeps the
     trash date; turning triage off moves triage issues; one definition of "today" in cycle automation
-- [ ] ⬜ Docs
-  - [ ] ⬜ docker-compose.yml passes every documented setting (`ORDO_MAX_ATTACHMENT_MB`, `ORDO_OFFLINE_SYNC`,
+- [x] ✅ Docs
+  - [x] ✅ docker-compose.yml passes every documented setting (`ORDO_MAX_ATTACHMENT_MB`, `ORDO_OFFLINE_SYNC`,
     `ORDO_WORKSPACE_AI`, `ORDO_GITHUB_URL`, `ORDO_GITHUB_API_URL`, `DATABASE_POOL_SIZE`)
   - [x] ✅ README: Status, feature list, stack, `make backup`; one key-rotation story in configuration.md and admin.md
-  - [ ] ⬜ Fix api.md (agent run states, realtime kinds, `scim` source), the `Mod Shift .` shortcut on Nordic
+  - [x] ✅ Fix api.md (agent run states, realtime kinds, `scim` source), the `Mod Shift .` shortcut on Nordic
     layouts, per-command CLI help, the backup cron prune
-  - [ ] ⬜ Operator topics: `/api/health` monitoring, running without Docker, restoring onto a new host, missing
+  - [x] ✅ Operator topics: `/api/health` monitoring, running without Docker, restoring onto a new host, missing
     secret key troubleshooting; undocumented API groups and CLI commands
-- [ ] ⬜ Code quality
-  - [ ] ⬜ Zod schemas for integration config and secrets instead of casts and hand validation
-  - [ ] ⬜ `bulkUpdateIssues` in `services/issues.ts` for the direct issue writes (cycles, statuses, placeholders,
+- [x] ✅ Code quality
+  - [x] ✅ Zod schemas for integration config and secrets instead of casts and hand validation
+  - [x] ✅ `bulkUpdateIssues` in `services/issues.ts` for the direct issue writes (cycles, statuses, placeholders,
     SLA, comments)
-  - [ ] ⬜ A `one(rows)` helper for `.returning()`; handle a missing team in the issue view instead of `!`
+  - [x] ✅ A `one(rows)` helper for `.returning()`; handle a missing team in the issue view instead of `!`
   - [x] ✅ Split `IssueDetailView`, `auth.tsx`, `admin.tsx` and `account.tsx`
-  - [ ] ⬜ Small cleanups: `<TeamSelect>`, `useWsMutation` key type, role helpers, parsed query strings, one
+  - [x] ✅ Small cleanups: `<TeamSelect>`, `useWsMutation` key type, role helpers, parsed query strings, one
     `escapeHtml`, dead label maps, unused `clsx`, current lint warnings
-  - [ ] ⬜ Unit tests for `apps/web/src/lib/issues.ts`
+  - [x] ✅ Unit tests for `apps/web/src/lib/issues.ts`
+  - [x] ✅ The remaining route query strings (callbacks, SCIM, hooks) parsed with Zod; AAD helpers shared between
+    secret call sites and the `rotate-key` registry, so a new secret can't be missed
+- [x] ✅ Also shipped alongside
+  - [x] ✅ Instance admins invite people to the instance without adding them to a workspace
+  - [x] ✅ Inbox items open the issue at the comment they're about; a count on _Agent runs_ in the sidebar
+  - [x] ✅ Add a workspace repository by browsing GitHub or Forgejo; agents get a profile color
+  - [x] ✅ `ordo agent run` reuses the worktree an issue's branch is already checked out in
+
+### Hardening, round 2 — findings from the second 2026-10-30 review
+
+- [ ] ⬜ Security
+  - [ ] ⬜ SSO and SCIM attach an identity to an existing account only if its email is verified
+  - [ ] ⬜ Accounts without a password re-authenticate (recent sign-in) before changing email or setting up 2FA
+  - [ ] ⬜ Clear the stored AI key when the provider or base URL changes, and an OIDC client secret when the issuer
+    changes
+  - [ ] ⬜ Password reset and change revoke API keys and OAuth grants (or offer to)
+  - [ ] ⬜ Rate limits and lockout on every endpoint that checks a password; replay-safe codes for new recovery codes
+  - [ ] ⬜ `safeFetch` drops `Authorization` and cookies on cross-origin redirects
+- [ ] ⬜ Bugs
+  - [ ] ⬜ `automationBot` recurses forever when someone already holds the username `ordo-<workspace id prefix>`
+    (`onConflictDoNothing` also swallows the username conflict): triage rules and every scheduled sweep hang
+  - [ ] ⬜ Offline sync: gaining access to a team (added, promoted, team made public) never loads its existing issues
+    into the local copy
+  - [ ] ⬜ Offline sync outbox: a failed save stalls every later change; a broadcast from another tab drops this tab's
+    unsaved entries (and can hang the mutation); an IndexedDB upgrade in another tab leaves the leader unable to write
+  - [ ] ⬜ Jobs: a job whose lease expires is claimed again without checking `max_attempts`, so a job that crashes the
+    process (a large export) retries forever; `reapLeases` and `maintenance.cleanup` stop at the first failing item
+  - [ ] ⬜ One failing outbound event holds up an integration's inbound webhooks and polls for ~20 minutes per event
+    (shared ordering key), so Jira sync can stall
+  - [ ] ⬜ Moving an issue to another team with an unchanged `stateId` keeps the old team's status
+  - [ ] ⬜ Issue page: queued offline edits aren't layered on the issue detail, so fields snap back until sent; trash
+    and Undo (list and issue header), and moving issues to another team, bypass the outbox and fail silently
+  - [ ] ⬜ Project documents: edits in the last second before switching docs are lost; a slow save can raise a
+    conflict against your own edit
+  - [ ] ⬜ `ordo agent run`: relative `--repos` puts worktrees inside the clones; `--key`, `--repos`, `--concurrency`
+    and `--timeout` are ignored with `--file`; `${VAR}` in a runner-file command aborts loading; `ordo login` leaves
+    an existing config file world-readable
+  - [ ] ⬜ Smaller: recurring issues use UTC "today" (not the workspace zone) and swallow every template error; CSV
+    due dates shift a day on hosts east of UTC; purging an issue sends no update for its sub-issues; integration
+    dedupe keys don't survive a crash after dispatch; two concurrent export requests both start
+- [ ] ⬜ Self-hosting
+  - [x] ✅ `make up` failed on a fresh install: `.env.example` had an unquoted `ORDO_SMTP_FROM` that the Makefile sources
+  - [ ] ⬜ `make backup` reports success when `pg_dump` fails (no pipefail); `make restore` doesn't stop on SQL errors
+    before replacing uploads
+  - [ ] ⬜ Compose trusts `X-Forwarded-For` by default while publishing on `0.0.0.0:3000`, so without a proxy anyone
+    on the network can dodge per-IP sign-in limits
+  - [ ] ⬜ Migrations on boot take no advisory lock, so several instances starting together race
+  - [ ] ⬜ CI builds the Docker image; the Dockerfile's dependency layer copies `packages/sync/package.json`;
+    workflow `permissions:` and pinned actions
+- [ ] ⬜ Mobile and accessibility
+  - [ ] ⬜ Issue properties can't be edited below 1024px (the sidebar is hidden and nothing replaces it)
+  - [ ] ⬜ Click-to-edit descriptions (issues, projects, initiatives) can't be reached by keyboard; the mobile nav
+    drawer has no Escape, hotkey scope or focus trap
+- [ ] ⬜ Docs
+  - [ ] ⬜ The `factory` runner-file example in agents.md can't run (string command with `./` and a temp `cwd`)
+- [ ] ⬜ Code quality
+  - [ ] ⬜ One optimistic-patch implementation for React Query and the sync outbox (issues and reactions)
+  - [ ] ⬜ Realtime invalidates the whole bootstrap on every issue and notification event
+  - [ ] ⬜ Split the remaining large settings and page files (workspace, SSO, projects, integrations, agents, teams,
+    chat; 800–1000 lines each)
 
 ### Inbox focus
 
