@@ -115,6 +115,64 @@ describe('safeFetch', () => {
       safeFetch(`http://127.0.0.1:${port}/big`, { allowPrivate: true, maxBytes: 100 }),
     ).rejects.toThrow(/larger/);
   });
+
+  it('drops credentials when a redirect changes origin', async () => {
+    // Two origins on loopback: same host, different ports.
+    const seen: Record<string, Record<string, string | string[] | undefined>> = {};
+    let firstPort = 0;
+    const other = createServer((req, res) => {
+      seen[`other${req.url}`] = req.headers;
+      res.writeHead(302, { location: `http://127.0.0.1:${firstPort}/home` });
+      res.end();
+    });
+    const first = createServer((req, res) => {
+      seen[`first${req.url}`] = req.headers;
+      const location = {
+        '/start': '/away',
+        '/away': `http://127.0.0.1:${(other.address() as AddressInfo).port}/back`,
+        '/post': '/done',
+      }[req.url ?? ''];
+      if (location) res.writeHead(req.url === '/away' ? 307 : 303, { location });
+      res.end('{}');
+    });
+    await new Promise<void>((r) => other.listen(0, '127.0.0.1', r));
+    await new Promise<void>((r) => first.listen(0, '127.0.0.1', r));
+    firstPort = (first.address() as AddressInfo).port;
+    try {
+      await safeFetch(`http://127.0.0.1:${firstPort}/start`, {
+        headers: {
+          Authorization: 'Bearer secret',
+          Cookie: 'sid=secret',
+          'Proxy-Authorization': 'Basic secret',
+          'X-Trace': 'kept',
+        },
+        allowPrivate: true,
+      });
+      // Same origin: credentials stay.
+      expect(seen['first/away']?.authorization).toBe('Bearer secret');
+      expect(seen['first/away']?.cookie).toBe('sid=secret');
+      // Another origin, and back again: gone for good. Other headers stay.
+      for (const hop of ['other/back', 'first/home']) {
+        expect(seen[hop]?.authorization).toBeUndefined();
+        expect(seen[hop]?.cookie).toBeUndefined();
+        expect(seen[hop]?.['proxy-authorization']).toBeUndefined();
+        expect(seen[hop]?.['x-trace']).toBe('kept');
+      }
+
+      // A 303 turns a POST into a GET without the body or the headers describing it.
+      await safeFetch(`http://127.0.0.1:${firstPort}/post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer secret' },
+        body: '{"a":1}',
+        allowPrivate: true,
+      });
+      expect(seen['first/done']?.['content-type']).toBeUndefined();
+      expect(seen['first/done']?.authorization).toBe('Bearer secret');
+    } finally {
+      await new Promise<void>((r) => other.close(() => r()));
+      await new Promise<void>((r) => first.close(() => r()));
+    }
+  });
 });
 
 describe('instance', () => {
