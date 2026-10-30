@@ -85,6 +85,16 @@ describe('agent accounts', () => {
     });
   });
 
+  it('changes the colour of an agent’s avatar', async () => {
+    const res = await owner.patch(`${ws}/agents/${agentId}`, { avatarColor: '#22c55e' });
+    expect(res.data).toMatchObject({ avatarColor: '#22c55e' });
+    const members = (await owner.get(`${ws}/bootstrap`)).data.members as Bootstrap['members'];
+    expect(members.find((m) => m.id === agentId)).toMatchObject({ avatarColor: '#22c55e' });
+    expect((await owner.patch(`${ws}/agents/${agentId}`, { avatarColor: 'pink' })).statusCode).toBe(
+      400,
+    );
+  });
+
   it('issues keys that authenticate the agent in its workspace only', async () => {
     const created = await owner.post(`${ws}/agents/${agentId}/keys`, { name: 'laptop' });
     key = created.data.token;
