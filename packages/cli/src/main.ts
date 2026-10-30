@@ -858,6 +858,9 @@ async function agentRun(ctx: Context, args: string[], opts: { check?: boolean } 
   if (!values.once) io.stdout(s.dim('Waiting for work. Ctrl-C stops taking new runs.\n'));
   const log = (line: string) =>
     io.stdout(`${s.dim(new Date().toTimeString().slice(0, 8))} ${line}\n`);
+  stop.signal.addEventListener('abort', () =>
+    log('Not taking new runs; running ones finish. Ctrl-C again stops them.'),
+  );
   await Promise.all(
     specs.map((spec) =>
       serveAgent(spec, {
