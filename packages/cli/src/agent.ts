@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, hostname, tmpdir } from 'node:os';
@@ -331,6 +331,30 @@ export interface LaunchResult {
 }
 
 const tail = (s: string, n: number) => (s.length > n ? s.slice(-n) : s);
+
+// Commands run in their own process group (POSIX), so the terminal's Ctrl-C reaches only the
+// runner, and stopping a run stops everything it started (shells, pnpm, browsers).
+const groups = process.platform !== 'win32';
+const running = new Set<ChildProcess>();
+
+/** Signals a command and everything it started; false when nothing was left to signal. */
+function signalGroup(child: ChildProcess, sig: NodeJS.Signals | 0) {
+  if (!child.pid) return false;
+  try {
+    if (groups) process.kill(-child.pid, sig);
+    else if (sig) child.kill(sig);
+    else return child.exitCode === null && child.signalCode === null;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Signals every running command's process group (for a forced stop of the runner). */
+export function signalRunning(sig: NodeJS.Signals) {
+  for (const child of running) signalGroup(child, sig);
+}
+
 const SESSION_LINE = /^ORDO_SESSION_URL=(\S+)\s*$/;
 const RESUME_LINE = /^ORDO_RESUME=(\S+)\s*$/;
 
@@ -352,6 +376,8 @@ export async function launch(
     onOutput?: (line: string, stream: 'stdout' | 'stderr') => void;
     /** Resolves when the run should stop (cancelled in Ordo). */
     cancelled?: Promise<void>;
+    /** How long a stopped command gets between SIGTERM and SIGKILL (default 10s). */
+    graceMs?: number;
   },
 ): Promise<LaunchResult> {
   const dir = await mkdtemp(join(tmpdir(), 'ordo-run-'));
@@ -410,7 +436,13 @@ export async function launch(
       typeof spec.command === 'string'
         ? ['sh', ['-c', spec.command]]
         : [spec.command[0]!, spec.command.slice(1)];
-    const child = spawn(cmd, args, { cwd: workdir, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(cmd, args, {
+      cwd: workdir,
+      env,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: groups,
+    });
+    running.add(child);
     opts.onStart?.(child.pid);
     child.stdin.on('error', () => {}); // commands that don't read stdin close it early
     child.stdin.end(context.prompt);
@@ -445,12 +477,15 @@ export async function launch(
     child.stdout.on('data', lines('stdout'));
     child.stderr.on('data', lines('stderr'));
 
+    let closed = false;
     let stopped: 'cancelled' | 'timeout' | null = null;
+    let force: NodeJS.Timeout | undefined;
     const kill = (why: 'cancelled' | 'timeout') => {
-      if (stopped || child.exitCode !== null) return;
+      if (stopped || closed) return;
       stopped = why;
-      child.kill('SIGTERM');
-      setTimeout(() => child.exitCode === null && child.kill('SIGKILL'), 10_000).unref();
+      signalGroup(child, 'SIGTERM');
+      // The whole group, even if the command itself is already gone: what it started may not be.
+      force = setTimeout(() => signalGroup(child, 'SIGKILL'), opts.graceMs ?? 10_000);
     };
     const timer = spec.timeoutMs ? setTimeout(() => kill('timeout'), spec.timeoutMs) : undefined;
     void opts.cancelled?.then(() => kill('cancelled'));
@@ -462,7 +497,11 @@ export async function launch(
       });
       child.on('close', (c) => resolveExit(c));
     });
+    closed = true;
+    running.delete(child);
     clearTimeout(timer);
+    // Nothing left in the group: no SIGKILL to send (and nothing to hold the runner for).
+    if (!signalGroup(child, 0)) clearTimeout(force);
 
     let summary: string | null = null;
     try {
@@ -501,7 +540,7 @@ export interface ServeOptions {
   /** What the runner calls itself in Ordo (default host/label). */
   runnerName?: string;
   log: (line: string) => void;
-  /** Stop claiming; running commands finish (or are interrupted with the runner). */
+  /** Stop claiming; running commands finish (or are killed if the runner is forced to quit). */
   signal: AbortSignal;
   fetch?: typeof fetch;
   /** Echo the command's output into the log. */
