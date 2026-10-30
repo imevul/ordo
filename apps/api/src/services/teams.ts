@@ -15,7 +15,7 @@ import {
   workflowStates,
   workspaceMembers,
 } from '../db/schema.ts';
-import { badRequest, conflict } from '../lib/errors.ts';
+import { badRequest, conflict, one } from '../lib/errors.ts';
 import { type Access, teamScope } from './access.ts';
 import { auditCtx } from './audit.ts';
 import { type Ctx, emit } from './context.ts';
@@ -31,18 +31,20 @@ export async function createTeam(
     private?: boolean;
   },
 ): Promise<string> {
-  const [team] = await ctx.tx
-    .insert(teams)
-    .values({
-      workspaceId: ctx.workspaceId,
-      name: input.name,
-      key: input.key,
-      description: input.description ?? null,
-      color: input.color ?? '#ff1493',
-      private: input.private ?? false,
-    })
-    .returning({ id: teams.id });
-  const teamId = team!.id;
+  const team = one(
+    await ctx.tx
+      .insert(teams)
+      .values({
+        workspaceId: ctx.workspaceId,
+        name: input.name,
+        key: input.key,
+        description: input.description ?? null,
+        color: input.color ?? '#ff1493',
+        private: input.private ?? false,
+      })
+      .returning({ id: teams.id }),
+  );
+  const teamId = team.id;
   // A live key beats a former one.
   await ctx.tx
     .delete(teamKeyAliases)

@@ -61,8 +61,13 @@ ordo agent run --key "$AGENT_KEY" -w acme -- ./my-factory.sh
 ```
 
 For each run it clones the run's repositories (once, under `~/.cache/ordo/repos`, fetched before every run), checks
-out a worktree on the run's branch, and starts your command there. Then it waits for the next run. Ctrl-C stops
-taking new runs; a second Ctrl-C quits.
+out a worktree on the run's branch, and starts your command there. Then it waits for the next run.
+
+Ctrl-C stops taking new runs and lets the running commands finish; a second Ctrl-C kills them and quits (their leases
+lapse and Ordo queues the runs again). Each command runs in its own process group, so stopping a run — cancelled in
+Ordo, or over `--timeout` — stops everything it started too (shells, `pnpm`, browsers): SIGTERM to the group, then
+SIGKILL ten seconds later. Stopping the runner itself with SIGTERM or SIGHUP (`kill`, a closed terminal) sends
+SIGTERM to the commands' groups first. On Windows only the command itself is signalled.
 
 There is **one branch per issue**, whichever agent works on it: the issue's open pull request's branch, else a branch
 already pushed for the issue, else `eng-42-short-title`. An existing local branch is reused, so a second run, or

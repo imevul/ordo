@@ -5,7 +5,7 @@ import {
   type NotificationType,
   type UserPreferences,
 } from '@ordo/shared';
-import { and, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { issues, notifications, teams, users, workflowStates, workspaces } from '../db/schema.ts';
 import { localeOf, serverT } from '../i18n/index.ts';
@@ -86,6 +86,8 @@ export async function sendNotificationEmails(app: FastifyInstance) {
         eq(users.kind, 'human'),
       ),
     )
+    // Oldest first, so a digest lists its items in order and the limit leaves the newest for later.
+    .orderBy(asc(notifications.createdAt), asc(notifications.id))
     .limit(2000);
   if (pending.length === 0) return;
 
@@ -119,54 +121,66 @@ export async function sendNotificationEmails(app: FastifyInstance) {
   }
 
   const now = Date.now();
-  const handled: string[] = [];
   for (const items of groups.values()) {
     const first = items[0]!;
     const prefs = resolvePreferences(first.preferences);
     const digest = prefs.notifications.emailDigest;
     const wanted = items.filter((n) => digest !== 'off' && prefs.notifications.email[n.type]);
-    // Opted-out notifications are settled right away so they don't pile up.
-    handled.push(...items.filter((n) => !wanted.includes(n)).map((n) => n.id));
-    if (wanted.length === 0) continue;
     const oldest = Math.min(...wanted.map((n) => new Date(n.createdAt).getTime()));
-    if (now - oldest < WAIT_MS[digest]) continue;
+    const due = wanted.length > 0 && now - oldest >= WAIT_MS[digest];
+    // Opted-out notifications are settled right away so they don't pile up.
+    const settle = due ? items : items.filter((n) => !wanted.includes(n));
+    if (settle.length === 0) continue;
 
-    const ws = workspaceById.get(first.workspaceId);
-    const locale = localeOf(first.preferences);
-    const lines: DigestItem[] = wanted.flatMap((n) => {
-      const issue = n.issueId ? issueById.get(n.issueId) : undefined;
-      if (!issue || !ws) return [];
-      const identifier = `${issue.key}-${issue.number}`;
-      return [
-        {
-          identifier,
-          title: issue.title,
-          line: describeNotification(locale, {
-            type: n.type,
-            actor: n.actorName,
-            state: issue.state,
+    // Marking and queueing share a transaction, so a failed or retried run neither sends a
+    // notification twice nor drops it. Only rows still un-emailed are claimed, so an overlapping
+    // run can't send the same ones either.
+    await app.db.transaction(async (tx) => {
+      const claimed = await tx
+        .update(notifications)
+        .set({ emailedAt: new Date().toISOString() })
+        .where(
+          and(
+            inArray(
+              notifications.id,
+              settle.map((n) => n.id),
+            ),
+            isNull(notifications.emailedAt),
+          ),
+        )
+        .returning({ id: notifications.id });
+      if (!due) return;
+      const claimedIds = new Set(claimed.map((c) => c.id));
+      const ws = workspaceById.get(first.workspaceId);
+      const locale = localeOf(first.preferences);
+      const lines: DigestItem[] = wanted.flatMap((n) => {
+        const issue = n.issueId ? issueById.get(n.issueId) : undefined;
+        if (!claimedIds.has(n.id) || !issue || !ws) return [];
+        const identifier = `${issue.key}-${issue.number}`;
+        return [
+          {
+            identifier,
+            title: issue.title,
+            line: describeNotification(locale, {
+              type: n.type,
+              actor: n.actorName,
+              state: issue.state,
+            }),
+            url: `${app.env.publicUrl}/${ws.slug}/issue/${identifier}`,
+          },
+        ];
+      });
+      if (lines.length && ws) {
+        await queueEmail(
+          tx,
+          first.email,
+          digestEmail(locale, {
+            workspace: ws.name,
+            items: lines,
+            settingsUrl: `${app.env.publicUrl}/${ws.slug}/settings/notifications`,
           }),
-          url: `${app.env.publicUrl}/${ws.slug}/issue/${identifier}`,
-        },
-      ];
+        );
+      }
     });
-    handled.push(...wanted.map((n) => n.id));
-    if (lines.length && ws) {
-      await queueEmail(
-        app.db,
-        first.email,
-        digestEmail(locale, {
-          workspace: ws.name,
-          items: lines,
-          settingsUrl: `${app.env.publicUrl}/${ws.slug}/settings/notifications`,
-        }),
-      );
-    }
-  }
-  if (handled.length) {
-    await app.db
-      .update(notifications)
-      .set({ emailedAt: new Date().toISOString() })
-      .where(inArray(notifications.id, handled));
   }
 }

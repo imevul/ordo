@@ -1,7 +1,8 @@
 # Keyboard shortcuts
 
 Press `?` anywhere in Ordo to see this list. `Mod` is `⌘` on macOS and `Ctrl` elsewhere. Shortcuts don't
-fire while you're typing in a field, except the ones marked _(anywhere)_.
+fire while you're typing in a field, except the ones marked _(anywhere)_. `Mod Shift .` means the key itself, so it
+works the same on layouts where Shift+`.` types `:` (Swedish, Norwegian, Danish, Finnish, German).
 
 ## General
 
@@ -23,6 +24,9 @@ fire while you're typing in a field, except the ones marked _(anywhere)_.
 | `G` then `P` | Projects                 |
 | `G` then `V` | Views                    |
 | `G` then `S` | Settings                 |
+
+`G` then a key always navigates, even on pages where that key alone does something else (`I` on an issue
+list assigns to you, `G` then `I` opens the inbox). Opening or closing a dialog cancels a pending `G`.
 
 ## Issue lists and boards
 
@@ -51,7 +55,7 @@ These apply to the selected issues, or the focused one if nothing is selected, o
 | `Shift C`          | Cycle                                                             |
 | `E`                | Estimate                                                          |
 | `Mod ⌫` / `Delete` | Move to trash (undo from the toast)                               |
-| `Mod Shift .`      | Copy the open issue's git branch name                             |
+| `Mod Shift .`      | Copy the open issue's git branch name (the `.` key on any layout) |
 | `1`–`9`            | In a property menu: pick the nth option                           |
 | `⌫`                | In a property menu with an empty filter: back to the command menu |
 
