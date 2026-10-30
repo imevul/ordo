@@ -4,18 +4,19 @@
  *   node cli.mjs promote-admin <email>     make someone an instance admin
  *   node cli.mjs reset-password <email>    print a one-hour password reset link
  *   node cli.mjs disable-2fa <email>       turn off two-factor authentication for someone
- *   node cli.mjs rotate-key                re-encrypt 2FA secrets and SMTP with the current ORDO_SECRET_KEY
+ *   node cli.mjs rotate-key                re-encrypt every stored secret with the current ORDO_SECRET_KEY
  *
  * In Docker: `make admin EMAIL=…`, `make reset-password EMAIL=…`, or
  * `docker compose exec app node cli.mjs <command>`.
  */
-import { eq, isNotNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { createDb } from './db/client.ts';
 import { runMigrations } from './db/migrate.ts';
 import { passkeys, recoveryCodes, users } from './db/schema.ts';
 import { loadEnv } from './env.ts';
 import { Keyring } from './lib/secrets.ts';
 import { audit } from './services/audit.ts';
+import { rotateSecrets } from './services/secretKey.ts';
 import { Settings } from './services/settings.ts';
 import { createToken } from './services/tokens.ts';
 
@@ -85,31 +86,24 @@ async function main() {
     case 'rotate-key': {
       const keyring = new Keyring(env.secretKey, env.previousSecretKey);
       if (!keyring.available) throw new Error('ORDO_SECRET_KEY is not set');
-      let n = 0;
-      for (const u of await db.select().from(users).where(isNotNull(users.totpSecret))) {
-        const aad = `users:${u.id}:totp_secret`;
-        if (!keyring.needsRotation(u.totpSecret!)) continue;
-        await db
-          .update(users)
-          .set({ totpSecret: keyring.encrypt(keyring.decrypt(u.totpSecret!, aad), aad) })
-          .where(eq(users.id, u.id));
-        n++;
-      }
       const settings = new Settings(db, sql, {}, silentLog);
       await settings.reload();
-      const smtp = settings.get('smtp');
-      if (smtp?.url.startsWith('v1.') && keyring.needsRotation(smtp.url)) {
-        const aad = 'instance_settings:smtp:url';
-        await settings.set(
-          'smtp',
-          { ...smtp, url: keyring.encrypt(keyring.decrypt(smtp.url, aad), aad) },
-          null,
+      const { rotated, failed } = await rotateSecrets(db, settings, keyring);
+      console.log(`Re-encrypted ${rotated} secret(s) with the current ORDO_SECRET_KEY.`);
+      if (failed.length) {
+        console.error(
+          `${failed.length} secret(s) couldn't be decrypted with ORDO_SECRET_KEY or ORDO_SECRET_KEY_PREVIOUS:\n  ${failed.join('\n  ')}\nEnter them again in Ordo, or set the key they were encrypted with as ORDO_SECRET_KEY_PREVIOUS and run this again.`,
         );
-        n++;
+        process.exitCode = 1;
+      } else if (env.previousSecretKey) {
+        // A server still running with the old key may have written a secret since; a second run
+        // that finds nothing to do is the proof.
+        console.log(
+          rotated
+            ? 'Once every instance runs with the new key, run rotate-key again. When it re-encrypts 0 secrets, you can remove ORDO_SECRET_KEY_PREVIOUS.'
+            : 'Every stored secret uses the current key. You can remove ORDO_SECRET_KEY_PREVIOUS once every instance runs with the new key.',
+        );
       }
-      console.log(
-        `Re-encrypted ${n} secret(s) (two-factor secrets and SMTP). Keep ORDO_SECRET_KEY_PREVIOUS set: other stored secrets move to the new key only when they're saved again.`,
-      );
       break;
     }
     default:
