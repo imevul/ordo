@@ -1,7 +1,14 @@
-import { and, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { auditLog, sessions, userIdentities, users, workspaceMembers } from '../src/db/schema.ts';
+import {
+  auditLog,
+  authProviders,
+  sessions,
+  userIdentities,
+  users,
+  workspaceMembers,
+} from '../src/db/schema.ts';
 import { Client, signup, testApp } from './helpers.ts';
 import { type MockIdp, startMockIdp } from './mock-idp.ts';
 
@@ -120,6 +127,52 @@ describe('providers', () => {
     const [p] = (await owner.get(`${ws}/auth-providers`)).data.providers;
     expect(p).toMatchObject({ name: 'Acme Identity', groupClaim: 'groups', enabled: true });
     expect(p.groupRoles).toEqual({ 'ordo-admins': 'admin', contractors: 'guest' });
+  });
+
+  it('drops the client secret when the issuer changes, unless a new one comes with it', async () => {
+    const secretOf = async () =>
+      (
+        await app.db
+          .select({ s: authProviders.clientSecret })
+          .from(authProviders)
+          .where(eq(authProviders.id, providerId))
+      )[0]!.s;
+    const patch = (body: Record<string, unknown>) =>
+      owner.patch(`${ws}/auth-providers/${providerId}`, body);
+    const stored = await secretOf();
+
+    // The same issuer (as the edit form sends it) keeps the secret.
+    expect((await patch({ issuer: idp.issuer, clientSecret: '' })).statusCode).toBe(200);
+    expect(await secretOf()).toBe(stored);
+    expect((await sso(person('same-issuer'))).location).toBe(`/${slug}`);
+
+    // A new issuer without a secret: nothing is sent to it, and sign-in stops until one is entered.
+    const other = await startMockIdp();
+    try {
+      expect((await patch({ issuer: other.issuer })).statusCode).toBe(200);
+      expect(await secretOf()).toBeNull();
+      const start = await app.inject({
+        method: 'GET',
+        url: `/api/auth/oidc/${providerId}/start?mode=login`,
+      });
+      expect(String(start.headers.location)).toMatch(/^\/login\?error=/);
+    } finally {
+      await other.close();
+    }
+    const [entry] = await app.db
+      .select({ data: auditLog.data })
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'sso.provider_updated'), eq(auditLog.targetId, providerId)))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(1);
+    expect(entry?.data).toMatchObject({ clientSecret: 'removed' });
+
+    // Moving back with the secret in the same request works again.
+    expect((await patch({ issuer: idp.issuer, clientSecret: idp.clientSecret })).statusCode).toBe(
+      200,
+    );
+    expect(await secretOf()).not.toBeNull();
+    expect((await sso(person('back'))).location).toBe(`/${slug}`);
   });
 
   it('is discoverable by workspace, and says when SSO is required', async () => {

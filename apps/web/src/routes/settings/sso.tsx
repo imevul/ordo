@@ -569,6 +569,8 @@ function ProviderModal({
     setForm((f) => ({ ...f, [k]: v }));
   const saml = form.protocol === 'saml';
   const sp = id ? samlServiceProvider(publicUrl, id) : null;
+  // The API drops the stored secret when the issuer changes, so a new issuer needs it again.
+  const keepsSecret = !!existing && form.issuer.trim() === existing.issuer;
 
   const readMetadata = async () => {
     const source = metadata.trim();
@@ -832,13 +834,13 @@ function ProviderModal({
               </FormRow>
               <FormRow
                 label={t('sso.provider.clientSecret')}
-                hint={existing ? t('sso.provider.keepSecret') : undefined}
+                hint={keepsSecret ? t('sso.provider.keepSecret') : undefined}
               >
                 <input
                   className="input font-mono"
                   type="password"
                   autoComplete="off"
-                  required={!existing}
+                  required={!keepsSecret}
                   value={form.clientSecret}
                   onChange={(e) => set('clientSecret', e.target.value)}
                 />
