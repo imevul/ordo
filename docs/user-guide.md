@@ -199,6 +199,20 @@ did it (people or bots and automations, or particular people), by team and by is
 what you see — the sidebar's unread count still counts everything — and the header's mark-read and delete buttons act
 on what's shown. Your filters are remembered in this browser.
 
+**Your status and pausing notifications.** Your name sits at the bottom of the sidebar; click it for your profile
+menu. **Set a status** to tell people where you are: away, in a meeting, focusing, do not disturb, out sick or on
+vacation, or your own emoji and words. Each one suggests when it clears (in an hour, today, this week, on a date, or
+never) and whether it pauses your notifications. Everyone in your workspaces sees it as a small square on your
+avatar and as a line when they hover it; if you're on vacation, out sick or on do not disturb, the assignee picker and
+`@` suggestions say so before someone hands you work. Your status is the same in every workspace.
+
+**Pause notifications** from the same menu, with or without a status: **Only mentions** (mentions and missed SLAs
+still ping you) or **Mute all**, for 30 minutes, 1 or 2 hours, until 09:00 tomorrow, or until you turn it off. A
+pause never loses anything: notifications still land in your Inbox, unread. It only holds back push, email and chat
+messages for them, and those aren't sent later. A pause that came with a status ends with it. A bell with a line
+through it next to your name shows a pause is on; nobody else sees your pause. Account settings, notification
+settings, keyboard shortcuts and logging out are in this menu too.
+
 **Settings → Notifications** decides what reaches you, per kind of notification and per channel: **Inbox**, **Push**
 (the devices you turned it on for), **Email** (batched as chosen above the grid) and **Chat** (direct messages to the
 chat accounts you connected, unless you turned DMs off there). Turn off Inbox for a kind and it isn't created at all,

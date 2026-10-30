@@ -59,6 +59,7 @@ import {
   relyingParty,
   verifyPasskey,
 } from '../services/passkeys.ts';
+import { pauseColumns, pauseOf, statusColumns, statusOf } from '../services/status.ts';
 import { publishChanges } from '../services/sync.ts';
 import { createTeam } from '../services/teams.ts';
 import { consumeToken, createToken } from '../services/tokens.ts';
@@ -519,7 +520,7 @@ export async function authRoutes(app: FastifyInstance) {
       .where(eq(workspaceMembers.userId, user.id))
       .orderBy(workspaces.name);
     const [prefs] = await db
-      .select({ preferences: users.preferences })
+      .select({ preferences: users.preferences, ...statusColumns, ...pauseColumns })
       .from(users)
       .where(eq(users.id, user.id));
     const { avatarFileId, ...rest } = user;
@@ -527,6 +528,8 @@ export async function authRoutes(app: FastifyInstance) {
       ...rest,
       avatarUrl: signedFileUrl(app, avatarFileId),
       locale: resolvePreferences(prefs?.preferences).locale,
+      status: prefs ? statusOf(prefs) : null,
+      notifyPause: prefs ? pauseOf(prefs) : null,
       workspaces: memberships,
       canCreateWorkspace: await mayCreateWorkspace(app, user.id),
     };

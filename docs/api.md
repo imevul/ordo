@@ -94,18 +94,20 @@ shown once) and `DELETE /scim/tokens/:id` under the workspace prefix; `GET /scim
 `PUT /scim/groups/:id/team` (`{ teamId | null }`) links or unlinks it. Teams list the groups that manage them in
 `managedBy`; on those, adding or removing members by hand returns `409 team_managed`.
 
-Account endpoints (no workspace prefix): `GET /me/account`, `PATCH /me/preferences`, `POST|DELETE /me/avatar`,
-`POST /me/email`, `GET /me/sessions`, `DELETE /me/sessions/:id`, `POST /me/2fa/setup|enable|disable|recovery-codes`,
-`GET /me/passkeys`, `POST /me/passkeys/options` (`{ password? }` → `{ challengeId, options }`), `POST /me/passkeys`
-(`{ challengeId, response, name? }`), `PATCH|DELETE /me/passkeys/:id`, `POST /auth/passkey/options` and
-`POST /auth/passkey` (`{ challengeId, response }`: sign in without a password),
-`POST /auth/forgot`, `POST /auth/reset`, `POST /auth/mfa`, `POST /auth/verify-email`. When an account has a
-second factor, `POST /auth/login` answers `{ ok: false, mfaRequired: true, mfaToken, factors }`, where `factors`
-lists what the account can finish with (`totp`, `passkey`, `recovery`). Finish with `POST /auth/mfa`, either
-`{ mfaToken, code }` (an authenticator code or a recovery code) or `{ mfaToken, passkey: { challengeId, response } }`
+Account endpoints (no workspace prefix): `GET /me/account`, `PATCH /me/preferences`, `PUT|DELETE /me/status` (`{ kind,
+emoji?, text?, until, pause? }` — `kind` one of `away`, `meeting`, `focus`, `dnd`, `sick`, `vacation`, or null for a
+custom status; `pause` is `mentions`, `all` or null and ends with the status), `PUT /me/notify-pause` (`{ mode, until
+}`; `mode: null` resumes), `POST|DELETE /me/avatar`, `POST /me/email`, `GET /me/sessions`, `DELETE /me/sessions/:id`,
+`POST /me/2fa/setup|enable|disable|recovery-codes`, `GET /me/passkeys`, `POST /me/passkeys/options` (`{ password? }` →
+`{ challengeId, options }`), `POST /me/passkeys` (`{ challengeId, response, name? }`), `PATCH|DELETE
+/me/passkeys/:id`, `POST /auth/passkey/options` and `POST /auth/passkey` (`{ challengeId, response }`: sign in without
+a password), `POST /auth/forgot`, `POST /auth/reset`, `POST /auth/mfa`, `POST /auth/verify-email`. When an account has
+a second factor, `POST /auth/login` answers `{ ok: false, mfaRequired: true, mfaToken, factors }`, where `factors`
+lists what the account can finish with (`totp`, `passkey`, `recovery`). Finish with `POST /auth/mfa`, either `{
+mfaToken, code }` (an authenticator code or a recovery code) or `{ mfaToken, passkey: { challengeId, response } }`
 after `POST /auth/mfa/passkey/options` (`{ mfaToken }` → `{ challengeId, options }`). A wrong answer keeps the
-`mfaToken` usable for another try. Instance administration lives
-under `/api/admin/*` (instance admins only; see [admin.md](admin.md)).
+`mfaToken` usable for another try. Instance administration lives under `/api/admin/*` (instance admins only; see
+[admin.md](admin.md)).
 
 **Site invites** bring someone onto the instance without adding them to a workspace (instance admins only):
 

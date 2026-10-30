@@ -2,6 +2,7 @@ import {
   INBOX_ONLY_TYPES,
   type NotificationReason,
   type NotificationType,
+  PAUSE_PASSES,
   type UserPreferences,
 } from '@ordo/shared';
 import { eq, inArray, sql } from 'drizzle-orm';
@@ -12,6 +13,7 @@ import { queueChatNotifications } from './chat.ts';
 import { type Ctx, emit } from './context.ts';
 import { resolvePreferences } from './digest.ts';
 import { queuePush } from './push.ts';
+import { pauseColumns, pauseOf } from './status.ts';
 import { publishChanges } from './sync.ts';
 
 export async function subscribe(ctx: Ctx, issueId: string, userIds: (string | null | undefined)[]) {
@@ -42,7 +44,7 @@ const ASSIGNEE_TYPES: readonly NotificationType[] = [
  * Creates notifications for each recipient except the actor, skipping anyone who can't see the
  * issue's team (non-members, guests outside it, members of the workspace outside a private team)
  * and anyone who turned the type off for their inbox. Push and chat DMs go out per the recipient's
- * channel settings; email is left to the digest job.
+ * channel settings, unless they paused notifications; email is left to the digest job.
  */
 export async function notify(
   ctx: Ctx,
@@ -65,12 +67,22 @@ export async function notify(
   const allowed = await usersWithTeamAccess(ctx.tx, ctx.workspaceId, issue.teamId, ids);
   if (allowed.length === 0) return;
   const people = await ctx.tx
-    .select({ id: users.id, preferences: users.preferences })
+    .select({ id: users.id, preferences: users.preferences, ...pauseColumns })
     .from(users)
     .where(inArray(users.id, allowed));
   const prefs = new Map<string, UserPreferences['notifications']>(
     people.map((p) => [p.id, resolvePreferences(p.preferences).notifications]),
   );
+  // A pause keeps the notification in the inbox but sends it nowhere else, now or later.
+  const held = new Set(
+    people
+      .filter((p) => {
+        const pause = pauseOf(p);
+        return pause && !(pause.mode === 'mentions' && PAUSE_PASSES.includes(input.type));
+      })
+      .map((p) => p.id),
+  );
+  const now = new Date().toISOString();
   const recipients = allowed.filter((id) => prefs.get(id)?.inbox[input.type] !== false);
   if (recipients.length === 0) return;
   const reason = (userId: string): NotificationReason =>
@@ -92,12 +104,14 @@ export async function notify(
         commentId: input.commentId ?? null,
         actorId: ctx.userId,
         data: { ...input.data, reason: reason(userId) },
+        // Counts as handled for the email digest.
+        emailedAt: held.has(userId) ? now : null,
       })),
     )
     .returning({ id: notifications.id, userId: notifications.userId });
   if (!INBOX_ONLY_TYPES.includes(input.type)) {
     const on = (channel: 'push' | 'chat') =>
-      rows.filter((r) => prefs.get(r.userId)?.[channel][input.type]);
+      rows.filter((r) => !held.has(r.userId) && prefs.get(r.userId)?.[channel][input.type]);
     await queueChatNotifications(ctx.tx, ctx.workspaceId, on('chat'));
     await queuePush(ctx.tx, on('push'));
   }

@@ -4,6 +4,7 @@ import {
   addPasskeySchema,
   changeEmailSchema,
   disableTwoFactorSchema,
+  notifyPauseSchema,
   type Passkey,
   passkeyOptionsSchema,
   passwordConfirmSchema,
@@ -11,6 +12,7 @@ import {
   removePasskeySchema,
   renamePasskeySchema,
   type SessionInfo,
+  setStatusSchema,
   totpCodeSchema,
   updatePreferencesSchema,
 } from '@ordo/shared';
@@ -49,7 +51,7 @@ import {
   relyingParty,
   toPasskey,
 } from '../services/passkeys.ts';
-import { publishChanges } from '../services/sync.ts';
+import { pauseOf, publishProfileChanged, statusOf } from '../services/status.ts';
 import { createToken } from '../services/tokens.ts';
 import { mayCreateWorkspace } from '../services/workspaces.ts';
 
@@ -105,6 +107,8 @@ export async function accountRoutes(app: FastifyInstance) {
       totpEnabled: !!user.totpEnabledAt,
       locale: resolvePreferences(user.preferences).locale,
       preferences: resolvePreferences(user.preferences),
+      status: statusOf(user),
+      notifyPause: pauseOf(user),
     };
   });
 
@@ -170,23 +174,72 @@ export async function accountRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  /** Profile changes show up in every workspace the user belongs to. */
-  async function notifyProfileChanged(userId: string) {
-    const rows = await db
-      .select({ workspaceId: workspaceMembers.workspaceId })
-      .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, userId));
-    await publishChanges(
-      app,
-      rows.map((r) => ({
-        kind: 'member',
-        action: 'updated',
-        id: userId,
-        workspaceId: r.workspaceId,
-        actorId: userId,
-      })),
-    );
-  }
+  const notifyProfileChanged = (userId: string) => publishProfileChanged(app, [userId]);
+
+  // ─── status ──────────────────────────────────────────────────────────
+
+  /**
+   * Sets your status (seen by everyone in your workspaces) and, with `pause`, holds back pings
+   * until it clears. A pause set this way ends with the status.
+   */
+  app.put('/me/status', async (req) => {
+    const user = requireUser(req);
+    const input = parse(setStatusSchema, req.body);
+    if (!input.kind && !input.emoji && !input.text)
+      throw badRequest('Choose a status, or write one');
+    if (input.until && Date.parse(input.until) <= Date.now())
+      throw badRequest('The status would already be over');
+    await db
+      .update(users)
+      .set({
+        statusKind: input.kind,
+        statusEmoji: input.emoji ?? null,
+        statusText: input.text || null,
+        statusUntil: input.until,
+        ...(input.pause !== undefined
+          ? { notifyPause: input.pause, notifyPauseUntil: input.pause ? input.until : null }
+          : {}),
+      })
+      .where(eq(users.id, user.id));
+    await notifyProfileChanged(user.id);
+    return { ok: true };
+  });
+
+  /** Clears your status, and the pause that came with it (one that ends at the same time). */
+  app.delete('/me/status', async (req) => {
+    const user = requireUser(req);
+    const [row] = await db
+      .select({ statusUntil: users.statusUntil, notifyPauseUntil: users.notifyPauseUntil })
+      .from(users)
+      .where(eq(users.id, user.id));
+    const pauseCameWithIt = !!row && row.statusUntil === row.notifyPauseUntil;
+    await db
+      .update(users)
+      .set({
+        statusKind: null,
+        statusEmoji: null,
+        statusText: null,
+        statusUntil: null,
+        ...(pauseCameWithIt ? { notifyPause: null, notifyPauseUntil: null } : {}),
+      })
+      .where(eq(users.id, user.id));
+    await notifyProfileChanged(user.id);
+    return { ok: true };
+  });
+
+  /** Holds back push, email and chat pings (they still reach the inbox), or with `mode: null` resumes them. */
+  app.put('/me/notify-pause', async (req) => {
+    const user = requireUser(req);
+    const { mode, until } = parse(notifyPauseSchema, req.body);
+    if (mode && until && Date.parse(until) <= Date.now())
+      throw badRequest('The pause would already be over');
+    await db
+      .update(users)
+      .set({ notifyPause: mode, notifyPauseUntil: mode ? until : null })
+      .where(eq(users.id, user.id));
+    await notifyProfileChanged(user.id);
+    return { ok: true };
+  });
 
   // ─── email ───────────────────────────────────────────────────────────
 
