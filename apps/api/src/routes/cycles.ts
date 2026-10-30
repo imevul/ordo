@@ -8,6 +8,7 @@ import { mutate } from '../lib/mutate.ts';
 import { canReadTeam } from '../services/access.ts';
 import { type Ctx, emit, record } from '../services/context.ts';
 import { assertCanPlan, createCycle, listCycles } from '../services/cycles.ts';
+import { bulkUpdateIssues } from '../services/issues.ts';
 import { toCycle } from '../services/serialize.ts';
 
 export async function cycleRoutes(app: FastifyInstance) {
@@ -49,10 +50,18 @@ export async function cycleRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     return mutate(app, req, async (ctx) => {
       const cycle = await loadCycle(ctx, id);
-      await ctx.tx.update(issues).set({ cycleId: null }).where(eq(issues.cycleId, id));
+      const inCycle = await ctx.tx
+        .select({ id: issues.id })
+        .from(issues)
+        .where(eq(issues.cycleId, id));
+      await bulkUpdateIssues(
+        ctx,
+        cycle.teamId,
+        inCycle.map((r) => r.id),
+        { cycleId: null },
+      );
       await ctx.tx.delete(cycles).where(eq(cycles.id, id));
       emit(ctx, { kind: 'cycle', action: 'deleted', id, teamId: cycle.teamId });
-      emit(ctx, { kind: 'issue', action: 'updated', id, teamId: cycle.teamId });
       record(ctx, 'cycle.deleted', toCycle(cycle), { teamIds: [cycle.teamId] });
       return { ok: true };
     });

@@ -1,11 +1,19 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: runner files spell variables as ${VAR}
-import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { type Io, run } from '@ordo/cli';
-import { expandVars, loadRunnerFile, parseDotenv } from '@ordo/cli/agent';
-import type { AgentRun, AgentRunContext, Comment } from '@ordo/shared';
+import { expandVars, launch, loadRunnerFile, parseDotenv, pruneWorktrees } from '@ordo/cli/agent';
+import { Ordo } from '@ordo/sdk';
+import type { AgentRun, AgentRunContext, Bootstrap, Comment } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Client, signup, testApp } from './helpers.ts';
@@ -15,6 +23,7 @@ let owner: Client;
 let url: string;
 let dir: string;
 let eng: string;
+let team: Bootstrap['teams'][number];
 const keys: Record<string, string> = {};
 const agents: Record<string, string> = {};
 const slug = 'runner';
@@ -71,7 +80,8 @@ beforeAll(async () => {
 
   owner = (await signup(app, 'Rita Runner')).client;
   await owner.post('/api/workspaces', { name: 'Runner', slug, teamName: 'Eng', teamKey: 'ENG' });
-  eng = (await owner.get(`${ws}/bootstrap`)).data.teams[0].id;
+  team = (await owner.get(`${ws}/bootstrap`)).data.teams[0];
+  eng = team.id;
   const repo = (await owner.post(`${ws}/repositories`, { name: 'app', url: bare })).data;
   await owner.patch(`${ws}/teams/${eng}`, { defaultRepositoryId: repo.id });
   for (const name of ['Claude', 'Docs']) {
@@ -183,6 +193,44 @@ describe('runner files', () => {
 });
 
 describe('ordo agent', () => {
+  it('waits for Ordo to come back when it starts during a deploy', async () => {
+    let calls = 0;
+    // Two 503s, as a restarting server or proxy answers, then the real thing.
+    const flaky: typeof fetch = (input, init) =>
+      ++calls <= 2
+        ? Promise.resolve(new Response('Service Unavailable', { status: 503 }))
+        : fetch(input, init);
+    const file = write(
+      'flaky.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Claude}\ncheckout: false\ncommand: 'true'\n`,
+    );
+    let stderr = '';
+    let stdout = '';
+    const io: Io = {
+      env: { XDG_CONFIG_HOME: join(dir, 'config'), HOME: dir },
+      stdout: (t) => {
+        stdout += t;
+      },
+      stderr: (t) => {
+        stderr += t;
+      },
+      readStdin: async () => '',
+      prompt: async () => '',
+      openUrl: () => {},
+      color: false,
+      width: 120,
+      fetch: flaky,
+    };
+    expect(await run(['agent', 'run', '--file', file, '--once'], io)).toBe(0);
+    expect(stderr).toMatch(/trying again in 1s[\s\S]*trying again in 2s/);
+    expect(stdout).toContain('Runner Claude');
+    // `check` says what's wrong right away instead.
+    calls = 0;
+    stderr = '';
+    expect(await run(['agent', 'check', '--file', file], io)).not.toBe(0);
+    expect(stderr).not.toContain('trying again');
+  });
+
   it('checks a runner file against Ordo, and runs a subset with --only', async () => {
     write('.env', `CLAUDE_KEY=${keys.Claude}\nDOCS_KEY=${keys.Docs}\n`);
     const file = write(
@@ -271,18 +319,57 @@ describe('ordo agent', () => {
       headers: { Authorization: `Bearer ${keys.Claude}` },
     });
     const branch = ctx.repositories[0]!.suggestedBranch;
-    expect(branch).toMatch(/^runner-claude\/eng-\d+-add-a-greeting$/);
+    // One branch per issue, whichever agent works on it.
+    expect(branch).toMatch(/^eng-\d+-add-a-greeting$/);
     expect(readFileSync(join(dir, 'env-copy.txt'), 'utf8').trim()).toBe(
       `${issue.identifier} ${slug} ${branch}`,
     );
     // The work stays in the worktree, on the run's branch.
-    const tree = join(
-      dir,
-      'repos',
-      `app-${ctx.repositories[0]!.id.slice(0, 8)}.worktrees`,
-      branch.replace('/', '_'),
-    );
+    const tree = join(dir, 'repos', `app-${ctx.repositories[0]!.id.slice(0, 8)}.worktrees`, branch);
     expect(existsSync(join(tree, 'greeting.txt'))).toBe(true);
+
+    // Handed on to another agent, the work continues in the same worktree.
+    await owner.patch(`${ws}/issues/${issue.id}`, { assigneeId: agents.Docs });
+    const docs = write(
+      'docs-continue.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Docs}\ncommand: 'test -f greeting.txt && echo "found it on $(git rev-parse --abbrev-ref HEAD)"'\nrepos: ./repos\n`,
+    );
+    expect((await ordo(['agent', 'run', '--file', docs, '--once'])).code).toBe(0);
+    const [latest] = (await runsOf(issue.id)).filter((r) => r.agentId === agents.Docs);
+    expect(latest).toMatchObject({ status: 'succeeded', summary: `found it on ${branch}` });
+
+    // Done issues lose their worktree; open ones keep it.
+    const open = await assign('Still open');
+    expect((await ordo(['agent', 'run', '--file', file, '--once'])).code).toBe(0);
+    const openTree = join(dirname(tree), `${open.identifier.toLowerCase()}-still-open`);
+    expect(existsSync(openTree)).toBe(true);
+    const done = team.states.find((s) => s.type === 'completed')!.id;
+    await owner.patch(`${ws}/issues/${issue.id}`, { stateId: done });
+    const lines: string[] = [];
+    const client = new Ordo({ url, token: keys.Claude }).workspace(slug);
+    // Agents of one runner sweep the same directory: once is enough, without errors.
+    const [first, second] = await Promise.all([
+      pruneWorktrees(client, join(dir, 'repos'), (l) => lines.push(l)),
+      pruneWorktrees(client, join(dir, 'repos'), (l) => lines.push(l)),
+    ]);
+    expect([first, second]).toEqual([1, 1]);
+    expect(lines).toHaveLength(1);
+    expect(existsSync(tree)).toBe(false);
+    expect(existsSync(openTree)).toBe(true);
+    expect(lines[0]).toContain(`removed the worktree of ${issue.identifier} (done)`);
+  });
+
+  it('carries on with a branch named the old way, per agent', async () => {
+    const issue = await assign('Legacy work');
+    const clone = readdirSync(join(dir, 'repos')).find((d) => !d.endsWith('.worktrees'))!;
+    const legacy = `runner-claude/${issue.identifier.toLowerCase()}-legacy-work`;
+    git(join(dir, 'repos', clone), 'branch', legacy, 'origin/main');
+    const file = write(
+      'legacy.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Claude}\ncommand: 'git rev-parse --abbrev-ref HEAD'\nrepos: ./repos\n`,
+    );
+    expect((await ordo(['agent', 'run', '--file', file, '--once'])).code).toBe(0);
+    expect((await runsOf(issue.id))[0]).toMatchObject({ status: 'succeeded', summary: legacy });
   });
 
   it('reports a failing command with the end of its stderr', async () => {
@@ -438,4 +525,157 @@ describe('ordo agent', () => {
     );
     expect(res.stdout).not.toContain(`${issue.identifier} succeeded`);
   });
+});
+
+describe('stopping a run', () => {
+  const context = {
+    prompt: 'Do it',
+    run: { id: 'run-1', question: null, resume: null },
+    issue: { identifier: 'ENG-1', url: 'https://ordo.example.com/x/issue/ENG-1' },
+  } as unknown as AgentRunContext;
+  const spec = (command: string, timeoutMs = 0) => ({
+    command,
+    env: {},
+    timeoutMs,
+    url: 'http://127.0.0.1:9',
+    workspace: 'x',
+    key: 'k',
+    baseDir: dir,
+  });
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      // A reaped-soon zombie still answers signal 0.
+      return !/^Z/.test(
+        execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim(),
+      );
+    } catch {
+      return false;
+    }
+  };
+  const until = async (ok: () => boolean, ms = 5000) => {
+    for (const end = Date.now() + ms; !ok(); ) {
+      if (Date.now() > end) throw new Error('timed out waiting');
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  };
+  const pidIn = (file: string) => Number(readFileSync(join(dir, file), 'utf8'));
+
+  it('stops what the command started when the run is cancelled', async () => {
+    let cancel = () => {};
+    const cancelled = new Promise<void>((r) => {
+      cancel = r;
+    });
+    let leader = 0;
+    const result = launch(
+      spec('sleep 300 & echo $! > "$ORDO_RUNNER_DIR/gc-cancel.pid"; wait'),
+      context,
+      {
+        workdir: null,
+        repoPaths: [],
+        cancelled,
+        onStart: (pid) => {
+          leader = pid!;
+        },
+      },
+    );
+    await until(() => existsSync(join(dir, 'gc-cancel.pid')) && pidIn('gc-cancel.pid') > 0);
+    const grandchild = pidIn('gc-cancel.pid');
+    expect(alive(grandchild)).toBe(true);
+    // Its own process group, so the terminal's Ctrl-C doesn't reach it.
+    const pgid = (pid: number) =>
+      execFileSync('ps', ['-o', 'pgid=', '-p', String(pid)], { encoding: 'utf8' }).trim();
+    expect(pgid(grandchild)).toBe(String(leader));
+    expect(pgid(grandchild)).not.toBe(pgid(process.pid));
+    cancel();
+    expect((await result).status).toBe('cancelled');
+    await until(() => !alive(grandchild));
+  });
+
+  it('kills what ignores SIGTERM after the grace period on a timeout', async () => {
+    const result = launch(
+      spec(
+        '(trap "" TERM; exec sleep 300) & echo $! > "$ORDO_RUNNER_DIR/gc-timeout.pid"; wait',
+        500,
+      ),
+      context,
+      { workdir: null, repoPaths: [], graceMs: 300 },
+    );
+    await until(() => existsSync(join(dir, 'gc-timeout.pid')) && pidIn('gc-timeout.pid') > 0);
+    const grandchild = pidIn('gc-timeout.pid');
+    const res = await result;
+    expect(res.status).toBe('failed');
+    expect(res.error).toMatch(/^Timed out/);
+    await until(() => !alive(grandchild));
+  });
+
+  it('lets running commands finish on Ctrl-C, and stops them on the second', async () => {
+    const cli = join(import.meta.dirname, '../../../packages/cli');
+    const start = (command: string) => {
+      const proc = spawn(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          'src/bin.ts',
+          'agent',
+          'run',
+          '-w',
+          slug,
+          '--url',
+          url,
+          '--repos',
+          join(dir, 'repos'),
+          '--',
+          'sh',
+          '-c',
+          command,
+        ],
+        {
+          cwd: cli,
+          // Like a shell's foreground job: Ctrl-C goes to the whole group.
+          detached: true,
+          env: {
+            ...process.env,
+            HOME: dir,
+            XDG_CONFIG_HOME: join(dir, 'config'),
+            ORDO_AGENT_KEY: keys.Claude,
+          },
+        },
+      );
+      let out = '';
+      proc.stdout.on('data', (b) => {
+        out += b;
+      });
+      proc.stderr.on('data', (b) => {
+        out += b;
+      });
+      const exited = new Promise<number | null>((r) => proc.on('close', r));
+      return { ctrlC: () => process.kill(-proc.pid!, 'SIGINT'), out: () => out, exited };
+    };
+
+    const issue = await assign('Finish after Ctrl-C');
+    const r = start('sleep 1; echo "Finished anyway" > "$ORDO_SUMMARY_FILE"');
+    await until(() => r.out().includes(`${issue.identifier} running`), 15_000);
+    r.ctrlC();
+    expect(await r.exited).toBe(0);
+    expect(r.out()).toContain('Not taking new runs');
+    expect(r.out()).toContain(`${issue.identifier} succeeded`);
+    expect((await runsOf(issue.id))[0]).toMatchObject({
+      status: 'succeeded',
+      summary: 'Finished anyway',
+    });
+
+    const forced = await assign('Forced by a second Ctrl-C');
+    const f = start(`sleep 300 & echo $! > "${join(dir, 'forced.pid')}"; wait`);
+    await until(() => existsSync(join(dir, 'forced.pid')) && pidIn('forced.pid') > 0, 15_000);
+    const grandchild = pidIn('forced.pid');
+    f.ctrlC();
+    await until(() => f.out().includes('Not taking new runs'));
+    expect(alive(grandchild)).toBe(true);
+    f.ctrlC();
+    expect(await f.exited).toBe(130);
+    await until(() => !alive(grandchild));
+    await owner.patch(`${ws}/issues/${forced.id}`, { assigneeId: null });
+  }, 30_000);
 });

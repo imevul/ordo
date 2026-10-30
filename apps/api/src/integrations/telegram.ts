@@ -1,20 +1,19 @@
-import { randomBytes } from 'node:crypto';
+import { type TelegramConfig, telegramSettingsSchema } from '@ordo/shared';
 import { escapeHtml as html } from '../lib/html.ts';
 import {
   type ChatIncoming,
   chatFeed,
-  parseChannels,
   runChatCommand,
   syncThreadReply,
   unfurl,
 } from '../services/chat.ts';
 import { sleep } from '../services/connectors.ts';
-import { callApi, safeEqual } from './http.ts';
-import type {
-  ChatMessage,
-  IntegrationContext,
-  IntegrationProvider,
-  IntegrationRow,
+import { callApi, safeEqual, withWebhookSecret } from './http.ts';
+import {
+  type ChatMessage,
+  configOf,
+  type IntegrationContext,
+  type IntegrationProvider,
 } from './types.ts';
 
 /**
@@ -24,11 +23,7 @@ import type {
  * groups needs privacy mode off.
  */
 
-interface TelegramConfig {
-  delivery: 'webhook' | 'longpoll';
-}
-
-const cfg = (row: IntegrationRow) => row.config as unknown as TelegramConfig;
+const cfg = configOf<TelegramConfig>();
 // Overridable for tests (a mock Telegram) and nothing else.
 const apiUrl = () => process.env.ORDO_TELEGRAM_API_URL ?? 'https://api.telegram.org';
 
@@ -152,20 +147,8 @@ export const telegramProvider: IntegrationProvider = {
     'Post issue activity to groups, message people their notifications and create issues from messages.',
   category: 'chat',
 
-  configure({ config, secrets }) {
-    if (!/^\d+:[\w-]{20,}$/.test(String(secrets.botToken ?? '')))
-      throw new Error('The bot token looks like 123456:ABC… (from @BotFather)');
-    return {
-      config: {
-        delivery: config.delivery === 'longpoll' ? 'longpoll' : 'webhook',
-        channels: parseChannels(config.channels),
-      },
-      secrets: {
-        botToken: String(secrets.botToken),
-        webhookSecret: String(secrets.webhookSecret || randomBytes(24).toString('hex')),
-      },
-    };
-  },
+  settings: telegramSettingsSchema,
+  configure: (settings) => withWebhookSecret(settings, 'hex'),
 
   async install(ictx) {
     const me = await tg<{ id: number; username: string }>(ictx, 'getMe');

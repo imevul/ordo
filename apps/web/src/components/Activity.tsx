@@ -251,6 +251,7 @@ function CommentItem({
               color={author.avatarColor}
               src={author.avatarUrl}
               size={18}
+              status={author.status}
             />
           )}
           <ActorName

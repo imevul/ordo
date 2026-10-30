@@ -1,28 +1,29 @@
 import { randomUUID } from 'node:crypto';
+import { type MatrixConfig, matrixSettingsSchema } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import { matrixCryptoStores } from '../db/schema.ts';
 import { escapeHtml as html } from '../lib/html.ts';
 import {
   type ChatIncoming,
   chatFeed,
-  parseChannels,
   runChatCommand,
   syncThreadReply,
   unfurl,
 } from '../services/chat.ts';
 import { sleep } from '../services/connectors.ts';
-import { ApiCallError, callApi, trimUrl } from './http.ts';
+import { ApiCallError, callApi } from './http.ts';
 import {
   type CryptoSync,
   forgetMatrixCrypto,
   type MatrixEventJson,
   withMatrixCrypto,
 } from './matrix-crypto.ts';
-import type {
-  ChatMessage,
-  IntegrationContext,
-  IntegrationProvider,
-  IntegrationRow,
+import {
+  type ChatMessage,
+  configOf,
+  type IntegrationContext,
+  type IntegrationProvider,
+  type IntegrationRow,
 } from './types.ts';
 
 /**
@@ -33,12 +34,7 @@ import type {
  * encrypted as they're sent.
  */
 
-interface MatrixConfig {
-  homeserverUrl: string;
-  encryption?: boolean;
-}
-
-const cfg = (row: IntegrationRow) => row.config as unknown as MatrixConfig;
+const cfg = configOf<MatrixConfig>();
 
 const api = <T>(
   ictx: IntegrationContext,
@@ -264,20 +260,7 @@ export const matrixProvider: IntegrationProvider = {
     'Post issue activity to rooms, message people their notifications and create issues from messages.',
   category: 'chat',
 
-  configure({ config, secrets }) {
-    let homeserverUrl: string;
-    const encryption = config.encryption === true;
-    try {
-      homeserverUrl = trimUrl(new URL(String(config.homeserverUrl ?? '')).toString());
-    } catch {
-      throw new Error('The homeserver URL is not valid, e.g. https://matrix.example.org');
-    }
-    if (!secrets.accessToken) throw new Error("The bot account's access token is required");
-    return {
-      config: { homeserverUrl, encryption, channels: parseChannels(config.channels) },
-      secrets: { accessToken: String(secrets.accessToken) },
-    };
-  },
+  settings: matrixSettingsSchema,
 
   async install(ictx) {
     const { user_id, device_id } = await api<{ user_id: string; device_id?: string }>(

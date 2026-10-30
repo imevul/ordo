@@ -12,7 +12,7 @@ import {
   workspaces,
 } from '../db/schema.ts';
 import { createSession } from '../lib/auth.ts';
-import { badRequest } from '../lib/errors.ts';
+import { badRequest, one } from '../lib/errors.ts';
 import { escapeHtml as esc } from '../lib/html.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from './audit.ts';
@@ -165,18 +165,23 @@ export async function resolveSsoUser(
       const [existing] = await tx.select().from(users).where(eq(users.email, email!));
       if (existing) userId = existing.id;
       else {
-        const [created] = await tx
-          .insert(users)
-          .values({
-            email: email!,
-            name: claims.name || claims.preferred_username || email!.split('@')[0]!,
-            username: await uniqueUsername(tx, claims.preferred_username || email!.split('@')[0]!),
-            passwordHash: null,
-            emailVerifiedAt: now,
-            avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
-          })
-          .returning({ id: users.id });
-        userId = created!.id;
+        const created = one(
+          await tx
+            .insert(users)
+            .values({
+              email: email!,
+              name: claims.name || claims.preferred_username || email!.split('@')[0]!,
+              username: await uniqueUsername(
+                tx,
+                claims.preferred_username || email!.split('@')[0]!,
+              ),
+              passwordHash: null,
+              emailVerifiedAt: now,
+              avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
+            })
+            .returning({ id: users.id }),
+        );
+        userId = created.id;
         await audit(
           tx,
           { action: 'auth.signup', actorId: userId, data: { via: 'sso', provider: provider.name } },

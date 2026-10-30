@@ -186,7 +186,8 @@ describe('repositories', () => {
       expect.objectContaining({
         name: 'web',
         defaultBranch: 'trunk',
-        suggestedBranch: expect.stringMatching(/^claude[\w-]*\/eng-\d+-make-the-site-faster$/),
+        // One branch per issue, not per agent.
+        suggestedBranch: expect.stringMatching(/^eng-\d+-make-the-site-faster$/),
       }),
     ]);
     expect(run.data.project).toMatchObject({ name: 'Site' });
@@ -664,5 +665,22 @@ describe('the workspace run list', () => {
     const memberActive = await list(member, '?status=active&limit=500');
     expect(await activeCount(owner)).toBe(ownerActive.length);
     expect(await activeCount(member)).toBe(memberActive.length);
+  });
+});
+
+describe('pausing', () => {
+  it('starts no new runs while the workspace is paused, and picks up again after', async () => {
+    const patient = (await owner.post(`${ws}/agents`, { name: 'Patient', teamIds: [eng] })).data.id;
+    const token = (await owner.post(`${ws}/agents/${patient}/keys`, { name: 'k' })).data.token;
+    const take = () => bearer(token, 'POST', `${ws}/agent/claim`);
+    const paused = await issue('Wait for me', { assigneeId: patient });
+    expect((await member.patch(ws, { settings: { agentRunsPaused: true } })).statusCode).toBe(403);
+    expect((await owner.patch(ws, { settings: { agentRunsPaused: true } })).statusCode).toBe(200);
+    expect((await take()).statusCode).toBe(204);
+    expect((await runsOf(paused.id))[0]!.status).toBe('queued');
+    await owner.patch(ws, { settings: { agentRunsPaused: false } });
+    const res = await take();
+    expect(res.statusCode).toBe(200);
+    expect(res.data.issue.id).toBe(paused.id);
   });
 });

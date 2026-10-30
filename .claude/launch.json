@@ -29,6 +29,16 @@
         "ORDO_PREVIEW_API_PORT=3197 ORDO_PREVIEW_WEB_PORT=5197 pnpm dev:preview --ttl 40m"
       ],
       "port": 5197
+    },
+    {
+      "name": "preview-2",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "ORDO_PREVIEW_API_PORT=3196 ORDO_PREVIEW_WEB_PORT=5196 pnpm dev:preview --ttl 30m"
+      ],
+      "port": 5196,
+      "autoPort": false
     }
   ]
 }
