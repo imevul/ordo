@@ -9,11 +9,13 @@ import {
   instanceSettings,
   integrationApps,
   integrations,
+  invites,
   matrixCryptoStores,
   users,
   webhooks,
   workspaceAiProviders,
 } from '../db/schema.ts';
+import { inviteTokenAad } from '../lib/invites.ts';
 import type { Keyring } from '../lib/secrets.ts';
 import type { Settings } from './settings.ts';
 
@@ -66,6 +68,7 @@ export const ENCRYPTED_COLUMNS: {
     aad: (id) => `workspace_ai_providers:${id}:apiKey`,
   },
   { table: imports, id: imports.id, column: imports.secrets, aad: (id) => `imports:${id}:secrets` },
+  { table: invites, id: invites.id, column: invites.tokenEncrypted, aad: inviteTokenAad },
   {
     table: instanceKeys,
     id: instanceKeys.key,

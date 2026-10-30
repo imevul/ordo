@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { SiteInvite } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -12,7 +13,7 @@ import {
   ENCRYPTED_SETTINGS,
   rotateSecrets,
 } from '../src/services/secretKey.ts';
-import { type Client, freshDatabase, signup, testApp } from './helpers.ts';
+import { Client, freshDatabase, signup, testApp } from './helpers.ts';
 
 const KEY_A = randomBytes(32);
 const KEY_B = randomBytes(32);
@@ -129,7 +130,8 @@ describe('rotate-key', () => {
   it('re-encrypts every stored secret with the new key', async () => {
     const url = await freshDatabase('secret_rotate');
     const a = await open(url, KEY_A);
-    const res = await (await admin(a)).patch('/api/admin/settings', {
+    const rootA = await admin(a);
+    const res = await rootA.patch('/api/admin/settings', {
       smtp: { url: 'smtps://mailer:s3cret@smtp.example.com:465', from: 'Ordo <ordo@example.com>' },
       ai: {
         provider: 'openai',
@@ -147,16 +149,27 @@ describe('rotate-key', () => {
     await a.db
       .insert(instanceKeys)
       .values({ key: 'test', value: a.keyring.encrypt('{"k":1}', 'instance_keys:test:value') });
+    const invite = ((await rootA.post('/api/admin/invites', {})).data as SiteInvite[])[0]!;
+    expect(invite.token).toBeTruthy();
 
     // The new key is current, the old one still decrypts.
     const b = await open(url, KEY_B);
+    const rootB = await admin(b);
+    const listedLink = async () =>
+      ((await rootB.get('/api/admin/invites')).data as SiteInvite[]).find(
+        (i) => i.id === invite.id,
+      )!.token;
     const both = new Keyring(KEY_B, KEY_A);
     const onlyB = new Keyring(KEY_B);
     expect(await countUnreadableSecrets(b.db, both)).toBe(0);
-    expect(await countUnreadableSecrets(b.db, onlyB)).toBe(4);
+    expect(await countUnreadableSecrets(b.db, onlyB)).toBe(5);
+    expect(await listedLink()).toBeNull();
 
-    expect(await rotateSecrets(b.db, b.settings, both)).toEqual({ rotated: 4, failed: [] });
+    expect(await rotateSecrets(b.db, b.settings, both)).toEqual({ rotated: 5, failed: [] });
     expect(await countUnreadableSecrets(b.db, onlyB)).toBe(0);
+    // The invite link is readable under the new key alone, and is the same link.
+    expect(await listedLink()).toBe(invite.token);
+    expect((await new Client(b).get(`/api/invites/${invite.token}`)).statusCode).toBe(200);
     const [user] = await b.db.select().from(users).where(eq(users.id, id));
     expect(onlyB.decrypt(user!.totpSecret!, `users:${id}:totp_secret`)).toBe('JBSWY3DPEHPK3PXP');
     const [key] = await b.db.select().from(instanceKeys).where(eq(instanceKeys.key, 'test'));
