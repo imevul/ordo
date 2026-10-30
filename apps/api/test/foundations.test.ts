@@ -5,6 +5,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { auditLog, issues, users } from '../src/db/schema.ts';
 import { hashPassword } from '../src/lib/crypto.ts';
+import { HttpError, one } from '../src/lib/errors.ts';
 import { bypassesProxy, proxyFor } from '../src/lib/proxy.ts';
 import { BlockedTargetError, isPrivateAddress, safeFetch } from '../src/lib/safeFetch.ts';
 import { Keyring, SecretKeyMissingError } from '../src/lib/secrets.ts';
@@ -33,6 +34,36 @@ describe('keyring', () => {
 
   it('refuses to encrypt without a key', () => {
     expect(() => new Keyring(null).encrypt('x', 'y')).toThrow(SecretKeyMissingError);
+  });
+});
+
+describe('one', () => {
+  it('returns the first row', () => {
+    const row = { id: 'a' };
+    expect(one([row, { id: 'b' }])).toBe(row);
+    expect(one([row], 'Team')).toBe(row);
+  });
+
+  it('is a 404 for what was asked for, and a plain error (a bug, so a 500) otherwise', () => {
+    const thrown = (fn: () => unknown) => {
+      try {
+        fn();
+      } catch (err) {
+        return err;
+      }
+      throw new Error('did not throw');
+    };
+    const missing = thrown(() => one([], 'Team'));
+    expect(missing).toBeInstanceOf(HttpError);
+    expect(missing).toMatchObject({
+      statusCode: 404,
+      code: 'not_found',
+      message: 'Team not found',
+    });
+
+    const bug = thrown(() => one([]));
+    expect(bug).not.toBeInstanceOf(HttpError);
+    expect(bug).toMatchObject({ message: 'Expected a row, got none' });
   });
 });
 

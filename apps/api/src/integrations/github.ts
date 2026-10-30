@@ -1,5 +1,11 @@
-import { createPrivateKey, randomBytes } from 'node:crypto';
-import type { PullRequestReview } from '@ordo/shared';
+import { createPrivateKey } from 'node:crypto';
+import {
+  GITHUB_API_URL,
+  GITHUB_WEB_URL,
+  type GithubConfig,
+  githubSettingsSchema,
+  type PullRequestReview,
+} from '@ordo/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { SignJWT } from 'jose';
@@ -19,12 +25,13 @@ import {
   summarizeChecks,
 } from '../services/forge.ts';
 import { readAppSecrets } from '../services/integrations.ts';
-import { callApi, hmacHex, repoList, safeEqual, trimUrl } from './http.ts';
-import type {
-  InboundRequest,
-  IntegrationContext,
-  IntegrationProvider,
-  IntegrationRow,
+import { callApi, hmacHex, safeEqual, withWebhookSecret } from './http.ts';
+import {
+  configOf,
+  type InboundRequest,
+  type IntegrationContext,
+  type IntegrationProvider,
+  type IntegrationRow,
 } from './types.ts';
 
 /**
@@ -36,19 +43,10 @@ import type {
  *   creates on each repository, or polling when GitHub can't reach this instance.
  */
 
-interface GithubConfig {
-  mode: 'app' | 'token';
-  apiUrl: string;
-  webUrl: string;
-  repos: string[];
-  delivery: 'webhook' | 'poll';
-  commentOnPullRequests: boolean;
-}
+const DEFAULT_API = GITHUB_API_URL;
+const DEFAULT_WEB = GITHUB_WEB_URL;
 
-const DEFAULT_API = 'https://api.github.com';
-const DEFAULT_WEB = 'https://github.com';
-
-const cfg = (row: IntegrationRow) => row.config as unknown as GithubConfig;
+const cfg = configOf<GithubConfig>();
 export const githubHost = (row: IntegrationRow) => new URL(cfg(row).webUrl || DEFAULT_WEB).host;
 
 // Installation tokens live an hour; reuse them until five minutes before that.
@@ -278,34 +276,9 @@ export const github: IntegrationProvider = {
     );
   },
 
-  configure({ config, secrets }) {
-    if (config.mode === 'app') {
-      // Installed through the GitHub App: only the preferences are editable.
-      return {
-        config: { ...config, commentOnPullRequests: config.commentOnPullRequests === true },
-        secrets: secrets as Record<string, string>,
-      };
-    }
-    const repos = repoList(config.repos);
-    if (!secrets.token) throw new Error('A personal access token is required');
-    if (!repos.length) throw new Error('List at least one repository (owner/name)');
-    const bad = repos.find((r) => !/^[\w.-]+\/[\w.-]+$/.test(r));
-    if (bad) throw new Error(`"${bad}" isn't a repository name (owner/name)`);
-    return {
-      config: {
-        mode: 'token',
-        apiUrl: trimUrl(String(config.apiUrl || DEFAULT_API)),
-        webUrl: trimUrl(String(config.webUrl || DEFAULT_WEB)),
-        repos,
-        delivery: config.delivery === 'poll' ? 'poll' : 'webhook',
-        commentOnPullRequests: config.commentOnPullRequests === true,
-      },
-      secrets: {
-        token: String(secrets.token),
-        webhookSecret: String(secrets.webhookSecret || randomBytes(24).toString('base64url')),
-      },
-    };
-  },
+  settings: githubSettingsSchema,
+  configure: ({ config, secrets }) =>
+    config.mode === 'app' ? { config, secrets } : withWebhookSecret({ config, secrets }),
 
   /** Also called after settings change: creates missing repository hooks, removes stale ones. */
   async install(ictx) {

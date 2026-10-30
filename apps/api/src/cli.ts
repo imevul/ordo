@@ -4,7 +4,7 @@
  *   node cli.mjs promote-admin <email>     make someone an instance admin
  *   node cli.mjs reset-password <email>    print a one-hour password reset link
  *   node cli.mjs disable-2fa <email>       turn off two-factor authentication for someone
- *   node cli.mjs rotate-key                re-encrypt stored secrets with the current ORDO_SECRET_KEY
+ *   node cli.mjs rotate-key                re-encrypt 2FA secrets and SMTP with the current ORDO_SECRET_KEY
  *
  * In Docker: `make admin EMAIL=…`, `make reset-password EMAIL=…`, or
  * `docker compose exec app node cli.mjs <command>`.
@@ -108,7 +108,7 @@ async function main() {
         n++;
       }
       console.log(
-        `Re-encrypted ${n} secret(s). You can remove ORDO_SECRET_KEY_PREVIOUS once every instance runs with the new key.`,
+        `Re-encrypted ${n} secret(s) (two-factor secrets and SMTP). Keep ORDO_SECRET_KEY_PREVIOUS set: other stored secrets move to the new key only when they're saved again.`,
       );
       break;
     }

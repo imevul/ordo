@@ -348,22 +348,29 @@
     {
       "idx": 49,
       "version": "7",
-      "when": 1793371842787,
-      "tag": "0049_invite_token_hash",
+      "when": 1793374658692,
+      "tag": "0049_user-status",
       "breakpoints": true
     },
     {
       "idx": 50,
       "version": "7",
-      "when": 1793371843644,
-      "tag": "0050_hash_invite_tokens",
+      "when": 1793386970467,
+      "tag": "0050_invite_token_hash",
       "breakpoints": true
     },
     {
       "idx": 51,
       "version": "7",
-      "when": 1793371856733,
-      "tag": "0051_drop_invite_token",
+      "when": 1793386978933,
+      "tag": "0051_hash_invite_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1793386995114,
+      "tag": "0052_drop_invite_token",
       "breakpoints": true
     }
   ]
