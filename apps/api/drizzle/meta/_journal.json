@@ -330,6 +330,13 @@
       "when": 1793317991742,
       "tag": "0046_site_invites",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1793362591337,
+      "tag": "0047_totp_last_step",
+      "breakpoints": true
     }
   ]
 }

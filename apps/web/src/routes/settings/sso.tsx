@@ -971,13 +971,24 @@ export function ConnectedAccountsCard() {
       {linkable.length > 0 && (
         <div className="mt-4 flex flex-wrap gap-2">
           {linkable.map((o) => (
-            <a
+            <button
+              type="button"
               key={o.providerId}
               className="btn btn-ghost btn-sm"
-              href={ssoStartUrl(o.providerId, { mode: 'link', redirect: here() })}
+              onClick={async () => {
+                try {
+                  const { url } = await api.post<{ url: string }>(
+                    `/auth/sso/${encodeURIComponent(o.providerId)}/link`,
+                    { redirect: here() },
+                  );
+                  window.location.assign(url);
+                } catch (err) {
+                  toast.error(errMsg(err));
+                }
+              }}
             >
               <Link2 size={12} /> {t('sso.connected.connect', { name: o.name })}
-            </a>
+            </button>
           ))}
         </div>
       )}

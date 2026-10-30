@@ -9,6 +9,7 @@ export default {
     no_access: 'Du har inte åtkomst till det här',
     not_found: 'Det finns inte, eller så kan du inte se det',
     wrong_credentials: 'Fel e-postadress eller lösenord',
+    too_many_attempts: 'För många misslyckade inloggningsförsök. Försök igen om {minutes} minuter.',
     invalid_code: 'Koden är inte giltig',
     invalid_code_time: 'Koden är inte giltig. Kontrollera tiden på din enhet.',
     sign_in_again: 'Logga in igen',

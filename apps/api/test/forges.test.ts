@@ -462,6 +462,36 @@ describe('GitLab', () => {
     // The author from "open" is kept: a later event's user isn't the author.
     expect(d.links[0]).toMatchObject({ state: 'merged', author: 'gl-user' });
   });
+
+  it('needs the token again when the server address changes', async () => {
+    forge.on('GET', '/api/v4/projects/acme%2Fother', { id: 6 });
+    forge.on('POST', '/api/v4/projects/acme%2Fother/hooks', { id: 66 });
+    const res = await owner.post(`${ws}/integrations`, {
+      provider: 'gitlab',
+      config: { baseUrl: forge.url, projects: 'acme/other' },
+      secrets: { token: 'glpat-kept' },
+    });
+    const id = res.data.id;
+    // Other settings keep the stored token.
+    expect((await owner.patch(`${ws}/integrations/${id}`, { name: 'Renamed' })).statusCode).toBe(
+      200,
+    );
+    expect(
+      (await owner.patch(`${ws}/integrations/${id}`, { config: { projects: 'acme/other' } }))
+        .statusCode,
+    ).toBe(200);
+    // A new address without a new token would send the old one there: refused.
+    const moved = await owner.patch(`${ws}/integrations/${id}`, {
+      config: { baseUrl: forge.url.replace('127.0.0.1', 'localhost') },
+    });
+    expect(moved.statusCode).toBe(400);
+    expect(moved.data.message).toContain('token');
+    const withToken = await owner.patch(`${ws}/integrations/${id}`, {
+      config: { baseUrl: forge.url.replace('127.0.0.1', 'localhost') },
+      secrets: { token: 'glpat-new' },
+    });
+    expect(withToken.statusCode).toBe(200);
+  });
 });
 
 describe('Forgejo', () => {
@@ -623,10 +653,58 @@ describe('GitHub App', () => {
         .location,
     ).toContain('error=');
 
-    const setup = await owner.get(
-      `/api/integrations/github/setup?installation_id=42&setup_action=install&state=${install.searchParams.get('state')}`,
+    expect(parsed.callback_urls).toEqual([
+      `${app.env.publicUrl}/api/integrations/github/authorized`,
+    ]);
+
+    /** GitHub's setup redirect, then the sign-in that proves access, then the way back. */
+    const connect = async (installState: string, installationId: string, visible: number[]) => {
+      const setup = await owner.get(
+        `/api/integrations/github/setup?installation_id=${installationId}&setup_action=install&state=${installState}`,
+      );
+      const authorize = new URL(setup.headers.location as string);
+      expect(authorize.pathname).toBe('/login/oauth/authorize');
+      expect(authorize.searchParams.get('client_id')).toBe('Iv1.x');
+      forge.on('POST', '/login/oauth/access_token', { access_token: 'ghu_user' });
+      forge.on('GET', '/user/installations', {
+        installations: visible.map((id) => ({ id })),
+      });
+      const back = await owner.get(
+        `/api/integrations/github/authorized?code=user-code&state=${authorize.searchParams.get('state')}`,
+      );
+      return decodeURIComponent(String(back.headers.location));
+    };
+    const installState = async (path: string) =>
+      new URL(
+        (await owner.post(`${path}/integrations/github/install`, {})).data.url,
+      ).searchParams.get('state')!;
+
+    // The installation id in the setup redirect is the user's word; GitHub has to confirm it.
+    expect(await connect(install.searchParams.get('state')!, '42', [7])).toContain(
+      "can't access that installation",
     );
-    expect(setup.headers.location).toBe(`/${slug}/settings/integrations`);
+    expect(await connect(await installState(ws), '42', [7, 42])).toBe(
+      `/${slug}/settings/integrations`,
+    );
+    expect(forge.calls('POST', '/login/oauth/access_token').at(-1)!.body).toMatchObject({
+      client_id: 'Iv1.x',
+      client_secret: 'shh',
+      code: 'user-code',
+    });
+    expect(forge.calls('GET', '/user/installations').at(-1)!.headers.authorization).toBe(
+      'Bearer ghu_user',
+    );
+    // Another workspace can't take over an installation that is already connected.
+    const otherSlug = `${slug}-other`;
+    await owner.post('/api/workspaces', {
+      name: 'Other',
+      slug: otherSlug,
+      teamName: 'B',
+      teamKey: 'BBB',
+    });
+    expect(await connect(await installState(`/api/w/${otherSlug}`), '42', [42])).toContain(
+      'already connected to another Ordo workspace',
+    );
     await app.db.update(users).set({ isInstanceAdmin: false }).where(eq(users.id, ownerId));
 
     forge.on('POST', '/app/installations/42/access_tokens', {
@@ -698,6 +776,15 @@ describe('GitHub App', () => {
       integrations: { id: string; config: { mode?: string } }[];
     };
     const installed = list.find((i) => i.config.mode === 'app')!;
+    // An installation talks to the app's server; a workspace can't point it elsewhere.
+    await owner.patch(`${ws}/integrations/${installed.id}`, {
+      config: { apiUrl: 'https://evil.test', commentOnPullRequests: false },
+    });
+    const [kept] = await app.db
+      .select()
+      .from(integrations)
+      .where(eq(integrations.id, installed.id));
+    expect((kept!.config as { apiUrl: string }).apiUrl).toBe(forge.url);
     const repos = await owner.get(`${ws}/integrations/${installed.id}/repositories`);
     expect(repos.data).toMatchObject([{ fullName: 'acme/app', defaultBranch: 'main' }]);
     expect(forge.calls('GET', '/installation/repositories')[0]!.headers.authorization).toBe(

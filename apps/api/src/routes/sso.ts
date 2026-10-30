@@ -1,4 +1,4 @@
-import type { LinkedIdentity, SsoDiscovery } from '@ordo/shared';
+import { type LinkedIdentity, linkIdentitySchema, type SsoDiscovery } from '@ordo/shared';
 import { and, count, eq, isNotNull } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import {
@@ -9,7 +9,7 @@ import {
   workspaces,
 } from '../db/schema.ts';
 import { authInfo, authorizeWorkspace, requireUser } from '../lib/auth.ts';
-import { badRequest, HttpError, notFound } from '../lib/errors.ts';
+import { badRequest, HttpError, notFound, parse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from '../services/audit.ts';
 import { beginLogin, CALLBACK_PATH, completeLogin } from '../services/oidc.ts';
@@ -85,6 +85,9 @@ export async function ssoRoutes(app: FastifyInstance) {
       redirect?: string;
       mode?: 'login' | 'link' | 'test';
     };
+    // Linking attaches whatever identity comes back to the signed-in account, so a plain link
+    // must never start it: anyone could send one that ends at their own identity provider.
+    if (mode === 'link') throw badRequest('Connect accounts from Settings → Connected accounts');
     const [provider] = await db
       .select()
       .from(authProviders)
@@ -95,19 +98,56 @@ export async function ssoRoutes(app: FastifyInstance) {
       return loginError(reply, 'That sign-in method is no longer available. Sign in another way.');
     }
     if (!provider) throw notFound('Sign-in method');
-    if (mode === 'link' || mode === 'test') {
-      const user = requireUser(req);
-      if (mode === 'test') {
-        // Only the workspace's admins test its providers.
-        const ws = await authorizeWorkspace(
-          db,
-          user,
-          { id: provider.workspaceId },
-          { ...authInfo(req), ignoreSso: true },
-        );
-        if (!ws.access.isAdmin) throw notFound('Sign-in method');
-      }
+    if (mode === 'test') {
+      // Only the workspace's admins test its providers.
+      const ws = await authorizeWorkspace(
+        db,
+        requireUser(req),
+        { id: provider.workspaceId },
+        { ...authInfo(req), ignoreSso: true },
+      );
+      if (!ws.access.isAdmin) throw notFound('Sign-in method');
     }
+    const url = await begin(req, reply, provider, mode, redirect);
+    if (!url) return reply;
+    return reply.redirect(url);
+  };
+  app.get('/auth/sso/:providerId/start', start);
+  app.get('/auth/oidc/:providerId/start', start);
+
+  /**
+   * Starts linking a provider to the signed-in account. A JSON POST, so the same-origin checks in
+   * app.ts apply, and only for providers of the user's own workspaces. Answers the URL to go to.
+   */
+  app.post('/auth/sso/:providerId/link', async (req, reply) => {
+    const { providerId } = req.params as { providerId: string };
+    const { redirect } = parse(linkIdentitySchema, req.body);
+    const user = requireUser(req);
+    const [provider] = await db
+      .select()
+      .from(authProviders)
+      .where(and(eq(authProviders.id, providerId), eq(authProviders.enabled, true)));
+    if (!provider) throw notFound('Sign-in method');
+    await authorizeWorkspace(
+      db,
+      user,
+      { id: provider.workspaceId },
+      { ...authInfo(req), ignoreSso: true },
+    ).catch(() => {
+      throw notFound('Sign-in method');
+    });
+    const url = await begin(req, reply, provider, 'link', redirect);
+    return { url };
+  });
+
+  /** Asks the provider for a sign-in URL and sets the state cookie. Null when it already replied. */
+  async function begin(
+    req: FastifyRequest,
+    reply: FastifyReply,
+    provider: typeof authProviders.$inferSelect,
+    mode: 'login' | 'link' | 'test',
+    redirect: string | undefined,
+  ): Promise<string | null> {
     const saml = provider.protocol === 'saml';
     let url: string;
     let state: string;
@@ -119,11 +159,10 @@ export async function ssoRoutes(app: FastifyInstance) {
       }));
     } catch (err) {
       req.log.warn({ err, provider: provider.id }, 'Starting single sign-on failed');
-      if (mode === 'login')
-        return loginError(
-          reply,
-          `Couldn't reach ${provider.name}. Try again later or use your password.`,
-        );
+      if (mode === 'login') {
+        loginError(reply, `Couldn't reach ${provider.name}. Try again later or use your password.`);
+        return null;
+      }
       throw badRequest(
         `Couldn't reach the provider: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -135,10 +174,8 @@ export async function ssoRoutes(app: FastifyInstance) {
       secure: app.env.secureCookies,
       maxAge: 600,
     });
-    return reply.redirect(url);
-  };
-  app.get('/auth/sso/:providerId/start', start);
-  app.get('/auth/oidc/:providerId/start', start);
+    return url;
+  }
 
   app.get(CALLBACK_PATH.replace('/api', ''), async (req, reply) => {
     const url = new URL(req.url, app.env.publicUrl);

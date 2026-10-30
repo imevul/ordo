@@ -379,6 +379,7 @@ export const API_MESSAGE_KEYS = [
   'no_access',
   'not_found',
   'wrong_credentials',
+  'too_many_attempts',
   'invalid_code',
   'invalid_code_time',
   'sign_in_again',
