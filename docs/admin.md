@@ -28,7 +28,13 @@ docker compose exec app node cli.mjs disable-2fa you@example.com
 docker compose exec app node cli.mjs rotate-key   # after changing ORDO_SECRET_KEY, see configuration.md
 ```
 
-In development the same commands run with `pnpm --filter @ordo/api cli <command>`.
+Without Docker, run `node cli.mjs <command>` from the release directory with the server's environment loaded (see
+[Running without Docker](self-hosting.md#running-without-docker)). Every command applies pending migrations first. In
+development the same commands run with `pnpm --filter @ordo/api cli <command>`.
+
+The Overview's **secret key** check only says whether `ORDO_SECRET_KEY` is set, not whether it's the key your secrets
+were stored with. For symptoms of a wrong key and how to recover, see
+[Missing or wrong secret key](self-hosting.md#missing-or-wrong-secret-key).
 
 **Locked out after failed attempts:** ten wrong passwords or second-factor codes within 15 minutes lock password
 sign-in for that account, from every address, until the 15 minutes have passed since the last failures. Passkeys and
