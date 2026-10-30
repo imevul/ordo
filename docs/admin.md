@@ -25,7 +25,7 @@ When nobody can sign in as an admin, use the CLI inside the container:
 make admin EMAIL=you@example.com            # make someone an instance admin (and re-enable them)
 make reset-password EMAIL=you@example.com   # print a one-hour password reset link
 docker compose exec app node cli.mjs disable-2fa you@example.com
-docker compose exec app node cli.mjs rotate-key   # after changing ORDO_SECRET_KEY, see configuration.md
+docker compose exec app node cli.mjs rotate-key   # after changing ORDO_SECRET_KEY, see below
 ```
 
 In development the same commands run with `pnpm --filter @ordo/api cli <command>`.
@@ -33,3 +33,19 @@ In development the same commands run with `pnpm --filter @ordo/api cli <command>
 **Locked out after failed attempts:** ten wrong passwords or second-factor codes within 15 minutes lock password
 sign-in for that account, from every address, until the 15 minutes have passed since the last failures. Passkeys and
 single sign-on still work. The failures are in the audit log, with the addresses they came from.
+
+## Rotating the secret key
+
+`ORDO_SECRET_KEY` encrypts the secrets Ordo stores (see [configuration](configuration.md#compose-variables-env)). To replace it, for
+example after it may have leaked:
+
+1. In `.env`, move the current value of `ORDO_SECRET_KEY` to `ORDO_SECRET_KEY_PREVIOUS`.
+2. Put a new key in `ORDO_SECRET_KEY` (`head -c 32 /dev/urandom | base64`).
+3. `make restart`. New secrets are encrypted with the new key; existing ones still decrypt with the previous key.
+   Signed file links handed out before the restart stop working; reloading the page gets new ones.
+4. `docker compose exec app node cli.mjs rotate-key`. It re-encrypts every stored secret with the new key: two-factor
+   secrets, SSO client secrets, webhook signing secrets, integration tokens, AI API keys, push notification keys,
+   Matrix encryption state, import credentials and the SMTP settings. It's safe to run again.
+5. Once every instance runs with the new key, remove `ORDO_SECRET_KEY_PREVIOUS` and `make restart`.
+
+Back up the new key with your database, and keep the previous one with it for as long as it's set.

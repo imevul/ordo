@@ -156,7 +156,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [ ] ⬜ Invite tokens at rest: store a hash for lookup and the link encrypted, so admins can still copy and resend it
 - [ ] ⬜ Bugs
   - [ ] ⬜ Hotkeys: a matching `g x` sequence wins over a newer single-key binding
-  - [ ] ⬜ `rotate-key` re-encrypts every secret (SSO, webhooks, integrations, AI, VAPID, Matrix store, imports)
+  - [x] ✅ `rotate-key` re-encrypts every secret (SSO, webhooks, integrations, AI, VAPID, Matrix store, imports)
   - [ ] ⬜ Moving an issue to another team keeps `completedAt`/`canceledAt` and sends no status change when the state
     type is the same
   - [ ] ⬜ Deleting a cycle or a status updates issues through `services/issues.ts` and emits their real ids
@@ -169,7 +169,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [ ] ⬜ Docs
   - [ ] ⬜ docker-compose.yml passes every documented setting (`ORDO_MAX_ATTACHMENT_MB`, `ORDO_OFFLINE_SYNC`,
     `ORDO_WORKSPACE_AI`, `ORDO_GITHUB_URL`, `ORDO_GITHUB_API_URL`, `DATABASE_POOL_SIZE`)
-  - [ ] ⬜ README: Status, feature list, stack, `make backup`; one key-rotation story in configuration.md and admin.md
+  - [x] ✅ README: Status, feature list, stack, `make backup`; one key-rotation story in configuration.md and admin.md
   - [ ] ⬜ Fix api.md (agent run states, realtime kinds, `scim` source), the `Mod Shift .` shortcut on Nordic
     layouts, per-command CLI help, the backup cron prune
   - [ ] ⬜ Operator topics: `/api/health` monitoring, running without Docker, restoring onto a new host, missing

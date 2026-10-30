@@ -1,10 +1,10 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: runner files spell variables as ${VAR}
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type Io, run } from '@ordo/cli';
-import { expandVars, loadRunnerFile, parseDotenv } from '@ordo/cli/agent';
+import { expandVars, launch, loadRunnerFile, parseDotenv } from '@ordo/cli/agent';
 import type { AgentRun, AgentRunContext, Comment } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -438,4 +438,157 @@ describe('ordo agent', () => {
     );
     expect(res.stdout).not.toContain(`${issue.identifier} succeeded`);
   });
+});
+
+describe('stopping a run', () => {
+  const context = {
+    prompt: 'Do it',
+    run: { id: 'run-1', question: null, resume: null },
+    issue: { identifier: 'ENG-1', url: 'https://ordo.example.com/x/issue/ENG-1' },
+  } as unknown as AgentRunContext;
+  const spec = (command: string, timeoutMs = 0) => ({
+    command,
+    env: {},
+    timeoutMs,
+    url: 'http://127.0.0.1:9',
+    workspace: 'x',
+    key: 'k',
+    baseDir: dir,
+  });
+  const alive = (pid: number) => {
+    try {
+      process.kill(pid, 0);
+      // A reaped-soon zombie still answers signal 0.
+      return !/^Z/.test(
+        execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).trim(),
+      );
+    } catch {
+      return false;
+    }
+  };
+  const until = async (ok: () => boolean, ms = 5000) => {
+    for (const end = Date.now() + ms; !ok(); ) {
+      if (Date.now() > end) throw new Error('timed out waiting');
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  };
+  const pidIn = (file: string) => Number(readFileSync(join(dir, file), 'utf8'));
+
+  it('stops what the command started when the run is cancelled', async () => {
+    let cancel = () => {};
+    const cancelled = new Promise<void>((r) => {
+      cancel = r;
+    });
+    let leader = 0;
+    const result = launch(
+      spec('sleep 300 & echo $! > "$ORDO_RUNNER_DIR/gc-cancel.pid"; wait'),
+      context,
+      {
+        workdir: null,
+        repoPaths: [],
+        cancelled,
+        onStart: (pid) => {
+          leader = pid!;
+        },
+      },
+    );
+    await until(() => existsSync(join(dir, 'gc-cancel.pid')) && pidIn('gc-cancel.pid') > 0);
+    const grandchild = pidIn('gc-cancel.pid');
+    expect(alive(grandchild)).toBe(true);
+    // Its own process group, so the terminal's Ctrl-C doesn't reach it.
+    const pgid = (pid: number) =>
+      execFileSync('ps', ['-o', 'pgid=', '-p', String(pid)], { encoding: 'utf8' }).trim();
+    expect(pgid(grandchild)).toBe(String(leader));
+    expect(pgid(grandchild)).not.toBe(pgid(process.pid));
+    cancel();
+    expect((await result).status).toBe('cancelled');
+    await until(() => !alive(grandchild));
+  });
+
+  it('kills what ignores SIGTERM after the grace period on a timeout', async () => {
+    const result = launch(
+      spec(
+        '(trap "" TERM; exec sleep 300) & echo $! > "$ORDO_RUNNER_DIR/gc-timeout.pid"; wait',
+        500,
+      ),
+      context,
+      { workdir: null, repoPaths: [], graceMs: 300 },
+    );
+    await until(() => existsSync(join(dir, 'gc-timeout.pid')) && pidIn('gc-timeout.pid') > 0);
+    const grandchild = pidIn('gc-timeout.pid');
+    const res = await result;
+    expect(res.status).toBe('failed');
+    expect(res.error).toMatch(/^Timed out/);
+    await until(() => !alive(grandchild));
+  });
+
+  it('lets running commands finish on Ctrl-C, and stops them on the second', async () => {
+    const cli = join(import.meta.dirname, '../../../packages/cli');
+    const start = (command: string) => {
+      const proc = spawn(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          'src/bin.ts',
+          'agent',
+          'run',
+          '-w',
+          slug,
+          '--url',
+          url,
+          '--repos',
+          join(dir, 'repos'),
+          '--',
+          'sh',
+          '-c',
+          command,
+        ],
+        {
+          cwd: cli,
+          // Like a shell's foreground job: Ctrl-C goes to the whole group.
+          detached: true,
+          env: {
+            ...process.env,
+            HOME: dir,
+            XDG_CONFIG_HOME: join(dir, 'config'),
+            ORDO_AGENT_KEY: keys.Claude,
+          },
+        },
+      );
+      let out = '';
+      proc.stdout.on('data', (b) => {
+        out += b;
+      });
+      proc.stderr.on('data', (b) => {
+        out += b;
+      });
+      const exited = new Promise<number | null>((r) => proc.on('close', r));
+      return { ctrlC: () => process.kill(-proc.pid!, 'SIGINT'), out: () => out, exited };
+    };
+
+    const issue = await assign('Finish after Ctrl-C');
+    const r = start('sleep 1; echo "Finished anyway" > "$ORDO_SUMMARY_FILE"');
+    await until(() => r.out().includes(`${issue.identifier} running`), 15_000);
+    r.ctrlC();
+    expect(await r.exited).toBe(0);
+    expect(r.out()).toContain('Not taking new runs');
+    expect(r.out()).toContain(`${issue.identifier} succeeded`);
+    expect((await runsOf(issue.id))[0]).toMatchObject({
+      status: 'succeeded',
+      summary: 'Finished anyway',
+    });
+
+    const forced = await assign('Forced by a second Ctrl-C');
+    const f = start(`sleep 300 & echo $! > "${join(dir, 'forced.pid')}"; wait`);
+    await until(() => existsSync(join(dir, 'forced.pid')) && pidIn('forced.pid') > 0, 15_000);
+    const grandchild = pidIn('forced.pid');
+    f.ctrlC();
+    await until(() => f.out().includes('Not taking new runs'));
+    expect(alive(grandchild)).toBe(true);
+    f.ctrlC();
+    expect(await f.exited).toBe(130);
+    await until(() => !alive(grandchild));
+    await owner.patch(`${ws}/issues/${forced.id}`, { assigneeId: null });
+  }, 30_000);
 });
