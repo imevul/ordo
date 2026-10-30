@@ -58,6 +58,8 @@ export default {
   turnOn: 'Turn on',
   turnOff: 'Turn off',
   currentPassword: 'Current password',
+  /** Checkbox when changing the password or turning on two-factor authentication. */
+  revokeCredentials: 'Also revoke my API keys and connected apps',
   profile: {
     title: 'Profile',
     saved: 'Profile saved',

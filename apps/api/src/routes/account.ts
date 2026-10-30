@@ -4,6 +4,7 @@ import {
   addPasskeySchema,
   changeEmailSchema,
   disableTwoFactorSchema,
+  enableTwoFactorSchema,
   notifyPauseSchema,
   type Passkey,
   passkeyOptionsSchema,
@@ -13,7 +14,6 @@ import {
   renamePasskeySchema,
   type SessionInfo,
   setStatusSchema,
-  totpCodeSchema,
   updatePreferencesSchema,
 } from '@ordo/shared';
 import { and, desc, eq, ne, sql } from 'drizzle-orm';
@@ -32,6 +32,7 @@ import { verifyPassword } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from '../services/audit.ts';
+import { revokeCredentials } from '../services/credentials.ts';
 import { resolvePreferences } from '../services/digest.ts';
 import { deleteFile, saveFile, signedFileUrl } from '../services/files.ts';
 import { securityEmail, verifyEmailEmail } from '../services/mail-templates.ts';
@@ -470,7 +471,7 @@ export async function accountRoutes(app: FastifyInstance) {
 
   app.post('/me/2fa/enable', async (req) => {
     const user = await loadUser(req);
-    const { code } = parse(totpCodeSchema, req.body);
+    const { code, revokeCredentials: revoke } = parse(enableTwoFactorSchema, req.body);
     if (user.totpEnabledAt)
       throw badRequest('Two-factor authentication is already on').as('two_factor_already_on');
     if (!verifyTotp(app.keyring, user, code))
@@ -483,6 +484,7 @@ export async function accountRoutes(app: FastifyInstance) {
         .set({ totpEnabledAt: new Date().toISOString() })
         .where(eq(users.id, user.id));
       await audit(tx, { action: 'auth.2fa_enabled', actorId: user.id }, requestMeta(req));
+      if (revoke) await revokeCredentials(tx, user.id, '2fa_enabled', requestMeta(req));
       await queueEmail(
         tx,
         user.email,

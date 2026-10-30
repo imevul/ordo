@@ -15,3 +15,12 @@ export function useRefreshAccount() {
     qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
   };
 }
+
+/** After API keys and connected apps were revoked along with a password or 2FA change. */
+export function useRefreshCredentials() {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: keys.apiKeys });
+    qc.invalidateQueries({ queryKey: keys.oauthGrants });
+  };
+}

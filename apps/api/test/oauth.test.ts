@@ -3,10 +3,12 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
+import { Secret, TOTP } from 'otpauth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { auditLog, oauthGrants, oauthTokens } from '../src/db/schema.ts';
+import { apiKeys, auditLog, oauthGrants, oauthTokens } from '../src/db/schema.ts';
 import { pruneOAuth } from '../src/services/oauth.ts';
-import { type Client, signup, testApp } from './helpers.ts';
+import { createToken } from '../src/services/tokens.ts';
+import { Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
 let ada: Client;
@@ -24,10 +26,13 @@ function pkce() {
   return { verifier, challenge: createHash('sha256').update(verifier).digest('base64url') };
 }
 
+let registrations = 0;
 async function register(body: Record<string, unknown> = {}) {
   const res = await app.inject({
     method: 'POST',
     url: '/api/oauth/register',
+    // Registration allows 20 an hour per address; this file registers more than that.
+    remoteAddress: `10.99.0.${++registrations}`,
     payload: {
       client_name: 'Test agent',
       redirect_uris: [REDIRECT],
@@ -64,9 +69,9 @@ function authorizeParams(clientId: string, challenge: string, extra: Record<stri
 }
 
 /** Consents as `who` and returns the code from the redirect. */
-async function consent(clientId: string, challenge: string, who = ada) {
+async function consent(clientId: string, challenge: string, who = ada, to = resource) {
   const res = await who.post('/api/oauth/authorize', {
-    ...authorizeParams(clientId, challenge),
+    ...authorizeParams(clientId, challenge, { resource: to }),
     approve: true,
   });
   expect(res.statusCode, res.body).toBe(200);
@@ -77,17 +82,17 @@ async function consent(clientId: string, challenge: string, who = ada) {
 }
 
 /** A full sign-in: registration, consent, code exchange. */
-async function connect() {
+async function connect(who = ada, to = resource) {
   const { data: client } = await register();
   const { verifier, challenge } = pkce();
-  const code = await consent(client.client_id, challenge);
+  const code = await consent(client.client_id, challenge, who, to);
   const res = await token({
     grant_type: 'authorization_code',
     code,
     code_verifier: verifier,
     client_id: client.client_id,
     redirect_uri: REDIRECT,
-    resource,
+    resource: to,
   });
   expect(res.statusCode, res.body).toBe(200);
   return { clientId: client.client_id as string, ...res.data };
@@ -433,5 +438,115 @@ describe('client ID metadata documents', () => {
     );
     expect(res.statusCode).toBe(400);
     expect(res.data.error).toBe('invalid_client');
+  });
+});
+
+describe('account recovery revokes credentials', () => {
+  const PASSWORD = 'correct horse battery';
+
+  /** A fresh person with a workspace of their own, an API key and a connected app. */
+  async function victim(name: string, slug: string) {
+    const { client } = await signup(app, name);
+    await client.post('/api/workspaces', { name: slug, slug, teamName: 'Eng', teamKey: 'ENG' });
+    const url = `/api/w/${slug}/mcp`;
+    const key = (await client.post('/api/me/api-keys', { name: 'attacker' })).data.token as string;
+    const tokens = await connect(client, `${base}${url}`);
+    const id = (await client.get('/api/auth/me')).data.id as string;
+    return { client, id, key, url, ...tokens };
+  }
+  const keyWorks = async (key: string) =>
+    (
+      await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { authorization: `Bearer ${key}` },
+      })
+    ).statusCode === 200;
+  const revocations = async (userId: string) =>
+    (
+      await app.db
+        .select({ action: auditLog.action, data: auditLog.data })
+        .from(auditLog)
+        .where(eq(auditLog.actorId, userId))
+    ).filter((r) => r.action === 'api_key.revoked' || r.action === 'oauth.revoked');
+
+  it('a password reset revokes API keys and OAuth grants, and audits it', async () => {
+    const v = await victim('Rita Reset', 'oa-reset');
+    expect(await keyWorks(v.key)).toBe(true);
+    expect((await mcp(v.access_token, v.url)).statusCode).toBe(200);
+    // A consent given but not yet exchanged doesn't survive either.
+    const { data: pending } = await register();
+    const { verifier, challenge } = pkce();
+    const code = await consent(pending.client_id, challenge, v.client, `${base}${v.url}`);
+
+    const resetToken = await createToken(app.db, v.id, 'password_reset', 60);
+    const res = await new Client(app).post('/api/auth/reset', {
+      token: resetToken,
+      password: 'a brand new password',
+    });
+    expect(res.statusCode, res.body).toBe(200);
+
+    expect(await keyWorks(v.key)).toBe(false);
+    expect((await mcp(v.access_token, v.url)).statusCode).toBe(401);
+    const refreshed = await token({
+      grant_type: 'refresh_token',
+      refresh_token: v.refresh_token,
+      client_id: v.clientId,
+    });
+    expect(refreshed.data.error).toBe('invalid_grant');
+    const exchanged = await token({
+      grant_type: 'authorization_code',
+      code,
+      code_verifier: verifier,
+      client_id: pending.client_id,
+      redirect_uri: REDIRECT,
+    });
+    expect(exchanged.data.error).toBe('invalid_grant');
+    expect(await app.db.select().from(apiKeys).where(eq(apiKeys.userId, v.id))).toEqual([]);
+    expect(await app.db.select().from(oauthGrants).where(eq(oauthGrants.userId, v.id))).toEqual([]);
+    expect(await revocations(v.id)).toEqual(
+      expect.arrayContaining([
+        { action: 'api_key.revoked', data: { name: 'attacker', via: 'reset' } },
+        { action: 'oauth.revoked', data: { client: 'Test agent', via: 'reset' } },
+      ]),
+    );
+  });
+
+  it('a password change revokes them unless asked not to', async () => {
+    const kept = await victim('Kim Keep', 'oa-keep');
+    const change = await kept.client.post('/api/me/password', {
+      currentPassword: PASSWORD,
+      newPassword: 'a brand new password',
+      revokeCredentials: false,
+    });
+    expect(change.statusCode, change.body).toBe(200);
+    expect(await keyWorks(kept.key)).toBe(true);
+    expect((await mcp(kept.access_token, kept.url)).statusCode).toBe(200);
+
+    // The default is to revoke.
+    const v = await victim('Rob Revoke', 'oa-revoke');
+    await v.client.post('/api/me/password', {
+      currentPassword: PASSWORD,
+      newPassword: 'a brand new password',
+    });
+    expect(await keyWorks(v.key)).toBe(false);
+    expect((await mcp(v.access_token, v.url)).statusCode).toBe(401);
+    expect((await revocations(v.id)).map((r) => r.data)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ via: 'password_change' })]),
+    );
+    // The session that changed the password stays signed in.
+    expect((await v.client.get('/api/auth/me')).statusCode).toBe(200);
+  });
+
+  it('turning on 2FA revokes them by default', async () => {
+    const v = await victim('Tess Totp', 'oa-totp');
+    const setup = (await v.client.post('/api/me/2fa/setup', { password: PASSWORD })).data;
+    const code = new TOTP({ secret: Secret.fromBase32(setup.secret) }).generate();
+    expect((await v.client.post('/api/me/2fa/enable', { code })).statusCode).toBe(200);
+    expect(await keyWorks(v.key)).toBe(false);
+    expect((await mcp(v.access_token, v.url)).statusCode).toBe(401);
+    expect((await revocations(v.id)).map((r) => r.data)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ via: '2fa_enabled' })]),
+    );
   });
 });

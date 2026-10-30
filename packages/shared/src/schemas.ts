@@ -61,6 +61,8 @@ export const updateMeSchema = z.object({
 export const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
   newPassword: passwordSchema,
+  /** Also revoke personal API keys and connected OAuth apps. */
+  revokeCredentials: z.boolean().default(true),
 });
 
 export const createApiKeySchema = z.object({ name: name });
@@ -103,6 +105,11 @@ export const totpCodeSchema = z.object({
     .string()
     .trim()
     .regex(/^\d{6}$/, 'Enter the 6-digit code'),
+});
+
+export const enableTwoFactorSchema = totpCodeSchema.extend({
+  /** Also revoke personal API keys and connected OAuth apps. */
+  revokeCredentials: z.boolean().default(true),
 });
 
 /** New recovery codes: a code from the authenticator app, or (passkeys only) the password. */

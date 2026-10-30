@@ -49,6 +49,7 @@ import { requestMeta } from '../lib/mutate.ts';
 import { systemAccess } from '../services/access.ts';
 import { audit, auditCtx } from '../services/audit.ts';
 import type { Ctx } from '../services/context.ts';
+import { revokeCredentials } from '../services/credentials.ts';
 import { resolvePreferences } from '../services/digest.ts';
 import { signedFileUrl } from '../services/files.ts';
 import { passwordResetEmail, securityEmail, verifyEmailEmail } from '../services/mail-templates.ts';
@@ -434,12 +435,14 @@ export async function authRoutes(app: FastifyInstance) {
         .update(users)
         .set({ passwordHash, emailVerifiedAt: sql`coalesce(${users.emailVerifiedAt}, now())` })
         .where(eq(users.id, token.userId));
+      // Whoever had the account may have minted keys or connected apps: none of it survives.
       await tx.delete(sessions).where(eq(sessions.userId, token.userId));
       await audit(
         tx,
         { action: 'auth.password_changed', actorId: token.userId, data: { via: 'reset' } },
         requestMeta(req),
       );
+      await revokeCredentials(tx, token.userId, 'reset', requestMeta(req));
       return token.userId;
     });
     const [user] = await db
@@ -592,6 +595,8 @@ export async function authRoutes(app: FastifyInstance) {
           .delete(sessions)
           .where(and(eq(sessions.userId, user.id), ne(sessions.id, req.sessionId)));
       await audit(tx, { action: 'auth.password_changed', actorId: user.id }, requestMeta(req));
+      if (input.revokeCredentials)
+        await revokeCredentials(tx, user.id, 'password_change', requestMeta(req));
     });
     return { ok: true };
   });
