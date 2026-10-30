@@ -37,6 +37,7 @@ export default {
     edit: 'Edit agent',
     name: 'Name',
     namePlaceholder: 'Claude',
+    color: 'Colour',
     teams: 'Teams it works in',
     teamsHint: 'It sees and can be assigned issues of these teams only.',
     instructions: 'Instructions',
