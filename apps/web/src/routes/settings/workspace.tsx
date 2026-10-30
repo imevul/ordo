@@ -640,17 +640,19 @@ function PendingInvites() {
               ? t('workspaceSettings.pending.sent', { time: relativeTime(i.lastSentAt) })
               : t('workspaceSettings.pending.expires', { date: shortDate(i.expiresAt) })}
           </span>
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm"
-            onClick={() => {
-              navigator.clipboard?.writeText(i.url);
-              toast.success(t('workspaceSettings.invite.linkCopied'));
-            }}
-            aria-label={t('workspaceSettings.pending.copyLink')}
-          >
-            <Copy size={12} />
-          </button>
+          {i.url && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => {
+                navigator.clipboard?.writeText(i.url!);
+                toast.success(t('workspaceSettings.invite.linkCopied'));
+              }}
+              aria-label={t('workspaceSettings.pending.copyLink')}
+            >
+              <Copy size={12} />
+            </button>
+          )}
           {i.email && config.data?.emailEnabled && (
             <button
               type="button"

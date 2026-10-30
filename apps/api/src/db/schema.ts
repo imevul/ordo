@@ -184,7 +184,10 @@ export const invites = pgTable('invites', {
   id: pk(),
   /** Null for a site invite: an account on the instance, made by an instance admin, no workspace. */
   workspaceId: uuid('workspace_id').references(() => workspaces.id, { onDelete: 'cascade' }),
-  token: text('token').notNull().unique(),
+  /** sha256 of the token in the link; the link itself is never stored in plain text. */
+  tokenHash: text('token_hash').notNull().unique(),
+  /** The token, encrypted (`invites:<id>:token`) so admins can copy and resend the link. Null without a key. */
+  tokenEncrypted: text('token_encrypted'),
   email: text('email'),
   role: text('role').$type<MemberRole>().notNull().default('member'),
   /** Teams the invitee joins on accepting. */

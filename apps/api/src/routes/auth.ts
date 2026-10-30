@@ -120,7 +120,7 @@ async function findInvite(tx: Tx, token: string) {
     .from(invites)
     .where(
       and(
-        eq(invites.token, token),
+        eq(invites.tokenHash, sha256(token)),
         isNull(invites.acceptedAt),
         gt(invites.expiresAt, new Date().toISOString()),
       ),
