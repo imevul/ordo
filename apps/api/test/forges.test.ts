@@ -154,6 +154,51 @@ describe('GitHub (token)', () => {
     secret = body.config.secret;
   });
 
+  it('lists every repository the token can see, page by page, for admins', async () => {
+    const ghRepo = (name: string) => ({
+      full_name: name,
+      clone_url: `https://github.example/${name}.git`,
+      ssh_url: `git@github.example:${name}.git`,
+      default_branch: 'trunk',
+      private: name.startsWith('acme/'),
+    });
+    // A full first page means there's another one.
+    const first = Array.from({ length: 100 }, (_, i) =>
+      ghRepo(`zed/r${String(i).padStart(3, '0')}`),
+    );
+    forge.on('GET', '/user/repos', (req: { path: string }) => ({
+      body:
+        new URL(req.path, 'http://x').searchParams.get('page') === '1'
+          ? first
+          : [ghRepo('acme/app')],
+    }));
+    const res = await owner.get(`${ws}/integrations/${integrationId}/repositories`);
+    expect(res.statusCode).toBe(200);
+    expect(res.data).toHaveLength(101);
+    expect(res.data[0]).toEqual({
+      fullName: 'acme/app',
+      cloneUrl: 'https://github.example/acme/app.git',
+      sshUrl: 'git@github.example:acme/app.git',
+      defaultBranch: 'trunk',
+      private: true,
+    });
+    const pages = forge.calls('GET', '/user/repos');
+    expect(pages.map((p) => new URL(p.path, 'http://x').searchParams.get('page'))).toEqual([
+      '1',
+      '2',
+    ]);
+    expect(pages[0]!.headers.authorization).toBe('Bearer ghp_test');
+
+    const found = await owner.get(`${ws}/integrations/${integrationId}/repositories?q=ACME`);
+    expect(found.data.map((r: { fullName: string }) => r.fullName)).toEqual(['acme/app']);
+
+    const memberToken = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token;
+    const member = (await signup(app, 'Moss Member', { inviteToken: memberToken })).client;
+    expect((await member.get(`${ws}/integrations/${integrationId}/repositories`)).statusCode).toBe(
+      403,
+    );
+  });
+
   it('rejects unsigned deliveries', async () => {
     expect((await deliver('ping', {}, 'wrong-secret')).statusCode).toBe(401);
   });
@@ -490,6 +535,51 @@ describe('Forgejo', () => {
     await settle();
     const d = await detail(issue.id);
     expect(d.links).toMatchObject([{ provider: 'forgejo', state: 'draft', author: 'fj-user' }]);
+
+    // A server whose page cap is below our limit returns short pages; keep going until empty.
+    const fjRepo = (name: string) => ({
+      full_name: name,
+      clone_url: `${forge.url}/${name}.git`,
+      ssh_url: `git@code.example:${name}.git`,
+      default_branch: 'main',
+      private: false,
+    });
+    forge.on('GET', '/api/v1/user/repos', (req: { path: string }) => ({
+      body:
+        (
+          {
+            '1': [fjRepo('acme/app')],
+            '2': [fjRepo('acme/web')],
+          } as Record<string, unknown[]>
+        )[new URL(req.path, 'http://x').searchParams.get('page') ?? ''] ?? [],
+    }));
+    const repos = await owner.get(`${ws}/integrations/${res.data.id}/repositories`);
+    expect(
+      forge
+        .calls('GET', '/api/v1/user/repos')
+        .map((p) => new URL(p.path, 'http://x').searchParams.get('page')),
+    ).toEqual(['1', '2', '3']);
+    expect(repos.data.map((r: { fullName: string }) => r.fullName)).toEqual([
+      'acme/app',
+      'acme/web',
+    ]);
+    expect(repos.data[0]).toEqual({
+      fullName: 'acme/app',
+      cloneUrl: `${forge.url}/acme/app.git`,
+      sshUrl: 'git@code.example:acme/app.git',
+      defaultBranch: 'main',
+      private: false,
+    });
+    expect(forge.calls('GET', '/api/v1/user/repos')[0]!.headers.authorization).toBe('token fj');
+
+    // A forge that says no is a 400 with its reason, not a server error.
+    forge.on('GET', '/api/v1/user/repos', () => ({
+      status: 401,
+      body: { message: 'token is invalid' },
+    }));
+    const denied = await owner.get(`${ws}/integrations/${res.data.id}/repositories`);
+    expect(denied.statusCode).toBe(400);
+    expect(denied.data.message ?? denied.data.error).toContain('token is invalid');
   });
 });
 
@@ -590,5 +680,28 @@ describe('GitHub App', () => {
     expect(
       forge.calls('POST', '/repos/acme/app/issues/21/comments')[0]!.headers.authorization,
     ).toBe('Bearer ghs_installation');
+
+    // Installations list the repositories they were granted.
+    forge.on('GET', '/installation/repositories', {
+      total_count: 1,
+      repositories: [
+        {
+          full_name: 'acme/app',
+          clone_url: 'https://github.example/acme/app.git',
+          ssh_url: 'git@github.example:acme/app.git',
+          default_branch: 'main',
+          private: true,
+        },
+      ],
+    });
+    const { integrations: list } = (await owner.get(`${ws}/integrations`)).data as {
+      integrations: { id: string; config: { mode?: string } }[];
+    };
+    const installed = list.find((i) => i.config.mode === 'app')!;
+    const repos = await owner.get(`${ws}/integrations/${installed.id}/repositories`);
+    expect(repos.data).toMatchObject([{ fullName: 'acme/app', defaultBranch: 'main' }]);
+    expect(forge.calls('GET', '/installation/repositories')[0]!.headers.authorization).toBe(
+      'Bearer ghs_installation',
+    );
   });
 });

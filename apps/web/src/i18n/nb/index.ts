@@ -1,6 +1,7 @@
 /** Norwegian Bokmål. Anything missing falls back to English (../en). */
 import type { Translation } from '../index.ts';
 import admin from './admin.ts';
+import agents from './agents.ts';
 import auth from './auth.ts';
 import common from './common.ts';
 import customers from './customers.ts';
@@ -46,6 +47,7 @@ export default {
   webhooks,
   integrations,
   mcp,
+  agents,
   imports,
   customers,
   views,
