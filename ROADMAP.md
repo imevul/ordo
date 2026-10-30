@@ -139,6 +139,47 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [x] ✅ SCIM 2.0 provisioning: users to members (deactivating suspends), groups to teams (Okta, Entra ID, Authentik)
 - [x] ✅ Offline-first sync: a local copy of the workspace, a change feed, offline edits replayed on reconnect
 
+### Hardening — findings from the 2026-10-30 review
+
+- [ ] ⬜ Security
+  - [ ] ⬜ SSO account linking: POST with an Origin check, only providers of workspaces the user belongs to
+    (today a link click can attach an attacker's identity to the signed-in account)
+  - [ ] ⬜ GitHub App setup: confirm the user can access `installation_id` with GitHub, refuse one another
+    workspace already holds
+  - [ ] ⬜ Sign-in rate limits: trust one proxy hop instead of any `X-Forwarded-For`, per-account lockout, a wrong
+    2FA answer uses up the MFA token
+  - [ ] ⬜ Clear an integration's stored secrets when its base or API URL changes
+  - [ ] ⬜ `safeRedirect` rejects `/\…`; TOTP codes can't be reused; invite tokens hashed and kept out of request logs
+- [ ] ⬜ Bugs
+  - [ ] ⬜ Hotkeys: a matching `g x` sequence wins over a newer single-key binding
+  - [ ] ⬜ `rotate-key` re-encrypts every secret (SSO, webhooks, integrations, AI, VAPID, Matrix store, imports)
+  - [ ] ⬜ Moving an issue to another team keeps `completedAt`/`canceledAt` and sends no status change when the state
+    type is the same
+  - [ ] ⬜ Deleting a cycle or a status updates issues through `services/issues.ts` and emits their real ids
+  - [ ] ⬜ SDK/CLI `--cycle current` treats `endsAt` as exclusive, like the API
+  - [ ] ⬜ Grouping by assignee keeps issues assigned to placeholders and removed members
+  - [ ] ⬜ `ordo agent run`: Ctrl-C drains without killing agents; cancel and timeout stop the whole process group
+  - [ ] ⬜ Digests: ordered pending query, emailed state recorded with each queued email
+  - [ ] ⬜ Scheduled jobs survive one failing team or issue; long exports don't run twice; re-trashing keeps the
+    trash date; turning triage off moves triage issues; one definition of "today" in cycle automation
+- [ ] ⬜ Docs
+  - [ ] ⬜ docker-compose.yml passes every documented setting (`ORDO_MAX_ATTACHMENT_MB`, `ORDO_OFFLINE_SYNC`,
+    `ORDO_WORKSPACE_AI`, `ORDO_GITHUB_URL`, `ORDO_GITHUB_API_URL`, `DATABASE_POOL_SIZE`)
+  - [ ] ⬜ README: Status, feature list, stack, `make backup`; one key-rotation story in configuration.md and admin.md
+  - [ ] ⬜ Fix api.md (agent run states, realtime kinds, `scim` source), the `Mod Shift .` shortcut on Nordic
+    layouts, per-command CLI help, the backup cron prune
+  - [ ] ⬜ Operator topics: `/api/health` monitoring, running without Docker, restoring onto a new host, missing
+    secret key troubleshooting; undocumented API groups and CLI commands
+- [ ] ⬜ Code quality
+  - [ ] ⬜ Zod schemas for integration config and secrets instead of casts and hand validation
+  - [ ] ⬜ `bulkUpdateIssues` in `services/issues.ts` for the direct issue writes (cycles, statuses, placeholders,
+    SLA, comments)
+  - [ ] ⬜ A `one(rows)` helper for `.returning()`; handle a missing team in the issue view instead of `!`
+  - [ ] ⬜ Split `IssueDetailView`, `auth.tsx`, `admin.tsx` and `account.tsx`
+  - [ ] ⬜ Small cleanups: `<TeamSelect>`, `useWsMutation` key type, role helpers, parsed query strings, one
+    `escapeHtml`, dead label maps, unused `clsx`, current lint warnings
+  - [ ] ⬜ Unit tests for `apps/web/src/lib/issues.ts`
+
 ### Phase 12 — Desktop and mobile apps
 
 - [ ] ⬜ Desktop app
