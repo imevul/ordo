@@ -297,13 +297,14 @@ shorter than `limit` is the last. The web app loads big views this way, 1 000 at
 
 ### Notifications & search
 
-| Method | Path                    |                                                                                              |
-| ------ | ----------------------- | -------------------------------------------------------------------------------------------- |
-| GET    | `/notifications`        | Latest 200                                                                                   |
-| POST   | `/notifications/read`   | `{ ids?, unread? }` — omit `ids` for all                                                     |
-| POST   | `/notifications/delete` | `{ ids }` or `{ read: true }`                                                                |
-| POST   | `/notifications/snooze` | `{ ids, until }` — an ISO time, or `null` to wake; `GET /notifications?snoozed=1` lists them |
-| GET    | `/search?q=`            | `{ issues, projects }`, best matches first                                                   |
+| Method | Path                    |                                                                                                                                        |
+| ------ | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/notifications`        | Latest 200 matching the filter: `types`, `teams`, `actors`, `priorities`, `reasons` (comma-separated), `from=people\|bots`, `unread=1` |
+| GET    | `/notifications/counts` | Unread in the inbox per type: `{ issue_mention: 2, … }`                                                                                |
+| POST   | `/notifications/read`   | `{ ids?, unread? }`, or `{ filter, snoozed? }` for everything the filter matches; neither marks every unread one                       |
+| POST   | `/notifications/delete` | `{ ids }`, or `{ read: true, filter?, snoozed? }` for the read ones (that the filter matches)                                          |
+| POST   | `/notifications/snooze` | `{ ids, until }` — an ISO time, or `null` to wake; `GET /notifications?snoozed=1` lists them                                           |
+| GET    | `/search?q=`            | `{ issues, projects }`, best matches first                                                                                             |
 
 ## Realtime
 

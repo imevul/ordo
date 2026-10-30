@@ -1,9 +1,10 @@
-import type { Notification } from '@ordo/shared';
+import type { InboxFilter, Notification, NotificationType } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { AlarmClock, AlarmClockOff, CheckCheck, Trash2 } from 'lucide-react';
+import { AlarmClock, AlarmClockOff, CheckCheck, SlidersHorizontal, Trash2 } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
-import { keys, useIssue, useNotifications } from '../api/queries.ts';
+import { keys, useIssue, useNotificationCounts, useNotifications } from '../api/queries.ts';
+import { advancedCount, InboxFilterModal } from '../components/InboxFilterModal.tsx';
 import { IssueDetailView } from '../components/IssueDetailView.tsx';
 import { StatusIcon } from '../components/icons.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
@@ -13,7 +14,38 @@ import { Popover } from '../components/ui/Popover.tsx';
 import { getLocale, INTL_TAG, t, tx } from '../i18n/index.ts';
 import { relativeTime } from '../lib/format.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
+import { readPref, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
+
+/** The quick filters: each picks the kinds of notification shown. The modal's kinds apply under All. */
+const QUICK = {
+  all: undefined,
+  mentions: ['issue_mention'],
+  assigned: ['issue_assigned', 'issue_unassigned'],
+  comments: ['issue_comment'],
+} satisfies Record<string, NotificationType[] | undefined>;
+type Quick = keyof typeof QUICK;
+const QUICK_KEYS = Object.keys(QUICK) as Quick[];
+
+interface InboxView {
+  quick: Quick;
+  unread: boolean;
+  advanced: InboxFilter;
+}
+const DEFAULT_VIEW: InboxView = { quick: 'all', unread: false, advanced: {} };
+
+const quickChip = (on: boolean) =>
+  `flex h-6 items-center gap-1 px-1.5 font-mono text-[10.5px] tracking-[0.08em] uppercase ${
+    on ? 'bg-primary text-on-primary' : 'text-muted hover:text-text'
+  }`;
+
+function effectiveFilter(v: InboxView): InboxFilter {
+  return {
+    ...v.advanced,
+    types: QUICK[v.quick] ?? v.advanced.types,
+    unread: v.unread || undefined,
+  };
+}
 
 /** The notification's line: `actor` (a name) and what they did, as one sentence. */
 function describe(n: Notification, actor: ReactNode, stateName: (id: string) => string) {
@@ -65,7 +97,29 @@ export function InboxPage() {
   const ws = useWorkspace();
   const qc = useQueryClient();
   const [showSnoozed, setShowSnoozed] = useState(false);
-  const { data, isLoading } = useNotifications(ws.slug, showSnoozed);
+  const [view, setViewState] = useState<InboxView>(() => {
+    const stored = readPref<Partial<InboxView>>('inbox.view', {});
+    return {
+      ...DEFAULT_VIEW,
+      ...stored,
+      quick: stored.quick && stored.quick in QUICK ? stored.quick : 'all',
+    };
+  });
+  const setView = (patch: Partial<InboxView>) => {
+    const next = { ...view, ...patch };
+    setViewState(next);
+    writePref('inbox.view', next);
+    setSelectedId(null);
+  };
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filter = effectiveFilter(view);
+  const { data, isLoading } = useNotifications(ws.slug, showSnoozed, filter);
+  const counts = useNotificationCounts(ws.slug).data ?? {};
+  const countOf = (q: Quick) =>
+    (QUICK[q] ?? (Object.keys(counts) as NotificationType[])).reduce(
+      (sum, type) => sum + (counts[type] ?? 0),
+      0,
+    );
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const list = data ?? [];
@@ -77,7 +131,10 @@ export function InboxPage() {
     qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
   };
   const markRead = async (ids?: string[], unread = false) => {
-    await api.post(wsPath(ws.slug, '/notifications/read'), { ids, unread });
+    await api.post(
+      wsPath(ws.slug, '/notifications/read'),
+      ids ? { ids, unread } : { filter, snoozed: showSnoozed },
+    );
     refresh();
   };
   const snooze = async (ids: string[], until: Date | null) => {
@@ -90,7 +147,10 @@ export function InboxPage() {
     refresh();
   };
   const remove = async (body: { ids?: string[]; read?: boolean }) => {
-    await api.post(wsPath(ws.slug, '/notifications/delete'), body);
+    await api.post(
+      wsPath(ws.slug, '/notifications/delete'),
+      body.ids ? body : { ...body, filter, snoozed: showSnoozed },
+    );
     if (body.ids?.includes(selectedId ?? '')) setSelectedId(null);
     refresh();
   };
@@ -105,6 +165,15 @@ export function InboxPage() {
   useHotkey(['k', 'arrowup'], () => idx > 0 && open(list[idx - 1]!));
   useHotkey('u', () => selected && markRead([selected.id], !!selected.readAt));
   useHotkey(['backspace', 'delete'], () => selected && remove({ ids: [selected.id] }));
+  useHotkey(
+    QUICK_KEYS.map((_, i) => String(i + 1)),
+    (e) => setView({ quick: QUICK_KEYS[Number(e.key) - 1]! }),
+  );
+  useHotkey(String(QUICK_KEYS.length + 1), () => setView({ unread: !view.unread }));
+  useHotkey('shift+f', () => setFilterOpen(true));
+  const unreadShown = list.filter((n) => !n.readAt).length;
+  const readShown = list.length - unreadShown;
+  const advanced = advancedCount(view.advanced);
   useHotkey('h', () => {
     if (!selected) return;
     if (showSnoozed) snooze([selected.id], null);
@@ -175,6 +244,16 @@ export function InboxPage() {
               )}
               <button
                 type="button"
+                className={`btn btn-ghost btn-sm ${advanced ? 'text-primary' : ''}`}
+                onClick={() => setFilterOpen(true)}
+                title={t('inbox.filter.buttonTitle')}
+                aria-label={t('inbox.filter.title')}
+              >
+                <SlidersHorizontal size={13} />
+                {advanced > 0 && <span className="font-mono text-[10.5px]">{advanced}</span>}
+              </button>
+              <button
+                type="button"
                 className={`btn btn-ghost btn-sm ${showSnoozed ? 'text-primary' : ''}`}
                 onClick={() => {
                   setShowSnoozed(!showSnoozed);
@@ -192,8 +271,9 @@ export function InboxPage() {
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => markRead()}
-                title={t('inbox.markAllRead')}
-                aria-label={t('inbox.markAllRead')}
+                disabled={unreadShown === 0}
+                title={t('inbox.markShownRead', { count: unreadShown })}
+                aria-label={t('inbox.markShownRead', { count: unreadShown })}
               >
                 <CheckCheck size={13} />
               </button>
@@ -201,20 +281,67 @@ export function InboxPage() {
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => remove({ read: true })}
-                title={t('inbox.deleteRead')}
-                aria-label={t('inbox.deleteRead')}
+                disabled={readShown === 0}
+                title={t('inbox.deleteShownRead', { count: readShown })}
+                aria-label={t('inbox.deleteShownRead', { count: readShown })}
               >
                 <Trash2 size={13} />
               </button>
             </>
           }
         />
+        <div className="flex flex-none flex-wrap items-center gap-1 border-b border-border-soft px-3 py-1.5">
+          {QUICK_KEYS.map((q, i) => {
+            const count = countOf(q);
+            return (
+              <button
+                key={q}
+                type="button"
+                className={quickChip(view.quick === q)}
+                aria-pressed={view.quick === q}
+                title={t('inbox.quick.title', { key: i + 1 })}
+                onClick={() => setView({ quick: q })}
+              >
+                {t(`inbox.quick.${q}`)}
+                {count > 0 && <span className="opacity-70">{count}</span>}
+              </button>
+            );
+          })}
+          <button
+            type="button"
+            className={quickChip(view.unread)}
+            aria-pressed={view.unread}
+            title={t('inbox.quick.title', { key: QUICK_KEYS.length + 1 })}
+            onClick={() => setView({ unread: !view.unread })}
+          >
+            {t('inbox.quick.unread')}
+          </button>
+        </div>
+        <InboxFilterModal
+          open={filterOpen}
+          onClose={() => setFilterOpen(false)}
+          filter={view.advanced}
+          kindFromQuick={view.quick !== 'all'}
+          onChange={(advanced) => setView({ advanced })}
+        />
         <div className="min-h-0 flex-1 overflow-y-auto">
           {isLoading && <Spinner />}
           {!isLoading && list.length === 0 && (
             <EmptyState
-              title={showSnoozed ? t('inbox.empty.snoozedTitle') : t('inbox.empty.title')}
-              body={showSnoozed ? t('inbox.empty.snoozedBody') : t('inbox.empty.body')}
+              title={
+                showSnoozed
+                  ? t('inbox.empty.snoozedTitle')
+                  : view.quick !== 'all' || view.unread || advanced
+                    ? t('inbox.empty.filteredTitle')
+                    : t('inbox.empty.title')
+              }
+              body={
+                showSnoozed
+                  ? t('inbox.empty.snoozedBody')
+                  : view.quick !== 'all' || view.unread || advanced
+                    ? t('inbox.empty.filteredBody')
+                    : t('inbox.empty.body')
+              }
             />
           )}
           {list.map((n) => {

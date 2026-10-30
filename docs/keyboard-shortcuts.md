@@ -81,9 +81,12 @@ In the rich text editor, Markdown typed at the start of a line or around a word 
 
 ## Inbox
 
-| Keys      | Action                        |
-| --------- | ----------------------------- |
-| `J` / `K` | Next / previous notification  |
-| `U`       | Toggle read                   |
-| `H`       | Snooze (or, in Snoozed, wake) |
-| `⌫`       | Delete notification           |
+| Keys        | Action                                              |
+| ----------- | --------------------------------------------------- |
+| `J` / `K`   | Next / previous notification                        |
+| `U`         | Toggle read                                         |
+| `H`         | Snooze (or, in Snoozed, wake)                       |
+| `⌫`         | Delete notification                                 |
+| `1` – `4`   | Quick filter: All, Mentions, Assigned, Comments     |
+| `5`         | Unread only, on or off                              |
+| `Shift` `F` | More filters (kind, why, who, team, issue priority) |

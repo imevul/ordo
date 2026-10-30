@@ -9,6 +9,7 @@ import {
   INITIATIVE_STATUSES,
   LOCALES,
   MEMBER_ROLES,
+  NOTIFICATION_REASONS,
   NOTIFICATION_TYPES,
   PROJECT_HEALTH,
   PROJECT_STATUSES,
@@ -160,6 +161,7 @@ export const updateWorkspaceSchema = z.object({
       scimDefaultRole: z.enum(['member', 'guest']).optional(),
       scimMatchGroupsByName: z.boolean().optional(),
       defaultAssigneeId: id.nullable().optional(),
+      agentRunsPaused: z.boolean().optional(),
     })
     .optional(),
 });
@@ -583,6 +585,33 @@ export const snoozeSchema = z.object({
   ids: z.array(id).min(1).max(200),
   /** A future time, or null to wake them now. */
   until: z.iso.datetime({ offset: true }).nullable(),
+});
+
+/**
+ * What the inbox shows. Every field narrows it; leaving one out doesn't. On `GET /notifications`
+ * the lists are comma-separated query parameters.
+ */
+export const inboxFilterSchema = z.object({
+  types: z.array(z.enum(NOTIFICATION_TYPES)).max(20).optional(),
+  teams: z.array(id).max(100).optional(),
+  actors: z.array(id).max(100).optional(),
+  /** People (humans, and deleted users) or bots (integrations, automations and agents). */
+  from: z.enum(['people', 'bots']).optional(),
+  priorities: z.array(z.number().int().min(0).max(4)).max(5).optional(),
+  reasons: z.array(z.enum(NOTIFICATION_REASONS)).max(10).optional(),
+  unread: z.boolean().optional(),
+});
+export type InboxFilter = z.infer<typeof inboxFilterSchema>;
+
+/** Mark read/unread or delete: these `ids`, or everything the filter matches in the inbox (or in Snoozed). */
+export const notificationBulkSchema = z.object({
+  ids: z.array(id).max(200).optional(),
+  filter: inboxFilterSchema.optional(),
+  snoozed: z.boolean().optional(),
+  /** Read: mark them unread instead. */
+  unread: z.boolean().optional(),
+  /** Delete: only the read ones. */
+  read: z.boolean().optional(),
 });
 
 export const createDocumentSchema = z.object({

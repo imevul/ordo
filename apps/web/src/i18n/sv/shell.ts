@@ -112,6 +112,9 @@ export default {
     toggleRead: 'Markera som läst / oläst',
     snooze: 'Snooza',
     deleteNotification: 'Radera notis',
+    inboxQuickFilter: 'Alla, Omnämnanden, Tilldelade, Kommentarer',
+    inboxUnreadOnly: 'Bara olästa',
+    inboxFilters: 'Fler inkorgsfilter',
   },
   confirm: {
     careful: 'Se upp',

@@ -111,6 +111,9 @@ export default {
     toggleRead: 'Toggle read',
     snooze: 'Snooze',
     deleteNotification: 'Delete notification',
+    inboxQuickFilter: 'All, Mentions, Assigned, Comments',
+    inboxUnreadOnly: 'Unread only',
+    inboxFilters: 'More inbox filters',
   },
   confirm: {
     careful: 'Careful',

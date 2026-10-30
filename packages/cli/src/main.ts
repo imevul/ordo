@@ -824,6 +824,7 @@ async function agentSpecs(
         env: {},
         cwd: 'worktree',
         checkout: true,
+        prune: true,
         baseDir: process.cwd(),
         instructions: '',
       },
