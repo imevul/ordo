@@ -164,11 +164,15 @@ export default {
     off: 'Av for denne enheten.',
   },
   notifications: {
-    title: 'E-postvarsler',
+    title: 'Varsler',
     description:
-      'Alt dukker alltid opp i innboksen. Velg hva som også skal sendes på e-post, og hvor ofte. Det du leser i appen først, sendes ikke på e-post.',
+      'Velg hva som havner i innboksen, og hva som også skal varsle deg. Push går til enhetene der du har slått det på, chat til chattekontoene du har koblet til og tillatt direktemeldinger på. Det du leser i appen først, sendes ikke på e-post.',
     descriptionNoEmail:
-      'E-post er ikke satt opp på denne instansen, så disse innstillingene har ingen effekt ennå.',
+      'E-post er ikke satt opp på denne instansen, så ingenting sendes på e-post.',
+    channels: { inbox: 'Innboks', push: 'Push', email: 'E-post', chat: 'Chat' },
+    cellLabel: '{type}: {channel}',
+    channelsHint:
+      'Slår du av Innboks, får du ikke den typen varsel i det hele tatt, i noen kanal. Reaksjoner havner bare i innboksen.',
     sendEmails: 'Send e-post',
     digest: {
       instant: 'Innen noen minutter',

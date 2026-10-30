@@ -29,12 +29,14 @@ import {
   forbidden,
   isUniqueViolation,
   notFound,
+  one,
   parse,
 } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
 import { type Ctx, emit } from '../services/context.ts';
+import { bulkUpdateIssues } from '../services/issues.ts';
 import { assertRepositories } from '../services/repositories.ts';
 import { bumpEpoch } from '../services/sync.ts';
 import {
@@ -187,12 +189,14 @@ export async function teamRoutes(app: FastifyInstance) {
         .select({ last: max(triageRules.position) })
         .from(triageRules)
         .where(eq(triageRules.teamId, teamId))) as [{ last: number | null }];
-      const [row] = await ctx.tx
-        .insert(triageRules)
-        .values({ ...input, teamId, position: (last ?? 0) + SORT_GAP })
-        .returning();
+      const row = one(
+        await ctx.tx
+          .insert(triageRules)
+          .values({ ...input, teamId, position: (last ?? 0) + SORT_GAP })
+          .returning(),
+      );
       emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
-      return toTriageRule(row!);
+      return toTriageRule(row);
     });
   });
 
@@ -209,13 +213,12 @@ export async function teamRoutes(app: FastifyInstance) {
     return mutate(app, req, async (ctx) => {
       const rule = await loadRule(ctx, id);
       await assertTriageRule(ctx, rule.teamId, input);
-      const [row] = await ctx.tx
-        .update(triageRules)
-        .set(input)
-        .where(eq(triageRules.id, id))
-        .returning();
+      const row = one(
+        await ctx.tx.update(triageRules).set(input).where(eq(triageRules.id, id)).returning(),
+        'Triage rule',
+      );
       emit(ctx, { kind: 'team', action: 'updated', id: rule.teamId, teamId: rule.teamId });
-      return toTriageRule(row!);
+      return toTriageRule(row);
     });
   });
 
@@ -322,11 +325,13 @@ export async function teamRoutes(app: FastifyInstance) {
         .select({ last: max(workflowStates.position) })
         .from(workflowStates)
         .where(eq(workflowStates.teamId, teamId))) as [{ last: number | null }];
-      const [state] = await ctx.tx
-        .insert(workflowStates)
-        .values({ ...input, teamId, position: (last ?? 0) + SORT_GAP })
-        .returning();
-      emit(ctx, { kind: 'state', action: 'created', id: state!.id, teamId });
+      const state = one(
+        await ctx.tx
+          .insert(workflowStates)
+          .values({ ...input, teamId, position: (last ?? 0) + SORT_GAP })
+          .returning(),
+      );
+      emit(ctx, { kind: 'state', action: 'created', id: state.id, teamId });
       return state;
     });
   });
@@ -366,12 +371,20 @@ export async function teamRoutes(app: FastifyInstance) {
         siblings.find((s) => s.id === team.defaultStateId) ??
         siblings[0];
       if (!target) throw badRequest('Cannot delete the only status').as('only_status');
-      await ctx.tx.update(issues).set({ stateId: target.id }).where(eq(issues.stateId, state.id));
+      const inState = await ctx.tx
+        .select({ id: issues.id })
+        .from(issues)
+        .where(eq(issues.stateId, state.id));
+      await bulkUpdateIssues(
+        ctx,
+        state.teamId,
+        inState.map((r) => r.id),
+        { stateId: target.id },
+      );
       if (team.defaultStateId === state.id)
         await ctx.tx.update(teams).set({ defaultStateId: target.id }).where(eq(teams.id, team.id));
       await ctx.tx.delete(workflowStates).where(eq(workflowStates.id, state.id));
       emit(ctx, { kind: 'state', action: 'deleted', id: state.id, teamId: state.teamId });
-      emit(ctx, { kind: 'issue', action: 'updated', id: state.id, teamId: state.teamId });
       return { ok: true };
     });
   });

@@ -11,10 +11,11 @@ repository root (created from `.env.example` by `make up`).
 | `ORDO_BIND`                  | `0.0.0.0`               | Host interface to bind. Use `127.0.0.1` when a reverse proxy runs on the same host.                                                                                                                                                                                                                    |
 | `ORDO_PUBLIC_URL`            | `http://localhost:3000` | The URL people use to reach Ordo. Used for invite links. An `https://` URL turns on `Secure` cookies. Passkeys belong to its hostname: they work only at this address (https, or localhost), and changing the hostname later leaves existing passkeys behind.                                          |
 | `ORDO_SECRET_KEY`            | generated               | Encrypts secrets Ordo stores (SSO client secrets, integration tokens). `make up` / `make update` generate it. **Back it up with your database**: without it, stored secrets can't be decrypted.                                                                                                        |
-| `ORDO_SECRET_KEY_PREVIOUS`   | empty                   | During a key rotation, the old key; values encrypted with it still decrypt.                                                                                                                                                                                                                            |
+| `ORDO_SECRET_KEY_PREVIOUS`   | empty                   | During a [key rotation](admin.md#rotating-the-secret-key), the old key; values encrypted with it still decrypt.                                                                                                                                                                                        |
 | `POSTGRES_USER`              | `ordo`                  | Database user for the bundled Postgres.                                                                                                                                                                                                                                                                |
 | `POSTGRES_PASSWORD`          | random                  | Database password. `make up` generates one if `.env` doesn't exist. **Required.**                                                                                                                                                                                                                      |
 | `POSTGRES_DB`                | `ordo`                  | Database name.                                                                                                                                                                                                                                                                                         |
+| `DATABASE_POOL_SIZE`         | `10`                    | Max connections per API instance (one more is used for `LISTEN`).                                                                                                                                                                                                                                      |
 | `ORDO_TRUST_PROXY`           | `true`                  | How many reverse proxies to believe about the client IP (rate limits, audit log): `true` is one, a number is that many, or a comma-separated list of proxy addresses/CIDRs. Hops are only believed when the connecting peer is on a private network. Set `false` when Ordo is exposed without a proxy. |
 | `LOG_LEVEL`                  | `info`                  | `fatal`, `error`, `warn`, `info`, `debug` or `trace`.                                                                                                                                                                                                                                                  |
 | `ORDO_VERSION`               | `latest`                | Tag used for the locally built image.                                                                                                                                                                                                                                                                  |
@@ -79,10 +80,8 @@ Files are served through Ordo with short-lived signed URLs; the bucket never nee
 
 ## Key rotation
 
-1. Move the current value of `ORDO_SECRET_KEY` to `ORDO_SECRET_KEY_PREVIOUS`.
-2. Put a new key in `ORDO_SECRET_KEY` (`head -c 32 /dev/urandom | base64`).
-3. `make restart`. Existing secrets keep working through the previous key; they are re-encrypted with the new key
-   as they're saved again.
+To replace `ORDO_SECRET_KEY`, follow [Rotating the secret key](admin.md#rotating-the-secret-key) in the
+administration guide.
 
 ## Application variables
 
@@ -91,7 +90,6 @@ These are set by `docker-compose.yml` or the Dockerfile; you only need them when
 | Variable              | Default                                    | Description                                                                      |
 | --------------------- | ------------------------------------------ | -------------------------------------------------------------------------------- |
 | `DATABASE_URL`        | `postgres://ordo:ordo@localhost:5433/ordo` | Postgres connection string.                                                      |
-| `DATABASE_POOL_SIZE`  | `10`                                       | Max connections per API instance (one more is used for `LISTEN`).                |
 | `HOST` / `PORT`       | `0.0.0.0` / `3001` (dev), `3000` (image)   | Where the API listens.                                                           |
 | `ORDO_STATIC_DIR`     | unset (dev), `/app/public` (image)         | Directory with the built web app. When set, the API serves it with SPA fallback. |
 | `ORDO_MIGRATIONS_DIR` | auto-detected                              | Location of the SQL migrations.                                                  |

@@ -59,6 +59,11 @@ export function gitAutomationTarget(
 }
 
 export const DEFAULT_BRANCH_FORMAT = '{username}/{identifier}-{title}';
+/**
+ * Agent runs work on one branch per issue, whichever agent picks it up, so a hand-off continues
+ * the same work (and the same runner worktree).
+ */
+export const AGENT_BRANCH_FORMAT = '{identifier}-{title}';
 
 /** A git branch name for an issue, from a format with {identifier}, {title} and {username}. */
 export function branchName(

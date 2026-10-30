@@ -1,4 +1,11 @@
-import { guessStateType, parsePriority, type StateType } from '@ordo/shared';
+import {
+  guessStateType,
+  type JiraConfig,
+  type JiraProjectMap,
+  jiraSettingsSchema,
+  parsePriority,
+  type StateType,
+} from '@ordo/shared';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import {
   integrationRefs,
@@ -25,8 +32,13 @@ import {
 import { jiraToMarkdown, markdownToJira } from '../services/imports/jira-markup.ts';
 import { createIssue, updateIssue } from '../services/issues.ts';
 import { upsertIssueLink } from '../services/links.ts';
-import { ApiCallError, callApi, hmacHex, safeEqual, trimUrl } from './http.ts';
-import type { IntegrationContext, IntegrationProvider, IntegrationRow } from './types.ts';
+import { ApiCallError, callApi, hmacHex, safeEqual } from './http.ts';
+import {
+  configOf,
+  type IntegrationContext,
+  type IntegrationProvider,
+  type IntegrationRow,
+} from './types.ts';
 
 /**
  * Jira, Cloud or Data Center, through REST API v2. One integration, three modes:
@@ -43,28 +55,6 @@ import type { IntegrationContext, IntegrationProvider, IntegrationRow } from './
  * that comes back from Jira is recognised and nothing bounces. Webhooks are only a hint: Ordo
  * re-reads the issue from Jira, so a forged delivery can at most cause a refresh.
  */
-
-export type JiraMode = 'links' | 'mirror' | 'sync';
-
-export interface JiraProjectMap {
-  key: string;
-  teamId: string | null;
-  /** Issue type for issues Ordo creates in Jira. */
-  issueType: string;
-  /** New Jira issues appear in Ordo (mirror and sync). */
-  createInOrdo: boolean;
-  /** New Ordo issues in the team are created in Jira (sync). */
-  createInJira: boolean;
-}
-
-interface JiraConfig {
-  siteUrl: string;
-  cloud: boolean;
-  mode: JiraMode;
-  delivery: 'webhook' | 'poll';
-  projects: JiraProjectMap[];
-  backlinks: boolean;
-}
 
 interface JiraState {
   self?: { id: string; name: string };
@@ -87,11 +77,8 @@ interface Snapshot {
   updated: string;
 }
 
-const cfg = (row: IntegrationRow) => row.config as unknown as JiraConfig;
+const cfg = configOf<JiraConfig>();
 const stateOf = (row: IntegrationRow) => row.state as JiraState;
-const MODES: JiraMode[] = ['links', 'mirror', 'sync'];
-const PROJECT_KEY = /^[A-Z][A-Z0-9_]{0,19}$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FIELDS = 'summary,description,status,priority,assignee,issuetype,parent,updated';
 const MAX_POLL = 1000;
 
@@ -730,34 +717,6 @@ async function pushComment(
 
 // ─── the provider ─────────────────────────────────────────────────────────
 
-function parseProjects(value: unknown, mode: JiraMode): JiraProjectMap[] {
-  const list = Array.isArray(value) ? value : [];
-  const out: JiraProjectMap[] = [];
-  for (const raw of list.slice(0, 50)) {
-    const p = (raw ?? {}) as Record<string, unknown>;
-    const key = String(p.key ?? '')
-      .trim()
-      .toUpperCase();
-    if (!key) continue;
-    if (!PROJECT_KEY.test(key)) throw new Error(`${key} isn't a Jira project key`);
-    if (out.some((o) => o.key === key)) continue;
-    const teamId = typeof p.teamId === 'string' && UUID.test(p.teamId) ? p.teamId : null;
-    if (mode !== 'links' && !teamId) throw new Error(`Choose an Ordo team for ${key}`);
-    out.push({
-      key,
-      teamId,
-      issueType:
-        String(p.issueType ?? '')
-          .trim()
-          .slice(0, 60) || 'Task',
-      createInOrdo: mode !== 'links' && p.createInOrdo !== false,
-      createInJira: mode === 'sync' && p.createInJira === true,
-    });
-  }
-  if (mode !== 'links' && !out.length) throw new Error('Map at least one Jira project to a team');
-  return out;
-}
-
 export const jiraProvider: IntegrationProvider = {
   key: 'jira',
   name: 'Jira',
@@ -765,33 +724,7 @@ export const jiraProvider: IntegrationProvider = {
     'Link Jira issues, mirror Jira projects into teams, or keep issues in sync both ways.',
   category: 'tracker',
 
-  configure({ config, secrets }) {
-    let siteUrl: string;
-    try {
-      siteUrl = trimUrl(new URL(String(config.siteUrl ?? '')).toString());
-    } catch {
-      throw new Error('The Jira URL is not valid, e.g. https://acme.atlassian.net');
-    }
-    if (!secrets.token)
-      throw new Error('An API token (Cloud) or personal access token is required');
-    const mode = MODES.includes(config.mode as JiraMode) ? (config.mode as JiraMode) : 'links';
-    const email = String(secrets.email ?? '').trim();
-    return {
-      config: {
-        siteUrl,
-        cloud: !!email,
-        mode,
-        delivery: config.delivery === 'poll' ? 'poll' : 'webhook',
-        projects: parseProjects(config.projects, mode),
-        backlinks: config.backlinks !== false,
-      },
-      secrets: {
-        token: String(secrets.token).trim(),
-        ...(email && { email }),
-        ...(secrets.webhookSecret ? { webhookSecret: String(secrets.webhookSecret) } : {}),
-      },
-    };
-  },
+  settings: jiraSettingsSchema,
 
   async install(ictx) {
     const me = await jira<JiraUser>(ictx, '/rest/api/2/myself');

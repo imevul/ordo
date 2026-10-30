@@ -60,6 +60,9 @@ export const shortcuts = (): { section: string; items: [string, string][] }[] =>
       ['U', t('shell.shortcuts.toggleRead')],
       ['H', t('shell.shortcuts.snooze')],
       ['⌫', t('shell.shortcuts.deleteNotification')],
+      ['1 – 4', t('shell.shortcuts.inboxQuickFilter')],
+      ['5', t('shell.shortcuts.inboxUnreadOnly')],
+      ['Shift F', t('shell.shortcuts.inboxFilters')],
     ],
   },
 ];
@@ -88,13 +91,14 @@ export function ShortcutsHelp() {
                 >
                   {label}
                   <span className="flex gap-1">
-                    {k.split(' ').map((p) =>
+                    {/* Keys repeat ("Ctrl B / Ctrl I"), so they're keyed by position. */}
+                    {k.split(' ').map((p, i) =>
                       p === 'then' ? (
-                        <span key={p} className="text-[11px] text-index">
+                        <span key={i} className="text-[11px] text-index">
                           {t('shell.shortcuts.thenKey')}
                         </span>
                       ) : (
-                        <kbd key={p} className="kbd">
+                        <kbd key={i} className="kbd">
                           {p}
                         </kbd>
                       ),

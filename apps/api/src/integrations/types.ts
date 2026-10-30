@@ -1,10 +1,26 @@
 import type { ForgeRepository, IntegrationProviderInfo, WebhookPayload } from '@ordo/shared';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
+import type { ZodType } from 'zod';
 import type { integrations } from '../db/schema.ts';
 import type { Ctx } from '../services/context.ts';
 
 export type IntegrationRow = typeof integrations.$inferSelect;
 export type Secrets = Record<string, string>;
+
+/** An integration's settings as stored: `config` in the clear, `secrets` encrypted. */
+export interface IntegrationSettings {
+  config: Record<string, unknown>;
+  secrets: Secrets;
+}
+
+/**
+ * Reads an integration's config as its provider's settings schema made it. Not parsed again:
+ * config only gets into the table through that schema (or a provider's own install flow).
+ */
+export const configOf =
+  <C>() =>
+  (row: IntegrationRow) =>
+    row.config as C;
 
 /** A raw inbound webhook request, exactly as received (signatures cover the raw body). */
 export interface InboundRequest {
@@ -99,11 +115,14 @@ export type IntegrationEvent = WebhookPayload & { teamIds: string[] };
  * react to domain events, and private instances poll instead of receiving.
  */
 export interface IntegrationProvider extends IntegrationProviderInfo {
-  /** Validates and normalises what an admin entered when connecting by hand. Throw to reject. */
-  configure?(input: { config: Record<string, unknown>; secrets: Record<string, unknown> }): {
-    config: Record<string, unknown>;
-    secrets: Secrets;
-  };
+  /**
+   * What an admin enters when connecting by hand: a shared schema (`@ordo/shared` integrations.ts)
+   * that validates and normalises it. The route parses with it, so invalid settings are a 400
+   * naming the field, and `integration.config` always has the schema's output shape.
+   */
+  settings?: ZodType<IntegrationSettings>;
+  /** After `settings` parsed: what only the server does (generating a webhook secret). Throw to reject. */
+  configure?(input: IntegrationSettings): IntegrationSettings;
   /** After the integration is created (e.g. register remote webhooks). */
   install?(ictx: IntegrationContext): Promise<void>;
   /** Before it's deleted (e.g. remove remote webhooks). Failures are logged, not fatal. */
