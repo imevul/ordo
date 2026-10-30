@@ -4,6 +4,8 @@ import {
   ESTIMATE_SCALE_NAMES,
   GIT_EVENTS,
   type GitAutomation,
+  isGuestRole,
+  isTeamAdminRole,
   LABEL_COLORS,
   type SlaHours,
   STATE_TYPES,
@@ -547,7 +549,7 @@ function TeamMembers({ team }: { team: Team }) {
             <Avatar name={m.name} color={m.avatarColor} src={m.avatarUrl} size={20} />
             <span className="min-w-0 flex-1 truncate text-[13.5px]">
               {m.name}
-              {m.role === 'guest' && (
+              {isGuestRole(m.role) && (
                 <span className="ml-2 tag font-mono">{t('teams.members.guest')}</span>
               )}
             </span>
@@ -563,7 +565,9 @@ function TeamMembers({ team }: { team: Team }) {
               </select>
             ) : (
               <span className="tag font-mono">
-                {role === 'admin' ? t('teams.members.teamAdminTag') : t('teams.members.memberTag')}
+                {isTeamAdminRole(role)
+                  ? t('teams.members.teamAdminTag')
+                  : t('teams.members.memberTag')}
               </span>
             )}
             {(canAdmin || userId === ws.me.id) && !managed && (

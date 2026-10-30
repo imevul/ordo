@@ -31,7 +31,7 @@ export function AgentRunsPage() {
     ws.slug,
     () => api.patch(wsPath(ws.slug, '/'), { settings: { agentRunsPaused: !paused } }),
     // The workspace's settings come with the signed-in user's workspaces.
-    { invalidate: [keys.me as unknown as unknown[]] },
+    { invalidate: [keys.me] },
   );
   const { data: runs } = useQuery({
     queryKey: ['ws', ws.slug, 'agentRuns', 'list', status, agentId],

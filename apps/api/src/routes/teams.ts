@@ -4,6 +4,7 @@ import {
   createTeamSchema,
   createTriageRuleSchema,
   cycleAutomationOf,
+  isTeamAdminRole,
   SORT_GAP,
   updateStateSchema,
   updateTeamMemberSchema,
@@ -271,7 +272,10 @@ export async function teamRoutes(app: FastifyInstance) {
       const team = await loadTeam(ctx, teamId);
       const userId = input.userId ?? ctx.userId;
       const selfJoin =
-        userId === ctx.userId && input.role === 'member' && !team.private && !ctx.access.isGuest;
+        userId === ctx.userId &&
+        !isTeamAdminRole(input.role) &&
+        !team.private &&
+        !ctx.access.isGuest;
       if (!selfJoin && !canAdminTeam(ctx.access, teamId)) {
         throw forbidden('Only team admins can add people to this team').as('team_admins_add');
       }

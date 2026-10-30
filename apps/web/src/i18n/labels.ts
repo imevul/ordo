@@ -9,7 +9,7 @@ import { t } from './index.ts';
 
 /**
  * Translated labels for the fixed values in @ordo/shared. Use these in the web app instead of
- * PRIORITIES / STATE_TYPE_LABELS / priorityLabel… there, which stay English for the API and CLI.
+ * PRIORITIES / priorityLabel… there, which stay English for the API and CLI.
  */
 
 export const priorityLabel = (p: number) =>

@@ -3,6 +3,7 @@ import {
   adminAuditQuerySchema,
   adminSettingsSchema,
   adminUpdateUserSchema,
+  adminUsersQuerySchema,
   createSiteInviteSchema,
   type InstanceSettings,
   type SiteInvite,
@@ -113,7 +114,7 @@ export async function adminRoutes(app: FastifyInstance) {
   // ─── users ───────────────────────────────────────────────────────────
 
   app.get('/users', async (req) => {
-    const { q = '', offset = '0' } = req.query as { q?: string; offset?: string };
+    const { q, offset } = parse(adminUsersQuerySchema, req.query);
     const like = `%${q.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     const rows = await db
       .select({
@@ -143,7 +144,7 @@ export async function adminRoutes(app: FastifyInstance) {
       )
       .orderBy(desc(users.createdAt))
       .limit(50)
-      .offset(Math.max(0, Number(offset) || 0));
+      .offset(offset);
     return rows;
   });
 
