@@ -2,7 +2,7 @@ import type { CreateLabelInput, Label } from '@ordo/shared';
 import { and, asc, eq, isNull, or } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { labels, teams } from '../db/schema.ts';
-import { badRequest } from '../lib/errors.ts';
+import { badRequest, one } from '../lib/errors.ts';
 import { type Access, assertCan, canReadTeam, teamScope } from './access.ts';
 import { type Ctx, emit } from './context.ts';
 import { toLabel } from './serialize.ts';
@@ -39,10 +39,12 @@ export async function assertLabelTeam(
 
 export async function createLabel(ctx: Ctx, input: CreateLabelInput): Promise<Label> {
   await assertLabelTeam(ctx, input.teamId);
-  const [row] = await ctx.tx
-    .insert(labels)
-    .values({ ...input, teamId: input.teamId ?? null, workspaceId: ctx.workspaceId })
-    .returning();
-  emit(ctx, { kind: 'label', action: 'created', id: row!.id });
-  return toLabel(row!);
+  const row = one(
+    await ctx.tx
+      .insert(labels)
+      .values({ ...input, teamId: input.teamId ?? null, workspaceId: ctx.workspaceId })
+      .returning(),
+  );
+  emit(ctx, { kind: 'label', action: 'created', id: row.id });
+  return toLabel(row);
 }

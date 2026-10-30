@@ -1,10 +1,10 @@
 import type { AgentRunWithIssue } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ExternalLink, RotateCcw, Square } from 'lucide-react';
+import { ExternalLink, Pause, Play, RotateCcw, Square } from 'lucide-react';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
-import { useWsMutation } from '../api/queries.ts';
+import { keys, useWsMutation } from '../api/queries.ts';
 import { isOpenRun, RUN_STATUS_COLOR, triggerLabel } from '../components/AgentRuns.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
@@ -26,6 +26,13 @@ export function AgentRunsPage() {
   const [status, setStatus] = useState<Status>('active');
   const [agentId, setAgentId] = useState('');
   const agents = ws.members.filter((m) => m.kind === 'agent');
+  const paused = ws.workspace.settings.agentRunsPaused;
+  const togglePause = useWsMutation(
+    ws.slug,
+    () => api.patch(wsPath(ws.slug, '/'), { settings: { agentRunsPaused: !paused } }),
+    // The workspace's settings come with the signed-in user's workspaces.
+    { invalidate: [keys.me as unknown as unknown[]] },
+  );
   const { data: runs } = useQuery({
     queryKey: ['ws', ws.slug, 'agentRuns', 'list', status, agentId],
     queryFn: () =>
@@ -50,6 +57,18 @@ export function AgentRunsPage() {
         title={t('agents.runsPage.title')}
         actions={
           <div className="flex items-center gap-2">
+            {ws.isAdmin && (
+              <button
+                type="button"
+                className={`btn btn-sm ${paused ? 'btn-primary' : 'btn-ghost'}`}
+                onClick={() => togglePause.mutate()}
+                disabled={togglePause.isPending}
+                title={t('agents.runsPage.pauseHint')}
+              >
+                {paused ? <Play size={12} /> : <Pause size={12} />}
+                {paused ? t('agents.runsPage.resume') : t('agents.runsPage.pause')}
+              </button>
+            )}
             <select
               className="input h-8 w-44"
               value={agentId}
@@ -79,6 +98,11 @@ export function AgentRunsPage() {
           </div>
         }
       />
+      {paused && (
+        <div className="border-b border-border-soft bg-warning/10 px-4 py-2 text-[13px] text-warning">
+          {t('agents.runsPage.pausedBanner')}
+        </div>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!runs ? (
           <Spinner />

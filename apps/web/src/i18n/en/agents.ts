@@ -94,6 +94,11 @@ export default {
   },
   /** The workspace-wide list of runs (sidebar → Agent runs). */
   runsPage: {
+    pause: 'Pause new runs',
+    resume: 'Resume runs',
+    pauseHint: 'Runners start nothing new while paused; runs already going finish.',
+    pausedBanner:
+      'New agent runs are paused. Queued runs wait until an admin resumes them; runs already going finish.',
     nav: 'Agent runs',
     kicker: 'agent runs',
     title: 'Agent runs',

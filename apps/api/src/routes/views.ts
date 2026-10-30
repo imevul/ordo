@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { views } from '../db/schema.ts';
 import { requireAccess } from '../lib/auth.ts';
-import { forbidden, notFound, parse } from '../lib/errors.ts';
+import { forbidden, notFound, one, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertCan, assertTeamAccess } from '../services/access.ts';
 import { type Ctx, emit } from '../services/context.ts';
@@ -27,21 +27,23 @@ export async function viewRoutes(app: FastifyInstance) {
     const input = parse(createViewSchema, req.body);
     return mutate(app, req, async (ctx) => {
       if (input.teamId) assertTeamAccess(ctx.access, input.teamId);
-      const [row] = await ctx.tx
-        .insert(views)
-        .values({
-          workspaceId: ctx.workspaceId,
-          ownerId: ctx.userId,
-          name: input.name,
-          description: input.description ?? null,
-          teamId: input.teamId ?? null,
-          shared: input.shared,
-          filters: input.filters,
-          display: input.display ?? DEFAULT_ISSUE_DISPLAY,
-        })
-        .returning();
-      emit(ctx, { kind: 'view', action: 'created', id: row!.id });
-      return toView(row!);
+      const row = one(
+        await ctx.tx
+          .insert(views)
+          .values({
+            workspaceId: ctx.workspaceId,
+            ownerId: ctx.userId,
+            name: input.name,
+            description: input.description ?? null,
+            teamId: input.teamId ?? null,
+            shared: input.shared,
+            filters: input.filters,
+            display: input.display ?? DEFAULT_ISSUE_DISPLAY,
+          })
+          .returning(),
+      );
+      emit(ctx, { kind: 'view', action: 'created', id: row.id });
+      return toView(row);
     });
   });
 
@@ -50,13 +52,16 @@ export async function viewRoutes(app: FastifyInstance) {
     const input = parse(updateViewSchema, req.body);
     return mutate(app, req, async (ctx) => {
       await loadEditableView(ctx, id);
-      const [row] = await ctx.tx
-        .update(views)
-        .set({ ...input, updatedAt: new Date().toISOString() })
-        .where(eq(views.id, id))
-        .returning();
+      const row = one(
+        await ctx.tx
+          .update(views)
+          .set({ ...input, updatedAt: new Date().toISOString() })
+          .where(eq(views.id, id))
+          .returning(),
+        'View',
+      );
       emit(ctx, { kind: 'view', action: 'updated', id });
-      return toView(row!);
+      return toView(row);
     });
   });
 

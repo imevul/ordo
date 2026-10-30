@@ -2,6 +2,7 @@ import {
   type Account,
   AVATAR_COLORS,
   type EmailDigest,
+  INBOX_ONLY_TYPES,
   LOCALE_NAMES,
   LOCALES,
   type Locale,
@@ -1073,16 +1074,20 @@ export function PushCard() {
   );
 }
 
+const CHANNELS = ['inbox', 'push', 'email', 'chat'] as const;
+type Channel = (typeof CHANNELS)[number];
+
 export function NotificationsSection() {
   const { data: account } = useAccount();
   const config = useConfig();
   const refresh = useRefreshAccount();
   if (!account) return <Spinner />;
   const prefs = account.preferences.notifications;
-  const save = async (patch: {
-    emailDigest?: EmailDigest;
-    email?: Partial<Record<NotificationType, boolean>>;
-  }) => {
+  const save = async (
+    patch: { emailDigest?: EmailDigest } & Partial<
+      Record<Channel, Partial<Record<NotificationType, boolean>>>
+    >,
+  ) => {
     try {
       await api.patch('/me/preferences', { notifications: patch });
       refresh();
@@ -1090,19 +1095,20 @@ export function NotificationsSection() {
       toast.error(errMsg(err));
     }
   };
+  const emailOff = !config.data?.emailEnabled || prefs.emailDigest === 'off';
+  const usable = (type: NotificationType, channel: Channel) =>
+    channel === 'inbox' ||
+    (prefs.inbox[type] && !INBOX_ONLY_TYPES.includes(type) && !(channel === 'email' && emailOff));
   return (
     <SettingsCard
       title={t('settings.notifications.title')}
-      description={
-        config.data?.emailEnabled
-          ? t('settings.notifications.description')
-          : t('settings.notifications.descriptionNoEmail')
-      }
+      description={t('settings.notifications.description')}
     >
       <FormRow label={t('settings.notifications.sendEmails')}>
         <select
           className="input w-64"
           value={prefs.emailDigest}
+          disabled={!config.data?.emailEnabled}
           onChange={(e) => save({ emailDigest: e.target.value as EmailDigest })}
         >
           {(['instant', 'hourly', 'daily', 'off'] as const).map((d) => (
@@ -1112,22 +1118,55 @@ export function NotificationsSection() {
           ))}
         </select>
       </FormRow>
-      <div className={prefs.emailDigest === 'off' ? 'pointer-events-none opacity-50' : ''}>
-        {NOTIFICATION_TYPES.map((type) => (
-          <label
-            key={type}
-            className="flex items-center justify-between gap-3 border-b border-border-soft py-2.5 text-[13.5px]"
-          >
-            {notificationLabel(type)}
-            <input
-              type="checkbox"
-              className="accent-primary"
-              checked={prefs.email[type]}
-              onChange={(e) => save({ email: { [type]: e.target.checked } })}
-            />
-          </label>
-        ))}
-      </div>
+      {!config.data?.emailEnabled && (
+        <p className="mb-2 text-[12.5px] text-index">
+          {t('settings.notifications.descriptionNoEmail')}
+        </p>
+      )}
+      <table className="w-full text-[13.5px]">
+        <thead>
+          <tr className="border-b border-border-soft">
+            <th className="py-2 text-left font-normal" />
+            {CHANNELS.map((c) => (
+              <th
+                key={c}
+                scope="col"
+                className="w-16 py-2 text-center font-mono text-[10.5px] font-normal tracking-[0.14em] text-index uppercase"
+              >
+                {t(`settings.notifications.channels.${c}`)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {NOTIFICATION_TYPES.map((type) => (
+            <tr key={type} className="border-b border-border-soft">
+              <th scope="row" className="py-2.5 text-left font-normal">
+                {notificationLabel(type)}
+              </th>
+              {CHANNELS.map((c) => {
+                const ok = usable(type, c);
+                return (
+                  <td key={c} className="text-center">
+                    <input
+                      type="checkbox"
+                      className="accent-primary disabled:opacity-30"
+                      aria-label={t('settings.notifications.cellLabel', {
+                        type: notificationLabel(type),
+                        channel: t(`settings.notifications.channels.${c}`),
+                      })}
+                      disabled={!ok}
+                      checked={ok && prefs[c][type]}
+                      onChange={(e) => save({ [c]: { [type]: e.target.checked } })}
+                    />
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-3 text-[12.5px] text-index">{t('settings.notifications.channelsHint')}</p>
     </SettingsCard>
   );
 }

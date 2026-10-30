@@ -4,6 +4,7 @@ import {
   createIssueSchema,
   type Issue,
   type IssueFilter,
+  isCycleCurrent,
   MCP_TOOLS,
   type McpToolArgs,
   type McpToolName,
@@ -152,7 +153,7 @@ class Directory {
     const cycles = (await this.cycles()).filter((c) => !teamId || c.teamId === teamId);
     const match = (c: Cycle) =>
       ref === 'current'
-        ? c.startsAt <= today && c.endsAt > today
+        ? isCycleCurrent(c, today)
         : c.id === ref || String(c.number) === ref || (!!c.name && same(c.name, ref));
     const ids = cycles.filter(match).map((c) => c.id);
     if (ids.length) return ids;
@@ -420,7 +421,7 @@ function handlers(c: McpCaller): Handlers {
           name: x.name,
           startsAt: x.startsAt,
           endsAt: x.endsAt,
-          current: x.startsAt <= today && x.endsAt > today,
+          current: isCycleCurrent(x, today),
           progress: x.progress,
         }));
     },

@@ -112,7 +112,12 @@ describe('web push', () => {
     await member.req('DELETE', '/api/me/push-subscriptions', {
       endpoint: 'https://push.example.com/device-1',
     });
-    expect(await app.db.select().from(pushSubscriptions)).toHaveLength(0);
+    expect(
+      await app.db
+        .select()
+        .from(pushSubscriptions)
+        .where(eq(pushSubscriptions.userId, ids.member!)),
+    ).toHaveLength(0);
   });
 
   it('pushes notifications, encrypted for the device, and drops gone ones', async () => {
