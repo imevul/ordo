@@ -591,6 +591,38 @@ const sleep = (ms: number, signal: AbortSignal) =>
     });
   });
 
+/** Ordo restarting or unreachable for a moment (a deploy, a proxy), as opposed to a real answer. */
+export const isTransient = (err: unknown) =>
+  !(err instanceof OrdoError) || [429, 502, 503, 504].includes(err.status);
+
+/**
+ * Calls `fn` until it answers, while failures are transient (see `isTransient`), backing off
+ * from one second to `maxDelayMs`, for at most `forMs`. Other errors, and the last transient one,
+ * are thrown.
+ */
+export async function untilAvailable<T>(
+  fn: () => Promise<T>,
+  opts: {
+    signal: AbortSignal;
+    onRetry?: (err: Error, delayMs: number) => void;
+    forMs?: number;
+    maxDelayMs?: number;
+  },
+): Promise<T> {
+  const until = Date.now() + (opts.forMs ?? 5 * 60_000);
+  let delay = 1000;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (!isTransient(err) || Date.now() + delay > until || opts.signal.aborted) throw err;
+      opts.onRetry?.(err as Error, delay);
+      await sleep(delay, opts.signal);
+      delay = Math.min(delay * 2, opts.maxDelayMs ?? 30_000);
+    }
+  }
+}
+
 /** Clients for one agent: one whose claims are cut off by the stop signal, one that isn't. */
 export function agentClients(spec: AgentSpec, opts: Pick<ServeOptions, 'fetch' | 'signal'>) {
   const base = opts.fetch ?? globalThis.fetch;

@@ -26,6 +26,7 @@ import {
   RunnerConfigError,
   runnerFilePath,
   serveAgent,
+  untilAvailable,
 } from './agent.ts';
 import {
   type Config,
@@ -1025,7 +1026,15 @@ async function agentRun(ctx: Context, args: string[], opts: { check?: boolean } 
   // Who each key belongs to, before anything is claimed: a wrong key fails here, not later.
   for (const spec of specs) {
     const { ws } = agentClients(spec, { fetch: io.fetch, signal: stop.signal });
-    const me = await ws.agent.me().catch((err: Error) => {
+    // A runner started during a deploy waits for Ordo to come back; `check` answers right away.
+    const me = await (opts.check
+      ? ws.agent.me()
+      : untilAvailable(() => ws.agent.me(), {
+          signal: stop.signal,
+          onRetry: (err, ms) =>
+            io.stderr(`${spec.label}: ${err.message}; trying again in ${ms / 1000}s\n`),
+        })
+    ).catch((err: Error) => {
       throw new RunnerConfigError(`${spec.label}: ${err.message}`);
     });
     const command = typeof spec.command === 'string' ? spec.command : spec.command.join(' ');

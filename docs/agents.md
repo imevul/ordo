@@ -69,6 +69,9 @@ Ordo, or over `--timeout` — stops everything it started too (shells, `pnpm`, b
 SIGKILL ten seconds later. Stopping the runner itself with SIGTERM or SIGHUP (`kill`, a closed terminal) sends
 SIGTERM to the commands' groups first. On Windows only the command itself is signalled.
 
+A runner started while Ordo is restarting (a deploy, a proxy switching over) waits for it, trying again for up to five
+minutes; `ordo agent check` reports the error right away.
+
 There is **one branch per issue**, whichever agent works on it: the issue's open pull request's branch, else a branch
 already pushed for the issue, else `eng-42-short-title`. An existing local branch is reused, so a second run, or
 another agent the issue was handed to, continues where the last one left off, in the same worktree. (Branches from
