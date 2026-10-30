@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { isNotNull } from 'drizzle-orm';
+import { eq, isNotNull } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
@@ -219,5 +219,23 @@ describe('rotate-key', () => {
   it('is idempotent', async () => {
     const counts = await rotateSecrets(before.db, new Keyring(NEW, OLD));
     expect(counts.every((c) => c.rotated === 0)).toBe(true);
+  });
+
+  it('names the secret it cannot decrypt', async () => {
+    const id = randomUUID();
+    const stray = new Keyring(Buffer.alloc(32, 9));
+    await before.db.insert(webhooks).values({
+      id,
+      workspaceId,
+      url: 'https://stray.example',
+      secret: stray.encrypt('whsec_y', secretAad.webhookSecret(id)),
+    });
+    try {
+      await expect(rotateSecrets(before.db, new Keyring(NEW, OLD))).rejects.toThrow(
+        `Could not re-encrypt webhook secrets ${id}`,
+      );
+    } finally {
+      await before.db.delete(webhooks).where(eq(webhooks.id, id));
+    }
   });
 });

@@ -124,6 +124,15 @@ export const ENCRYPTED_SETTINGS: {
 
 const isCiphertext = (v: unknown): v is string => typeof v === 'string' && v.startsWith('v1.');
 
+// Names the secret that failed, so an operator knows which one to fix or enter again.
+function reencrypt(keyring: Keyring, value: string, aad: string, what: string) {
+  try {
+    return keyring.encrypt(keyring.decrypt(value, aad), aad);
+  } catch (err) {
+    throw new Error(`Could not re-encrypt ${what}: ${err instanceof Error ? err.message : err}`);
+  }
+}
+
 /**
  * Re-encrypts every stored secret that isn't under the current key. Idempotent; one transaction
  * per table. Each update only applies if the value is still the one we read, so a server writing
@@ -145,7 +154,7 @@ export async function rotateSecrets(db: Db, keyring: Keyring) {
         const aad = c.aad(row.id);
         await tx
           .update(c.table)
-          .set({ [field]: keyring.encrypt(keyring.decrypt(row.value, aad), aad) } as never)
+          .set({ [field]: reencrypt(keyring, row.value, aad, `${c.name} ${row.id}`) } as never)
           .where(and(eq(c.id, row.id), eq(c.column, row.value)));
         n++;
       }
@@ -174,7 +183,7 @@ export async function rotateSecrets(db: Db, keyring: Keyring) {
       const aad = s.aad();
       await tx
         .update(instanceSettings)
-        .set({ value: { ...value, [s.field]: keyring.encrypt(keyring.decrypt(secret, aad), aad) } })
+        .set({ value: { ...value, [s.field]: reencrypt(keyring, secret, aad, s.name) } })
         .where(eq(instanceSettings.key, s.key));
       // Running servers cache settings; tell them to reload (delivered on commit).
       await tx.execute(sql`select pg_notify('ordo_settings', ${s.key})`);
