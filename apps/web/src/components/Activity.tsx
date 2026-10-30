@@ -437,8 +437,7 @@ export function Activity({
   // History rows sort in above comments, and with offline sync the comments can arrive from
   // IndexedDB long before /history does, so wait for both or the comment moves after scrolling.
   // Scroll once, not again on every refetch.
-  const focusReady =
-    !historyQuery.isPending && comments.some((c) => c.id === focusCommentId);
+  const focusReady = !historyQuery.isPending && comments.some((c) => c.id === focusCommentId);
   useEffect(() => {
     if (!focusCommentId || !focusReady) return;
     document
