@@ -1152,6 +1152,16 @@ export interface Repository {
   createdAt: string;
 }
 
+/** A repository a forge integration can see, offered when adding a workspace repository. */
+export interface ForgeRepository {
+  /** owner/name */
+  fullName: string;
+  cloneUrl: string;
+  sshUrl: string;
+  defaultBranch: string;
+  private: boolean;
+}
+
 /** An agent as admins manage it. Its member entry (name, avatar, teams) is in the bootstrap. */
 export interface Agent {
   id: string;

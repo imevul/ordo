@@ -18,7 +18,9 @@ There are three parts:
 ## Setting up
 
 1. **Repositories** (_Settings → Repositories_, admins). Register where your code lives: a name, a clone URL
-   (`https://…`, `ssh://…`, `git@host:owner/repo.git`, or a path on the runner) and the default branch. Then attach
+   (`https://…`, `ssh://…`, `git@host:owner/repo.git`, or a path on the runner) and the default branch. With a
+   GitHub or Forgejo integration connected, **Browse…** lists the repositories it can see and fills all of that in
+   (SSH or HTTPS URL, as you choose), linking the repository to the integration. Then attach
    repositories to projects (the project's sidebar) and pick a **default repository** per team (_team settings_).
    A run's repositories are its project's, or else its team's default. Ordo stores only the address; runners bring
    their own git credentials.

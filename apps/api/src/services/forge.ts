@@ -1,4 +1,9 @@
-import { type GitEvent, gitAutomationTarget, STATE_TYPES } from '@ordo/shared';
+import {
+  type ForgeRepository,
+  type GitEvent,
+  gitAutomationTarget,
+  STATE_TYPES,
+} from '@ordo/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   externalAccounts,
@@ -279,6 +284,47 @@ export async function applyBranch(ictx: IntegrationContext, branch: ForgeBranch)
       await automate(ctx, issue, 'branch');
     }
   });
+}
+
+/** How GitHub and Forgejo both describe a repository. */
+export interface ForgeRepoPayload {
+  full_name: string;
+  clone_url: string;
+  ssh_url: string;
+  default_branch: string;
+  private: boolean;
+}
+
+// Enough for any sensible account; beyond that, people search.
+const MAX_REPO_PAGES = 10;
+
+/**
+ * Walks a paginated repository listing (`fetchPage(1)`, `fetchPage(2)`…) until a short page
+ * (or, with `pageSize` null, an empty one), keeping the repositories whose owner/name contains
+ * `query`, sorted by name.
+ */
+export async function collectRepositories(
+  pageSize: number | null,
+  fetchPage: (page: number) => Promise<ForgeRepoPayload[]>,
+  query?: string,
+): Promise<ForgeRepository[]> {
+  const needle = query?.trim().toLowerCase();
+  const out: ForgeRepository[] = [];
+  for (let page = 1; page <= MAX_REPO_PAGES; page++) {
+    const batch = await fetchPage(page);
+    for (const r of batch) {
+      if (needle && !r.full_name.toLowerCase().includes(needle)) continue;
+      out.push({
+        fullName: r.full_name,
+        cloneUrl: r.clone_url,
+        sshUrl: r.ssh_url,
+        defaultBranch: r.default_branch || 'main',
+        private: !!r.private,
+      });
+    }
+    if (batch.length === 0 || (pageSize !== null && batch.length < pageSize)) break;
+  }
+  return out.sort((a, b) => a.fullName.localeCompare(b.fullName));
 }
 
 /** True for branch names and messages worth looking at (cheap pre-filter). */
