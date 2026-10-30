@@ -142,7 +142,10 @@ describe('issues', () => {
         .sort(),
     ).toEqual(['assignee', 'state']);
     const inbox = (await grace.get(`${ws}/notifications`)).data;
-    expect(inbox[0]).toMatchObject({ type: 'issue_assigned', issueId: first.id });
+    // The update also notifies about the status change, at the same instant, so order is arbitrary.
+    expect(inbox).toContainEqual(
+      expect.objectContaining({ type: 'issue_assigned', issueId: first.id }),
+    );
   });
 
   it('filters issues', async () => {
