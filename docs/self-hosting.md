@@ -78,6 +78,16 @@ the `backups/` directory off the machine. A simple cron entry, which also prunes
 0 3 * * * cd /opt/ordo && make backup >/dev/null && find backups -name 'ordo-*.gz' -mtime +14 -delete
 ```
 
+Both targets need `bash` on the host. `make backup` exits non-zero and leaves no file when the dump or the uploads
+archive fails (the database container is down, the disk is full…), so the `find` doesn't prune old backups after a
+failed run, and cron mails you the error if it can send mail. Both files are written as `*.tmp` and renamed only once
+they're complete and pass `gzip -t`.
+
+`make restore` checks the file with `gzip -t` before it stops the app, then loads the dump in a single transaction
+that stops at the first SQL error. If anything fails, the database is rolled back to what it was, the uploads aren't
+touched and the app stays stopped; fix the problem and restore again, or `docker compose start app` to run on the old
+data.
+
 ### Restoring onto a new host
 
 To move Ordo, or to rebuild it after losing the machine, you need the newest `ordo-<timestamp>.sql.gz`, its
@@ -323,13 +333,13 @@ It stops cleanly on `SIGTERM`. Put a reverse proxy in front as in
 
 **The `make` targets** have plain equivalents:
 
-| Docker                           | Without Docker                                                                                                            |
-| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `make update`                    | Build, assemble a new release directory, point `current` at it, `systemctl restart ordo`                                  |
-| `make backup`                    | `pg_dump --clean --if-exists "$DATABASE_URL" \| gzip > ordo.sql.gz` and `tar -C /var/lib/ordo -czf ordo.uploads.tar.gz .` |
-| `make restore FILE=…`            | `systemctl stop ordo`, `gunzip -c ordo.sql.gz \| psql -q "$DATABASE_URL"`, unpack the uploads, `systemctl start ordo`     |
-| `make admin EMAIL=…` and friends | `node cli.mjs promote-admin you@example.com` with the service's environment, see below                                    |
-| `make seed`                      | `node seed.mjs` the same way (demo data; not on a production instance)                                                    |
+| Docker                           | Without Docker                                                                                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `make update`                    | Build, assemble a new release directory, point `current` at it, `systemctl restart ordo`                                                                     |
+| `make backup`                    | `pg_dump --clean --if-exists "$DATABASE_URL" \| gzip > ordo.sql.gz` with `set -o pipefail` and `tar -C /var/lib/ordo -czf ordo.uploads.tar.gz .`             |
+| `make restore FILE=…`            | `gunzip -c ordo.sql.gz \| psql -q -v ON_ERROR_STOP=1 --single-transaction "$DATABASE_URL"` with the service stopped; unpack the uploads only if it succeeded |
+| `make admin EMAIL=…` and friends | `node cli.mjs promote-admin you@example.com` with the service's environment, see below                                                                       |
+| `make seed`                      | `node seed.mjs` the same way (demo data; not on a production instance)                                                                                       |
 
 `systemd-run` runs a command with the service's user, directory and environment file, read the way the service reads
 it:

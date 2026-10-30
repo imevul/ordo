@@ -87,17 +87,35 @@ status: ps
 seed: ## Load the demo workspace (sign in as demo@ordo.test / ordo-demo-password)
 	$(COMPOSE) exec app node seed.mjs
 
-backup: ## Dump the database and uploads to backups/ordo-<timestamp>.*
-	@mkdir -p $(BACKUP_DIR)
-	@stamp=$$(date +%Y%m%d-%H%M%S); \
-		$(COMPOSE) exec -T db sh -c 'pg_dump -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" --clean --if-exists' | gzip > $(BACKUP_DIR)/ordo-$$stamp.sql.gz && \
-		$(COMPOSE) exec -T app tar -C /data -czf - . > $(BACKUP_DIR)/ordo-$$stamp.uploads.tar.gz && \
-		echo "Backup written to $(BACKUP_DIR)/ordo-$$stamp.{sql,uploads.tar}.gz"
+# Without pipefail a pipe's status is its last command's, so a failed pg_dump or gunzip would look like success.
+# /bin/sh may be a dash without pipefail, so these two run under bash (.SHELLFLAGS needs make ≥ 3.82; macOS has 3.81).
+backup restore: SHELL := bash
 
+# Each file is written to *.tmp and renamed only once it's complete, so a failure never leaves a truncated backup.
+backup: ## Dump the database and uploads to backups/ordo-<timestamp>.*
+	@set -o pipefail; mkdir -p $(BACKUP_DIR); \
+		base=$(BACKUP_DIR)/ordo-$$(date +%Y%m%d-%H%M%S); \
+		trap 'rm -f "$$base.sql.gz.tmp" "$$base.uploads.tar.gz.tmp"' EXIT; \
+		$(COMPOSE) exec -T db sh -c 'pg_dump -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" --clean --if-exists' \
+			| gzip > "$$base.sql.gz.tmp" && gzip -t "$$base.sql.gz.tmp" \
+			|| { echo "Database dump failed; no backup written." >&2; exit 1; }; \
+		$(COMPOSE) exec -T app tar -C /data -czf - . > "$$base.uploads.tar.gz.tmp" && gzip -t "$$base.uploads.tar.gz.tmp" \
+			|| { echo "Uploads archive failed; no backup written." >&2; exit 1; }; \
+		mv "$$base.sql.gz.tmp" "$$base.sql.gz" && mv "$$base.uploads.tar.gz.tmp" "$$base.uploads.tar.gz" && \
+		echo "Backup written to $$base.{sql,uploads.tar}.gz"
+
+# The archive is checked before anything stops, and psql runs as one transaction that stops at the first error, so a
+# bad dump leaves the old database in place and the uploads untouched.
 restore: ## Restore a backup: make restore FILE=backups/ordo-….sql.gz (uploads too, if alongside)
 	@test -n "$(FILE)" || (echo "Usage: make restore FILE=backups/ordo-….sql.gz" && exit 1)
+	@test -f "$(FILE)" || (echo "No such file: $(FILE)" >&2 && exit 1)
+	@gzip -t "$(FILE)" || (echo "$(FILE) is not a complete gzip file; nothing was restored." >&2 && exit 1)
 	$(COMPOSE) stop app
-	gunzip -c $(FILE) | $(COMPOSE) exec -T db sh -c 'psql -q -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"'
+	@set -o pipefail; \
+		gunzip -c "$(FILE)" | $(COMPOSE) exec -T db sh -c \
+			'psql -q -v ON_ERROR_STOP=1 --single-transaction -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' \
+		|| { echo "Restore failed; the database was rolled back and uploads were not touched. The app is stopped:" \
+			"fix the problem and run make restore again, or $(COMPOSE) start app to run on the old data." >&2; exit 1; }
 	@uploads=$$(echo $(FILE) | sed 's/\.sql\.gz$$/.uploads.tar.gz/'); \
 		if [ -f "$$uploads" ]; then \
 			$(COMPOSE) run --rm -T --no-deps --entrypoint sh app -c 'rm -rf /data/* && tar -C /data -xzf -' < "$$uploads" && echo "Restored uploads from $$uploads"; \
