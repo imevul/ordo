@@ -598,12 +598,19 @@ async function assertParent(ctx: Ctx, issueId: string | null, parentId: string) 
   }
 }
 
-function stateTimestamps(type: StateType, prev?: { startedAt: string | null }) {
+/**
+ * Timestamps for entering a status of `type`. Moving between two statuses of the same type (say,
+ * Done in one team to Done in another) keeps when it happened: the issue wasn't finished again.
+ */
+function stateTimestamps(
+  type: StateType,
+  prev?: { startedAt: string | null; completedAt: string | null; canceledAt: string | null },
+) {
   const now = new Date().toISOString();
   return {
     startedAt: type === 'started' || type === 'completed' ? (prev?.startedAt ?? now) : null,
-    completedAt: type === 'completed' ? now : null,
-    canceledAt: type === 'canceled' ? now : null,
+    completedAt: type === 'completed' ? (prev?.completedAt ?? now) : null,
+    canceledAt: type === 'canceled' ? (prev?.canceledAt ?? now) : null,
   };
 }
 
