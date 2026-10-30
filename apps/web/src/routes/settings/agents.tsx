@@ -629,10 +629,11 @@ function BrowseRepositoriesModal({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && matches[0]) {
-                e.preventDefault();
-                pick(matches[0]);
-              }
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              // Same rule as clicking: repositories already added can't be picked again.
+              const first = matches.find((r) => !isAdded(r));
+              if (first) pick(first);
             }}
           />
           <fieldset className="flex items-center gap-3 text-[12px] text-muted">
@@ -667,7 +668,7 @@ function BrowseRepositoriesModal({
               <button
                 key={r.fullName}
                 type="button"
-                className="menu-item"
+                className="menu-item disabled:cursor-default disabled:opacity-50"
                 disabled={isAdded(r)}
                 onClick={() => pick(r)}
               >

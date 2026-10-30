@@ -536,25 +536,40 @@ describe('Forgejo', () => {
     const d = await detail(issue.id);
     expect(d.links).toMatchObject([{ provider: 'forgejo', state: 'draft', author: 'fj-user' }]);
 
-    forge.on('GET', '/api/v1/user/repos', [
-      {
-        full_name: 'acme/app',
-        clone_url: `${forge.url}/acme/app.git`,
-        ssh_url: 'git@code.example:acme/app.git',
-        default_branch: 'main',
-        private: false,
-      },
-    ]);
+    // A server whose page cap is below our limit returns short pages; keep going until empty.
+    const fjRepo = (name: string) => ({
+      full_name: name,
+      clone_url: `${forge.url}/${name}.git`,
+      ssh_url: `git@code.example:${name}.git`,
+      default_branch: 'main',
+      private: false,
+    });
+    forge.on('GET', '/api/v1/user/repos', (req: { path: string }) => ({
+      body:
+        (
+          {
+            '1': [fjRepo('acme/app')],
+            '2': [fjRepo('acme/web')],
+          } as Record<string, unknown[]>
+        )[new URL(req.path, 'http://x').searchParams.get('page') ?? ''] ?? [],
+    }));
     const repos = await owner.get(`${ws}/integrations/${res.data.id}/repositories`);
-    expect(repos.data).toEqual([
-      {
-        fullName: 'acme/app',
-        cloneUrl: `${forge.url}/acme/app.git`,
-        sshUrl: 'git@code.example:acme/app.git',
-        defaultBranch: 'main',
-        private: false,
-      },
+    expect(
+      forge
+        .calls('GET', '/api/v1/user/repos')
+        .map((p) => new URL(p.path, 'http://x').searchParams.get('page')),
+    ).toEqual(['1', '2', '3']);
+    expect(repos.data.map((r: { fullName: string }) => r.fullName)).toEqual([
+      'acme/app',
+      'acme/web',
     ]);
+    expect(repos.data[0]).toEqual({
+      fullName: 'acme/app',
+      cloneUrl: `${forge.url}/acme/app.git`,
+      sshUrl: 'git@code.example:acme/app.git',
+      defaultBranch: 'main',
+      private: false,
+    });
     expect(forge.calls('GET', '/api/v1/user/repos')[0]!.headers.authorization).toBe('token fj');
 
     // A forge that says no is a 400 with its reason, not a server error.
