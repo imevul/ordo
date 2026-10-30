@@ -99,6 +99,37 @@ describe('engine', () => {
     expect(engine.getState().bootstrap!.teams).toHaveLength(1);
   });
 
+  it('loads the existing issues of a team that came into sight', async () => {
+    const server = new FakeServer();
+    server.teams = ['team-1'];
+    server.put(issue('a', { teamId: 'team-1' }));
+    server.put(issue('b', { teamId: 'team-2' }));
+    const { engine, store, errors } = setup(server);
+    await engine.sync();
+    expect(ids(engine)).toEqual(['a']);
+
+    // Nothing in the log touches b: only a full load finds it.
+    server.changeTeams(['team-1', 'team-2']);
+    server.put(issue('c', { teamId: 'team-2' }));
+    await engine.sync();
+    expect(errors).toEqual([]);
+    expect(ids(engine)).toEqual(['a', 'b', 'c']);
+    expect(engine.getState().bootstrap!.teams).toHaveLength(2);
+    expect(engine.cursor).toEqual({ seq: server.seq, epoch: 1 });
+    expect((await store.read()).issues.map((i) => i.id).sort()).toEqual(['a', 'b', 'c']);
+  });
+
+  it('follows the log when the teams in sight stay the same', async () => {
+    const { server, engine } = setup();
+    server.put(issue('a'));
+    await engine.sync();
+    const loads = server.calls.filter((c) => c === 'issues').length;
+    server.changeTeams(['team-1', 'team-2']);
+    await engine.sync();
+    expect(server.calls.filter((c) => c === 'issues')).toHaveLength(loads);
+    expect(ids(engine)).toEqual(['a']);
+  });
+
   it('starts over when the server starts a new epoch', async () => {
     const { server, engine } = setup();
     server.put(issue('a'));

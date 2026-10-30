@@ -215,9 +215,9 @@ export class Engine {
   }
 
   /** Loads everything; the old copy stays on screen until the new one is complete. */
-  private async fullLoad() {
+  private async fullLoad(fetched?: SyncSnapshot) {
     const { transport, store, pageSize = 500 } = this.opts;
-    const snap = await transport.snapshot();
+    const snap = fetched ?? (await transport.snapshot());
     const issues: Issue[] = [];
     let after: string | null = null;
     do {
@@ -245,9 +245,13 @@ export class Engine {
   private async apply(changes: SyncChanges) {
     // Teams, members, labels… changed: load them again (the snapshot's position is ignored; the
     // log is still read from where this copy is).
-    const bootstrap = changes.bootstrapChanged
-      ? (await this.opts.transport.snapshot()).bootstrap
-      : undefined;
+    const snap = changes.bootstrapChanged ? await this.opts.transport.snapshot() : undefined;
+    const bootstrap = snap?.bootstrap;
+    if (snap) {
+      // A team came into sight: the log only has its issues changed since, so load everything.
+      const known = new Set(this.state.bootstrap?.teams.map((t) => t.id));
+      if (snap.bootstrap.teams.some((t) => !known.has(t.id))) return this.fullLoad(snap);
+    }
     const deleted = new Set(changes.deletedIssueIds);
     if (bootstrap) {
       // Access may have shrunk: issues of teams that are out of sight go.
