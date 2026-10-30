@@ -1,9 +1,9 @@
 import { type Bootstrap, type Import, parseCsv, type WorkspaceExport } from '@ordo/shared';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { auditLog, files, workspaceExports } from '../src/db/schema.ts';
-import { purgeOldExports } from '../src/services/exports.ts';
+import { purgeOldExports, runExport } from '../src/services/exports.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -193,6 +193,32 @@ describe('workspace export', () => {
     expect(team.states.find((s) => s.id === copy.stateId)!.name).toBe(
       original.states.find((s) => s.id === original.defaultStateId)!.name,
     );
+  });
+
+  it('keeps one result when two runs of the same export overlap', async () => {
+    const res = await owner.post(`${ws}/exports`, { format: 'json' });
+    const exportFiles = async () =>
+      (
+        await app.db
+          .select({ id: files.id })
+          .from(files)
+          .where(and(eq(files.workspaceId, boot.workspace.id), eq(files.kind, 'export')))
+      ).map((f) => f.id);
+    const before = await exportFiles();
+    // As if the job's lock had run out mid-export and a second worker had picked it up too.
+    const job = { attempt: 1, maxAttempts: 8, jobId: 0, log: app.log };
+    await Promise.all([
+      runExport(app, { exportId: res.data.id }, job),
+      runExport(app, { exportId: res.data.id }, job),
+    ]);
+    const [row] = await app.db
+      .select()
+      .from(workspaceExports)
+      .where(eq(workspaceExports.id, res.data.id));
+    expect(row!.status).toBe('ready');
+    const added = (await exportFiles()).filter((id) => !before.includes(id));
+    expect(added).toEqual([row!.fileId]);
+    await settle();
   });
 
   it('can be deleted, and is purged after a week', async () => {

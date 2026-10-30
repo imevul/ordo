@@ -160,7 +160,8 @@ export async function runExport(
       filename: `ordo-${ws.slug}-${new Date().toISOString().slice(0, 10)}.${row.format}`,
       body,
     });
-    await app.db
+    // Only the first run to finish wins; one that lost the race throws its file away.
+    const done = await app.db
       .update(workspaceExports)
       .set({
         status: 'ready',
@@ -168,7 +169,9 @@ export async function runExport(
         size: body.length,
         completedAt: new Date().toISOString(),
       })
-      .where(eq(workspaceExports.id, row.id));
+      .where(and(eq(workspaceExports.id, row.id), eq(workspaceExports.status, 'running')))
+      .returning({ id: workspaceExports.id });
+    if (done.length === 0) return deleteFile(app, file.id);
   } catch (err) {
     if (job.attempt < job.maxAttempts) throw err;
     await app.db

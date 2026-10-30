@@ -10,7 +10,7 @@ import {
   updateTeamSchema,
   updateTriageRuleSchema,
 } from '@ordo/shared';
-import { and, count, eq, isNull, max, ne, sql } from 'drizzle-orm';
+import { and, count, eq, isNull, lte, max, ne } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
   cycles,
@@ -35,7 +35,8 @@ import { mutate } from '../lib/mutate.ts';
 import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
 import { type Ctx, emit } from '../services/context.ts';
-import { bulkUpdateIssues } from '../services/issues.ts';
+import { workspaceToday } from '../services/cycle-automation.ts';
+import { bulkUpdateIssues, releaseTriage } from '../services/issues.ts';
 import { assertRepositories } from '../services/repositories.ts';
 import { bumpEpoch } from '../services/sync.ts';
 import {
@@ -149,19 +150,21 @@ export async function teamRoutes(app: FastifyInstance) {
           set.cycleAutomation = { ...was, ...input.cycleAutomation };
           // Turning automation on starts from now: cycles that already ended keep their issues.
           if (input.cycleAutomation.enabled && !was.enabled) {
+            const today = await workspaceToday(ctx.tx, ctx.workspaceId);
             await ctx.tx
               .update(cycles)
               .set({ completedAt: new Date().toISOString() })
               .where(
                 and(
                   eq(cycles.teamId, teamId),
-                  sql`${cycles.endsAt} <= current_date`,
+                  lte(cycles.endsAt, today),
                   isNull(cycles.completedAt),
                 ),
               );
           }
         }
         await ctx.tx.update(teams).set(set).where(eq(teams.id, teamId));
+        if (input.triageEnabled === false && before.triageEnabled) await releaseTriage(ctx, teamId);
         emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
         await auditCtx(ctx, {
           action: 'team.updated',

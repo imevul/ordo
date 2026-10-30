@@ -75,6 +75,8 @@ export class JobQueue {
   private wake: (() => void) | null = null;
   private loops: Promise<void>[] = [];
   private timers: ReturnType<typeof setInterval>[] = [];
+  /** How often a running job's lock is pushed forward; well inside the visibility window. */
+  renewMs = (VISIBILITY_SECONDS / 3) * 1000;
 
   constructor(
     private db: Db,
@@ -206,6 +208,11 @@ export class JobQueue {
     const def = this.defs.get(job.name);
     if (!def) return;
     this.running++;
+    // A job that runs longer than its visibility window (a big export) would otherwise be claimed
+    // again by another worker while it's still running. Keep the lock fresh until it finishes.
+    const renew = setInterval(() => {
+      this.renewLock(job.id).catch((err) => this.log.warn({ err, job: job.name }, 'renew lock'));
+    }, this.renewMs);
     try {
       await def.handler(job.payload as never, {
         attempt: job.attempts,
@@ -232,8 +239,15 @@ export class JobQueue {
         })
         .where(eq(jobs.id, job.id));
     } finally {
+      clearInterval(renew);
       this.running--;
     }
+  }
+
+  private async renewLock(jobId: number) {
+    await this.db.execute(sql`
+      update jobs set locked_until = now() + make_interval(secs => ${VISIBILITY_SECONDS})
+      where id = ${jobId} and status = 'running' and locked_by = ${this.workerId}`);
   }
 
   private async syncSchedules() {
