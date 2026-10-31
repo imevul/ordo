@@ -131,7 +131,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [x] ✅ Agents: assignable non-human members, repositories on projects and teams, agent runs with a claim/lease
   runner protocol, and `ordo agent run` (any command, runner files with .env) — see docs/agents.md
 - [x] ✅ Failed agent runs: a reason for each failure, Restart and Dismiss on the Agent runs page (failed runs stay
-  in its Open list), and usage limits recognised: the agent pauses until the limit resets and its runs restart
+  in its Open list), and usage limits recognised: the agent pauses until the limit resets and its runs restart;
+  MCP `restart_agent_run` and `dismiss_agent_run`
 - [x] ✅ Agents and pull requests: PRs with checks and review in the issue sidebar, a project's pull request
   agent (hand-off when a PR is ready, issues for PRs opened outside Ordo), assignees woken on failing checks and
   requested changes
@@ -193,58 +194,81 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [x] ✅ Add a workspace repository by browsing GitHub or Forgejo; agents get a profile color
   - [x] ✅ `ordo agent run` reuses the worktree an issue's branch is already checked out in
 
-### Hardening, round 2 — findings from the second 2026-10-30 review
+### Hardening, round 2 ✅ — findings from the second 2026-10-30 review
 
-- [ ] ⬜ Security
-  - [ ] ⬜ SSO and SCIM attach an identity to an existing account only if its email is verified
-  - [ ] ⬜ Accounts without a password re-authenticate (recent sign-in) before changing email or setting up 2FA
-  - [ ] ⬜ Clear the stored AI key when the provider or base URL changes, and an OIDC client secret when the issuer
+- [x] ✅ Security
+  - [x] ✅ SSO and SCIM attach an identity to an existing account only if its email is verified
+  - [x] ✅ Accounts without a password re-authenticate (recent sign-in) before changing email or setting up 2FA
+  - [x] ✅ Clear the stored AI key when the provider or base URL changes, and an OIDC client secret when the issuer
     changes
-  - [ ] ⬜ Password reset and change revoke API keys and OAuth grants (or offer to)
-  - [ ] ⬜ Rate limits and lockout on every endpoint that checks a password; replay-safe codes for new recovery codes
-  - [ ] ⬜ `safeFetch` drops `Authorization` and cookies on cross-origin redirects
-- [ ] ⬜ Bugs
-  - [ ] ⬜ `automationBot` recurses forever when someone already holds the username `ordo-<workspace id prefix>`
+  - [x] ✅ Password reset and change revoke API keys and OAuth grants (or offer to)
+  - [x] ✅ Rate limits and lockout on every endpoint that checks a password; replay-safe codes for new recovery codes
+  - [x] ✅ `safeFetch` drops `Authorization` and cookies on cross-origin redirects, and refuses to resend request
+    bodies (a POSTed `client_secret`) across origins on 307/308
+- [x] ✅ Bugs
+  - [x] ✅ `automationBot` recurses forever when someone already holds the username `ordo-<workspace id prefix>`
     (`onConflictDoNothing` also swallows the username conflict): triage rules and every scheduled sweep hang
-  - [ ] ⬜ Offline sync: gaining access to a team (added, promoted, team made public) never loads its existing issues
+  - [x] ✅ Offline sync: gaining access to a team (added, promoted, team made public) never loads its existing issues
     into the local copy
-  - [ ] ⬜ Offline sync outbox: a failed save stalls every later change; a broadcast from another tab drops this tab's
+  - [x] ✅ Offline sync outbox: a failed save stalls every later change; a broadcast from another tab drops this tab's
     unsaved entries (and can hang the mutation); an IndexedDB upgrade in another tab leaves the leader unable to write
-  - [ ] ⬜ Jobs: a job whose lease expires is claimed again without checking `max_attempts`, so a job that crashes the
+  - [x] ✅ Jobs: a job whose lease expires is claimed again without checking `max_attempts`, so a job that crashes the
     process (a large export) retries forever; `reapLeases` and `maintenance.cleanup` stop at the first failing item
-  - [ ] ⬜ One failing outbound event holds up an integration's inbound webhooks and polls for ~20 minutes per event
+  - [x] ✅ One failing outbound event holds up an integration's inbound webhooks and polls for ~20 minutes per event
     (shared ordering key), so Jira sync can stall
-  - [ ] ⬜ Moving an issue to another team with an unchanged `stateId` keeps the old team's status
-  - [ ] ⬜ Issue page: queued offline edits aren't layered on the issue detail, so fields snap back until sent; trash
+  - [x] ✅ Moving an issue to another team with an unchanged `stateId` keeps the old team's status
+  - [x] ✅ Issue page: queued offline edits aren't layered on the issue detail, so fields snap back until sent; trash
     and Undo (list and issue header), and moving issues to another team, bypass the outbox and fail silently
-  - [ ] ⬜ Project documents: edits in the last second before switching docs are lost; a slow save can raise a
+  - [x] ✅ Project documents: edits in the last second before switching docs are lost; a slow save can raise a
     conflict against your own edit
-  - [ ] ⬜ `ordo agent run`: relative `--repos` puts worktrees inside the clones; `--key`, `--repos`, `--concurrency`
+  - [x] ✅ `ordo agent run`: relative `--repos` puts worktrees inside the clones; `--key`, `--repos`, `--concurrency`
     and `--timeout` are ignored with `--file`; `${VAR}` in a runner-file command aborts loading; `ordo login` leaves
     an existing config file world-readable
-  - [ ] ⬜ Smaller: recurring issues use UTC "today" (not the workspace zone) and swallow every template error; CSV
+  - [x] ✅ Smaller: recurring issues use UTC "today" (not the workspace zone) and swallow every template error; CSV
     due dates shift a day on hosts east of UTC; purging an issue sends no update for its sub-issues; integration
     dedupe keys don't survive a crash after dispatch; two concurrent export requests both start
-- [ ] ⬜ Self-hosting
+- [x] ✅ Self-hosting
   - [x] ✅ `make up` failed on a fresh install: `.env.example` had an unquoted `ORDO_SMTP_FROM` that the Makefile sources
-  - [ ] ⬜ `make backup` reports success when `pg_dump` fails (no pipefail); `make restore` doesn't stop on SQL errors
+  - [x] ✅ `make backup` reports success when `pg_dump` fails (no pipefail); `make restore` doesn't stop on SQL errors
     before replacing uploads
-  - [ ] ⬜ Compose trusts `X-Forwarded-For` by default while publishing on `0.0.0.0:3000`, so without a proxy anyone
+  - [x] ✅ Compose trusts `X-Forwarded-For` by default while publishing on `0.0.0.0:3000`, so without a proxy anyone
     on the network can dodge per-IP sign-in limits
-  - [ ] ⬜ Migrations on boot take no advisory lock, so several instances starting together race
-  - [ ] ⬜ CI builds the Docker image; the Dockerfile's dependency layer copies `packages/sync/package.json`;
+  - [x] ✅ Migrations on boot take no advisory lock, so several instances starting together race
+  - [x] ✅ CI builds the Docker image; the Dockerfile's dependency layer copies `packages/sync/package.json`;
     workflow `permissions:` and pinned actions
-- [ ] ⬜ Mobile and accessibility
-  - [ ] ⬜ Issue properties can't be edited below 1024px (the sidebar is hidden and nothing replaces it)
-  - [ ] ⬜ Click-to-edit descriptions (issues, projects, initiatives) can't be reached by keyboard; the mobile nav
+- [x] ✅ Mobile and accessibility
+  - [x] ✅ Issue properties can't be edited below 1024px (the sidebar is hidden and nothing replaces it)
+  - [x] ✅ Click-to-edit descriptions (issues, projects, initiatives) can't be reached by keyboard; the mobile nav
     drawer has no Escape, hotkey scope or focus trap
-- [ ] ⬜ Docs
-  - [ ] ⬜ The `factory` runner-file example in agents.md can't run (string command with `./` and a temp `cwd`)
-- [ ] ⬜ Code quality
-  - [ ] ⬜ One optimistic-patch implementation for React Query and the sync outbox (issues and reactions)
-  - [ ] ⬜ Realtime invalidates the whole bootstrap on every issue and notification event
-  - [ ] ⬜ Split the remaining large settings and page files (workspace, SSO, projects, integrations, agents, teams,
+  - [x] ✅ The issue title is no longer cut off on narrow screens; Workspace settings is back in the workspace menu
+- [x] ✅ Docs
+  - [x] ✅ The `factory` runner-file example in agents.md can't run (string command with `./` and a temp `cwd`)
+- [x] ✅ Code quality
+  - [x] ✅ One optimistic-patch implementation for React Query and the sync outbox (issues and reactions)
+  - [x] ✅ Realtime invalidates the whole bootstrap on every issue and notification event
+  - [x] ✅ Split the remaining large settings and page files (workspace, SSO, projects, integrations, agents, teams,
     chat; 800–1000 lines each)
+
+### Hardening, round 3 — findings from the 2026-10-31 review
+
+- [ ] ⬜ Security
+  - [ ] ⬜ SSO and SCIM release any unverified account at the address, including long-standing real ones (sign-up
+    never verifies without mail): ask an admin, or only release accounts with no memberships or activity
+  - [ ] ⬜ A released unverified account keeps its sessions, API keys, passkeys and memberships
+  - [ ] ⬜ The per-account sign-in lockout also blocks a signed-in owner from changing their password or 2FA
+- [ ] ⬜ Bugs
+  - [ ] ⬜ Jira `createInOrdo` skips every issue the connecting account files by hand (`createdBySelf` treats the
+    token's person as Ordo)
+  - [ ] ⬜ Offline sync: a queued team move leaves the issue page on the old identifier, which 404s after reload
+  - [ ] ⬜ Offline sync: Undo after a sent trash hides the issue until the next pull; restoring from Trash offline
+    says "restored" but changes nothing (and repeats queue duplicates)
+  - [ ] ⬜ Project documents: a failed save drops the queued follow-up and never retries; deleting a doc right after
+    typing PATCHes the deleted doc
+  - [ ] ⬜ `make restore` empties `/data` before checking the uploads archive
+- [ ] ⬜ CLI and docs
+  - [ ] ⬜ Runner files: unset `${VAR}` in `instructions` reaches the prompt as written, and in a string `command`
+    becomes empty instead of failing the load
+  - [ ] ⬜ Docs: dismissing a cancelled run has no effect on the Open list (only failed runs are in it)
 
 ### Inbox focus
 
