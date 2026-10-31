@@ -1762,6 +1762,8 @@ export const repositories = pgTable(
       onDelete: 'set null',
     }),
     externalRepo: text('external_repo'),
+    /** Runs (claimed or running, any agent) that may work here at once; null is no limit. */
+    maxConcurrentRuns: integer('max_concurrent_runs'),
     createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),

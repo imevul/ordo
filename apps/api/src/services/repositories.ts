@@ -4,7 +4,7 @@ import type {
   Repository,
   updateRepositorySchema,
 } from '@ordo/shared';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, type SQL, sql } from 'drizzle-orm';
 import type { z } from 'zod';
 import type { DbOrTx } from '../db/client.ts';
 import { integrations, projectRepositories, repositories, teams } from '../db/schema.ts';
@@ -26,6 +26,7 @@ export const toRepository = (r: RepositoryRow): Repository => ({
   defaultBranch: r.defaultBranch,
   integrationId: r.integrationId,
   externalRepo: r.externalRepo,
+  maxConcurrentRuns: r.maxConcurrentRuns,
   createdAt: r.createdAt,
 });
 
@@ -150,6 +151,54 @@ export async function projectRepositoryIds(db: DbOrTx, projectIds: string[]) {
     .orderBy(asc(projectRepositories.position));
   for (const r of rows) map.set(r.projectId, [...(map.get(r.projectId) ?? []), r.repositoryId]);
   return map;
+}
+
+/**
+ * The ids of the repositories work on an issue happens in, as a subquery with one column
+ * (`repository_id`): the same rule as `repositoriesForIssue`, for use inside SQL.
+ */
+export const issueRepositoryIds = (issueId: SQL) => sql`
+  select pr.repository_id from issues ri
+    join project_repositories pr on pr.project_id = ri.project_id
+    where ri.id = ${issueId}
+  union all
+  select t.default_repository_id from issues ri
+    join teams t on t.id = ri.team_id
+    where ri.id = ${issueId} and t.default_repository_id is not null
+      and not exists (select 1 from project_repositories p2 where p2.project_id = ri.project_id)`;
+
+/**
+ * The workspace's repositories at their run limit: as many claimed or running runs (of any agent)
+ * work in them as they allow. With `lock`, every limited repository's row is locked first, so
+ * concurrent claims by different agents count each other's runs.
+ */
+export async function fullRepositories(
+  db: DbOrTx,
+  workspaceId: string,
+  opts: { lock?: boolean } = {},
+): Promise<{ id: string; name: string }[]> {
+  const limited = db
+    .select({ id: repositories.id })
+    .from(repositories)
+    .where(
+      and(eq(repositories.workspaceId, workspaceId), isNotNull(repositories.maxConcurrentRuns)),
+    )
+    .orderBy(asc(repositories.id));
+  const locked = opts.lock ? await limited.for('update') : await limited;
+  if (locked.length === 0) return [];
+  return db
+    .select({ id: repositories.id, name: repositories.name })
+    .from(repositories)
+    .where(
+      and(
+        eq(repositories.workspaceId, workspaceId),
+        isNotNull(repositories.maxConcurrentRuns),
+        sql`${repositories.maxConcurrentRuns} <= (select count(*) from agent_runs busy
+          where busy.workspace_id = ${workspaceId} and busy.status in ('claimed', 'running')
+            and "repositories"."id" in (${issueRepositoryIds(sql`busy.issue_id`)}))`,
+      ),
+    )
+    .orderBy(asc(repositories.name));
 }
 
 /** Where work on an issue happens: its project's repositories, else its team's default. */

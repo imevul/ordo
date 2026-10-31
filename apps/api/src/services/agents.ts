@@ -73,7 +73,7 @@ import { forEachIsolated } from './automation.ts';
 import { createComment } from './comments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { getIssue, getIssueDetail } from './issues.ts';
-import { repositoriesForIssue } from './repositories.ts';
+import { fullRepositories, issueRepositoryIds, repositoriesForIssue } from './repositories.ts';
 import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 
 /**
@@ -967,6 +967,11 @@ export async function listWorkspaceRuns(
     )
     .orderBy(desc(agentRuns.updatedAt))
     .limit(opts.limit);
+  const held = await heldByRepository(
+    db,
+    access.workspaceId,
+    rows.filter((r) => r.run.status === 'queued').map((r) => r.run.issueId),
+  );
   return withBlockers(
     db,
     access,
@@ -979,8 +984,31 @@ export async function listWorkspaceRuns(
         stateId: r.stateId,
         teamId: r.teamId,
       },
+      waitingForRepository: (r.run.status === 'queued' && held.get(r.run.issueId)) || null,
     })),
   );
+}
+
+/** For each of these issues whose repository is at its run limit, that repository. */
+async function heldByRepository(db: DbOrTx, workspaceId: string, issueIds: string[]) {
+  const held = new Map<string, { id: string; name: string }>();
+  if (issueIds.length === 0) return held;
+  const full = await fullRepositories(db, workspaceId);
+  if (full.length === 0) return held;
+  const byId = new Map(full.map((r) => [r.id, r]));
+  const ids = sql.join(
+    [...new Set(issueIds)].map((id) => sql`${id}`),
+    sql`, `,
+  );
+  const pairs = (await db.execute(sql`
+    select i.id as issue_id, repo.repository_id from issues i
+      cross join lateral (${issueRepositoryIds(sql`i.id`)}) repo
+      where i.id in (${ids})`)) as unknown as { issue_id: string; repository_id: string }[];
+  for (const p of pairs) {
+    const repo = byId.get(p.repository_id);
+    if (repo && !held.has(p.issue_id)) held.set(p.issue_id, repo);
+  }
+  return held;
 }
 
 /** How many runs `listWorkspaceRuns` would call active: the sidebar's Agent runs chip. */
@@ -1034,6 +1062,8 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
       and(eq(agentRuns.agentId, ctx.userId), inArray(agentRuns.status, ['claimed', 'running'])),
     )) as [{ busy: number }];
   if (busy >= agent.concurrency) return null;
+  // Runs in a repository at its limit wait, so agents don't work over each other's files.
+  const full = await fullRepositories(ctx.tx, ctx.workspaceId, { lock: true });
   const [next] = await ctx.tx
     .select({ id: agentRuns.id })
     .from(agentRuns)
@@ -1045,6 +1075,12 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
         sql`not exists (select 1 from agent_runs busy where busy.issue_id = "agent_runs"."issue_id" and busy.agent_id = "agent_runs"."agent_id" and busy.status in ('claimed', 'running'))`,
         // A blocked issue waits for its blockers, unless someone said to run anyway.
         agent.waitForBlockers ? or(eq(agentRuns.ignoreBlockers, true), not(blockedNow)) : undefined,
+        full.length
+          ? sql`not exists (select 1 from (${issueRepositoryIds(sql`"agent_runs"."issue_id"`)}) repo where repo.repository_id in (${sql.join(
+              full.map((r) => sql`${r.id}`),
+              sql`, `,
+            )}))`
+          : undefined,
       ),
     )
     .orderBy(asc(agentRuns.createdAt))

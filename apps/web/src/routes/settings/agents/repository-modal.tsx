@@ -27,12 +27,15 @@ export function RepositoryModal({
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [defaultBranch, setDefaultBranch] = useState('main');
+  // Empty is no limit.
+  const [maxRuns, setMaxRuns] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!repository) return;
     setName(existing?.name ?? draft?.name ?? '');
     setUrl(existing?.url ?? draft?.url ?? '');
     setDefaultBranch(existing?.defaultBranch ?? draft?.defaultBranch ?? 'main');
+    setMaxRuns(existing?.maxConcurrentRuns ? String(existing.maxConcurrentRuns) : '');
   }, [repository, existing, draft]);
   const link = existing ?? (repository === 'new' ? draft : undefined);
   const linkedTo = link?.integrationId
@@ -45,6 +48,7 @@ export function RepositoryModal({
       name,
       url,
       defaultBranch,
+      maxConcurrentRuns: maxRuns ? Number(maxRuns) : null,
       ...(!existing &&
         draft && { integrationId: draft.integrationId, externalRepo: draft.externalRepo }),
     };
@@ -103,6 +107,21 @@ export function RepositoryModal({
             required
             value={defaultBranch}
             onChange={(e) => setDefaultBranch(e.target.value)}
+          />
+        </FormRow>
+        <FormRow
+          label={t('agents.repositories.form.maxRuns')}
+          hint={t('agents.repositories.form.maxRunsHint')}
+        >
+          <input
+            className="input w-32"
+            type="number"
+            min={1}
+            max={100}
+            step={1}
+            placeholder={t('agents.repositories.form.maxRunsPlaceholder')}
+            value={maxRuns}
+            onChange={(e) => setMaxRuns(e.target.value)}
           />
         </FormRow>
         {link?.externalRepo && linkedTo && (

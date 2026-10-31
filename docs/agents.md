@@ -23,7 +23,9 @@ There are three parts:
    (SSH or HTTPS URL, as you choose), linking the repository to the integration. Then attach
    repositories to projects (the project's sidebar) and pick a **default repository** per team (_team settings_).
    A run's repositories are its project's, or else its team's default. Ordo stores only the address; runners bring
-   their own git credentials.
+   their own git credentials. _At most N runs at a time_ keeps agents from working over each other's files: once
+   that many runs (of any agent) work in the repository, other runs there wait in the queue, and the Agent runs
+   page marks them "waiting for a free slot".
 2. **An agent** (_Settings → Agents_, admins). Give it a name and the teams it may work in. It can only see and be
    assigned issues there (agents are guests of those teams, who may also plan cycles and milestones). _Instructions_ are added to every run's prompt, for
    example "Run `pnpm test` before opening a pull request. Never push to main." _Runs at once_ caps how many of its

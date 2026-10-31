@@ -1224,6 +1224,8 @@ export interface Repository {
   /** The forge integration and repo ("owner/name") that pull requests come from, if any. */
   integrationId: string | null;
   externalRepo: string | null;
+  /** Runs (claimed or running, any agent) that may work here at once; null when unlimited. */
+  maxConcurrentRuns: number | null;
   createdAt: string;
 }
 
@@ -1369,6 +1371,8 @@ export interface AgentPause {
 /** A run with the issue it's about, for workspace-wide run lists. */
 export interface AgentRunWithIssue extends AgentRun {
   issue: IssueRef;
+  /** For a queued run: a repository at its run limit that holds it back, if one does. */
+  waitingForRepository: { id: string; name: string } | null;
 }
 
 /** A repository as a run sees it: where to clone and which branch to work on. */

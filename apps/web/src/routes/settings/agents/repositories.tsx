@@ -49,6 +49,8 @@ export function RepositoriesSection() {
               <div className="text-[13.5px]">{r.name}</div>
               <div className="truncate font-mono text-[11.5px] text-index">
                 {r.url} · {t('agents.repositories.branch', { branch: r.defaultBranch })}
+                {r.maxConcurrentRuns !== null &&
+                  ` · ${t('agents.repositories.maxRuns', { count: r.maxConcurrentRuns })}`}
               </div>
             </div>
             <button

@@ -13,6 +13,7 @@ export default {
     delete: 'Ta bort {name}',
     confirmDelete: 'Ta bort repot {name}? Projekt och team som använder det tappar det.',
     branch: 'standardgren {branch}',
+    maxRuns: { one: 'högst {count} körning åt gången', other: 'högst {count} körningar åt gången' },
     form: {
       label: 'Repo',
       new: 'Nytt repo',
@@ -21,6 +22,10 @@ export default {
       url: 'Klon-URL',
       urlHint: 'https://…, ssh://…, git@host:ägare/repo.git eller en sökväg på runnern.',
       defaultBranch: 'Standardgren',
+      maxRuns: 'Högst N körningar åt gången',
+      maxRunsHint:
+        'Så att agenter inte arbetar i varandras filer: körningar utöver det här antalet, från vilken agent som helst, väntar i kön. Lämna tomt för ingen gräns.',
+      maxRunsPlaceholder: 'Ingen gräns',
       linked: 'Kopplat till {repo} på {integration}.',
     },
     picker: {
