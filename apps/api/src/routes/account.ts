@@ -74,7 +74,7 @@ export async function accountRoutes(app: FastifyInstance) {
 
   /**
    * Sensitive changes need the current password, unless the account has none (SSO-only). Wrong
-   * ones count towards the same lockout as sign-in, so a stolen session can't guess it.
+   * ones lock the account's confirmations (not its sign-in), so a stolen session can't guess it.
    */
   const confirmPassword = async (
     req: FastifyRequest,

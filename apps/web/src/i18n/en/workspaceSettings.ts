@@ -285,6 +285,7 @@ export default {
       identityLinkedUnnamed: 'linked an identity',
       signup: 'signed up',
       loginFailed: 'failed to sign in',
+      confirmFailed: 'entered a wrong password or code in account settings',
       logout: 'signed out',
       passwordChanged: 'changed their password',
       emailChanged: 'changed their email address',

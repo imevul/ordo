@@ -323,7 +323,7 @@ describe('two-factor authentication', () => {
     expect(again.data.messageKey).toBe('too_many_attempts');
   });
 
-  it('counts wrong passwords in account settings towards the sign-in lockout', async () => {
+  it('locks confirmations after wrong passwords in account settings, not sign-in', async () => {
     const { client, email } = await signup(app, 'Stolen Session');
     const wrong = { password: 'not the password' };
     const tries = [
@@ -340,13 +340,45 @@ describe('two-factor authentication', () => {
     for (let i = 0; i < 11; i++) statuses.push((await tries[i % tries.length]!()).statusCode);
     expect(statuses.slice(0, 10).every((s) => s === 400)).toBe(true);
     expect(statuses[10]).toBe(429);
-    // Locked everywhere: the right password changes nothing, and sign-in waits too.
+    // The right password changes nothing in this or any other session...
     const right = await client.post('/api/me/2fa/setup', { password: PASSWORD });
     expect(right.statusCode).toBe(429);
     expect(right.data.messageKey).toBe('too_many_attempts');
+    // ...but the owner can still sign in, and revoke the session that guessed.
+    const owner = new Client(app);
+    expect((await owner.post('/api/auth/login', { email, password: PASSWORD })).statusCode).toBe(
+      200,
+    );
+    expect((await owner.post('/api/me/2fa/setup', { password: PASSWORD })).statusCode).toBe(429);
+    expect((await owner.post('/api/me/sessions/revoke-others')).statusCode).toBe(200);
+  });
+
+  it("doesn't let wrong sign-in passwords lock a signed-in owner out of their settings", async () => {
+    const { client, email } = await signup(app, 'Under Attack');
+    for (let i = 0; i < 10; i++)
+      await new Client(app, { ip: `10.203.0.${i + 1}` }).post('/api/auth/login', {
+        email,
+        password: 'wrong password',
+      });
+    // Sign-in is locked for everyone, the owner included...
     expect(
       (await new Client(app).post('/api/auth/login', { email, password: PASSWORD })).statusCode,
     ).toBe(429);
+    // ...but the signed-in owner can still confirm changes and rotate the password.
+    const setup = await client.post('/api/me/2fa/setup', { password: PASSWORD });
+    expect(setup.statusCode).toBe(200);
+    expect(
+      (await client.post('/api/me/2fa/enable', { code: codeFor(setup.data.secret) })).statusCode,
+    ).toBe(200);
+    expect(
+      (await client.post('/api/me/2fa/recovery-codes', { code: codeFor(setup.data.secret, 1) }))
+        .statusCode,
+    ).toBe(200);
+    const changed = await client.post('/api/me/password', {
+      currentPassword: PASSWORD,
+      newPassword: 'a brand new passphrase',
+    });
+    expect(changed.statusCode).toBe(200);
   });
 
   it('wants an unspent code for new recovery codes', async () => {

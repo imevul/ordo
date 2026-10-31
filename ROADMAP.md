@@ -257,7 +257,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [ ] ⬜ SSO and SCIM release any unverified account at the address, including long-standing real ones (sign-up
     never verifies without mail): ask an admin, or only release accounts with no memberships or activity
   - [ ] ⬜ A released unverified account keeps its sessions, API keys, passkeys and memberships
-  - [ ] ⬜ The per-account sign-in lockout also blocks a signed-in owner from changing their password or 2FA
+  - [x] ✅ The per-account sign-in lockout also blocks a signed-in owner from changing their password or 2FA
 - [ ] ⬜ Bugs
   - [ ] ⬜ Jira `createInOrdo` skips every issue the connecting account files by hand (`createdBySelf` treats the
     token's person as Ordo)
