@@ -465,6 +465,8 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
         : a('login');
     case 'auth.sso_bypass':
       return a('ssoBypass');
+    case 'auth.claim_refused':
+      return a(d.via === 'scim' ? 'claimRefusedScim' : 'claimRefusedSso', { email: str(d.email) });
     case 'webhook.created':
       return a('webhookCreated', { url: str(d.url) });
     case 'webhook.updated':

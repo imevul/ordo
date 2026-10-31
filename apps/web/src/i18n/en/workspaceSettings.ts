@@ -272,6 +272,10 @@ export default {
       login: 'signed in',
       loginSso: 'signed in with {provider}',
       ssoBypass: 'signed in with a password (owner fallback)',
+      claimRefusedSso:
+        'SSO sign-in as {email} refused: an unverified account with activity uses the address',
+      claimRefusedScim:
+        'directory sync of {email} refused: an unverified account with activity uses the address',
       webhookCreated: 'added a webhook to {url}',
       webhookUpdated: 'changed a webhook',
       webhookDeleted: 'removed the webhook to {url}',

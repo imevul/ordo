@@ -14,11 +14,14 @@ when your provider offers both; it's simpler to set up.
 3. If your provider lives on your LAN (e.g. `http://keycloak.lan`), an instance admin has to turn on **Allow private
    network targets** (Admin → Settings), or set `ORDO_ALLOW_PRIVATE_NETWORK_TARGETS=true`. Plain-`http` issuers only
    work with that setting on.
-4. **Check that existing accounts have verified their address.** SSO matches only accounts that have. One that hasn't
-   is moved to a placeholder address at its owner's first SSO sign-in, and they get a second, new account. Without
-   mail, sign-up never verifies anyone, so on such an instance this hits every existing password user. Admin → Users
-   marks unverified addresses: send each of those people a **password reset link** first. Setting a password from the
-   link verifies the address.
+4. **Check that existing accounts have verified their address.** SSO matches only accounts that have. If one that
+   hasn't has been used (it belongs to a workspace or team, or has issues, comments or uploads), SSO sign-in at that
+   address is refused until the address is verified, and the refusal shows in the audit log. Without mail, sign-up
+   never verifies anyone, so on such an instance this hits every existing password user. Admin → Users marks
+   unverified addresses: send each of those people a **password reset link** first. Setting a password from the
+   link verifies the address. Because Ordo can't tell whether the account was really theirs until then, that first
+   reset also removes every other way into it: sessions, passkeys, linked sign-ins, API keys and connected apps.
+   They set those up again afterwards. (An authenticator app stays: it only works after the password.)
 
 ## Add the provider
 
@@ -94,8 +97,11 @@ providers accept by default).
 - **First sign-in:** if the address is verified and its domain is verified for your workspace, Ordo creates the
   account (or matches the existing one with that address, if that account has verified it) and adds it to the
   workspace with the provider's default role (member or guest). An existing account that never verified the address
-  isn't matched: it moves to a placeholder address and the person gets a fresh account, so nobody can claim an
-  address ahead of its owner and wait for them to sign in.
+  isn't matched. If it's empty (not an instance admin, no memberships, issues, comments or uploads), it moves to a
+  placeholder address, is signed out everywhere, and the person gets a fresh account, so nobody can claim an address
+  ahead of its owner and wait for them to sign in. If it has been used, sign-in is refused with "verify the address
+  first" until its owner does with a password reset link. That reset removes every other way into the account (see
+  [before you start](#before-you-start)), in case someone else had claimed it; then SSO links that account.
 - **Anyone else** (other domains, unverified addresses, existing accounts with a different address) links the identity
   themselves: sign in as usual, then **Settings → Connected accounts → Connect**.
 - People can unlink identities, except their only way to sign in.

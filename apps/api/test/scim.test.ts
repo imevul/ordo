@@ -3,7 +3,8 @@ import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { auditLog, scimGroups, teamMembers, users, workspaceMembers } from '../src/db/schema.ts';
-import { type Client, signup, testApp } from './helpers.ts';
+import { createToken } from '../src/services/tokens.ts';
+import { Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
 let owner: Client;
@@ -292,19 +293,35 @@ describe('users', () => {
     expect(logged!.data).toMatchObject({ from: email, via: 'scim' });
   });
 
-  it('signs a released account out and suspends it from its workspaces', async () => {
-    const email = `armed-${++n}@${domain}`;
+  /** A squatter at `email` with a session and an API key; `bearer` tries the key. */
+  async function armedSquatter(email: string, opts: { ownWorkspace?: boolean } = {}) {
     const squatter = await signup(app, 'Armed Squatter');
     const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
-    const theirSlug = `own-${slug}-${n}`;
-    await squatter.client.post('/api/workspaces', {
-      name: 'Own',
-      slug: theirSlug,
-      teamName: 'Own',
-      teamKey: 'OWN',
-    });
+    if (opts.ownWorkspace) {
+      await squatter.client.post('/api/workspaces', {
+        name: 'Own',
+        slug: `own-${slug}-${n}`,
+        teamName: 'Own',
+        teamKey: 'OWN',
+      });
+    }
     await squatter.client.post('/api/me/email', { email, password: 'correct horse battery' });
     const key = (await squatter.client.post('/api/me/api-keys', { name: 'cli' })).data.token;
+    const bearer = async () =>
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/auth/me',
+          headers: { authorization: `Bearer ${key}` },
+        })
+      ).statusCode;
+    expect(await bearer()).toBe(200);
+    return { client: squatter.client, id: squatterId, bearer };
+  }
+
+  it('signs a released account out and revokes its keys', async () => {
+    const email = `armed-${++n}@${domain}`;
+    const squatter = await armedSquatter(email);
 
     const res = await scim('POST', '/Users', {
       ...oktaUser('x'),
@@ -312,28 +329,47 @@ describe('users', () => {
       emails: [{ value: email, primary: true }],
     });
     expect(res.statusCode).toBe(201);
+    expect(json(res).id).not.toBe(squatter.id);
 
     expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(401);
-    const viaKey = await app.inject({
-      method: 'GET',
-      url: '/api/auth/me',
-      headers: { authorization: `Bearer ${key}` },
+    expect(await squatter.bearer()).toBe(401);
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatter.id)));
+    expect(logged!.data).toMatchObject({
+      via: 'scim',
+      revoked: { sessions: 1, apiKeys: 1, memberships: 0 },
     });
-    expect(viaKey.statusCode).toBe(401);
+  });
+
+  it('refuses an armed squatter with a workspace; the reset that unblocks it disarms them', async () => {
+    const email = `armed-owner-${++n}@${domain}`;
+    const squatter = await armedSquatter(email, { ownWorkspace: true });
+    const body = { ...oktaUser('x'), userName: email, emails: [{ value: email, primary: true }] };
+
+    const res = await scim('POST', '/Users', body);
+    expect(res.statusCode).toBe(409);
+    expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(200);
+
+    const reset = await new Client(app).post('/api/auth/reset', {
+      token: await createToken(app.db, squatter.id, 'password_reset', 60),
+      password: 'owner horse battery',
+    });
+    expect(reset.statusCode, reset.body).toBe(200);
+    expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(401);
+    expect(await squatter.bearer()).toBe(401);
+
+    const linked = await scim('POST', '/Users', body);
+    expect(linked.statusCode).toBe(201);
+    expect(json(linked).id).toBe(squatter.id);
+    // The owner keeps the workspace the account was in; nothing is suspended.
     const memberships = await app.db
       .select()
       .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, squatterId));
-    expect(memberships).toHaveLength(1);
-    expect(memberships[0]!.suspendedAt).not.toBeNull();
-    const [suspended] = await app.db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.action, 'member.suspended'), eq(auditLog.targetId, squatterId)));
-    expect(suspended).toMatchObject({
-      workspaceId: memberships[0]!.workspaceId,
-      data: { via: 'scim', reason: 'unverified_address_claimed' },
-    });
+      .where(eq(workspaceMembers.userId, squatter.id));
+    expect(memberships.length).toBeGreaterThan(0);
+    expect(memberships.every((m) => m.suspendedAt === null)).toBe(true);
   });
 
   it('moves a provisioned user onto an address an unverified account squats', async () => {
@@ -390,6 +426,93 @@ describe('users', () => {
       .from(auditLog)
       .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
     expect(logged!.data).toMatchObject({ from: email, via: 'scim' });
+  });
+
+  it('refuses to release an unverified account that has been used, for that user only', async () => {
+    // Signed up long ago, never verified, and wrote an issue (then left that workspace): a
+    // person's history, not a squatter's empty account.
+    const email = `longstanding-${++n}@${domain}`;
+    const early = await signup(app, 'Early Person');
+    const earlyId = (await early.client.get('/api/auth/me')).data.id;
+    const earlySlug = `${slug}-early`;
+    await early.client.post('/api/workspaces', {
+      name: 'Early',
+      slug: earlySlug,
+      teamName: 'Early',
+      teamKey: 'EAR',
+    });
+    const earlyBoot = (await early.client.get(`/api/w/${earlySlug}/bootstrap`)).data as Bootstrap;
+    const issue = await early.client.post(`/api/w/${earlySlug}/issues`, {
+      teamId: earlyBoot.teams[0]!.id,
+      title: 'Years of work',
+    });
+    expect(issue.statusCode).toBe(200);
+    await app.db.delete(teamMembers).where(eq(teamMembers.userId, earlyId));
+    await app.db.delete(workspaceMembers).where(eq(workspaceMembers.userId, earlyId));
+    await app.db.update(users).set({ email }).where(eq(users.id, earlyId));
+
+    const body = { ...oktaUser('x'), userName: email, emails: [{ value: email, primary: true }] };
+    const res = await scim('POST', '/Users', body);
+    expect(res.statusCode).toBe(409);
+    expect(json(res)).toMatchObject({ scimType: 'uniqueness' });
+    expect(json(res).detail).toContain('verify');
+    const holders = await app.db.select().from(users).where(eq(users.email, email));
+    expect(holders.map((u) => u.id)).toEqual([earlyId]);
+    expect(await member(earlyId)).toBeNull();
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.claim_refused'), eq(auditLog.targetId, earlyId)));
+    expect(logged).toMatchObject({ workspaceId: wsId, data: { email, via: 'scim' } });
+
+    // The rest of the sync carries on.
+    await provision('after-refusal');
+
+    // Moving a provisioned user onto that address is refused the same way.
+    const { user } = await provision('onto-early');
+    const moved = await scim('PATCH', `/Users/${user.id}`, {
+      schemas: [PATCH],
+      Operations: [{ op: 'replace', path: 'userName', value: email }],
+    });
+    expect(moved.statusCode).toBe(409);
+    const [unchanged] = await app.db.select().from(users).where(eq(users.id, user.id));
+    expect(unchanged!.email).toBe(user.userName);
+
+    // Once a password reset proves the address, the same account is provisioned.
+    const reset = await new Client(app).post('/api/auth/reset', {
+      token: await createToken(app.db, earlyId, 'password_reset', 60),
+      password: 'another horse battery',
+    });
+    expect(reset.statusCode, reset.body).toBe(200);
+    const linked = await scim('POST', '/Users', body);
+    expect(linked.statusCode).toBe(201);
+    expect(json(linked).id).toBe(earlyId);
+    expect(await member(earlyId)).not.toBeNull();
+  });
+
+  it('refuses to release an unverified instance admin, even without workspaces', async () => {
+    const email = `instance-admin-${++n}@${domain}`;
+    const admin = await signup(app, 'Instance Admin');
+    const adminId = (await admin.client.get('/api/auth/me')).data.id;
+    await app.db
+      .update(users)
+      .set({ email, emailVerifiedAt: null, isInstanceAdmin: true })
+      .where(eq(users.id, adminId));
+
+    const res = await scim('POST', '/Users', {
+      ...oktaUser('x'),
+      userName: email,
+      emails: [{ value: email, primary: true }],
+    });
+    expect(res.statusCode).toBe(409);
+    expect(json(res)).toMatchObject({ scimType: 'uniqueness' });
+    const [after] = await app.db.select().from(users).where(eq(users.id, adminId));
+    expect(after).toMatchObject({ email, isInstanceAdmin: true });
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.claim_refused'), eq(auditLog.targetId, adminId)));
+    expect(logged).toMatchObject({ data: { email, via: 'scim' } });
   });
 
   it("lists members at the workspace's domains, but not others", async () => {

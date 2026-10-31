@@ -115,6 +115,7 @@ export const AUDIT_ACTIONS = [
   'auth.identity_linked',
   'auth.identity_unlinked',
   'auth.sso_bypass',
+  'auth.claim_refused',
   'sso.provider_created',
   'sso.provider_updated',
   'sso.provider_deleted',

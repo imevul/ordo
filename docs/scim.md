@@ -12,11 +12,14 @@ people your directory adds have no password, so they sign in through your provid
 - **Verify your email domain** under **Settings → Access → Domains**. The directory can only add people at verified
   domains, and only sees members there (plus anyone it added itself).
 - Set up [single sign-on](sso.md) with the same provider, so the people it adds can sign in.
-- **Check that existing accounts have verified their address.** The directory links only accounts that have; it
-  moves an unverified one to a placeholder address and creates a second account for the person. Without mail,
-  sign-up never verifies anyone, so on such an instance this hits every existing password user. Admin → Users marks
-  unverified addresses: send each of those people a **password reset link** first. Setting a password from the
-  link verifies the address.
+- **Check that existing accounts have verified their address.** The directory links only accounts that have. It
+  won't provision an address held by an unverified account that has been used (instance admin, a workspace or team
+  membership, issues, comments or uploads): that user gets a `409` until the address is verified, and the rest of the
+  sync carries on. Without mail, sign-up never verifies anyone, so on such an instance this hits every existing
+  password user. Admin → Users marks unverified addresses: send each of those people a **password reset link** first.
+  Setting a password from the link verifies the address. That first reset also removes every other way into the
+  account (sessions, passkeys, linked sign-ins, API keys, connected apps), in case someone else had
+  claimed the address; they set those up again afterwards.
 
 ## Connect your identity provider
 
@@ -71,9 +74,12 @@ Accounts are shared between workspaces on an instance, so a directory gets limit
 - It can add people only at the workspace's **verified domains**, and change someone's email only from one verified
   domain to another. Names change only for people at those domains.
 - It links an existing account only if that account has **verified** its address. An unverified account at the
-  address (anyone can claim an address without proving it) is moved to a placeholder address, kept with its work,
-  and the directory gets a fresh account. If it was really theirs, an instance admin can
-  send its holder a password reset link (Admin → Users) to get back in and pick another address.
+  address (anyone can claim an address without proving it) that is empty (not an instance admin, and no memberships,
+  issues, comments or uploads) is moved to a placeholder address and signed out everywhere, and the directory gets a
+  fresh account. One that has been used is probably the person's own: the directory gets a `409` (`uniqueness`) for
+  that user, also when moving someone onto the address, and the audit log records the refusal. Send its holder a
+  password reset link (Admin → Users); once they've set a password the address is verified, the account's other
+  ways in are gone, and the next sync links the account.
 - It never suspends or removes an **owner** (you'll see a `403` in your provider's logs); change owners in Ordo.
 - A token works for one workspace only, and isn't an API key: it can't read issues or act as anyone.
 - Revoking a token (Settings → Authentication) stops it immediately.

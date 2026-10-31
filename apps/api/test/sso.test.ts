@@ -10,6 +10,7 @@ import {
   users,
   workspaceMembers,
 } from '../src/db/schema.ts';
+import { createToken } from '../src/services/tokens.ts';
 import { Client, signup, testApp } from './helpers.ts';
 import { type MockIdp, startMockIdp } from './mock-idp.ts';
 
@@ -312,51 +313,126 @@ describe('sign-in', () => {
     expect(logged!.data).toMatchObject({ from: claims.email, via: 'sso' });
   });
 
-  it('signs a released account out everywhere and suspends its memberships', async () => {
-    // A squatter at the person's address joins through an open invite and arms the account.
-    const claims = person('armed');
-    const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0];
-    const squatter = await signup(app, 'Armed Squatter', { inviteToken: invite.token });
-    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
-    await app.db.update(users).set({ email: claims.email }).where(eq(users.id, squatterId));
-    expect((await squatter.client.get(`${ws}/bootstrap`)).statusCode).toBe(200);
-    const key = (await squatter.client.post('/api/me/api-keys', { name: 'cli' })).data.token;
+  /** Arms a squatter's account at `email`: an API key, a passkey and a linked identity. */
+  async function arm(squatter: Client, squatterId: string, email: string) {
+    await app.db.update(users).set({ email }).where(eq(users.id, squatterId));
+    const key = (await squatter.post('/api/me/api-keys', { name: 'cli' })).data.token;
     await app.db.insert(passkeys).values({
       userId: squatterId,
       credentialId: `cred-${squatterId}`,
       publicKey: 'key',
       name: 'Laptop',
     });
+    const identity = `squatter-${++sub}`;
+    await app.db
+      .insert(userIdentities)
+      .values({ userId: squatterId, providerId, subject: identity, email: null });
     const bearer = (url: string) =>
       app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${key}` } });
-    expect((await bearer(`${ws}/bootstrap`)).statusCode).toBe(200);
+    expect((await bearer('/api/auth/me')).statusCode).toBe(200);
+    return { bearer, identity };
+  }
+
+  /** Checks that nothing the squatter set up in `arm` still gets in. */
+  async function disarmed(
+    squatter: Client,
+    squatterId: string,
+    armed: Awaited<ReturnType<typeof arm>>,
+  ) {
+    expect((await squatter.get('/api/auth/me')).statusCode).toBe(401);
+    expect((await armed.bearer('/api/auth/me')).statusCode).toBe(401);
+    expect(await app.db.select().from(passkeys).where(eq(passkeys.userId, squatterId))).toEqual([]);
+    expect(
+      await app.db.select().from(userIdentities).where(eq(userIdentities.userId, squatterId)),
+    ).toEqual([]);
+    // Their own IdP identity no longer signs in to the account.
+    const theirs = await sso({ sub: armed.identity });
+    expect(decodeURIComponent(theirs.location)).toMatch(
+      /^\/login\?error=This sign-in isn't linked/,
+    );
+  }
+
+  it('signs a released account out everywhere and takes away every way in', async () => {
+    // A squatter at the person's address arms the account but hasn't joined anything.
+    const claims = person('armed');
+    const squatter = await signup(app, 'Armed Squatter');
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    const armed = await arm(squatter.client, squatterId, claims.email);
 
     const { client } = await sso(claims);
     expect((await client.get('/api/auth/me')).data.id).not.toBe(squatterId);
 
-    expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(401);
-    expect((await squatter.client.get(`${ws}/bootstrap`)).statusCode).toBe(401);
-    expect((await bearer('/api/auth/me')).statusCode).toBe(401);
+    await disarmed(squatter.client, squatterId, armed);
     expect(await app.db.select().from(sessions).where(eq(sessions.userId, squatterId))).toEqual([]);
-    expect(await app.db.select().from(passkeys).where(eq(passkeys.userId, squatterId))).toEqual([]);
-    const [membership] = await app.db
-      .select()
-      .from(workspaceMembers)
-      .where(and(eq(workspaceMembers.workspaceId, wsId), eq(workspaceMembers.userId, squatterId)));
-    expect(membership!.suspendedAt).not.toBeNull();
-
     const logged = await app.db
       .select()
       .from(auditLog)
       .where(eq(auditLog.targetId, squatterId))
       .orderBy(desc(auditLog.createdAt));
-    expect(logged.find((e) => e.action === 'member.suspended')).toMatchObject({
-      workspaceId: wsId,
-      data: { via: 'sso', reason: 'unverified_address_claimed' },
-    });
     expect(logged.find((e) => e.action === 'auth.email_changed')!.data).toMatchObject({
-      revoked: { sessions: 1, passkeys: 1, apiKeys: 1, memberships: 1 },
+      revoked: { sessions: 1, passkeys: 1, identities: 1, apiKeys: 1, memberships: 0 },
     });
+  });
+
+  it('refuses an armed squatter with a membership; the reset that unblocks it disarms them', async () => {
+    // A squatter at the person's address joins through an open invite and arms the account.
+    const claims = person('armedmember');
+    const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0];
+    const squatter = await signup(app, 'Armed Member', { inviteToken: invite.token });
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    expect((await squatter.client.get(`${ws}/bootstrap`)).statusCode).toBe(200);
+    const armed = await arm(squatter.client, squatterId, claims.email);
+
+    const refused = await sso(claims);
+    expect(decodeURIComponent(refused.location)).toMatch(
+      /^\/login\?error=An account with this address exists but hasn't verified it/,
+    );
+    expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(200);
+
+    // The owner gets a reset link (by mail, or from an admin) and sets a password.
+    const token = await createToken(app.db, squatterId, 'password_reset', 60);
+    const reset = await new Client(app).post('/api/auth/reset', {
+      token,
+      password: 'owner horse battery',
+    });
+    expect(reset.statusCode, reset.body).toBe(200);
+    // The account had a second factor (the passkey), so the link alone doesn't sign in.
+    expect(reset.data.signedIn).toBe(false);
+    await disarmed(squatter.client, squatterId, armed);
+    const [changed] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.password_changed'), eq(auditLog.actorId, squatterId)))
+      .orderBy(desc(auditLog.createdAt));
+    expect(changed!.data).toMatchObject({
+      via: 'reset',
+      verified: true,
+      revoked: { sessions: 1, passkeys: 1, identities: 1, apiKeys: 1 },
+    });
+
+    // Now SSO links the account, which is the owner's from here on.
+    const { client, location } = await sso(claims);
+    expect(location).toBe(`/${slug}`);
+    expect((await client.get('/api/auth/me')).data.id).toBe(squatterId);
+  });
+
+  it("keeps a verified account's passkeys and identities on a password reset", async () => {
+    const someone = await signup(app, 'Verified Reset');
+    const id = (await someone.client.get('/api/auth/me')).data.id;
+    await app.db
+      .update(users)
+      .set({ emailVerifiedAt: new Date().toISOString() })
+      .where(eq(users.id, id));
+    await app.db
+      .insert(passkeys)
+      .values({ userId: id, credentialId: `cred-${id}`, publicKey: 'key', name: 'Laptop' });
+    const reset = await new Client(app).post('/api/auth/reset', {
+      token: await createToken(app.db, id, 'password_reset', 60),
+      password: 'another horse battery',
+    });
+    expect(reset.statusCode, reset.body).toBe(200);
+    expect((await someone.client.get('/api/auth/me')).statusCode).toBe(401);
+    expect(await app.db.select().from(passkeys).where(eq(passkeys.userId, id))).toHaveLength(1);
   });
 
   it("doesn't link an unverified account without a password at the address", async () => {
@@ -392,6 +468,73 @@ describe('sign-in', () => {
       .from(auditLog)
       .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
     expect(logged!.data).toMatchObject({ from: claims.email, via: 'sso' });
+  });
+
+  it('refuses to release an unverified account that has been used, until it verifies', async () => {
+    // Someone who signed up long ago, before anything could verify them, and has a workspace.
+    const claims = person('longstanding');
+    const early = await signup(app, 'Early Person');
+    const earlyId = (await early.client.get('/api/auth/me')).data.id;
+    await early.client.post('/api/workspaces', {
+      name: 'Early',
+      slug: `early-${Date.now()}`,
+      teamName: 'Early',
+      teamKey: 'EAR',
+    });
+    await app.db.update(users).set({ email: claims.email }).where(eq(users.id, earlyId));
+
+    const refused = await sso(claims);
+    expect(decodeURIComponent(refused.location)).toMatch(
+      /^\/login\?error=An account with this address exists but hasn't verified it/,
+    );
+    const holders = await app.db.select().from(users).where(eq(users.email, claims.email));
+    expect(holders.map((u) => u.id)).toEqual([earlyId]);
+    expect(
+      await app.db.select().from(userIdentities).where(eq(userIdentities.subject, claims.sub)),
+    ).toEqual([]);
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.claim_refused'), eq(auditLog.targetId, earlyId)));
+    expect(logged).toMatchObject({ workspaceId: wsId, data: { email: claims.email, via: 'sso' } });
+    expect((await early.client.get('/api/auth/me')).data.email).toBe(claims.email);
+
+    // A password reset proves the address; then SSO links the same account.
+    const token = await createToken(app.db, earlyId, 'password_reset', 60);
+    const reset = await new Client(app).post('/api/auth/reset', {
+      token,
+      password: 'another horse battery',
+    });
+    expect(reset.statusCode, reset.body).toBe(200);
+    const { client, location } = await sso(claims);
+    expect(location).toBe(`/${slug}`);
+    expect((await client.get('/api/auth/me')).data.id).toBe(earlyId);
+    expect(await roleOf(claims.email)).toBe('member');
+  });
+
+  it('refuses to release an unverified instance admin, even without workspaces', async () => {
+    // The first sign-up runs the instance from Admin and never joined a workspace.
+    const claims = person('instanceadmin');
+    const admin = await signup(app, 'Instance Admin');
+    const adminId = (await admin.client.get('/api/auth/me')).data.id;
+    await app.db
+      .update(users)
+      .set({ email: claims.email, emailVerifiedAt: null, isInstanceAdmin: true })
+      .where(eq(users.id, adminId));
+
+    const refused = await sso(claims);
+    expect(decodeURIComponent(refused.location)).toMatch(
+      /^\/login\?error=An account with this address exists but hasn't verified it/,
+    );
+    const [after] = await app.db.select().from(users).where(eq(users.id, adminId));
+    expect(after).toMatchObject({ email: claims.email, isInstanceAdmin: true });
+    const holders = await app.db.select().from(users).where(eq(users.email, claims.email));
+    expect(holders.map((u) => u.id)).toEqual([adminId]);
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.claim_refused'), eq(auditLog.targetId, adminId)));
+    expect(logged).toMatchObject({ data: { email: claims.email, via: 'sso' } });
   });
 
   it('lets signed-in users link an identity explicitly', async () => {
