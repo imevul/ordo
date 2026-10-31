@@ -294,7 +294,8 @@ function conditionParts(c: IssueConditions, env: FilterEnv): SQL[] {
     const excluded = conditionParts(c.exclude, env);
     if (excluded.length) conds.push(and(...excluded.map(negate))!);
   }
-  if (c.or?.length) conds.push(or(...c.or.map((g) => and(...conditionParts(g, env)) ?? sql`true`))!);
+  if (c.or?.length)
+    conds.push(or(...c.or.map((g) => and(...conditionParts(g, env)) ?? sql`true`))!);
   return conds;
 }
 

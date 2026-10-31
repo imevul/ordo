@@ -278,22 +278,50 @@ from the bytes — are served inline; everything else downloads as `application/
 
 `POST /issues/query` takes an `IssueFilter`. All fields are optional and combine with AND; arrays are OR.
 
-| Field                                    | Type                                                                     | Notes                                            |
-| ---------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------ |
-| `teamId`                                 | uuid                                                                     |                                                  |
-| `stateIds`                               | uuid[]                                                                   |                                                  |
-| `stateTypes`                             | (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`)[] |                                                  |
-| `priorities`                             | (0–4)[]                                                                  | 0 none, 1 urgent, 2 high, 3 medium, 4 low        |
-| `assigneeIds`                            | (uuid \| `"me"` \| `"none"`)[]                                           |                                                  |
-| `creatorIds`                             | (uuid \| `"me"`)[]                                                       |                                                  |
-| `labelIds`                               | uuid[]                                                                   | has any of                                       |
-| `customFields`                           | { fieldId: string[] }                                                    | per field, any of the values (see below)         |
-| `projectIds`, `milestoneIds`, `cycleIds` | (uuid \| `"none"`)[]                                                     |                                                  |
-| `parentId`                               | uuid                                                                     | sub-issues of                                    |
-| `subscribedBy`                           | `"me"`                                                                   |                                                  |
-| `q`                                      | string                                                                   | words (full text, as prefixes), or an identifier |
-| `trashed`                                | boolean                                                                  | only trashed issues                              |
-| `archived`                               | `"include"` \| `"only"`                                                  | archived issues are left out otherwise           |
+| Field                                              | Type                                                                     | Notes                                             |
+| -------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------- |
+| `teamId`                                           | uuid                                                                     |                                                   |
+| `stateIds`                                         | uuid[]                                                                   |                                                   |
+| `stateTypes`                                       | (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`)[] |                                                   |
+| `priorities`                                       | (0–4)[]                                                                  | 0 none, 1 urgent, 2 high, 3 medium, 4 low         |
+| `assigneeIds`                                      | (uuid \| `"me"` \| `"none"`)[]                                           |                                                   |
+| `creatorIds`                                       | (uuid \| `"me"`)[]                                                       |                                                   |
+| `labelIds`                                         | uuid[]                                                                   | has any of                                        |
+| `customFields`                                     | { fieldId: string[] }                                                    | per field, any of the values (see below)          |
+| `projectIds`, `milestoneIds`, `cycleIds`           | (uuid \| `"none"`)[]                                                     |                                                   |
+| `parentId`                                         | uuid                                                                     | sub-issues of                                     |
+| `subscribedBy`                                     | `"me"`                                                                   |                                                   |
+| `q`                                                | string                                                                   | words (full text, as prefixes), or an identifier  |
+| `trashed`                                          | boolean                                                                  | only trashed issues                               |
+| `archived`                                         | `"include"` \| `"only"`                                                  | archived issues are left out otherwise            |
+| `dueDate`, `createdAt`, `updatedAt`, `completedAt` | `{ range?, from?, to? }`                                                 | see below                                         |
+| `estimate`                                         | `{ none?, min?, max? }`                                                  | see below                                         |
+| `blocked`, `blocking`                              | boolean                                                                  | open, and blocked by (or blocking) an open issue  |
+| `hasPullRequest`, `hasSubIssues`, `isSubIssue`     | boolean                                                                  | `false` asks for the opposite                     |
+| `exclude`                                          | conditions                                                               | each condition in it must _not_ hold ("is not")   |
+| `or`                                               | conditions[]                                                             | at least one group must match                     |
+| `tz`, `weekStartsOn`                               | IANA zone, `0` \| `1`                                                    | where "today" is for relative dates (UTC, Monday) |
+
+**Dates.** `range` is `overdue` (before today on an open issue), `today`, `thisWeek`, `last7Days`, `last30Days`,
+`next14Days` (today and the 13 days after), `none` (not set) or `any` (set). `from` and `to` are days (`YYYY-MM-DD`),
+inclusive; with a `range` too, both must hold. Timestamps count on the day they fall on in `tz`.
+
+**Estimate.** `{ "none": true }` has no estimate, `{}` any estimate, `{ "min": 3 }` / `{ "max": 2 }` bounds it;
+`{ "none": true, "max": 2 }` is "no estimate, or at most 2".
+
+**Groups.** _Conditions_ are the fields from `stateIds` down (not `teamId`, `parentId`, `q` and the rest), plus
+`exclude` and `or` themselves, nested up to 4 deep. Each condition in `exclude` is negated on its own, and an issue
+missing the value counts as not matching it: `{"exclude":{"dueDate":{"range":"today"}}}` keeps issues without a due
+date. "Overdue bugs, not blocked, mine or nobody's":
+
+```json
+{
+  "labelIds": ["<bug label id>"],
+  "dueDate": { "range": "overdue" },
+  "blocked": false,
+  "or": [{ "assigneeIds": ["me"] }, { "assigneeIds": ["none"] }]
+}
+```
 
 ```bash
 curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
@@ -304,6 +332,7 @@ curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
 A `customFields` filter gives, per field id, the values wanted: option ids (a multi-select matches when it has any
 of them), user ids or `me`, numbers and dates written out (`"2.5"`, `"2026-12-01"`), text, or `none` for issues
 without a value. `{"customFields":{"<tier id>":["<gold id>","none"]}}` finds Gold issues and those with no tier.
+Custom fields are conditions like the others, so they work in `exclude` and `or` too; each field is negated on its own.
 
 Without `after` you get up to `limit` issues (default 2 000, at most 5 000) in board order. To read everything, page
 with `after`: send `"after": null` for the first page, then the last issue's `id`; pages come in id order and a page

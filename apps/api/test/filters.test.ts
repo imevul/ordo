@@ -108,9 +108,7 @@ describe('issue filters', () => {
 
   it('combines "is not" and "or" groups', async () => {
     // "Overdue and not blocked" finds nothing: the one overdue issue is blocked.
-    expect(await titles({ dueDate: { range: 'overdue' }, exclude: { blocked: true } })).toEqual(
-      [],
-    );
+    expect(await titles({ dueDate: { range: 'overdue' }, exclude: { blocked: true } })).toEqual([]);
     // An unset date isn't "today", so "is not today" keeps issues without one.
     expect(await titles({ exclude: { dueDate: { range: 'next14Days' } } })).toEqual([
       'blocker',
@@ -139,10 +137,45 @@ describe('issue filters', () => {
       { dueDate: { range: 'someday' } },
       { estimate: { min: -1 } },
       { tz: 'Mars/Olympus' },
+      // Postgres would read an offset the POSIX way, an hour the other side of UTC.
+      { tz: '+01:00' },
       { or: [{ assigneeIds: ['nope'] }] },
     ]) {
       const res = await owner.post(`${ws}/issues/query`, { filter });
       expect(res.statusCode, JSON.stringify(filter)).toBe(400);
     }
+    // Old names Intl still maps reach Postgres as their canonical zone.
+    expect(await titles({ tz: 'US/Pacific-New', createdAt: { range: 'last7Days' } })).toHaveLength(
+      6,
+    );
+  });
+
+  it('negates custom fields and puts them in "or" groups', async () => {
+    const field = (
+      await owner.post(`${ws}/custom-fields`, {
+        name: 'Tier',
+        type: 'select',
+        options: [{ name: 'Gold' }, { name: 'Silver' }],
+      })
+    ).data;
+    const [gold, silver] = field.options.map((o: { id: string }) => o.id);
+    await owner.patch(`${ws}/issues/${byTitle.late!.id}`, { customFields: { [field.id]: gold } });
+    await owner.patch(`${ws}/issues/${byTitle.soon!.id}`, { customFields: { [field.id]: silver } });
+    expect(await titles({ customFields: { [field.id]: [gold] } })).toEqual(['late']);
+    // "Is not Gold" keeps issues without a tier, like every other "is not".
+    expect(await titles({ exclude: { customFields: { [field.id]: [gold] } } })).toEqual([
+      'blocker',
+      'child',
+      'late but done',
+      'no dates',
+      'soon',
+    ]);
+    expect(await titles({ exclude: { customFields: { [field.id]: ['none'] } } })).toEqual([
+      'late',
+      'soon',
+    ]);
+    expect(
+      await titles({ or: [{ customFields: { [field.id]: [silver] } }, { isSubIssue: true }] }),
+    ).toEqual(['child', 'soon']);
   });
 });

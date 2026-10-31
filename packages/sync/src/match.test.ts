@@ -43,9 +43,9 @@ describe('matchIssue', () => {
     expect(matchesLocally({ subscribedBy: 'me' })).toBe(false);
     expect(matchesLocally({ archived: 'include' })).toBe(false);
     expect(matchesLocally({ blocked: false })).toBe(false);
-    expect(matchesLocally({ or: [{ labelIds: ['l1'] }, { exclude: { hasPullRequest: true } }] })).toBe(
-      false,
-    );
+    expect(
+      matchesLocally({ or: [{ labelIds: ['l1'] }, { exclude: { hasPullRequest: true } }] }),
+    ).toBe(false);
     expect(matchesLocally({ dueDate: { range: 'overdue' }, hasSubIssues: true })).toBe(true);
   });
 
@@ -76,9 +76,9 @@ describe('matchIssue', () => {
     expect(matchIssue(mine, { exclude: { assigneeIds: ['me'], labelIds: ['l9'] } }, ctx)).toBe(
       false,
     );
-    expect(matchIssue(mine, { or: [{ labelIds: ['l9'] }, { stateTypes: ['unstarted'] }] }, ctx)).toBe(
-      true,
-    );
+    expect(
+      matchIssue(mine, { or: [{ labelIds: ['l9'] }, { stateTypes: ['unstarted'] }] }, ctx),
+    ).toBe(true);
     expect(matchIssue(nobodys, { or: [{ labelIds: ['l9'] }, { assigneeIds: ['me'] }] }, ctx)).toBe(
       false,
     );

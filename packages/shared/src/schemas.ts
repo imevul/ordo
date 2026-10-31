@@ -24,7 +24,7 @@ import {
   USERNAME_PATTERN,
 } from './constants.ts';
 import { CUSTOM_FIELD_TYPES } from './customFields.ts';
-import { isTimeZone } from './dates.ts';
+import { canonicalTimeZone, isTimeZone } from './dates.ts';
 import { DATE_RANGES, filterDepth } from './filters.ts';
 import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
 import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
@@ -579,7 +579,15 @@ export const issueFilterSchema = z
     /** Archived issues are left out unless included, or asked for alone. */
     archived: z.enum(['include', 'only']).optional(),
     /** Where "today" is for relative dates (default UTC). Not part of saved views. */
-    tz: z.string().max(64).refine(isTimeZone, 'Unknown time zone').optional(),
+    tz: z
+      .string()
+      .max(64)
+      .transform((zone, ctx) => {
+        const name = canonicalTimeZone(zone);
+        if (!name) ctx.addIssue({ code: 'custom', message: 'Unknown time zone' });
+        return name ?? zone;
+      })
+      .optional(),
     weekStartsOn: z.union([z.literal(0), z.literal(1)]).optional(),
     ...conditionFields,
     exclude: issueConditionsSchema.optional(),

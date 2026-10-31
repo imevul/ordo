@@ -54,7 +54,12 @@ interface Env {
   tz: string;
 }
 
-function matchDate(issue: Issue, field: (typeof DATE_FILTER_FIELDS)[number], d: DateFilter, env: Env) {
+function matchDate(
+  issue: Issue,
+  field: (typeof DATE_FILTER_FIELDS)[number],
+  d: DateFilter,
+  env: Env,
+) {
   const raw = issue[field];
   if (d.range === 'none') return raw === null;
   if (raw === null) return false;

@@ -24,6 +24,7 @@ import type {
   UpdateIssueInput,
   Velocity,
 } from '@ordo/shared';
+import { dayInZone } from '@ordo/shared';
 import { type Engine, patchIssue, toggleReaction } from '@ordo/sync';
 import {
   keepPreviousData,
@@ -36,6 +37,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { t } from '../i18n/index.ts';
+import { withClock } from '../lib/filters.ts';
 import { useLocalIssues, useSync, useSyncEngine, useSyncState } from '../sync/context.tsx';
 import { keepsCopy } from '../sync/device.ts';
 import { ApiError, api, upload, wsPath } from './client.ts';
@@ -137,17 +139,39 @@ export const useBootstrap = (slug: string) =>
 
 const ISSUE_PAGE = 1000;
 
+/** Today in `tz`, checked every minute; undefined without a zone. */
+function useDay(tz: string | undefined) {
+  const [day, setDay] = useState(() => (tz ? dayInZone(tz) : undefined));
+  useEffect(() => {
+    if (!tz) return setDay(undefined);
+    setDay(dayInZone(tz));
+    const timer = setInterval(() => setDay(dayInZone(tz)), 60_000);
+    return () => clearInterval(timer);
+  }, [tz]);
+  return day;
+}
+
 /**
  * Every issue matching `filter`. With a local copy (sync), straight from it; otherwise loaded a
  * page at a time, what's loaded showing while the rest arrives. Screens sort and group on their
  * side.
  */
-export function useIssues(slug: string, filter: IssueFilter, enabled = true) {
+export function useIssues(slug: string, wanted: IssueFilter, enabled = true) {
   const qc = useQueryClient();
   const me = useMe().data;
-  const local = useLocalIssues(filter, me?.id ?? '');
+  // Relative dates ("today", "overdue") follow the viewer's zone and week; the browser's zone
+  // stands in until the account has loaded, or when it can't (offline).
+  const relative = withClock(wanted, null, undefined) !== wanted;
+  const account = useAccount(relative).data;
+  const filter = useMemo(
+    () => withClock(wanted, account?.preferences.timezone, account?.preferences.weekStartsOn),
+    [wanted, account],
+  );
+  const day = useDay(filter.tz);
+  const local = useLocalIssues(filter, me?.id ?? '', day);
   const fromCopy = !!local.issues || local.waiting;
-  const queryKey = keys.issues(slug, filter);
+  // With relative dates, a new day is a new list: "today" moves on at midnight.
+  const queryKey = day ? ([...keys.issues(slug, filter), day] as const) : keys.issues(slug, filter);
   const remote = useQuery({
     queryKey,
     queryFn: async ({ signal }) => {
@@ -342,8 +366,8 @@ export const useInvites = (slug: string, enabled: boolean) =>
     enabled,
   });
 
-export const useAccount = () =>
-  useQuery({ queryKey: keys.account, queryFn: () => api.get<Account>('/me/account') });
+export const useAccount = (enabled = true) =>
+  useQuery({ queryKey: keys.account, queryFn: () => api.get<Account>('/me/account'), enabled });
 
 export const useSessions = () =>
   useQuery({ queryKey: keys.sessions, queryFn: () => api.get<SessionInfo[]>('/me/sessions') });
