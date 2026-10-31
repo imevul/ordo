@@ -840,11 +840,19 @@ export async function updateIssue(
       .set({ issueCounter: sql`${teams.issueCounter} + 1` })
       .where(eq(teams.id, target.id))
       .returning({ counter: teams.issueCounter })) as [{ counter: number }];
-    const [oldState] = await ctx.tx
-      .select()
-      .from(workflowStates)
-      .where(eq(workflowStates.id, current.stateId));
-    if (!stateId) {
+    // A status of the old team (often the unchanged one, from a form that resends every field)
+    // can't apply in the new team, so it's mapped by type like a missing one. Anything else is
+    // checked against the new team below.
+    const [givenState] = stateId
+      ? await ctx.tx
+          .select()
+          .from(workflowStates)
+          .where(and(eq(workflowStates.id, stateId), eq(workflowStates.teamId, current.teamId)))
+      : [];
+    if (!stateId || givenState) {
+      const [oldState] = givenState
+        ? [givenState]
+        : await ctx.tx.select().from(workflowStates).where(eq(workflowStates.id, current.stateId));
       const candidates = await ctx.tx
         .select()
         .from(workflowStates)

@@ -336,6 +336,66 @@ describe('issues', () => {
       expect(done.completedAt).not.toBeNull();
       expect(done.completedAt).not.toBe(issue.completedAt);
     });
+
+    it('maps an unchanged status from the old team by type', async () => {
+      const issue = (
+        await ada.post(`${ws}/issues`, {
+          teamId: team().id,
+          title: 'Resent form',
+          stateId: state('started').id,
+        })
+      ).data as Issue;
+      const moved = (
+        await ada.patch(`${ws}/issues/${issue.id}`, {
+          teamId: target.id,
+          stateId: issue.stateId,
+        })
+      ).data as Issue;
+      expect(moved.teamId).toBe(target.id);
+      expect(moved.stateId).toBe(targetState('started').id);
+      expect(moved.startedAt).toBe(issue.startedAt);
+      expect(await lastChanges(issue.id)).toContainEqual({
+        field: 'state',
+        from: issue.stateId,
+        to: moved.stateId,
+      });
+      const board = (await ada.post(`${ws}/issues/query`, { filter: { teamId: target.id } }))
+        .data as Issue[];
+      expect(board.some((i) => i.id === issue.id)).toBe(true);
+    });
+
+    it('maps another status of the old team by its type', async () => {
+      const issue = (
+        await ada.post(`${ws}/issues`, {
+          teamId: team().id,
+          title: 'Moved and finished',
+          stateId: state('started').id,
+        })
+      ).data as Issue;
+      const moved = (
+        await ada.patch(`${ws}/issues/${issue.id}`, {
+          teamId: target.id,
+          stateId: state('completed').id,
+        })
+      ).data as Issue;
+      expect(moved.stateId).toBe(targetState('completed').id);
+      expect(moved.startedAt).toBe(issue.startedAt);
+      expect(moved.completedAt).not.toBeNull();
+    });
+
+    it("rejects a third team's status on a move", async () => {
+      const third = (await ada.post(`${ws}/teams`, { name: 'Design', key: 'DES' }))
+        .data as Bootstrap['teams'][number];
+      const issue = (await ada.post(`${ws}/issues`, { teamId: team().id, title: 'Lost' }))
+        .data as Issue;
+      const res = await ada.patch(`${ws}/issues/${issue.id}`, {
+        teamId: target.id,
+        stateId: third.states[0]!.id,
+      });
+      expect(res.statusCode).toBe(400);
+      const after = (await ada.get(`${ws}/issues/${issue.id}`)).data as Issue;
+      expect(after.teamId).toBe(team().id);
+    });
   });
 
   it('trashes and restores issues', async () => {
