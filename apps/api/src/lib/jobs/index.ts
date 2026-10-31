@@ -235,9 +235,23 @@ export class JobQueue {
   /**
    * Jobs whose lock ran out on their last attempt: the worker stopped without recording an outcome,
    * quite possibly because of the job itself (an export running out of memory). Another try would
-   * only crash the next instance, so they're dead.
+   * only crash the next instance, so they're dead. Scheduled ticks are the exception: they were most
+   * likely cut off by a restart, and the next tick does the same work, so they're simply dropped.
    */
   private async buryLapsed(names: string[]) {
+    const nameList = sql.join(
+      names.map((n) => sql`${n}`),
+      sql`, `,
+    );
+    await this.db.execute(sql`
+      delete from jobs
+      where id in (
+        select j.id from jobs j
+        where j.name in (${nameList})
+          and j.dedupe_key like 'schedule:%'
+          and j.status = 'running' and j.locked_until < now() and j.attempts >= j.max_attempts
+        for update skip locked
+      )`);
     const dead = await this.db.execute<{ id: number; name: string; payload: unknown }>(sql`
       update jobs set
         status = 'dead',
@@ -246,10 +260,7 @@ export class JobQueue {
         locked_by = null
       where id in (
         select j.id from jobs j
-        where j.name in (${sql.join(
-          names.map((n) => sql`${n}`),
-          sql`, `,
-        )})
+        where j.name in (${nameList})
           and j.status = 'running' and j.locked_until < now() and j.attempts >= j.max_attempts
         for update skip locked
       )
