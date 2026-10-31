@@ -76,6 +76,17 @@ describe('automation rules', () => {
     // The bot is "me" when rules run, so conditions name people.
     expect((await bad({ conditions: { assigneeIds: ['me'] } })).statusCode).toBe(400);
     expect((await bad({ conditions: { subscribedBy: 'me' } })).statusCode).toBe(400);
+    // Conditions beyond the rule editor's subset are refused, not silently dropped.
+    for (const conditions of [
+      { blocked: true },
+      { hasPullRequest: true },
+      { estimate: { min: 3 } },
+      { dueDate: { range: 'overdue' } },
+      { exclude: { priorities: [1] } },
+      { or: [{ priorities: [1] }] },
+    ]) {
+      expect((await bad({ conditions })).statusCode).toBe(400);
+    }
 
     const created = await rule(body);
     expect(created).toMatchObject({ enabled: true, conditions: {}, runCount: 0, lastRunAt: null });

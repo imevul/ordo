@@ -651,21 +651,22 @@ export const issueFilterSchema = z
   .refine((f) => filterDepth(f) <= MAX_FILTER_DEPTH, 'Filter groups nest too deeply');
 export type IssueFilter = z.infer<typeof issueFilterSchema>;
 
-/** The part of the filter model automation rules check. The bot is "me", so people are by id. */
-const automationConditionsSchema = issueFilterSchema
-  .pick({
-    stateIds: true,
-    stateTypes: true,
-    priorities: true,
-    labelIds: true,
-    projectIds: true,
-    milestoneIds: true,
-    cycleIds: true,
-    q: true,
-  })
-  .extend({
-    assigneeIds: z.array(z.union([id, z.literal('none')])).optional(),
-    creatorIds: z.array(id).optional(),
+/**
+ * The part of the filter model automation rules check. The bot is "me", so people are by id.
+ * Built from `conditionFields`, not `issueFilterSchema`: zod can't `.pick()` a refined object.
+ */
+const automationConditionsSchema = z
+  .object({
+    stateIds: conditionFields.stateIds,
+    stateTypes: conditionFields.stateTypes,
+    priorities: conditionFields.priorities,
+    labelIds: conditionFields.labelIds,
+    projectIds: conditionFields.projectIds,
+    milestoneIds: conditionFields.milestoneIds,
+    cycleIds: conditionFields.cycleIds,
+    q: z.string().max(200).optional(),
+    assigneeIds: z.array(idOrNone).max(200).optional(),
+    creatorIds: z.array(id).max(200).optional(),
   })
   .strict();
 

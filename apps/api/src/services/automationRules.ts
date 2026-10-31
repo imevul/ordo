@@ -117,7 +117,11 @@ function triggerMatches(trigger: AutomationTrigger, changes: HistoryChange[] = [
 
 const closed = sql`(select ws.type from workflow_states ws where ws.id = "issues"."state_id") in ('completed', 'canceled')`;
 
-/** The parent of a sub-issue that just closed, if that closed its last open sibling. */
+/**
+ * The parent of a sub-issue that just closed, if that closed its last open sibling. Reads the
+ * state when the job runs, not when the event happened: a sub-issue reopened in between doesn't
+ * fire the rule, which is what the rule's "all done" means anyway.
+ */
 async function completedParent(db: DbOrTx, issueId: string) {
   const [row] = await db
     .select({ parentId: issues.parentId })
