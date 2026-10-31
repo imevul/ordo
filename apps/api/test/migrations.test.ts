@@ -168,6 +168,47 @@ describe('migrations', { timeout: 60_000 }, () => {
     );
   });
 
+  it('lets instances booting together migrate one at a time', async () => {
+    const url = await freshDatabase('migrations_parallel');
+    const first = createDb(url);
+    const second = createDb(url);
+    cleanup.push(
+      () => first.sql.end(),
+      () => second.sql.end(),
+    );
+
+    // Leave both migrators SQL migrations on either side of the code backfill.
+    const before = folderUpTo(entryIndex('0051_hash_invite_tokens'));
+    cleanup.push(() => rmSync(before, { recursive: true, force: true }));
+    await migrate(first.db, { migrationsFolder: before });
+    await first.sql`insert into invites (token, expires_at)
+      values ('legacy-token', now() + interval '1 day')`;
+
+    // Count the backfill's writes to invites: it encrypts each pending token once.
+    await first.sql`create table backfill_writes (n int)`;
+    await first.sql`create function count_backfill() returns trigger language plpgsql as $$
+      begin insert into backfill_writes values (1); return new; end $$`;
+    await first.sql`create trigger count_backfill after update of token_encrypted on invites
+      for each row execute function count_backfill()`;
+
+    const keyring = new Keyring(randomBytes(32));
+    await Promise.all([runMigrations(first.db, keyring), runMigrations(second.db, keyring)]);
+
+    const applied = await first.sql<{ hash: string; n: number }[]>`
+      select hash, count(*)::int as n from drizzle.__drizzle_migrations group by hash`;
+    const journal = JSON.parse(
+      readFileSync(join(migrationsFolder(), 'meta/_journal.json'), 'utf8'),
+    );
+    expect(applied).toHaveLength(journal.entries.length);
+    expect(applied.every((m) => m.n === 1)).toBe(true);
+    expect(await first.sql`select * from backfill_writes`).toHaveLength(1);
+    // The lock was released, not left behind on a pooled connection.
+    expect(
+      await first.sql`select 1 from pg_locks where locktype = 'advisory'
+        and database = (select oid from pg_database where datname = current_database())`,
+    ).toHaveLength(0);
+  });
+
   it('keeps invite links working without a secret key, as a hash only', async () => {
     const url = await freshDatabase('migrations_invite_tokens_nokey');
     const { db, sql } = createDb(url);

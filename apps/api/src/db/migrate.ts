@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import type { PgDialect, PgSession } from 'drizzle-orm/pg-core';
+import type { Sql } from 'postgres';
 import { loadEnv } from '../env.ts';
 import { Keyring } from '../lib/secrets.ts';
 import { inviteTokenAad } from '../services/secretKey.ts';
@@ -31,8 +32,38 @@ const BEFORE: Record<string, (db: Db, keyring: Keyring) => Promise<void>> = {
   '0052_drop_invite_token': encryptInviteTokens,
 };
 
-/** Applies pending migrations, pausing for the code backfills in `BEFORE`. */
+/** Fixed `pg_advisory_lock` key ("ordomigr" in ASCII) that serializes migrators across instances. */
+export const MIGRATION_LOCK_KEY = 0x6f72646f6d696772n;
+
+/**
+ * Applies pending migrations, pausing for the code backfills in `BEFORE`. Instances booting
+ * together wait for each other on an advisory lock, then find nothing left to do.
+ */
 export async function runMigrations(db: Db, keyring?: Keyring) {
+  // The lock belongs to a session, so it's taken and released on one reserved connection. The
+  // migrations themselves can't run on it (a reserved postgres-js connection has no `begin`), so
+  // they use the rest of the pool.
+  // drizzle() sets `$client`; `Db` (PostgresJsDatabase) just doesn't declare it.
+  const client = (db as Db & { $client: Sql }).$client;
+  if (client.options.max < 2) {
+    throw new Error(
+      'Migrations need a database pool of at least 2 connections (DATABASE_POOL_SIZE)',
+    );
+  }
+  const lock = await client.reserve();
+  try {
+    await lock`select pg_advisory_lock(${MIGRATION_LOCK_KEY.toString()}::bigint)`;
+    try {
+      await migrateLocked(db, keyring);
+    } finally {
+      await lock`select pg_advisory_unlock(${MIGRATION_LOCK_KEY.toString()}::bigint)`;
+    }
+  } finally {
+    lock.release();
+  }
+}
+
+async function migrateLocked(db: Db, keyring?: Keyring) {
   const folder = migrationsFolder();
   const config = { migrationsFolder: folder };
   const migrations = readMigrationFiles(config);
