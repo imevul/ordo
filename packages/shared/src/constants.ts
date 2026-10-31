@@ -175,6 +175,7 @@ export const AUDIT_ACTIONS = [
   'agent.updated',
   'agent.disabled',
   'agent.unpaused',
+  'agent.plan_approved',
   'agent.key_created',
   'repository.created',
   'repository.updated',
@@ -413,7 +414,8 @@ export type AgentRunTrigger = (typeof AGENT_RUN_TRIGGERS)[number];
  * What happens to a run, for its timeline (see `AgentRunEvent`). lapsed: its runner stopped
  * heartbeating and the run went back in the queue (or failed, on the last attempt). resumed: a
  * waiting run went back in the queue, after a person's reply or Resume. ran_anyway: someone told a
- * queued run not to wait for its issue's blockers.
+ * queued run not to wait for its issue's blockers. planned: it posted a plan and waits for
+ * approval. plan_approved: a person approved it (and the run went back in the queue).
  */
 export const AGENT_RUN_EVENT_KINDS = [
   'queued',
@@ -422,6 +424,8 @@ export const AGENT_RUN_EVENT_KINDS = [
   'started',
   'progress',
   'asked',
+  'planned',
+  'plan_approved',
   'resumed',
   'lapsed',
   'succeeded',

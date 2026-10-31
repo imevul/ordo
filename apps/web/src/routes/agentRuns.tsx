@@ -8,7 +8,9 @@ import { keys, useWsMutation } from '../api/queries.ts';
 import {
   FailureTags,
   isOpenRun,
+  isPlanPending,
   isRestartable,
+  PlanApprovedTag,
   RunAnywayButton,
   RunBlocked,
   RunDetail,
@@ -319,6 +321,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
           {/* The issue column is narrow below xl; the expanded row says what failed anyway. */}
           <span className="hidden xl:contents">
             <FailureTags run={run} />
+            <PlanApprovedTag run={run} />
           </span>
           {detail && (
             <button
@@ -361,7 +364,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
               <ExternalLink size={13} />
             </a>
           )}
-          {run.status === 'waiting' && (
+          {run.status === 'waiting' && !isPlanPending(run) && (
             <button
               type="button"
               className="flex h-6 w-6 items-center justify-center text-index hover:text-text"

@@ -292,7 +292,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
     optional rough percentage), shown on the run page and the runs list, newest only, not a comment per update
   - [x] ✅ Cost per run: tokens, cost and duration (Claude Code's JSON result), totals per agent and month, and a
     budget that pauses the agent like a usage limit does
-  - [ ] ⬜ Plan approval: a run can post a plan and wait; an admin approves (or answers) before it goes on
+  - [x] ✅ Plan approval: "Approve the plan first" per agent and per issue; the agent posts a plan (`propose_plan`,
+    `ordo agent plan`) and waits; a person approves (or replies with changes) before it goes on
   - [ ] ⬜ Live output: the runner streams the output tail while a run works
   - [x] ✅ Scheduled agent tasks (nightly dependency check, weekly review) on top of recurring issues
   - [ ] ⬜ Concurrency per repository, so two runs don't work in one repo at once

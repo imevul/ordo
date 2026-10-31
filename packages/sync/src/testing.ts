@@ -44,6 +44,7 @@ export const issue = (id: string, extra: Partial<Issue> = {}): Issue => ({
   deletedAt: null,
   slaBreachesAt: null,
   archivedAt: null,
+  planApproval: null,
   ...extra,
 });
 

@@ -592,6 +592,8 @@ export interface Issue {
   /** When the team's SLA for this priority runs out; null without one. */
   slaBreachesAt: string | null;
   archivedAt: string | null;
+  /** Whether its agent posts a plan for approval before changing code; null: the agent's default. */
+  planApproval: boolean | null;
 }
 
 /** A relation as seen from one issue; stored relations are mirrored for the other side. */
@@ -1468,6 +1470,8 @@ export interface Agent {
   followPullRequests: boolean;
   /** Whether its runs wait while their issue is blocked by an open issue. */
   waitForBlockers: boolean;
+  /** Whether its runs post a plan for approval before changing code, unless the issue says otherwise. */
+  requirePlanApproval: boolean;
   /** Claims hand out nothing until then (e.g. its runner hit a usage limit); null when not paused. */
   pausedUntil: string | null;
   pauseReason: AgentPauseReason | null;
@@ -1505,6 +1509,10 @@ export interface AgentRun {
   triggerDetail: AgentRunPullRequest | null;
   /** What the agent asked when it last paused (the run is `waiting` until a person answers). */
   question: string | null;
+  /** The plan the agent proposed; the run is `waiting` on it until it's approved or answered. */
+  plan: string | null;
+  planApprovedAt: string | null;
+  planApprovedById: string | null;
   /** Opaque to Ordo: what the runner needs to continue the agent's session on the next pickup. */
   resume: string | null;
   error: string | null;
@@ -1658,6 +1666,11 @@ export interface AgentRunContext {
   };
   /** Whether the issue is the agent's (assigned to it), or it was only asked to help. */
   assigned: boolean;
+  /**
+   * Whether the agent must post a plan with `propose_plan` and wait for approval before changing
+   * code: the issue's switch, else the agent's default, on assigned runs until a plan is approved.
+   */
+  planApproval: boolean;
   /** The issue's team workflow, so the runner can move the issue along. */
   states: { id: string; name: string; type: StateType }[];
   /** All of the above as one Markdown prompt, for tools that just want text. */

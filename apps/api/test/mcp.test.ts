@@ -518,6 +518,42 @@ describe('agents', () => {
     expect((await tool('agent_runs', { issue: issue.identifier })).runs[0].status).toBe('queued');
   });
 
+  it('lets an agent propose a plan over MCP and wait for approval', async () => {
+    const issue = await tool('create_issue', { team: 'ENG', title: 'Risky change' });
+    await tool('update_issue', { issue: issue.identifier, planApproval: true });
+    await tool('assign_to_agent', { issue: issue.identifier, agent: 'robo' });
+    const claim = () =>
+      app.inject({
+        method: 'POST',
+        url: `${ws}/agent/claim`,
+        headers: { authorization: `Bearer ${agentKey}` },
+      });
+    // Runs the tests before left queued come first.
+    let claimed = await claim();
+    while (claimed.json().issue.identifier !== issue.identifier) {
+      await tool('report_run', { run: claimed.json().run.id, status: 'succeeded' }, agentKey);
+      claimed = await claim();
+    }
+    expect(claimed.json()).toMatchObject({ planApproval: true });
+    expect(claimed.json().prompt).toContain('propose_plan');
+    // The agent can't turn the gate off itself.
+    expect(
+      (await tool('update_issue', { issue: issue.identifier, planApproval: false }, agentKey))
+        .error,
+    ).toContain('Only people');
+    const proposed = await tool('propose_plan', { plan: '1. Add a flag\n2. Migrate' }, agentKey);
+    expect(proposed).toMatchObject({ status: 'waiting' });
+    expect(proposed.next).toContain('approves');
+    expect((await tool('agent_runs', { issue: issue.identifier })).runs[0]).toMatchObject({
+      status: 'waiting',
+      plan: '1. Add a flag\n2. Migrate',
+      planApproved: false,
+    });
+    expect((await tool('get_issue', { issue: issue.identifier })).comments.at(-1).body).toContain(
+      '**Plan for approval**',
+    );
+  });
+
   it('lists what agents are doing across the workspace', async () => {
     const active = await tool('list_agent_runs');
     expect(active.length).toBeGreaterThan(0);

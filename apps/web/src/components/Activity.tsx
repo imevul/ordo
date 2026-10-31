@@ -210,6 +210,12 @@ function ChangeText({
             estimate: strong(estimateLabel(team?.estimateScale ?? 'linear', c.to as number)),
           });
     }
+    case 'planApproval':
+      return c.to === true
+        ? tx('issue.activity.planApprovalOn', { actor })
+        : c.to === false
+          ? tx('issue.activity.planApprovalOff', { actor })
+          : tx('issue.activity.planApprovalDefault', { actor });
     case 'dueDate':
       return c.to
         ? tx('issue.activity.dueDateSet', { actor, date: strong(shortDate(c.to as string)) })

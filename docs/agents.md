@@ -319,7 +319,7 @@ fourth if you want [live output](#live-output):
 ```text
 POST  /api/w/<ws>/agent/claim?wait=30&runner=<name>   → 200 AgentRunContext, or 204 when there's nothing
 POST  /api/w/<ws>/agent/runs/<id>/heartbeat          → { cancelled } — at least every 5 minutes
-PATCH /api/w/<ws>/agent/runs/<id>                    { status: running | waiting | succeeded | failed, question?, resume?, sessionUrl?, summary?, error? }
+PATCH /api/w/<ws>/agent/runs/<id>                    { status: running | waiting | succeeded | failed, question? | plan?, resume?, sessionUrl?, summary?, error? }
 POST  /api/w/<ws>/agent/runs/<id>/output             { lines: [...] } → { accepted } — new lines, every few seconds
 ```
 
@@ -462,6 +462,42 @@ if [ "$code" -ne 0 ] || [ "$(printf '%s' "$out" | jq -r '.is_error' 2>/dev/null)
 fi
 printf '%s' "$out" | jq -r .result
 ```
+
+## Plan approval
+
+For a risky issue, make the agent post its plan and wait for a person to approve it before it changes code. There
+are two switches:
+
+- **Approve the plan first** in an agent's settings turns it on for every issue the agent is assigned (off by
+  default).
+- **Plan** in an issue's properties overrides that for the issue: _Approve first_, _No approval_, or _Agent's
+  default_. It shows while an agent has the issue. Changes show in the issue's activity, and only people can make
+  them: an agent trying to change it (over the API or MCP) gets a 403.
+
+When approval applies, the run's prompt has a "Plan approval" section asking the agent to look into the issue,
+post its plan, and stop. Any of these posts it:
+
+- the MCP tool `propose_plan` (with the agent's key),
+- `ordo agent plan "<plan>"` (`-` reads stdin),
+- the protocol: `PATCH …/agent/runs/<id> { "status": "waiting", "plan": "…" }`.
+
+Like a [question](#questions), the plan is posted on the issue as a comment by the agent, mentioning whoever asked
+for the run, and the run waits, holding no lease. It shows **waiting for approval**, with the plan and an
+**Approve** button, on the issue and on Agent runs.
+
+- **Approve** puts the run back in the queue. Its next prompt has the plan under "Your plan", marked approved, and
+  the agent carries it out. The approval is recorded on the run (who and when) and in the audit log
+  (`agent.plan_approved`). Only people who can see the issue can approve.
+- **A reply** on the issue is feedback: the run resumes, and its prompt says the plan isn't approved yet and asks
+  for a revised plan. A new plan needs a new approval.
+
+Approval applies to runs of the assigned agent, until one of its plans for the issue is approved. Later runs (Run
+again after a review, failing checks) don't ask again. Runs for a mention on someone else's issue don't ask at all.
+
+**Ordo can't enforce the gate.** The agent works on your runner, and Ordo can't stop it from editing files there.
+The gate is the prompt plus the tool: an agent that follows its prompt stops after planning, but nothing on the
+server prevents an agent from pushing code before approval. Keep branch protection and pull request reviews in
+place for anything that has to be safe.
 
 ## From an assistant, over MCP
 

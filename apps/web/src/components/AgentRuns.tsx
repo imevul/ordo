@@ -1,7 +1,7 @@
 import type { AgentRun, AgentRunStatus, AgentRunWithIssue, IssueDetail } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { Bot, ExternalLink, FastForward, RotateCcw, Square } from 'lucide-react';
+import { Bot, Check, ExternalLink, FastForward, RotateCcw, Square } from 'lucide-react';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
@@ -28,7 +28,7 @@ export function RunStatusLink({ run }: { run: AgentRun }) {
       style={{ ['--chip' as string]: RUN_STATUS_COLOR[run.status] }}
       title={t('agents.runsPage.open')}
     >
-      {t(`agents.runs.status.${run.status}`)}
+      {runStatusLabel(run)}
     </Link>
   );
 }
@@ -51,13 +51,71 @@ export const isOpenRun = (r: Pick<AgentRun, 'status'>) =>
 
 export const isRestartable = (r: AgentRun) => r.status === 'failed' || r.status === 'cancelled';
 
-/** What a row expands to: the question, what went wrong, or the summary. */
+/**
+ * Waiting for a person to approve the plan it posted (propose_plan), not for an answer. Proposing
+ * clears the question, so a question means the latest pause asked something instead.
+ */
+export const isPlanPending = (r: AgentRun) =>
+  r.status === 'waiting' && !!r.plan && !r.planApprovedAt && !r.question;
+
+export const runStatusLabel = (r: AgentRun) =>
+  isPlanPending(r) ? t('agents.runs.waitingForApproval') : t(`agents.runs.status.${r.status}`);
+
+/** What a row expands to: the question or plan, what went wrong, or the summary. */
 export const runDetail = (r: AgentRun) =>
   r.status === 'waiting'
-    ? r.question
+    ? (r.question ?? r.plan)
     : r.status === 'failed'
       ? (r.error ?? r.summary)
       : (r.summary ?? r.error);
+
+/** Tag on a run whose plan someone approved: who, and when, on hover. */
+export function PlanApprovedTag({ run }: { run: AgentRun }) {
+  const ws = useWorkspace();
+  if (!run.planApprovedAt) return null;
+  const by = run.planApprovedById ? ws.memberById.get(run.planApprovedById)?.name : undefined;
+  return (
+    <span
+      className="tag ml-2 flex-none font-mono"
+      title={
+        by
+          ? t('agents.runs.planApprovedBy', { name: by, time: longDate(run.planApprovedAt) })
+          : longDate(run.planApprovedAt)
+      }
+    >
+      {t('agents.runs.planApproved')}
+    </span>
+  );
+}
+
+/** A pending plan and its Approve button; replying on the issue instead resumes it with changes. */
+export function PendingPlan({ run }: { run: AgentRun }) {
+  const ws = useWorkspace();
+  const approve = useWsMutation(
+    ws.slug,
+    () => api.post(wsPath(ws.slug, `/agent-runs/${run.id}/approve`)),
+    { invalidate: [['ws', ws.slug, 'agentRuns']] },
+  );
+  return (
+    <>
+      <div className="mb-1 font-mono text-[10.5px] tracking-[0.16em] text-warning uppercase">
+        {t('agents.runs.planForApproval')}
+      </div>
+      <Markdown source={run.plan!} />
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          disabled={approve.isPending}
+          onClick={() => approve.mutate(undefined)}
+        >
+          <Check size={12} /> {t('agents.runs.approvePlan')}
+        </button>
+        <span className="text-[12px] text-muted">{t('agents.runs.replyWithChanges')}</span>
+      </div>
+    </>
+  );
+}
 
 /** Why a failed run failed, and whether it restarts by itself, as tags after its name. */
 export function FailureTags({ run }: { run: AgentRun }) {
@@ -209,8 +267,12 @@ export function RunUsage({ run, className = '' }: { run: AgentRun; className?: s
   );
 }
 
-/** The expanded row: the agent's question, what went wrong (and what happens next), or its summary. */
+/**
+ * The expanded row: the agent's question or plan, what went wrong (and what happens next), or its
+ * summary.
+ */
 export function RunDetail({ run }: { run: AgentRun }) {
+  if (isPlanPending(run)) return <PendingPlan run={run} />;
   if (run.status === 'waiting' && run.question)
     return (
       <>
@@ -287,8 +349,8 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
   );
   if (!assignedToAgent && runs.length === 0) return null;
   const busy = runs.some(isOpenRun);
-  // Waiting on an answer: a reply resumes it, and so does this, without one.
-  const waiting = runs.some((r) => r.status === 'waiting');
+  // Waiting on an answer: a reply resumes it, and so does this, without one. A plan has Approve.
+  const waiting = runs.some((r) => r.status === 'waiting' && !isPlanPending(r));
 
   return (
     <section className="mt-8">
@@ -360,6 +422,7 @@ function RunRow({
             <span className="tag ml-2 flex-none font-mono">{triggerLabel(run)}</span>
           )}
           <FailureTags run={run} />
+          <PlanApprovedTag run={run} />
           {run.runnerName && (
             <span className="ml-2 font-mono text-[11px] text-index">
               {t('agents.runs.on', { runner: run.runnerName })}

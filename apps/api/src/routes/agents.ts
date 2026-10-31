@@ -14,6 +14,7 @@ import { forbidden, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import {
   appendRunOutput,
+  approvePlan,
   cancelRun,
   claimRun,
   countActiveRuns,
@@ -152,6 +153,12 @@ export async function agentRoutes(app: FastifyInstance) {
   app.post('/agent-runs/:id/dismiss', async (req) => {
     const { id } = req.params as { id: string };
     return mutate(app, req, (ctx) => dismissRun(ctx, id));
+  });
+
+  // Approve: the plan the run is waiting on is fine; the run resumes to carry it out.
+  app.post('/agent-runs/:id/approve', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => approvePlan(ctx, id));
   });
 
   // Agents whose claims are on hold (e.g. after a usage limit), for the Agent runs page.

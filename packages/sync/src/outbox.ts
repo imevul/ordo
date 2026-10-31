@@ -170,6 +170,7 @@ function draftIssue(
     deletedAt: null,
     slaBreachesAt: null,
     archivedAt: null,
+    planApproval: input.planApproval ?? null,
   };
 }
 

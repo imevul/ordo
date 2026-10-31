@@ -50,6 +50,7 @@ In a checkout of the Ordo repository, `pnpm ordo <command>` runs the CLI from so
 | `ordo agent run …`               | Work on an agent's runs: launch a command of yours for each one (see [agents](agents.md))                      |
 | `ordo agent check --file <yaml>` | Validate a runner file and its keys without claiming anything                                                  |
 | `ordo agent ask <question>`      | Inside a run: ask a person and pause the run until they reply (`-` reads stdin)                                |
+| `ordo agent plan <plan>`         | Inside a run: post a plan and pause the run until someone approves it or replies (`-` reads stdin)             |
 
 Every command takes `-w, --workspace <slug>`, `--json` (machine-readable output, the API's own shapes) and
 `-h, --help`. `ordo <command> --help` (or `ordo help <command>`) prints that command's usage and options, e.g.

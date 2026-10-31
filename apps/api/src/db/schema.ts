@@ -765,6 +765,8 @@ export const issues = pgTable(
     /** Set once the breach was announced, so it's announced once. */
     slaNotifiedAt: ts('sla_notified_at'),
     archivedAt: ts('archived_at'),
+    /** Whether its agent posts a plan for approval before changing code; null: the agent's default. */
+    planApproval: boolean('plan_approval'),
   },
   (t) => [
     uniqueIndex('issues_team_number_idx').on(t.teamId, t.number),
@@ -1959,6 +1961,8 @@ export const agents = pgTable('agents', {
   followPullRequests: boolean('follow_pull_requests').notNull().default(true),
   /** Whether its runs wait while their issue is blocked by an open issue. */
   waitForBlockers: boolean('wait_for_blockers').notNull().default(true),
+  /** Whether its runs post a plan for approval before changing code, unless the issue says otherwise. */
+  requirePlanApproval: boolean('require_plan_approval').notNull().default(false),
   /** Claims hand out nothing until then, e.g. after its runner hit a usage limit. */
   pausedUntil: ts('paused_until'),
   pauseReason: text('pause_reason').$type<AgentPauseReason>(),
@@ -2030,6 +2034,12 @@ export const agentRuns = pgTable(
     triggerDetail: jsonb('trigger_detail').$type<AgentRunPullRequest>(),
     /** The agent's last question; set while `waiting`, kept after it resumes. */
     question: text('question'),
+    /** The plan the agent proposed (propose_plan); set while it waits for approval, kept after. */
+    plan: text('plan'),
+    planApprovedAt: ts('plan_approved_at'),
+    planApprovedById: uuid('plan_approved_by_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     /** Opaque to Ordo: the runner's handle on the agent's session, returned on the next pickup. */
     resume: text('resume'),
     /**
