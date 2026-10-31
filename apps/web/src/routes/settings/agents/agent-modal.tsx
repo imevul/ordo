@@ -32,6 +32,7 @@ export function AgentModal({
   const [instructions, setInstructions] = useState('');
   const [concurrency, setConcurrency] = useState(1);
   const [followPullRequests, setFollowPullRequests] = useState(true);
+  const [waitForBlockers, setWaitForBlockers] = useState(true);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!agent) return;
@@ -43,6 +44,7 @@ export function AgentModal({
     setInstructions(existing?.instructions ?? '');
     setConcurrency(existing?.concurrency ?? 1);
     setFollowPullRequests(existing?.followPullRequests ?? true);
+    setWaitForBlockers(existing?.waitForBlockers ?? true);
   }, [agent, existing, ws.teams]);
 
   const submit = async (e: FormEvent) => {
@@ -52,7 +54,15 @@ export function AgentModal({
       return;
     }
     setBusy(true);
-    const body = { name, avatarColor, teamIds, instructions, concurrency, followPullRequests };
+    const body = {
+      name,
+      avatarColor,
+      teamIds,
+      instructions,
+      concurrency,
+      followPullRequests,
+      waitForBlockers,
+    };
     try {
       if (existing) {
         await api.patch(wsPath(ws.slug, `/agents/${existing.id}`), body);
@@ -142,6 +152,20 @@ export function AgentModal({
             {t('agents.form.followPullRequests')}
             <span className="block text-[11.5px] text-index">
               {t('agents.form.followPullRequestsHint')}
+            </span>
+          </span>
+        </label>
+        <label className="mt-3 flex items-start gap-2 text-[13px]">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-primary"
+            checked={waitForBlockers}
+            onChange={(e) => setWaitForBlockers(e.target.checked)}
+          />
+          <span>
+            {t('agents.form.waitForBlockers')}
+            <span className="block text-[11.5px] text-index">
+              {t('agents.form.waitForBlockersHint')}
             </span>
           </span>
         </label>

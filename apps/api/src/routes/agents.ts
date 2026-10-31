@@ -27,6 +27,7 @@ import {
   requestRun,
   restartRun,
   revokeAgentKey,
+  runAnyway,
   unpauseAgent,
   updateAgent,
   waitForRuns,
@@ -122,6 +123,12 @@ export async function agentRoutes(app: FastifyInstance) {
   app.post('/agent-runs/:id/restart', async (req) => {
     const { id } = req.params as { id: string };
     return mutate(app, req, (ctx) => restartRun(ctx, id));
+  });
+
+  // A queued run that waits for its issue's blockers goes ahead anyway.
+  app.post('/agent-runs/:id/run-anyway', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => runAnyway(ctx, id));
   });
 
   app.post('/agent-runs/:id/dismiss', async (req) => {

@@ -939,3 +939,81 @@ describe('failed runs', () => {
     expect((await as('GET', `${ws}/agent/me`)).data.pausedUntil).toBeNull();
   });
 });
+
+describe('blocked issues', () => {
+  let waiter: string;
+  let waiterKey: string;
+  const as = (method: string, url: string, body?: unknown) => bearer(waiterKey, method, url, body);
+  const take = () =>
+    as('POST', `${ws}/agent/claim?runner=hped2`) as Promise<{
+      statusCode: number;
+      data: AgentRunContext;
+    }>;
+  const doneState = () =>
+    boot.teams.find((t) => t.id === eng)!.states.find((s) => s.type === 'completed')!.id;
+
+  beforeAll(async () => {
+    waiter = (await owner.post(`${ws}/agents`, { name: 'Waiter', teamIds: [eng] })).data.id;
+    waiterKey = (await owner.post(`${ws}/agents/${waiter}/keys`, { name: 'k' })).data.token;
+  });
+
+  it('hold a run until the issues blocking it are done', async () => {
+    const blocker = await issue('Do this first');
+    const blocked = await issue('Then this');
+    await owner.post(`${ws}/issues/${blocked.id}/relations`, {
+      type: 'blocked_by',
+      relatedIssueId: blocker.id,
+    });
+    await owner.patch(`${ws}/issues/${blocked.id}`, { assigneeId: waiter });
+    const [queued] = await runsOf(blocked.id);
+    expect(queued).toMatchObject({
+      status: 'queued',
+      blockedBy: [{ id: blocker.id, identifier: blocker.identifier }],
+    });
+    expect((await take()).statusCode).toBe(204);
+    const open = (await owner.get(`${ws}/agent-runs?status=open&agentId=${waiter}`)).data;
+    expect(open[0].blockedBy.map((b: { identifier: string }) => b.identifier)).toEqual([
+      blocker.identifier,
+    ]);
+
+    await owner.patch(`${ws}/issues/${blocker.id}`, { stateId: doneState() });
+    expect((await runsOf(blocked.id))[0].blockedBy).toEqual([]);
+    const claimed = await take();
+    expect(claimed.data.issue.identifier).toBe(blocked.identifier);
+    await as('PATCH', `${ws}/agent/runs/${claimed.data.run.id}`, { status: 'succeeded' });
+  });
+
+  it('runs anyway when someone says so', async () => {
+    const blocker = await issue('Still open');
+    const blocked = await issue('Go ahead');
+    await owner.post(`${ws}/issues/${blocker.id}/relations`, {
+      type: 'blocks',
+      relatedIssueId: blocked.id,
+    });
+    await owner.patch(`${ws}/issues/${blocked.id}`, { assigneeId: waiter });
+    expect((await take()).statusCode).toBe(204);
+    const [run] = await runsOf(blocked.id);
+    const anyway = await member.post(`${ws}/agent-runs/${run!.id}/run-anyway`);
+    expect(anyway.data).toMatchObject({ ignoreBlockers: true, status: 'queued' });
+    const claimed = await take();
+    expect(claimed.data.run.id).toBe(run!.id);
+    expect((await member.post(`${ws}/agent-runs/${run!.id}/run-anyway`)).statusCode).toBe(409);
+    await as('PATCH', `${ws}/agent/runs/${run!.id}`, { status: 'succeeded' });
+  });
+
+  it("don't hold agents that don't wait for blockers", async () => {
+    await owner.patch(`${ws}/agents/${waiter}`, { waitForBlockers: false });
+    expect(
+      (await owner.get(`${ws}/agents`)).data.find((a: { id: string }) => a.id === waiter),
+    ).toMatchObject({ waitForBlockers: false });
+    const blocker = await issue('Blocking');
+    const blocked = await issue('Triage me anyway');
+    await owner.post(`${ws}/issues/${blocked.id}/relations`, {
+      type: 'blocked_by',
+      relatedIssueId: blocker.id,
+    });
+    await owner.patch(`${ws}/issues/${blocked.id}`, { assigneeId: waiter });
+    expect((await runsOf(blocked.id))[0]!.blockedBy).toEqual([]);
+    expect((await take()).data.issue.identifier).toBe(blocked.identifier);
+  });
+});

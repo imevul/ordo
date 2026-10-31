@@ -27,7 +27,8 @@ There are three parts:
 2. **An agent** (_Settings → Agents_, admins). Give it a name and the teams it may work in. It can only see and be
    assigned issues there (agents are guests of those teams, who may also plan cycles and milestones). _Instructions_ are added to every run's prompt, for
    example "Run `pnpm test` before opening a pull request. Never push to main." _Runs at once_ caps how many of its
-   runs are worked on at the same time, across all its runners.
+   runs are worked on at the same time, across all its runners. _Wait for blocking issues_ (on by default) holds a
+   run while its issue is blocked by an open one; turn it off for an agent that only triages.
 3. **A key** for the agent, shown once. A key only works for the agent's workspace, can't sign in to the web app, and
    stops working when the agent is disabled.
 4. **A runner**, wherever the work should happen (see below).
@@ -42,15 +43,18 @@ There are three parts:
    comment by the agent. If the agent opened a pull request that mentions the issue (the suggested branch name
    contains the identifier), your [forge integration](integrations/README.md) links it and moves the issue on.
 4. To ask for changes, comment on the issue and click **Run again**. The next run sees the whole thread.
-5. **Cancel** stops a run: its runner hears about it on its next heartbeat and stops the command. Unassigning the
+5. **Blocked issues wait.** If the issue is blocked by another that isn't done or cancelled yet, its run stays queued
+   and shows "Waiting on ENG-2". It starts by itself when the last blocker closes. **Run anyway** (on the queued
+   run) starts it without waiting.
+6. **Cancel** stops a run: its runner hears about it on its next heartbeat and stops the command. Unassigning the
    agent cancels its open runs too.
-6. **Agent runs** in the sidebar (shown once the workspace has an agent) lists what every agent is doing across the
+7. **Agent runs** in the sidebar (shown once the workspace has an agent) lists what every agent is doing across the
    workspace. It opens on **Open**: runs that are queued, working or waiting for an answer, plus failed runs nobody
    has dealt with yet. **Finished** and **All** show the rest. Rows have Resume, Cancel, and for failed runs
    **Restart** and **Dismiss** (see [When a run fails](#when-a-run-fails)).
-7. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
+8. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
    queue for another runner. After three claims it is marked failed, with a comment on the issue.
-8. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
+9. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
    while it's paused: queued runs wait, and runs already going finish. **Resume runs** picks up the queue again. (It's
    the workspace setting `agentRunsPaused`.)
 

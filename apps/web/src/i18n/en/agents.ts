@@ -49,6 +49,9 @@ export default {
     followPullRequests: 'Follow up on pull requests',
     followPullRequestsHint:
       'When checks fail or a reviewer requests changes on a pull request of an issue it has, it gets a run.',
+    waitForBlockers: 'Wait for blocking issues',
+    waitForBlockersHint:
+      'A run on a blocked issue waits until the issues blocking it are done or cancelled. Turn off for agents that only triage.',
     pickTeam: 'Pick at least one team.',
   },
   token: {
@@ -71,6 +74,10 @@ export default {
     /** Tag on a run that restarts a failed one. */
     restarted: 'restart',
     progress: 'Progress',
+    /** On a queued run held back by its issue's blockers. */
+    waitingOn: 'Waiting on {issues}',
+    runAnyway: 'Run anyway',
+    runAnywayHint: 'Start this run without waiting for the issues that block it.',
     /** Why a run failed, next to its status. */
     failure: {
       usage_limit: 'usage limit',

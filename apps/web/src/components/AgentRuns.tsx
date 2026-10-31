@@ -1,10 +1,11 @@
 import type { AgentRun, AgentRunStatus, IssueDetail } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
-import { Bot, ExternalLink, RotateCcw, Square } from 'lucide-react';
+import { Link } from '@tanstack/react-router';
+import { Bot, ExternalLink, FastForward, RotateCcw, Square } from 'lucide-react';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
-import { t } from '../i18n/index.ts';
+import { t, tx } from '../i18n/index.ts';
 import { longDate, relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Markdown } from './Markdown.tsx';
@@ -88,6 +89,46 @@ export function RunProgress({ run, className = '' }: { run: AgentRun; className?
   );
 }
 
+/** A queued run held back by its issue's blockers: which ones, linked. */
+export function RunBlocked({ run, className = '' }: { run: AgentRun; className?: string }) {
+  const ws = useWorkspace();
+  if (run.status !== 'queued' || !run.blockedBy.length) return null;
+  const issues = run.blockedBy.map((b, i) => (
+    <span key={b.id}>
+      {i > 0 && ', '}
+      <Link
+        to="/$slug/issue/$identifier"
+        params={{ slug: ws.slug, identifier: b.identifier }}
+        className="text-text hover:text-highlight"
+        title={b.title}
+      >
+        {b.identifier}
+      </Link>
+    </span>
+  ));
+  return (
+    <div className={`truncate font-mono text-[11px] text-warning ${className}`}>
+      {tx('agents.runs.waitingOn', { issues: <>{issues}</> })}
+    </div>
+  );
+}
+
+/** "Run anyway" for a queued run that waits for blockers. */
+export function RunAnywayButton({ run, onClick }: { run: AgentRun; onClick: () => void }) {
+  if (run.status !== 'queued' || !run.blockedBy.length) return null;
+  return (
+    <button
+      type="button"
+      className="flex h-6 w-6 flex-none items-center justify-center text-index hover:text-text"
+      onClick={onClick}
+      title={t('agents.runs.runAnywayHint')}
+      aria-label={t('agents.runs.runAnyway')}
+    >
+      <FastForward size={12} />
+    </button>
+  );
+}
+
 /** The expanded row: the agent's question, what went wrong (and what happens next), or its summary. */
 export function RunDetail({ run }: { run: AgentRun }) {
   if (run.status === 'waiting' && run.question)
@@ -159,6 +200,11 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
     (id: string) => api.post(wsPath(ws.slug, `/agent-runs/${id}/restart`)),
     { invalidate: [['ws', ws.slug, 'agentRuns']] },
   );
+  const anyway = useWsMutation(
+    ws.slug,
+    (id: string) => api.post(wsPath(ws.slug, `/agent-runs/${id}/run-anyway`)),
+    { invalidate: [['ws', ws.slug, 'agentRuns']] },
+  );
   if (!assignedToAgent && runs.length === 0) return null;
   const busy = runs.some(isOpenRun);
   // Waiting on an answer: a reply resumes it, and so does this, without one.
@@ -184,6 +230,7 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
           key={r.id}
           run={r}
           onCancel={() => cancel.mutate(r.id)}
+          onRunAnyway={() => anyway.mutate(r.id)}
           // Newest first: a failed run that a later run of its agent already covers isn't offered.
           onRestart={
             isRestartable(r) && !runs.slice(0, i).some((later) => later.agentId === r.agentId)
@@ -203,10 +250,12 @@ function RunRow({
   run,
   onCancel,
   onRestart,
+  onRunAnyway,
 }: {
   run: AgentRun;
   onCancel: () => void;
   onRestart?: () => void;
+  onRunAnyway: () => void;
 }) {
   const ws = useWorkspace();
   // A question shows by itself (also when a run starts waiting while open) until toggled.
@@ -260,6 +309,7 @@ function RunRow({
             <ExternalLink size={13} />
           </a>
         )}
+        <RunAnywayButton run={run} onClick={onRunAnyway} />
         {onRestart && (
           <button
             type="button"
@@ -284,6 +334,7 @@ function RunRow({
         )}
       </div>
       <RunProgress run={run} className="-mt-1 px-8 pb-2" />
+      <RunBlocked run={run} className="-mt-1 px-8 pb-2" />
       {open && detail && (
         <div className="px-8 pb-3 text-[13px]">
           <RunDetail run={run} />

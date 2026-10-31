@@ -10,6 +10,8 @@ import {
   isOpenRun,
   isRestartable,
   RUN_STATUS_COLOR,
+  RunAnywayButton,
+  RunBlocked,
   RunDetail,
   RunProgress,
   runDetail,
@@ -213,6 +215,11 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
     () => api.post(wsPath(ws.slug, `/agent-runs/${run.id}/dismiss`)),
     invalidate,
   );
+  const anyway = useWsMutation(
+    ws.slug,
+    () => api.post(wsPath(ws.slug, `/agent-runs/${run.id}/run-anyway`)),
+    invalidate,
+  );
   return (
     <div className="border-b border-border-soft/60">
       <div className={`row grid h-11 ${COLUMNS} items-center gap-3 px-4`}>
@@ -286,6 +293,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
               <RotateCcw size={12} />
             </button>
           )}
+          <RunAnywayButton run={run} onClick={() => anyway.mutate(undefined)} />
           {isRestartable(run) && (
             <button
               type="button"
@@ -325,6 +333,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
         </span>
       </div>
       <RunProgress run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
+      <RunBlocked run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
       {open && detail && (
         <div className="pb-3 pl-[11.5rem] pr-4 text-[13px]">
           <RunDetail run={run} />

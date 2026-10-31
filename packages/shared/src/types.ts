@@ -1244,6 +1244,8 @@ export interface Agent {
   concurrency: number;
   /** Whether failing checks and requested changes on its issues' pull requests give it a run. */
   followPullRequests: boolean;
+  /** Whether its runs wait while their issue is blocked by an open issue. */
+  waitForBlockers: boolean;
   /** Claims hand out nothing until then (e.g. its runner hit a usage limit); null when not paused. */
   pausedUntil: string | null;
   pauseReason: AgentRunFailureReason | null;
@@ -1290,6 +1292,13 @@ export interface AgentRun {
   dismissedAt: string | null;
   /** What the agent last said it is doing, with a rough percentage if it gave one. */
   progress: AgentRunProgress | null;
+  /** Someone chose "Run anyway": the run doesn't wait for the issue's blockers. */
+  ignoreBlockers: boolean;
+  /**
+   * For a queued run that waits for blockers: the open issues blocking its issue (that the
+   * caller can see). Empty otherwise.
+   */
+  blockedBy: { id: string; identifier: string; title: string }[];
   requestedById: string | null;
   leaseExpiresAt: string | null;
   startedAt: string | null;

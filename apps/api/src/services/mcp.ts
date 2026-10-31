@@ -597,6 +597,7 @@ function handlers(c: McpCaller): Handlers {
         failureReason: r.failureReason ?? undefined,
         error: r.status === 'failed' ? r.error?.slice(-500) : undefined,
         retryAt: r.retryAt ?? undefined,
+        waitingOn: r.blockedBy.length ? r.blockedBy.map((b) => b.identifier) : undefined,
         sessionUrl: r.sessionUrl,
         updatedAt: r.finishedAt ?? r.startedAt ?? r.createdAt,
       }));
@@ -789,6 +790,7 @@ async function agentRunsResult(c: McpReader, dir: Directory, ref: string) {
       failureReason: r.failureReason,
       retryAt: r.retryAt,
       retryOf: r.retryOfId ?? undefined,
+      waitingOn: r.blockedBy.length ? r.blockedBy.map((b) => b.identifier) : undefined,
       dismissed: !!r.dismissedAt || undefined,
       createdAt: r.createdAt,
       finishedAt: r.finishedAt,

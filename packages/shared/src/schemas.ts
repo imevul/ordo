@@ -1145,6 +1145,7 @@ const agentFields = {
   instructions: z.string().max(20_000),
   concurrency: z.number().int().min(1).max(20),
   followPullRequests: z.boolean(),
+  waitForBlockers: z.boolean(),
 };
 export const createAgentSchema = z.object({
   ...agentFields,
@@ -1153,6 +1154,7 @@ export const createAgentSchema = z.object({
   instructions: agentFields.instructions.default(''),
   concurrency: agentFields.concurrency.default(1),
   followPullRequests: agentFields.followPullRequests.default(true),
+  waitForBlockers: agentFields.waitForBlockers.default(true),
 });
 // No defaults here: in Zod 4 `.partial()` keeps them, and a PATCH would reset what it didn't send.
 export const updateAgentSchema = z

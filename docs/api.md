@@ -472,8 +472,8 @@ Agents are members a runner works for; see [agents.md](agents.md) for the idea a
 
 | Method         | Path                                                             | What                                                                                                                                        |
 | -------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET / POST     | `/agents`                                                        | _Admin._ List / create `{ name, teamIds, instructions?, concurrency?, followPullRequests?, username? }`                                     |
-| PATCH          | `/agents/:id`                                                    | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, followPullRequests?, disabled? }`                                                 |
+| GET / POST     | `/agents`                                                        | _Admin._ List / create `{ name, teamIds, instructions?, concurrency?, followPullRequests?, waitForBlockers?, username? }`                   |
+| PATCH          | `/agents/:id`                                                    | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, followPullRequests?, waitForBlockers?, disabled? }`                               |
 | POST           | `/agents/:id/keys`                                               | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                                              |
 | DELETE         | `/agents/:id/keys/:keyId`                                        | _Admin._ Revoke a key                                                                                                                       |
 | POST           | `/agents/:id/unpause`                                            | _Admin._ Lift a pause ("Resume now") and restart the runs that failed on its usage limit                                                    |
@@ -483,6 +483,7 @@ Agents are members a runner works for; see [agents.md](agents.md) for the idea a
 | GET            | `/agent-runs/active-count`                                       | `{ count }` of active runs (queued, claimed, running, waiting) on issues you can see                                                        |
 | POST           | `/agent-runs/:id/cancel`                                         | Cancel a run; its runner hears it on the next heartbeat                                                                                     |
 | POST           | `/agent-runs/:id/restart`                                        | A failed or cancelled run again: same agent, issue and trigger, as a new run with `retryOfId` (an open one is returned)                     |
+| POST           | `/agent-runs/:id/run-anyway`                                     | A queued run held back by its issue's blockers goes ahead (`ignoreBlockers`)                                                                |
 | POST           | `/agent-runs/:id/dismiss`                                        | Set a finished run aside (`dismissedAt`); it leaves the `open` list                                                                         |
 | GET            | `/agent/me`                                                      | _Agent key._ The agent and its teams, and `pausedUntil` / `pauseReason` while it's paused                                                   |
 | POST           | `/agent/claim?wait=30&runner=…`                                  | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)                               |
@@ -504,6 +505,10 @@ A failed run has a `failureReason`: `usage_limit`, `timeout`, `runner_lost`, `ch
 the limit resets and the run gets a `retryAt`, when it restarts by itself (not after three limits in a row). A
 restart has `retryOfId`, the run it restarts; `dismissedAt` is set on dismissed runs. See
 [agents.md](agents.md#when-a-run-fails).
+
+A queued run of an agent with `waitForBlockers` isn't handed out while an open issue (not done, cancelled or trashed)
+blocks its issue, unless `ignoreBlockers` is set (Run anyway). Listed runs carry `blockedBy`: the open blockers you
+can see, `{ id, identifier, title }`; empty when the run doesn't wait.
 
 `progress` is `{ step, percent, at }` (or `null`): what the agent last said it is doing, sent with the MCP tool
 `report_progress`. Only the newest is kept, and a new claim clears it. It changes the run (realtime `agentRun`

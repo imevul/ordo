@@ -706,6 +706,7 @@ describe('route inventory', () => {
     'POST /agent-runs/:id/cancel': "loadRun is scoped to the caller's teams (agents.test.ts)",
     'POST /agent-runs/:id/restart': "loadRun is scoped to the caller's teams (agents.test.ts)",
     'POST /agent-runs/:id/dismiss': "loadRun is scoped to the caller's teams (agents.test.ts)",
+    'POST /agent-runs/:id/run-anyway': "loadRun is scoped to the caller's teams (agents.test.ts)",
     'GET /agent-pauses': 'workspace-scoped; only agent ids and times (agents.test.ts)',
     'POST /agents/:id/unpause': 'workspace admins only (agents.test.ts)',
     'GET /agent-runs': "listWorkspaceRuns is scoped to the caller's teams (agents.test.ts)",

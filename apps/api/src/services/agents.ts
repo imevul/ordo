@@ -31,6 +31,7 @@ import {
   apiKeys,
   comments,
   issueLinks,
+  issueRelations,
   issues,
   labels,
   projects,
@@ -102,6 +103,7 @@ export async function listAgents(db: DbOrTx, workspaceId: string): Promise<Agent
       instructions: agents.instructions,
       concurrency: agents.concurrency,
       followPullRequests: agents.followPullRequests,
+      waitForBlockers: agents.waitForBlockers,
       pausedUntil: agents.pausedUntil,
       pauseReason: agents.pauseReason,
       createdAt: agents.createdAt,
@@ -182,6 +184,7 @@ export async function createAgent(ctx: Ctx, input: CreateAgentInput): Promise<Ag
     instructions: input.instructions,
     concurrency: input.concurrency,
     followPullRequests: input.followPullRequests,
+    waitForBlockers: input.waitForBlockers,
     createdById: ctx.userId,
   });
   await auditCtx(ctx, {
@@ -211,7 +214,8 @@ export async function updateAgent(ctx: Ctx, agentId: string, input: UpdateAgentI
   if (
     input.instructions !== undefined ||
     input.concurrency !== undefined ||
-    input.followPullRequests !== undefined
+    input.followPullRequests !== undefined ||
+    input.waitForBlockers !== undefined
   )
     await ctx.tx
       .update(agents)
@@ -221,6 +225,7 @@ export async function updateAgent(ctx: Ctx, agentId: string, input: UpdateAgentI
         ...(input.followPullRequests !== undefined && {
           followPullRequests: input.followPullRequests,
         }),
+        ...(input.waitForBlockers !== undefined && { waitForBlockers: input.waitForBlockers }),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(agents.userId, agentId));
@@ -348,6 +353,9 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
     r.progressStep && r.progressAt
       ? { step: r.progressStep, percent: r.progressPercent, at: r.progressAt }
       : null,
+  ignoreBlockers: r.ignoreBlockers,
+  // Filled in by withBlockers where runs are listed for people.
+  blockedBy: [],
   question: r.question,
   resume: r.resume,
   trigger: r.trigger,
@@ -582,6 +590,79 @@ async function humanUsername(ctx: Ctx, ...ids: (string | null)[]) {
 }
 
 /** A run of an issue `ctx` can read. */
+/**
+ * True while an open issue (not done, cancelled or trashed) blocks the run's issue. Correlated on
+ * "agent_runs" by name, as the selects it goes in leave their columns unqualified.
+ */
+const blockedNow = sql`exists (
+  select 1 from issue_relations r
+  join issues b on b.id = r.issue_id
+  join workflow_states s on s.id = b.state_id
+  where r.related_issue_id = "agent_runs"."issue_id" and r.type = 'blocks'
+    and b.deleted_at is null and s.type not in ('completed', 'canceled')
+)`;
+
+/**
+ * Adds `blockedBy` to queued runs that wait for their issue's blockers: the open blocking issues
+ * `access` can see. Runs of agents that don't wait, or that someone told to run anyway, get none.
+ */
+async function withBlockers<T extends AgentRun>(
+  db: DbOrTx,
+  access: Access,
+  runs: T[],
+): Promise<T[]> {
+  const queued = runs.filter((r) => r.status === 'queued' && !r.ignoreBlockers);
+  if (!queued.length) return runs;
+  const waiting = new Set(
+    (
+      await db
+        .select({ id: agents.userId })
+        .from(agents)
+        .where(
+          and(
+            inArray(agents.userId, [...new Set(queued.map((r) => r.agentId))]),
+            eq(agents.waitForBlockers, true),
+          ),
+        )
+    ).map((a) => a.id),
+  );
+  const issueIds = [...new Set(queued.filter((r) => waiting.has(r.agentId)).map((r) => r.issueId))];
+  if (!issueIds.length) return runs;
+  const rows = await db
+    .select({
+      blockedId: issueRelations.relatedIssueId,
+      id: issues.id,
+      number: issues.number,
+      title: issues.title,
+      teamKey: teams.key,
+    })
+    .from(issueRelations)
+    .innerJoin(issues, eq(issues.id, issueRelations.issueId))
+    .innerJoin(workflowStates, eq(workflowStates.id, issues.stateId))
+    .innerJoin(teams, eq(teams.id, issues.teamId))
+    .where(
+      and(
+        inArray(issueRelations.relatedIssueId, issueIds),
+        eq(issueRelations.type, 'blocks'),
+        isNull(issues.deletedAt),
+        not(inArray(workflowStates.type, ['completed', 'canceled'])),
+        teamScope(access, issues.teamId),
+      ),
+    )
+    .orderBy(asc(issues.number));
+  const byIssue = new Map<string, AgentRun['blockedBy']>();
+  for (const r of rows)
+    byIssue.set(r.blockedId, [
+      ...(byIssue.get(r.blockedId) ?? []),
+      { id: r.id, identifier: `${r.teamKey}-${r.number}`, title: r.title },
+    ]);
+  return runs.map((r) =>
+    r.status === 'queued' && !r.ignoreBlockers && waiting.has(r.agentId)
+      ? { ...r, blockedBy: byIssue.get(r.issueId) ?? [] }
+      : r,
+  );
+}
+
 async function loadRun(ctx: Ctx, runId: string) {
   const [row] = await ctx.tx
     .select({ run: agentRuns })
@@ -596,6 +677,19 @@ async function loadRun(ctx: Ctx, runId: string) {
     );
   if (!row) throw notFound('Run');
   return row.run;
+}
+
+/** "Run anyway": a queued run stops waiting for its issue's blockers. */
+export async function runAnyway(ctx: Ctx, runId: string): Promise<AgentRun> {
+  const run = await loadRun(ctx, runId);
+  if (run.status !== 'queued') throw conflict(`This run is ${run.status}`);
+  const [saved] = await ctx.tx
+    .update(agentRuns)
+    .set({ ignoreBlockers: true, updatedAt: new Date().toISOString() })
+    .where(eq(agentRuns.id, run.id))
+    .returning();
+  await changed(ctx, saved!);
+  return toAgentRun(saved!);
 }
 
 export async function cancelRun(ctx: Ctx, runId: string): Promise<AgentRun> {
@@ -764,7 +858,7 @@ export async function listRuns(db: DbOrTx, access: Access, issueIdOrIdentifier: 
     .where(eq(agentRuns.issueId, issue.id))
     .orderBy(desc(agentRuns.createdAt))
     .limit(50);
-  return rows.map(toAgentRun);
+  return withBlockers(db, access, rows.map(toAgentRun));
 }
 
 /**
@@ -811,16 +905,20 @@ export async function listWorkspaceRuns(
     )
     .orderBy(desc(agentRuns.updatedAt))
     .limit(opts.limit);
-  return rows.map((r) => ({
-    ...toAgentRun(r.run),
-    issue: {
-      id: r.run.issueId,
-      identifier: `${r.teamKey}-${r.number}`,
-      title: r.title,
-      stateId: r.stateId,
-      teamId: r.teamId,
-    },
-  }));
+  return withBlockers(
+    db,
+    access,
+    rows.map((r) => ({
+      ...toAgentRun(r.run),
+      issue: {
+        id: r.run.issueId,
+        identifier: `${r.teamKey}-${r.number}`,
+        title: r.title,
+        stateId: r.stateId,
+        teamId: r.teamId,
+      },
+    })),
+  );
 }
 
 /** How many runs `listWorkspaceRuns` would call active: the sidebar's Agent runs chip. */
@@ -857,7 +955,11 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
   const [ws] = await ctx.tx.select().from(workspaces).where(eq(workspaces.id, ctx.workspaceId));
   if (workspaceSettings(ws!).agentRunsPaused) return null;
   const [agent] = await ctx.tx
-    .select({ concurrency: agents.concurrency, pausedUntil: agents.pausedUntil })
+    .select({
+      concurrency: agents.concurrency,
+      pausedUntil: agents.pausedUntil,
+      waitForBlockers: agents.waitForBlockers,
+    })
     .from(agents)
     .where(eq(agents.userId, ctx.userId))
     .for('update');
@@ -879,6 +981,8 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
         eq(agentRuns.status, 'queued'),
         // One run per issue at a time: a follow-up waits for the agent's run there to finish.
         sql`not exists (select 1 from agent_runs busy where busy.issue_id = "agent_runs"."issue_id" and busy.agent_id = "agent_runs"."agent_id" and busy.status in ('claimed', 'running'))`,
+        // A blocked issue waits for its blockers, unless someone said to run anyway.
+        agent.waitForBlockers ? or(eq(agentRuns.ignoreBlockers, true), not(blockedNow)) : undefined,
       ),
     )
     .orderBy(asc(agentRuns.createdAt))
@@ -1228,9 +1332,11 @@ export function waitForRuns(
       access,
       send: (data) => {
         const e = JSON.parse(data) as RealtimeEvent;
-        // A workspace change, or one to the agent itself, may be a pause lifting.
+        // A workspace change, or one to the agent itself, may be a pause lifting; an issue
+        // change may be a blocker finishing.
         if (
           e.kind === 'agentRun' ||
+          e.kind === 'issue' ||
           e.kind === 'workspace' ||
           (e.kind === 'member' && e.id === access.userId)
         )
