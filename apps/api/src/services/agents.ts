@@ -976,7 +976,7 @@ export async function getRunDetail(
     );
   if (!row) throw notFound('Run');
   const { run } = row;
-  const [[withBlocked], events, restartedBy, [triggerComment]] = await Promise.all([
+  const [[withBlocked], events, restartedBy, [triggerComment], held] = await Promise.all([
     withBlockers(db, access, [toAgentRun(run)]),
     db
       .select()
@@ -996,9 +996,11 @@ export async function getRunDetail(
           .from(comments)
           .where(and(eq(comments.id, run.triggerCommentId), eq(comments.issueId, run.issueId)))
       : Promise.resolve([]),
+    heldByRepository(db, access.workspaceId, run.status === 'queued' ? [run.issueId] : []),
   ]);
   return {
     ...withBlocked!,
+    waitingForRepository: held.get(run.issueId) ?? null,
     issue: {
       id: run.issueId,
       identifier: `${row.teamKey}-${row.number}`,
