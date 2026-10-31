@@ -9,8 +9,10 @@ export interface MockIdp {
   clientSecret: string;
   /** Claims for the next sign-in (beyond iss/aud/nonce). */
   next: Record<string, unknown>;
-  /** Overrides applied to the next ID token (e.g. a wrong `iss`). */
+  /** Overrides applied to the next ID token (e.g. a wrong `iss`, `aud`, `nonce` or `exp`). */
   tamper: Record<string, unknown>;
+  /** Signs the next ID token with a key the JWKS doesn't publish. */
+  rogueKey: boolean;
   close(): Promise<void>;
 }
 
@@ -37,6 +39,7 @@ export async function startMockIdp(port = 0, path = ''): Promise<MockIdp> {
     clientSecret: 'top-secret',
     next: {},
     tamper: {},
+    rogueKey: false,
     close: () => new Promise((r) => server.close(() => r())),
   };
 
@@ -99,20 +102,19 @@ export async function startMockIdp(port = 0, path = ''): Promise<MockIdp> {
         .digest('base64url');
       if (challenge !== grant.challenge)
         return json(res, 400, { error: 'invalid_grant', error_description: 'PKCE' });
-      const claims: Record<string, unknown> = {
-        ...grant.claims,
-        nonce: grant.nonce,
-        ...idp.tamper,
-      };
+      const tamper = idp.tamper;
+      const rogue = idp.rogueKey;
       idp.tamper = {};
+      idp.rogueKey = false;
+      const claims: Record<string, unknown> = { ...grant.claims, nonce: grant.nonce, ...tamper };
       const idToken = await new SignJWT(claims)
         .setProtectedHeader({ alg: 'RS256', kid: 'k1' })
         .setIssuer((claims.iss as string) ?? idp.issuer)
-        .setAudience(idp.clientId)
+        .setAudience((tamper.aud as string) ?? idp.clientId)
         .setSubject(String(grant.claims.sub))
         .setIssuedAt()
-        .setExpirationTime('5m')
-        .sign(privateKey);
+        .setExpirationTime((tamper.exp as number) ?? '5m')
+        .sign(rogue ? (await generateKeyPair('RS256')).privateKey : privateKey);
       const accessToken = randomBytes(12).toString('hex');
       tokens.set(accessToken, grant.claims);
       return json(res, 200, {

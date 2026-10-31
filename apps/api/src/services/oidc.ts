@@ -55,9 +55,14 @@ export async function providerConfig(
       undefined,
       {
         [oidc.customFetch]: customFetch,
-        // Plain-http issuers are only reachable on private networks (e.g. a LAN Keycloak), which the
-        // admin has to allow explicitly anyway.
-        execute: issuer.startsWith('http://') && allowPrivate ? [oidc.allowInsecureRequests] : [],
+        // Check ID token signatures against the provider's keys too: by default openid-client
+        // trusts TLS for tokens from the token endpoint, so whoever answers there could mint any
+        // identity. Plain-http issuers are only reachable on private networks (e.g. a LAN
+        // Keycloak), which the admin has to allow explicitly anyway.
+        execute: [
+          oidc.enableNonRepudiationChecks,
+          ...(issuer.startsWith('http://') && allowPrivate ? [oidc.allowInsecureRequests] : []),
+        ],
       },
     );
   let config: oidc.Configuration;

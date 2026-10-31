@@ -445,6 +445,49 @@ describe('sign-in', () => {
     expect(cookieOf(wrongIssuer.res.headers['set-cookie'], 'ordo_session')).toBeUndefined();
   });
 
+  it.each([
+    ['audience', () => (idp.tamper = { aud: 'someone-else' })],
+    ['nonce', () => (idp.tamper = { nonce: 'not-the-one-we-sent' })],
+    ['expiry', () => (idp.tamper = { exp: Math.floor(Date.now() / 1000) - 3600 })],
+  ])('rejects an ID token with the wrong %s', async (_what, tamper) => {
+    tamper();
+    const claims = person('tampered');
+    const res = await sso(claims);
+    expect(res.location).toMatch(/^\/login\?error=/);
+    expect(cookieOf(res.res.headers['set-cookie'], 'ordo_session')).toBeUndefined();
+    expect(await app.db.select().from(users).where(eq(users.email, claims.email))).toEqual([]);
+  });
+
+  // openid-client would trust TLS here (OIDC Core 3.1.3.7); services/oidc.ts asks it to check.
+  it('rejects an ID token signed by a key the provider does not publish', async () => {
+    idp.rogueKey = true;
+    const claims = person('forged');
+    const res = await sso(claims);
+    expect(res.location).toMatch(/^\/login\?error=/);
+    expect(await app.db.select().from(users).where(eq(users.email, claims.email))).toEqual([]);
+  });
+
+  it('accepts a used state only once', async () => {
+    idp.next = person('replayed');
+    const start = await app.inject({ method: 'GET', url: `/api/auth/oidc/${providerId}/start` });
+    const state = cookieOf(start.headers['set-cookie'], 'ordo_oidc')!;
+    // Each trip to the IdP gets a fresh code for the same state, so only the state is replayed.
+    const callback = async () => {
+      const authorize = await fetch(start.headers.location as string, { redirect: 'manual' });
+      const back = new URL(authorize.headers.get('location')!);
+      return app.inject({
+        method: 'GET',
+        url: back.pathname + back.search,
+        headers: { cookie: state },
+      });
+    };
+    const first = await callback();
+    expect(cookieOf(first.headers['set-cookie'], 'ordo_session')).toBeTruthy();
+    const replay = await callback();
+    expect(String(replay.headers.location)).toMatch(/^\/login\?error=/);
+    expect(cookieOf(replay.headers['set-cookie'], 'ordo_session')).toBeUndefined();
+  });
+
   it('refuses disabled accounts', async () => {
     const claims = person('disabled');
     await sso(claims);
@@ -461,6 +504,18 @@ describe('sign-in', () => {
     expect(await roleOf(claims.email)).toBe('admin');
     await sso({ ...claims, groups: ['contractors'] });
     expect(await roleOf(claims.email)).toBe('guest');
+
+    const boss = person('boss', { groups: ['ordo-admins'] });
+    await sso(boss);
+    const [{ id }] = await app.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, boss.email));
+    expect((await owner.patch(`${ws}/members/${id}`, { role: 'owner' })).statusCode).toBe(200);
+    await sso({ ...boss, groups: ['contractors'] });
+    expect(await roleOf(boss.email)).toBe('owner');
+    await sso({ ...boss, groups: ['ordo-admins'] });
+    expect(await roleOf(boss.email)).toBe('owner');
   });
 
   it("won't unlink someone's only way to sign in", async () => {
