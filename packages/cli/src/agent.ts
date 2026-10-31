@@ -5,7 +5,12 @@ import { homedir, hostname, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { Ordo, OrdoError, type WorkspaceClient } from '@ordo/sdk';
-import type { AgentRunContext, AgentRunRepository } from '@ordo/shared';
+import {
+  type AgentRunContext,
+  type AgentRunRepository,
+  type AgentRunUsageReport,
+  parseUsage,
+} from '@ordo/shared';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
 
@@ -439,9 +444,35 @@ export interface LaunchResult {
   /** When the runner knows why it failed; otherwise Ordo reads the error. */
   failureReason?: 'timeout';
   sessionUrl: string | null;
+  /** Tokens and cost, when the command said; the duration is measured when it didn't. */
+  usage: AgentRunUsageReport;
 }
 
 const tail = (s: string, n: number) => (s.length > n ? s.slice(-n) : s);
+
+const parseJson = (s: string): unknown => {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return undefined;
+  }
+};
+
+/**
+ * A JSON result the command printed last: Claude Code's `--output-format json` (all of stdout)
+ * or `stream-json` (its last line). Its usage counts, and its `result` text is the summary.
+ */
+function resultOf(stdout: string): { usage: AgentRunUsageReport | null; text: string | null } {
+  const trimmed = stdout.trim();
+  if (!trimmed.endsWith('}')) return { usage: null, text: null };
+  const value =
+    parseJson(trimmed) ?? parseJson(trimmed.slice(trimmed.lastIndexOf('\n') + 1).trim());
+  const result = value as { type?: unknown; result?: unknown } | undefined;
+  return {
+    usage: parseUsage(value),
+    text: result?.type === 'result' && typeof result.result === 'string' ? result.result : null,
+  };
+}
 
 // Commands run in their own process group (POSIX), so the terminal's Ctrl-C reaches only the
 // runner, and stopping a run stops everything it started (shells, pnpm, browsers).
@@ -468,11 +499,18 @@ export function signalRunning(sig: NodeJS.Signals) {
 
 const SESSION_LINE = /^ORDO_SESSION_URL=(\S+)\s*$/;
 const RESUME_LINE = /^ORDO_RESUME=(\S+)\s*$/;
+const USAGE_LINE = /^ORDO_USAGE=(\{.*\})\s*$/;
+
+const PAUSE_REASONS: Record<string, string> = {
+  usage_limit: ' (the agent hit its usage limit)',
+  budget: ' (the agent spent its monthly budget)',
+};
 
 /**
  * Runs the command for one run, as the launch contract says: the run in `ORDO_RUN_FILE`, the
  * prompt in `ORDO_PROMPT_FILE` and on stdin, a summary from `ORDO_SUMMARY_FILE` (or the end of
- * stdout), `ORDO_SESSION_URL=` lines reported as they appear, and the exit code as the outcome.
+ * stdout), `ORDO_SESSION_URL=` lines reported as they appear, usage from an `ORDO_USAGE=` line
+ * (or a JSON result at the end of stdout), and the exit code as the outcome.
  */
 export async function launch(
   spec: Pick<AgentSpec, 'command' | 'env' | 'timeoutMs' | 'url' | 'workspace' | 'key' | 'baseDir'>,
@@ -558,9 +596,11 @@ export async function launch(
     child.stdin.on('error', () => {}); // commands that don't read stdin close it early
     child.stdin.end(context.prompt);
 
+    const started = Date.now();
     let stdout = '';
     let stderr = '';
     let sessionUrl: string | null = null;
+    let reported: AgentRunUsageReport | null = null;
     const lines = (stream: 'stdout' | 'stderr') => {
       let buffer = '';
       return (chunk: Buffer) => {
@@ -577,6 +617,11 @@ export async function launch(
           const r = stream === 'stdout' ? RESUME_LINE.exec(line) : null;
           if (r) {
             opts.onResume?.(r[1]!);
+            continue;
+          }
+          const u = stream === 'stdout' ? USAGE_LINE.exec(line) : null;
+          if (u) {
+            reported = parseUsage(parseJson(u[1]!)) ?? reported;
             continue;
           }
           if (stream === 'stdout') stdout = tail(`${stdout}${line}\n`, 64 * 1024);
@@ -614,30 +659,34 @@ export async function launch(
     // Nothing left in the group: no SIGKILL to send (and nothing to hold the runner for).
     if (!signalGroup(child, 0)) clearTimeout(force);
 
+    const result = resultOf(stdout);
+    const usage: AgentRunUsageReport = {
+      durationMs: Date.now() - started,
+      ...(reported ?? result.usage),
+    };
     let summary: string | null = null;
     try {
       summary = (await readFile(summaryFile, 'utf8')).trim() || null;
     } catch {}
-    summary ??= tail(stdout.trim(), 4096) || null;
-    if (stopped === 'cancelled') return { status: 'cancelled', summary, error: null, sessionUrl };
+    summary ??= tail((result.text ?? stdout).trim(), 4096) || null;
+    const base = { summary, sessionUrl, usage };
+    if (stopped === 'cancelled') return { ...base, status: 'cancelled', error: null };
     if (stopped === 'timeout')
       return {
+        ...base,
         status: 'failed',
-        summary,
         error: `Timed out after ${Math.round(spec.timeoutMs / 60_000)} minutes`,
         failureReason: 'timeout',
-        sessionUrl,
       };
-    if (code === 0) return { status: 'succeeded', summary, error: null, sessionUrl };
+    if (code === 0) return { ...base, status: 'succeeded', error: null };
     return {
+      ...base,
       status: 'failed',
-      summary,
       error: tail(
         // Some tools say what went wrong on stdout (e.g. "not logged in"), so that's next best.
-        `${stderr.trim() || stdout.trim() || 'No output.'}\n(exit code ${code ?? 'signal'})`,
+        `${stderr.trim() || (result.text ?? stdout).trim() || 'No output.'}\n(exit code ${code ?? 'signal'})`,
         4000,
       ),
-      sessionUrl,
     };
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -798,7 +847,7 @@ export async function serveAgent(spec: AgentSpec, opts: ServeOptions) {
     pausedUntil = me.pausedUntil;
     if (pausedUntil)
       log(
-        `paused until ${new Date(pausedUntil).toLocaleString()}${me.pauseReason === 'usage_limit' ? ' (the agent hit its usage limit)' : ''}; claiming nothing until then`,
+        `paused until ${new Date(pausedUntil).toLocaleString()}${PAUSE_REASONS[me.pauseReason ?? ''] ?? ''}; claiming nothing until then`,
       );
     else log('no longer paused');
   };
@@ -907,14 +956,24 @@ async function work(
       onOutput: opts.verbose ? (line) => opts.log(`${id} │ ${line}`) : undefined,
     });
     await Promise.all(pending);
-    if (result.status === 'cancelled') return;
+    const cost = result.usage.costUsd;
+    if (cost !== undefined) opts.log(`${id} cost $${cost.toFixed(2)}`);
+    // A cancelled run's tokens were spent all the same.
+    if (result.status === 'cancelled') {
+      await report({ usage: result.usage });
+      return;
+    }
     const saved = await report({
       status: result.status,
       summary: result.summary,
       error: result.error,
+      usage: result.usage,
       ...(result.failureReason && { failureReason: result.failureReason }),
       ...(result.sessionUrl && { sessionUrl: result.sessionUrl }),
     });
+    // Cancelled meanwhile: the report is refused, but what the run used still counts.
+    if (!saved && (refused as string | null)?.includes('cancelled'))
+      await ws.agent.report(runId, { usage: result.usage }).catch(() => {});
     // The agent asked a question: the run waits for a reply, whatever the command's exit said.
     if (saved?.status === 'waiting') opts.log(`${id} is waiting for an answer`);
     else if (!saved)

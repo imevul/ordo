@@ -1,5 +1,6 @@
 import {
   agentRunsQuerySchema,
+  agentUsageQuerySchema,
   createAgentSchema,
   createApiKeySchema,
   reportAgentRunSchema,
@@ -20,6 +21,7 @@ import {
   dismissRun,
   heartbeat,
   listAgents,
+  listAgentUsage,
   listPauses,
   listRuns,
   listWorkspaceRuns,
@@ -138,6 +140,11 @@ export async function agentRoutes(app: FastifyInstance) {
 
   // Agents whose claims are on hold (e.g. after a usage limit), for the Agent runs page.
   app.get('/agent-pauses', async (req) => listPauses(db, requireAccess(req).workspaceId));
+
+  // Each agent's tokens and cost in a month, on issues the caller can see, with its budget.
+  app.get('/agent-usage', async (req) =>
+    listAgentUsage(db, requireAccess(req), parse(agentUsageQuerySchema, req.query).month),
+  );
 
   // ─── the runner protocol (agent keys) ─────────────────────────────────
 

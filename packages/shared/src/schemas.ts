@@ -1201,6 +1201,8 @@ const agentFields = {
   concurrency: z.number().int().min(1).max(20),
   followPullRequests: z.boolean(),
   waitForBlockers: z.boolean(),
+  /** What its runs may cost in a calendar month (UTC) before it pauses; null for no cap. */
+  monthlyBudgetUsd: z.number().positive().max(1_000_000).nullable(),
 };
 export const createAgentSchema = z.object({
   ...agentFields,
@@ -1210,12 +1212,28 @@ export const createAgentSchema = z.object({
   concurrency: agentFields.concurrency.default(1),
   followPullRequests: agentFields.followPullRequests.default(true),
   waitForBlockers: agentFields.waitForBlockers.default(true),
+  monthlyBudgetUsd: agentFields.monthlyBudgetUsd.default(null),
 });
 // No defaults here: in Zod 4 `.partial()` keeps them, and a PATCH would reset what it didn't send.
 export const updateAgentSchema = z
   .object(agentFields)
   .partial()
   .extend({ disabled: z.boolean().optional() });
+
+const tokens = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
+
+/**
+ * What one pickup of a run used, as a runner reports it. Each report's usage is added to the
+ * run's, so a run that asked a question and resumed adds up both pickups.
+ */
+export const agentRunUsageSchema = z.object({
+  inputTokens: tokens.optional(),
+  outputTokens: tokens.optional(),
+  cacheReadTokens: tokens.optional(),
+  cacheWriteTokens: tokens.optional(),
+  costUsd: z.number().min(0).max(1_000_000).optional(),
+  durationMs: tokens.optional(),
+});
 
 /** Runner protocol: what a runner reports about a run it holds. */
 export const reportAgentRunSchema = z
@@ -1230,6 +1248,8 @@ export const reportAgentRunSchema = z
     question: z.string().trim().min(1).max(10_000).optional(),
     /** Opaque: handed back on the next pickup so the runner can continue the agent's session. */
     resume: z.string().max(2000).nullish(),
+    /** What this pickup used (tokens, cost, duration); added to the run's totals. */
+    usage: agentRunUsageSchema.optional(),
   })
   .refine((r) => r.status !== 'waiting' || !!r.question, {
     message: 'Say what you are asking (question)',
@@ -1244,6 +1264,14 @@ export const agentRunsQuerySchema = z.object({
   status: z.enum(['open', 'active', 'finished', 'all']).default('all'),
   agentId: id.optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+
+/** `GET /agent-usage`: totals per agent for a calendar month (UTC), this one by default. */
+export const agentUsageQuerySchema = z.object({
+  month: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'A month like 2026-11')
+    .optional(),
 });
 
 /** `GET /search?q=`. The route trims the term and keeps its first 200 characters. */

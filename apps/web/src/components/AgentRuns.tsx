@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
 import { t, tx } from '../i18n/index.ts';
-import { longDate, relativeTime } from '../lib/format.ts';
+import { compactCount, duration, longDate, relativeTime, usd } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Markdown } from './Markdown.tsx';
 
@@ -126,6 +126,48 @@ export function RunAnywayButton({ run, onClick }: { run: AgentRun; onClick: () =
     >
       <FastForward size={12} />
     </button>
+  );
+}
+
+/** How long a run worked: what its runner said, else from when it started to when it finished. */
+export function runDuration(run: AgentRun) {
+  if (run.usage?.durationMs != null) return run.usage.durationMs;
+  if (!run.startedAt || !run.finishedAt) return null;
+  return new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime();
+}
+
+/** What a run used, compactly: "$0.42 · 1.2M tokens · 12m", with the token kinds on hover. */
+export function RunUsage({ run, className = '' }: { run: AgentRun; className?: string }) {
+  const u = run.usage;
+  const time = runDuration(run);
+  const tokens = u
+    ? (u.inputTokens ?? 0) +
+      (u.outputTokens ?? 0) +
+      (u.cacheReadTokens ?? 0) +
+      (u.cacheWriteTokens ?? 0)
+    : 0;
+  const parts = [
+    u?.costUsd != null ? usd(u.costUsd) : null,
+    tokens ? t('agents.usage.tokens', { count: tokens, tokens: compactCount(tokens) }) : null,
+    time != null ? duration(time) : null,
+  ].filter(Boolean);
+  if (!parts.length) return null;
+  return (
+    <span
+      className={`font-mono text-[11px] text-index ${className}`}
+      title={
+        u
+          ? t('agents.usage.breakdown', {
+              input: compactCount(u.inputTokens ?? 0),
+              output: compactCount(u.outputTokens ?? 0),
+              cacheRead: compactCount(u.cacheReadTokens ?? 0),
+              cacheWrite: compactCount(u.cacheWriteTokens ?? 0),
+            })
+          : undefined
+      }
+    >
+      {parts.join(' · ')}
+    </span>
   );
 }
 
@@ -291,6 +333,7 @@ function RunRow({
             </span>
           )}
         </button>
+        <RunUsage run={run} className="hidden flex-none md:inline" />
         <span className="chip flex-none" style={{ ['--chip' as string]: color }}>
           {t(`agents.runs.status.${run.status}`)}
         </span>

@@ -1,4 +1,13 @@
-import type { AgentRun, AgentRunContext, Bootstrap, Comment } from '@ordo/shared';
+import {
+  type Agent,
+  type AgentIdentity,
+  type AgentRun,
+  type AgentRunContext,
+  type AgentUsageTotal,
+  type Bootstrap,
+  type Comment,
+  monthRange,
+} from '@ordo/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -1015,5 +1024,150 @@ describe('blocked issues', () => {
     await owner.patch(`${ws}/issues/${blocked.id}`, { assigneeId: waiter });
     expect((await runsOf(blocked.id))[0]!.blockedBy).toEqual([]);
     expect((await take()).data.issue.identifier).toBe(blocked.identifier);
+  });
+});
+
+describe('cost and budgets', () => {
+  let spender: string;
+  let spenderKey: string;
+  const as = (method: string, url: string, body?: unknown) => bearer(spenderKey, method, url, body);
+  const take = () =>
+    as('POST', `${ws}/agent/claim?runner=meter`) as Promise<{
+      statusCode: number;
+      data: AgentRunContext;
+    }>;
+  const report = (runId: string, body: unknown) =>
+    as('PATCH', `${ws}/agent/runs/${runId}`, body) as Promise<{
+      statusCode: number;
+      data: AgentRun;
+    }>;
+  const me = async () => (await as('GET', `${ws}/agent/me`)).data as AgentIdentity;
+  const totalOf = async (client: Client, month = '') =>
+    (
+      (await client.get(`${ws}/agent-usage${month && `?month=${month}`}`)).data as AgentUsageTotal[]
+    ).find((t) => t.agentId === spender);
+  const thisMonth = new Date().toISOString().slice(0, 7);
+
+  beforeAll(async () => {
+    const res = await owner.post(`${ws}/agents`, {
+      name: 'Spender',
+      teamIds: [eng],
+      monthlyBudgetUsd: 1,
+    });
+    spender = res.data.id;
+    spenderKey = (await owner.post(`${ws}/agents/${spender}/keys`, { name: 'k' })).data.token;
+  });
+
+  it('takes a budget only as a positive amount, from admins', async () => {
+    const bad = await owner.patch(`${ws}/agents/${spender}`, { monthlyBudgetUsd: -1 });
+    expect(bad.statusCode).toBe(400);
+    const res = await member.patch(`${ws}/agents/${spender}`, { monthlyBudgetUsd: 9 });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("adds up each pickup's usage, and totals it per agent and month", async () => {
+    await issue('Costs something', { assigneeId: spender });
+    const { data } = await take();
+    expect(data.run.usage).toBeNull();
+    await report(data.run.id, {
+      status: 'waiting',
+      question: 'Which one?',
+      usage: { inputTokens: 100, outputTokens: 50, costUsd: 0.2, durationMs: 1000 },
+    });
+    await member.post(`${ws}/issues/${data.issue.id}/comments`, { body: 'This one.' });
+    const again = await take();
+    expect(again.data.run.id).toBe(data.run.id);
+    const done = await report(data.run.id, {
+      status: 'succeeded',
+      summary: 'Done.',
+      usage: { inputTokens: 10, cacheReadTokens: 5, costUsd: 0.3, durationMs: 500 },
+    });
+    expect(done.data.usage).toEqual({
+      inputTokens: 110,
+      outputTokens: 50,
+      cacheReadTokens: 5,
+      cacheWriteTokens: null,
+      costUsd: 0.5,
+      durationMs: 1500,
+    });
+    expect(await totalOf(member)).toMatchObject({
+      month: thisMonth,
+      runs: 1,
+      inputTokens: 110,
+      outputTokens: 50,
+      cacheReadTokens: 5,
+      cacheWriteTokens: 0,
+      costUsd: 0.5,
+      durationMs: 1500,
+      budgetUsd: 1,
+    });
+    // Another month has nothing, but the budget still shows.
+    expect(await totalOf(member, '2001-01')).toMatchObject({ runs: 0, costUsd: 0, budgetUsd: 1 });
+    expect((await member.get(`${ws}/agent-usage?month=2026-13`)).statusCode).toBe(400);
+    const listed = ((await owner.get(`${ws}/agents`)).data as Agent[]).find(
+      (a) => a.id === spender,
+    );
+    expect(listed).toMatchObject({ monthlyBudgetUsd: 1, monthCostUsd: 0.5 });
+  });
+
+  it('counts what a cancelled run used before it stopped', async () => {
+    const i = await issue('Cancelled midway', { assigneeId: spender });
+    const { data } = await take();
+    await owner.post(`${ws}/agent-runs/${data.run.id}/cancel`);
+    expect((await report(data.run.id, { summary: 'late' })).statusCode).toBe(409);
+    const res = await report(data.run.id, { usage: { costUsd: 0.05 } });
+    expect(res.data).toMatchObject({ status: 'cancelled', usage: { costUsd: 0.05 } });
+    expect((await runsOf(i.id))[0]!.usage!.costUsd).toBe(0.05);
+  });
+
+  it('pauses the agent once its runs reach the budget, until next month or a raise', async () => {
+    const i = await issue('Expensive', { assigneeId: spender });
+    const queued = await issue('Waits for the budget', { assigneeId: spender });
+    const { data } = await take();
+    expect(data.issue.id).toBe(i.id);
+    await report(data.run.id, { status: 'succeeded', summary: 'Pricey.', usage: { costUsd: 0.6 } });
+    const nextMonth = monthRange(thisMonth).end;
+    expect(await me()).toMatchObject({ pausedUntil: nextMonth, pauseReason: 'budget' });
+    expect((await member.get(`${ws}/agent-pauses`)).data).toContainEqual({
+      agentId: spender,
+      pausedUntil: nextMonth,
+      reason: 'budget',
+    });
+    const comments = (await owner.get(`${ws}/issues/${i.id}/comments`)).data as Comment[];
+    expect(comments.at(-1)!.body).toContain('spent my monthly budget ($1.15 of $1.00)');
+    expect((await take()).statusCode).toBe(204);
+
+    // Raising the budget lifts the pause; lowering it under what was spent pauses it again.
+    await owner.patch(`${ws}/agents/${spender}`, { monthlyBudgetUsd: 5 });
+    expect((await me()).pausedUntil).toBeNull();
+    await owner.patch(`${ws}/agents/${spender}`, { monthlyBudgetUsd: 1 });
+    expect(await me()).toMatchObject({ pausedUntil: nextMonth, pauseReason: 'budget' });
+
+    // Resume now: it works past the budget for the rest of the month.
+    expect((await owner.post(`${ws}/agents/${spender}/unpause`)).statusCode).toBe(200);
+    const next = await take();
+    expect(next.data.issue.id).toBe(queued.id);
+    await report(next.data.run.id, { status: 'succeeded', usage: { costUsd: 0.1 } });
+    expect((await me()).pausedUntil).toBeNull();
+
+    // Until the budget changes: a new one holds at once.
+    await owner.patch(`${ws}/agents/${spender}`, { monthlyBudgetUsd: 1.2 });
+    expect((await me()).pauseReason).toBe('budget');
+    // No budget, no pause.
+    await owner.patch(`${ws}/agents/${spender}`, { monthlyBudgetUsd: null });
+    expect((await me()).pausedUntil).toBeNull();
+  });
+
+  it('totals only runs on issues the caller can see', async () => {
+    await owner.patch(`${ws}/agents/${spender}`, { teamIds: [eng, prv] });
+    const hidden = (await owner.post(`${ws}/issues`, { teamId: prv, title: 'Secret spend' })).data;
+    await owner.patch(`${ws}/issues/${hidden.id}`, { assigneeId: spender });
+    const before = (await totalOf(member))!.costUsd;
+    const { data } = await take();
+    expect(data.issue.id).toBe(hidden.id);
+    await report(data.run.id, { status: 'succeeded', usage: { costUsd: 2 } });
+    expect((await totalOf(member))!.costUsd).toBe(before);
+    expect((await totalOf(owner))!.costUsd).toBeCloseTo(before + 2);
+    await owner.patch(`${ws}/agents/${spender}`, { teamIds: [eng] });
   });
 });

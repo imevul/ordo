@@ -3,6 +3,7 @@ import type {
   AgentRun,
   AgentRunContext,
   AgentRunFailureReason,
+  AgentRunUsageReport,
   Attachment,
   Bootstrap,
   Comment,
@@ -322,6 +323,8 @@ export class WorkspaceClient {
         failureReason?: AgentRunFailureReason;
         question?: string;
         resume?: string | null;
+        /** What this pickup used; added to the run's totals, so send it once per pickup. */
+        usage?: AgentRunUsageReport;
       },
     ) => this.request<AgentRun>('PATCH', `/agent/runs/${encodeURIComponent(runId)}`, input),
 

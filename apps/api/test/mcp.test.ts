@@ -2,7 +2,7 @@ import type { Bootstrap, IssueDetail } from '@ordo/shared';
 import { and, desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { domainEvents, workspaces } from '../src/db/schema.ts';
+import { agentRuns, domainEvents, workspaces } from '../src/db/schema.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -473,6 +473,19 @@ describe('agents', () => {
       status: 'succeeded',
       summary: 'Tests first, then the fix.',
     });
+    // What it cost, when its runner said.
+    await app.db
+      .update(agentRuns)
+      .set({ costUsd: 0.42, outputTokens: 900, usageAt: new Date().toISOString() })
+      .where(eq(agentRuns.id, runs.runs[0].run));
+    const usage = { costUsd: 0.42, outputTokens: 900, inputTokens: null };
+    expect((await tool('agent_runs', { issue: issue.identifier })).runs[0].usage).toMatchObject(
+      usage,
+    );
+    const listed = await tool('list_agent_runs', { status: 'finished', agent: 'robo' });
+    expect(listed.find((r: { run: string }) => r.run === runs.runs[0].run).usage).toMatchObject(
+      usage,
+    );
 
     // Feedback, a second run, and a change of mind.
     const again = await tool('rerun_agent', {

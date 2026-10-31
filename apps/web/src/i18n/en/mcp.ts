@@ -125,8 +125,10 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       list_agents: 'Agents in the workspace and the teams they work in.',
       assign_to_agent:
         'Hand an issue to an agent, optionally with a note. If it already has it, it runs again.',
-      agent_runs: "An issue's agent runs: status, runner, session link, summary or error.",
-      list_agent_runs: 'What agents are doing across the workspace: active or finished runs.',
+      agent_runs:
+        "An issue's agent runs: status, runner, session link, summary or error, and what each cost.",
+      list_agent_runs:
+        'What agents are doing across the workspace: active or finished runs, and what each cost.',
       rerun_agent: "Ask the issue's agent to work on it again, optionally with a note.",
       cancel_agent_run: "Stop the agent's queued or running work on an issue.",
       restart_agent_run:

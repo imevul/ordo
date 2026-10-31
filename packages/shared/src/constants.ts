@@ -364,6 +364,12 @@ export const AGENT_RUN_FAILURE_REASONS = [
   'error',
 ] as const;
 export type AgentRunFailureReason = (typeof AGENT_RUN_FAILURE_REASONS)[number];
+/**
+ * Why an agent's claims are on hold: its runner hit a usage limit, or it spent its monthly budget
+ * (it's paused until the next month starts, in UTC).
+ */
+export const AGENT_PAUSE_REASONS = ['usage_limit', 'budget'] as const;
+export type AgentPauseReason = (typeof AGENT_PAUSE_REASONS)[number];
 /** Usage-limit failures in a row after which a run waits for a person instead of restarting. */
 export const AGENT_AUTO_RESTARTS = 3;
 /**

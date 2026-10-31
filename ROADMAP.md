@@ -289,7 +289,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
     restarts (`retryOf`), output tail, cost and progress; rows on the Agent runs page and the issue link to it
   - [x] ✅ Progress updates from a running agent: an MCP `report_progress` tool (a short step like "running tests", an
     optional rough percentage), shown on the run page and the runs list, newest only, not a comment per update
-  - [ ] ⬜ Cost per run: tokens, cost and duration (Claude Code's JSON result), totals per agent and month, and a
+  - [x] ✅ Cost per run: tokens, cost and duration (Claude Code's JSON result), totals per agent and month, and a
     budget that pauses the agent like a usage limit does
   - [ ] ⬜ Plan approval: a run can post a plan and wait; an admin approves (or answers) before it goes on
   - [ ] ⬜ Live output: the runner streams the output tail while a run works

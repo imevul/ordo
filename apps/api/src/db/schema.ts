@@ -1,4 +1,5 @@
 import type {
+  AgentPauseReason,
   AgentRunFailureReason,
   AgentRunPullRequest,
   AgentRunStatus,
@@ -1803,7 +1804,11 @@ export const agents = pgTable('agents', {
   waitForBlockers: boolean('wait_for_blockers').notNull().default(true),
   /** Claims hand out nothing until then, e.g. after its runner hit a usage limit. */
   pausedUntil: ts('paused_until'),
-  pauseReason: text('pause_reason').$type<AgentRunFailureReason>(),
+  pauseReason: text('pause_reason').$type<AgentPauseReason>(),
+  /** What its runs may cost in a calendar month (UTC); reaching it pauses the agent. */
+  monthlyBudgetUsd: doublePrecision('monthly_budget_usd'),
+  /** "Resume now" on a budget pause: the budget doesn't pause it again until then. */
+  budgetWaivedUntil: ts('budget_waived_until'),
   createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -1850,6 +1855,15 @@ export const agentRuns = pgTable(
     progressAt: ts('progress_at'),
     /** Someone chose "Run anyway": the run doesn't wait for the issue's blockers. */
     ignoreBlockers: boolean('ignore_blockers').notNull().default(false),
+    /** What it used, as its runner reported, added up over its pickups; null until reported. */
+    inputTokens: bigint('input_tokens', { mode: 'number' }),
+    outputTokens: bigint('output_tokens', { mode: 'number' }),
+    cacheReadTokens: bigint('cache_read_tokens', { mode: 'number' }),
+    cacheWriteTokens: bigint('cache_write_tokens', { mode: 'number' }),
+    costUsd: doublePrecision('cost_usd'),
+    durationMs: bigint('duration_ms', { mode: 'number' }),
+    /** When usage was last reported: the month its cost counts in. */
+    usageAt: ts('usage_at'),
     /** Why it was queued: assignment, a person's @mention, or Run again. */
     trigger: text('trigger').$type<AgentRunTrigger>().notNull().default('assigned'),
     triggerCommentId: uuid('trigger_comment_id').references(() => comments.id, {
@@ -1871,5 +1885,6 @@ export const agentRuns = pgTable(
     index('agent_runs_agent_status_idx').on(t.agentId, t.status, t.createdAt),
     index('agent_runs_issue_idx').on(t.issueId),
     index('agent_runs_lease_idx').on(t.leaseExpiresAt),
+    index('agent_runs_usage_idx').on(t.workspaceId, t.usageAt),
   ],
 );

@@ -13,6 +13,11 @@ export default {
   teams: 'Teams',
   noTeams: 'no teams',
   keyCount: { one: '{count} key', other: '{count} keys' },
+  /** What an agent's runs cost this month; {cost} and {budget} are like "$4.20". */
+  spent: '{cost} this month',
+  spentOfBudget: '{cost} of {budget} this month',
+  /** Tag on an agent paused because it spent its monthly budget. */
+  budgetPaused: 'budget reached',
   edit: 'Edit {name}',
   newKey: 'New key',
   disable: 'Disable',
@@ -53,6 +58,28 @@ export default {
     waitForBlockersHint:
       'A run on a blocked issue waits until the issues blocking it are done or cancelled. Turn off for agents that only triage.',
     pickTeam: 'Pick at least one team.',
+    budget: 'Monthly budget (USD)',
+    budgetHint:
+      'When its runs have cost this much in a calendar month (UTC), it pauses until the next one. Leave empty for no budget.',
+    /** {cost} is like "$4.20". */
+    budgetSpent:
+      'Its runs cost {cost} so far this month. Reaching the budget pauses it until next month; leave empty for no budget.',
+    budgetNone: 'No budget',
+    budgetInvalid: 'The budget has to be more than zero, or empty.',
+  },
+  /** What runs used, as their runners reported it. */
+  usage: {
+    /** {tokens} is a short number like "1.2M". */
+    tokens: { one: '{tokens} token', other: '{tokens} tokens' },
+    /** Tooltip; each value is a short number like "12K". */
+    breakdown:
+      'Input {input} · output {output} · cache read {cacheRead} · cache write {cacheWrite}',
+    /** Before the per-agent totals; {month} is like "November". */
+    thisMonth: 'Totals for {month}',
+    /** {cost} and {budget} are like "$4.20". */
+    ofBudget: '{cost} of {budget}',
+    budget: 'Share of the monthly budget',
+    runs: { one: '{count} run', other: '{count} runs' },
   },
   schedules: {
     /** Next to a recurring issue assigned to the agent; opens Settings → Templates. */
@@ -141,13 +168,18 @@ export default {
     pausedLimit:
       '{name} hit its usage limit and is paused until {time}. Runs that failed on the limit restart then.',
     paused: '{name} is paused until {time}.',
+    pausedBudget:
+      '{name} spent its monthly budget and is paused until {time}. Raise the budget, or resume it for the rest of the month.',
+    raiseBudget: 'Raise budget',
     resumeNow: 'Resume now',
     resumeNowHint: 'Lift the pause and restart the runs that failed on the limit now',
+    resumeBudgetHint: 'Let it work past its budget for the rest of the month',
     columns: {
       status: 'Status',
       issue: 'Issue',
       agent: 'Agent',
       runner: 'Runner',
+      usage: 'Cost · tokens · time',
       updated: 'Updated',
     },
     more: 'more',

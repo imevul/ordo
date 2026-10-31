@@ -747,6 +747,7 @@ function handlers(c: McpCaller): Handlers {
         retryAt: r.retryAt ?? undefined,
         waitingOn: r.blockedBy.length ? r.blockedBy.map((b) => b.identifier) : undefined,
         sessionUrl: r.sessionUrl,
+        usage: r.usage ?? undefined,
         updatedAt: r.finishedAt ?? r.startedAt ?? r.createdAt,
       }));
     },
@@ -969,6 +970,7 @@ async function agentRunsResult(c: McpReader, dir: Directory, ref: string) {
       retryOf: r.retryOfId ?? undefined,
       waitingOn: r.blockedBy.length ? r.blockedBy.map((b) => b.identifier) : undefined,
       dismissed: !!r.dismissedAt || undefined,
+      usage: r.usage ?? undefined,
       createdAt: r.createdAt,
       finishedAt: r.finishedAt,
     })),

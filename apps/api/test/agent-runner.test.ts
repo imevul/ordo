@@ -623,6 +623,59 @@ describe('ordo agent', () => {
     expect(runRow!.summary).toMatch(/^in ordo-run-/);
   });
 
+  it("reports what a run cost, from Claude Code's JSON result or an ORDO_USAGE line", async () => {
+    const result = {
+      type: 'result',
+      subtype: 'success',
+      is_error: false,
+      result: 'All done.',
+      duration_ms: 4000,
+      total_cost_usd: 0.25,
+      usage: {
+        input_tokens: 10,
+        output_tokens: 20,
+        cache_read_input_tokens: 300,
+        cache_creation_input_tokens: 40,
+      },
+    };
+    const script = write('cost.sh', `#!/bin/sh\ncat <<'EOF'\n${JSON.stringify(result)}\nEOF\n`);
+    chmodSync(script, 0o700);
+    const file = write(
+      'cost.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Docs}\ncheckout: false\ncommand: [./cost.sh]\n`,
+    );
+    const claude = await assign('What it cost', 'Docs');
+    expect((await ordo(['agent', 'run', '--file', file, '--once'])).code).toBe(0);
+    expect((await runsOf(claude.id))[0]).toMatchObject({
+      status: 'succeeded',
+      // The result's text, not the JSON around it.
+      summary: 'All done.',
+      usage: {
+        inputTokens: 10,
+        outputTokens: 20,
+        cacheReadTokens: 300,
+        cacheWriteTokens: 40,
+        costUsd: 0.25,
+        durationMs: 4000,
+      },
+    });
+
+    const own = await assign('What it cost, said plainly', 'Docs');
+    const plain = write(
+      'cost-line.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Docs}\ncheckout: false\ncommand: 'echo ''ORDO_USAGE={"costUsd":0.5,"outputTokens":7}''; echo done'\n`,
+    );
+    expect((await ordo(['agent', 'run', '--file', plain, '--once'])).code).toBe(0);
+    const [run] = await runsOf(own.id);
+    expect(run).toMatchObject({
+      status: 'succeeded',
+      summary: 'done',
+      usage: { costUsd: 0.5, outputTokens: 7, inputTokens: null },
+    });
+    // Measured by the runner when the command doesn't say.
+    expect(run!.usage!.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
   it('leaves a run waiting when the agent asks, and resumes it with the token after a reply', async () => {
     const issue = await assign('Pick a colour');
     const script = write(

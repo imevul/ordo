@@ -10,7 +10,7 @@ import { Spinner } from '../../../components/PageHeader.tsx';
 import { Avatar } from '../../../components/ui/Avatar.tsx';
 import { confirmDialog } from '../../../components/ui/Modal.tsx';
 import { t, tx } from '../../../i18n/index.ts';
-import { relativeTime } from '../../../lib/format.ts';
+import { relativeTime, usd } from '../../../lib/format.ts';
 import { useWorkspace } from '../../../lib/workspace.tsx';
 import { SettingsCard } from '../ui.tsx';
 import { AgentModal } from './agent-modal.tsx';
@@ -68,6 +68,18 @@ export function AgentsSection() {
                     ) : null;
                   })}
                   <span>· {t('agents.keyCount', { count: a.keys.length })}</span>
+                  <span className="font-mono">
+                    ·{' '}
+                    {a.monthlyBudgetUsd !== null
+                      ? t('agents.spentOfBudget', {
+                          cost: usd(a.monthCostUsd),
+                          budget: usd(a.monthlyBudgetUsd),
+                        })
+                      : t('agents.spent', { cost: usd(a.monthCostUsd) })}
+                  </span>
+                  {a.pauseReason === 'budget' && (
+                    <span className="tag font-mono text-warning">{t('agents.budgetPaused')}</span>
+                  )}
                 </div>
               </div>
               <button

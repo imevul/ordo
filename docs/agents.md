@@ -93,6 +93,29 @@ the Agent runs page, which restarts the runs that failed on the limit straight a
 Recognising limits only works when the command fails: an agent CLI that prints the message and exits 0 reports
 success. The wrapper below passes Claude Code's errors on.
 
+## Cost and budgets
+
+When the runner says what a run used, Ordo keeps it on the run: input, output and cache tokens, the cost in US
+dollars, and how long it worked. The Agent runs page shows each run's cost, tokens and time, and above the list each
+agent's totals this month (on the issues you can see). Each run on an issue shows its cost too.
+
+`ordo agent run` reads the usage from the command's output (see [the launch contract](#the-launch-contract)):
+Claude Code's `--output-format json` result as it is, or an `ORDO_USAGE={…}` line from a wrapper. It measures the
+time itself when the command doesn't say. Other runners send `usage` with their report
+([api.md](api.md#agents-and-repositories)). A run that asks a question and resumes adds up both pickups.
+
+An admin can give an agent a **monthly budget** in Settings → Agents, in US dollars. Months are calendar months in
+UTC. When a report takes the agent's runs this month to the budget or past it, the agent **pauses** until the next
+month starts. It says so on the issue, a banner on the Agent runs page names it, and its runners claim nothing
+meanwhile. Runs already going finish, so the total can end up a little past the budget. Then:
+
+- **Raise budget** (or clear it) in Settings → Agents: the pause lifts as soon as the budget is above what it spent.
+  Lowering a budget below what it already spent pauses it straight away.
+- **Resume now** in the banner lets it work past its budget for the rest of the month. Changing the budget ends that.
+
+Settings → Agents shows what each agent's runs cost so far this month. Over [MCP](#from-an-assistant-over-mcp),
+`agent_runs` and `list_agent_runs` include each run's `usage`.
+
 ## `ordo agent run`
 
 The [CLI](cli.md) includes a generic runner. You tell it what to launch for each run:
@@ -161,6 +184,11 @@ This is all the runner asks of your command:
 A line `ORDO_SESSION_URL=https://…` on stdout is reported right away and linked on the issue, and a line
 `ORDO_RESUME=<token>` is kept for the next pickup of the run (see [Questions](#questions)). Exit code 0 means the
 run succeeded; anything else means it failed, with the end of stderr (or of stdout, if stderr is empty) as the error.
+
+What the run used is read from a line `ORDO_USAGE={"costUsd":0.42,"inputTokens":1200,"outputTokens":3400}` on stdout
+(also `cacheReadTokens`, `cacheWriteTokens`, `durationMs`), or from a JSON result the command prints last: Claude
+Code's `--output-format json` (or the last line of `stream-json`), with `total_cost_usd`, `duration_ms` and `usage`.
+Its `result` text is then the summary, instead of the JSON around it. See [Cost and budgets](#cost-and-budgets).
 
 Since `ORDO_TOKEN` is the agent's key, the command can use the CLI as the agent: `ordo issue comment "$ORDO_ISSUE"
 "Found the cause, fixing it now"`, `ordo issue edit "$ORDO_ISSUE" --status "In Progress"`, or
@@ -389,6 +417,9 @@ out=$(claude -p --output-format json --permission-mode acceptEdits ${ORDO_RESUME
 code=$?
 session=$(printf '%s' "$out" | jq -r '.session_id // empty' 2>/dev/null)
 [ -n "$session" ] && echo "ORDO_RESUME=$session"
+# What the run cost, for the Agent runs page and the agent's budget.
+usage=$(printf '%s' "$out" | jq -c '{total_cost_usd, duration_ms, usage}' 2>/dev/null)
+[ -n "$usage" ] && echo "ORDO_USAGE=$usage"
 # A failure (a usage limit, a crash) has to exit non-zero, or Ordo records the run as done.
 if [ "$code" -ne 0 ] || [ "$(printf '%s' "$out" | jq -r '.is_error' 2>/dev/null)" = true ]; then
   printf '%s\n' "$(printf '%s' "$out" | jq -r '.result // empty' 2>/dev/null || printf '%s' "$out")" >&2

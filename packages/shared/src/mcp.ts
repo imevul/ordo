@@ -415,14 +415,14 @@ export const MCP_TOOLS: {
     name: 'agent_runs',
     title: 'Agent runs',
     description:
-      "An issue's agent runs: status, runner, session link, summary or error, newest first.",
+      "An issue's agent runs: status, runner, session link, summary or error, and usage (tokens, cost in USD, duration) when the runner reported it, newest first.",
     readOnly: true,
   },
   {
     name: 'list_agent_runs',
     title: 'List agent runs',
     description:
-      'What agents are doing across the workspace: active runs (queued, working, waiting for an answer) by default, or finished ones.',
+      'What agents are doing across the workspace: active runs (queued, working, waiting for an answer) by default, or finished ones, with each run’s usage (tokens, cost in USD, duration) when reported.',
     readOnly: true,
   },
   {
