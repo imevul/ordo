@@ -210,7 +210,7 @@ agents:
 
   factory:
     key: ${FACTORY_AGENT_KEY}
-    command: ./scripts/factory.sh
+    command: [./scripts/factory.sh] # a list runs directly; a leading ./ is relative to this file
     checkout: false # don't clone; the script reads the repositories from $ORDO_RUN_FILE
     cwd: tmp
 ```
@@ -229,7 +229,8 @@ your `ordo login`.
 - `${VAR}` and `${VAR:-default}` expand from the environment, then `env_file`, then a sibling `.env`. An unset
   variable without a default is an error naming it. Plain `$VAR` is left alone, for the shell.
 - `command` is a list (run directly; a leading `./` is relative to the file) or a string (run with `sh -c` in the
-  worktree).
+  worktree, or in an empty directory with `cwd: tmp`). Only the list form resolves `./`, so a script next to the file
+  goes in a list, like `factory` above.
 - Per agent: `key`, `command`, `repos`, `concurrency`, `timeout` (`90s`, `30m`, `2h`), `env`, `cwd` (`worktree` or
   `tmp`), `checkout` (`true` or `false`), `prune` (`true` or `false`) and `instructions`. Unknown fields are errors.
 - `instructions` add up instead of replacing each other: the top level's, then `defaults`', then the agent's own,
