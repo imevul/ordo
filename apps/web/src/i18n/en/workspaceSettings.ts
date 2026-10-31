@@ -322,6 +322,7 @@ export default {
       agentCreated: 'added the agent {name}',
       agentUpdated: 'changed an agent',
       agentDisabled: 'disabled an agent',
+      agentUnpaused: 'resumed a paused agent',
       agentKeyCreated: 'created the agent key "{name}"',
       repositoryCreated: 'added the repository {name}',
       repositoryUpdated: 'changed a repository',

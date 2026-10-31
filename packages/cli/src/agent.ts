@@ -380,6 +380,8 @@ export interface LaunchResult {
   status: 'succeeded' | 'failed' | 'cancelled';
   summary: string | null;
   error: string | null;
+  /** When the runner knows why it failed; otherwise Ordo reads the error. */
+  failureReason?: 'timeout';
   sessionUrl: string | null;
 }
 
@@ -567,6 +569,7 @@ export async function launch(
         status: 'failed',
         summary,
         error: `Timed out after ${Math.round(spec.timeoutMs / 60_000)} minutes`,
+        failureReason: 'timeout',
         sessionUrl,
       };
     if (code === 0) return { status: 'succeeded', summary, error: null, sessionUrl };
@@ -731,6 +734,18 @@ export async function serveAgent(spec: AgentSpec, opts: ServeOptions) {
     const timer = setInterval(sweep, PRUNE_EVERY_MS);
     opts.signal.addEventListener('abort', () => clearInterval(timer));
   }
+  // Said once per pause, by whichever worker notices it.
+  let pausedUntil: string | null = null;
+  const notePause = async () => {
+    const me = await claims.agent.me().catch(() => null);
+    if (!me || me.pausedUntil === pausedUntil) return;
+    pausedUntil = me.pausedUntil;
+    if (pausedUntil)
+      log(
+        `paused until ${new Date(pausedUntil).toLocaleString()}${me.pauseReason === 'usage_limit' ? ' (the agent hit its usage limit)' : ''}; claiming nothing until then`,
+      );
+    else log('no longer paused');
+  };
   const worker = async () => {
     let backoff = 1000;
     while (!opts.signal.aborted) {
@@ -755,6 +770,7 @@ export async function serveAgent(spec: AgentSpec, opts: ServeOptions) {
       }
       if (!context) {
         if (opts.once) return;
+        await notePause();
         continue;
       }
       await work(ws, spec, context, { ...opts, log });
@@ -808,7 +824,11 @@ async function work(
       } catch (err) {
         const message = (err as { stderr?: string }).stderr?.trim() || (err as Error).message;
         opts.log(`${id} checkout failed: ${message}`);
-        await report({ status: 'failed', error: `Checkout failed on ${hostname()}: ${message}` });
+        await report({
+          status: 'failed',
+          error: `Checkout failed on ${hostname()}: ${message}`,
+          failureReason: 'checkout',
+        });
         return;
       }
     }
@@ -836,6 +856,7 @@ async function work(
       status: result.status,
       summary: result.summary,
       error: result.error,
+      ...(result.failureReason && { failureReason: result.failureReason }),
       ...(result.sessionUrl && { sessionUrl: result.sessionUrl }),
     });
     // The agent asked a question: the run waits for a reply, whatever the command's exit said.

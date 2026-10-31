@@ -470,23 +470,27 @@ Ordo if an admin chose to send them.
 
 Agents are members a runner works for; see [agents.md](agents.md) for the idea and the runner protocol.
 
-| Method         | Path                                                       | What                                                                                                                     |
-| -------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| GET / POST     | `/agents`                                                  | _Admin._ List / create `{ name, teamIds, instructions?, concurrency?, followPullRequests?, username? }`                  |
-| PATCH          | `/agents/:id`                                              | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, followPullRequests?, disabled? }`                              |
-| POST           | `/agents/:id/keys`                                         | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                           |
-| DELETE         | `/agents/:id/keys/:keyId`                                  | _Admin._ Revoke a key                                                                                                    |
-| GET / POST     | `/issues/:id/agent-runs`                                   | The issue's runs / queue a new one for its agent ("Run again")                                                           |
-| GET            | `/agent-runs?status=active\|finished\|all&agentId=&limit=` | Runs across the workspace on issues you can see, latest change first (≤ 500)                                             |
-| GET            | `/agent-runs/active-count`                                 | `{ count }` of active runs (queued, claimed, running, waiting) on issues you can see                                     |
-| POST           | `/agent-runs/:id/cancel`                                   | Cancel a run; its runner hears it on the next heartbeat                                                                  |
-| GET            | `/agent/me`                                                | _Agent key._ The agent and its teams                                                                                     |
-| POST           | `/agent/claim?wait=30&runner=…`                            | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)            |
-| POST           | `/agent/runs/:id/heartbeat`                                | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                  |
-| PATCH          | `/agent/runs/:id`                                          | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, resume?, sessionUrl?, summary?, error? }` |
-| GET            | `/repositories`                                            | The workspace's repositories (also in the bootstrap)                                                                     |
-| POST           | `/repositories`                                            | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo? }`                                                  |
-| PATCH / DELETE | `/repositories/:id`                                        | _Admin._ Update / delete                                                                                                 |
+| Method         | Path                                                             | What                                                                                                                                        |
+| -------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET / POST     | `/agents`                                                        | _Admin._ List / create `{ name, teamIds, instructions?, concurrency?, followPullRequests?, username? }`                                     |
+| PATCH          | `/agents/:id`                                                    | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, followPullRequests?, disabled? }`                                                 |
+| POST           | `/agents/:id/keys`                                               | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                                              |
+| DELETE         | `/agents/:id/keys/:keyId`                                        | _Admin._ Revoke a key                                                                                                                       |
+| POST           | `/agents/:id/unpause`                                            | _Admin._ Lift a pause ("Resume now") and restart the runs that failed on its usage limit                                                    |
+| GET            | `/agent-pauses`                                                  | Agents on hold right now: `[{ agentId, pausedUntil, reason }]`                                                                              |
+| GET / POST     | `/issues/:id/agent-runs`                                         | The issue's runs / queue a new one for its agent ("Run again")                                                                              |
+| GET            | `/agent-runs?status=open\|active\|finished\|all&agentId=&limit=` | Runs across the workspace on issues you can see, latest change first (≤ 500). `open`: active plus failed runs nobody restarted or dismissed |
+| GET            | `/agent-runs/active-count`                                       | `{ count }` of active runs (queued, claimed, running, waiting) on issues you can see                                                        |
+| POST           | `/agent-runs/:id/cancel`                                         | Cancel a run; its runner hears it on the next heartbeat                                                                                     |
+| POST           | `/agent-runs/:id/restart`                                        | A failed or cancelled run again: same agent, issue and trigger, as a new run with `retryOfId` (an open one is returned)                     |
+| POST           | `/agent-runs/:id/dismiss`                                        | Set a finished run aside (`dismissedAt`); it leaves the `open` list                                                                         |
+| GET            | `/agent/me`                                                      | _Agent key._ The agent and its teams, and `pausedUntil` / `pauseReason` while it's paused                                                   |
+| POST           | `/agent/claim?wait=30&runner=…`                                  | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)                               |
+| POST           | `/agent/runs/:id/heartbeat`                                      | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                                     |
+| PATCH          | `/agent/runs/:id`                                                | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, resume?, sessionUrl?, summary?, error?, failureReason? }`    |
+| GET            | `/repositories`                                                  | The workspace's repositories (also in the bootstrap)                                                                                        |
+| POST           | `/repositories`                                                  | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo? }`                                                                     |
+| PATCH / DELETE | `/repositories/:id`                                              | _Admin._ Update / delete                                                                                                                    |
 
 Projects take `repositoryIds` (in order) on create and update; teams take `defaultRepositoryId`. Admins can set a
 project's `pullRequestAgentId` (an agent in one of its teams, or `null`) and `pullRequestScope` (`"linked"` or
@@ -494,6 +498,12 @@ project's `pullRequestAgentId` (an agent in one of its teams, or `null`) and `pu
 
 A run's `trigger` is `assigned`, `mention`, `rerun` or `pull_request`; for `pull_request`, `triggerDetail` is
 `{ event: "ready_for_review" | "checks_failed" | "changes_requested", repo, number, url, branch }`.
+
+A failed run has a `failureReason`: `usage_limit`, `timeout`, `runner_lost`, `checkout` or `error`. A runner may send
+`timeout` or `checkout` with its report; otherwise Ordo reads the error. On `usage_limit` the agent is paused until
+the limit resets and the run gets a `retryAt`, when it restarts by itself (not after three limits in a row). A
+restart has `retryOfId`, the run it restarts; `dismissedAt` is set on dismissed runs. See
+[agents.md](agents.md#when-a-run-fails).
 
 **Default assignee.** An issue created without `assigneeId` goes to the default assignee: its project's
 `defaultAssignee` (`"workspace"`, `"none"`, or a member's id) or else the workspace's `settings.defaultAssigneeId`,

@@ -3,7 +3,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { agentRuns, domainEvents } from '../src/db/schema.ts';
-import { reapLeases } from '../src/services/agents.ts';
+import { reapLeases, restartAfterLimits } from '../src/services/agents.ts';
 import { type Client, type Json, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -310,6 +310,10 @@ describe('runs', () => {
     const failure = (await owner.get(`${ws}/issues/${next.data.issue.id}/comments`)).data;
     expect(failure.at(-1).body).toContain('This run failed');
     expect(failure.at(-1).body).toContain('boom');
+    expect((await runsOf(next.data.issue.id))[0]).toMatchObject({
+      failureReason: 'error',
+      retryAt: null,
+    });
   });
 
   it('wakes a waiting runner as soon as work arrives', async () => {
@@ -374,7 +378,11 @@ describe('runs', () => {
       await lapse();
       await reapLeases(app);
     }
-    expect((await runsOf(i.id))[0]).toMatchObject({ status: 'failed', attempts: 3 });
+    expect((await runsOf(i.id))[0]).toMatchObject({
+      status: 'failed',
+      attempts: 3,
+      failureReason: 'runner_lost',
+    });
     const comments = (await owner.get(`${ws}/issues/${i.id}/comments`)).data as Comment[];
     expect(comments.at(-1)).toMatchObject({ authorId: agentId });
     expect(comments.at(-1)!.body).toContain('failed after 3 attempts');
@@ -731,5 +739,203 @@ describe('pausing', () => {
     const res = await take();
     expect(res.statusCode).toBe(200);
     expect(res.data.issue.id).toBe(paused.id);
+  });
+});
+
+describe('failed runs', () => {
+  const LIMIT =
+    "You've hit your monthly spend limit · raise it at https://claude.ai/settings/usage?from=cc_cli_limit_message · your session limit resets 1am (Europe/Oslo)";
+  let limited: string;
+  let limitedKey: string;
+  const as = (method: string, url: string, body?: unknown) => bearer(limitedKey, method, url, body);
+  const take = () =>
+    as('POST', `${ws}/agent/claim?runner=hped2`) as Promise<{
+      statusCode: number;
+      data: AgentRunContext;
+    }>;
+  const failOnLimit = async (runId: string) =>
+    (await as('PATCH', `${ws}/agent/runs/${runId}`, {
+      status: 'failed',
+      summary: LIMIT,
+      error: `${LIMIT}\n(exit code 1)`,
+    })) as { statusCode: number; data: AgentRun };
+  /** Moves the reset time (and the agent's pause) into the past. */
+  const resetPasses = async (runId: string) => {
+    const past = new Date(Date.now() - 1000).toISOString();
+    await app.db.update(agentRuns).set({ retryAt: past }).where(eq(agentRuns.id, runId));
+    await app.db.execute(sql`update agents set paused_until = ${past} where user_id = ${limited}`);
+  };
+
+  beforeAll(async () => {
+    limited = (await owner.post(`${ws}/agents`, { name: 'Limited', teamIds: [eng] })).data.id;
+    limitedKey = (await owner.post(`${ws}/agents/${limited}/keys`, { name: 'k' })).data.token;
+  });
+
+  it('pause the agent on a usage limit and restart once it resets', async () => {
+    const i = await issue('Hit the limit', { assigneeId: limited });
+    const queued = await issue('Waits behind the limit', { assigneeId: limited });
+    const { data } = await take();
+    const failed = await failOnLimit(data.run.id);
+    expect(failed.data).toMatchObject({ status: 'failed', failureReason: 'usage_limit' });
+    // The next 1am in Oslo.
+    expect(new Date(failed.data.retryAt!).getTime()).toBeGreaterThan(Date.now());
+    expect(new Date(failed.data.retryAt!).getUTCMinutes()).toBe(0);
+
+    // Paused: nothing more is handed out, and the runner can see why.
+    expect((await take()).statusCode).toBe(204);
+    expect((await runsOf(queued.id))[0]!.status).toBe('queued');
+    expect((await as('GET', `${ws}/agent/me`)).data).toMatchObject({
+      pausedUntil: failed.data.retryAt,
+      pauseReason: 'usage_limit',
+    });
+    const pauses = (await member.get(`${ws}/agent-pauses`)).data;
+    expect(pauses).toEqual([
+      { agentId: limited, pausedUntil: failed.data.retryAt, reason: 'usage_limit' },
+    ]);
+    // The comment says what happened, not the limit text as if it were a summary.
+    const comments = (await owner.get(`${ws}/issues/${i.id}/comments`)).data as Comment[];
+    expect(comments.at(-1)!.body).toContain('I hit my usage limit');
+    expect(comments.at(-1)!.body).toContain('restarts by itself');
+
+    // Nothing restarts before the reset.
+    await restartAfterLimits(app);
+    expect((await runsOf(i.id)).length).toBe(1);
+
+    await resetPasses(data.run.id);
+    await restartAfterLimits(app);
+    const [again, first] = await runsOf(i.id);
+    expect(again).toMatchObject({
+      status: 'queued',
+      agentId: limited,
+      trigger: 'assigned',
+      retryOfId: data.run.id,
+    });
+    expect(first!.id).toBe(data.run.id);
+    // Restarting twice doesn't queue twice.
+    await restartAfterLimits(app);
+    expect((await runsOf(i.id)).length).toBe(2);
+
+    // The queue picks up where it was: the older run first.
+    const next = await take();
+    expect(next.data.issue.id).toBe(queued.id);
+    await as('PATCH', `${ws}/agent/runs/${next.data.run.id}`, { status: 'succeeded' });
+    const restarted = await take();
+    expect(restarted.data.run.id).toBe(again!.id);
+    await as('PATCH', `${ws}/agent/runs/${restarted.data.run.id}`, { status: 'succeeded' });
+  });
+
+  it(`stop restarting after ${3} limits in a row`, async () => {
+    const i = await issue('Keeps hitting it', { assigneeId: limited });
+    let last: AgentRun | undefined;
+    for (let n = 1; n <= 3; n++) {
+      const { data } = await take();
+      expect(data.issue.id).toBe(i.id);
+      last = (await failOnLimit(data.run.id)).data;
+      if (n < 3) {
+        expect(last.retryAt).toBeTruthy();
+        await resetPasses(data.run.id);
+        await restartAfterLimits(app);
+      }
+    }
+    expect(last).toMatchObject({ failureReason: 'usage_limit', retryAt: null });
+    const comments = (await owner.get(`${ws}/issues/${i.id}/comments`)).data as Comment[];
+    expect(comments.at(-1)!.body).toContain("won't restart by itself");
+    // Even once the pause is over.
+    await app.db.execute(sql`update agents set paused_until = null where user_id = ${limited}`);
+    await restartAfterLimits(app);
+    expect((await runsOf(i.id))[0]!.id).toBe(last!.id);
+    // A person still can.
+    const res = await member.post(`${ws}/agent-runs/${last!.id}/restart`);
+    expect(res.data).toMatchObject({ status: 'queued', retryOfId: last!.id });
+    const { data } = await take();
+    await as('PATCH', `${ws}/agent/runs/${data.run.id}`, { status: 'succeeded' });
+  });
+
+  it('show in the open list until restarted or dismissed', async () => {
+    const open = async () =>
+      ((await owner.get(`${ws}/agent-runs?status=open&agentId=${limited}`)).data as AgentRun[]).map(
+        (r) => r.id,
+      );
+    const a = await issue('Broke once', { assigneeId: limited });
+    const b = await issue('Broke too', { assigneeId: limited });
+    const runA = (await take()).data.run.id;
+    await as('PATCH', `${ws}/agent/runs/${runA}`, { status: 'failed', error: 'segfault' });
+    const runB = (await take()).data.run.id;
+    await as('PATCH', `${ws}/agent/runs/${runB}`, { status: 'failed', error: 'oops' });
+    expect(await open()).toEqual(expect.arrayContaining([runA, runB]));
+    // Only finished runs can be dismissed or restarted.
+    const busy = await issue('Busy', { assigneeId: limited });
+    const busyRun = (await runsOf(busy.id))[0]!.id;
+    expect((await owner.post(`${ws}/agent-runs/${busyRun}/dismiss`)).statusCode).toBe(409);
+    expect((await owner.post(`${ws}/agent-runs/${busyRun}/restart`)).statusCode).toBe(409);
+    await owner.post(`${ws}/agent-runs/${busyRun}/cancel`);
+
+    const dismissed = await member.post(`${ws}/agent-runs/${runA}/dismiss`);
+    expect(dismissed.data.dismissedAt).toBeTruthy();
+    const restarted = (await member.post(`${ws}/agent-runs/${runB}/restart`)).data as AgentRun;
+    const ids = await open();
+    expect(ids).not.toContain(runA);
+    expect(ids).not.toContain(runB);
+    expect(ids).toContain(restarted.id);
+    // Restarting again while the restart is queued returns it rather than queueing another.
+    expect((await member.post(`${ws}/agent-runs/${runB}/restart`)).data.id).toBe(restarted.id);
+    expect((await runsOf(a.id)).length).toBe(1);
+    expect((await runsOf(b.id)).length).toBe(2);
+    await owner.post(`${ws}/agent-runs/${restarted.id}/cancel`);
+  });
+
+  it('restart the agent that ran, not whoever the issue is assigned to now', async () => {
+    const i = await issue('Mentioned here');
+    await member.post(`${ws}/issues/${i.id}/comments`, { body: '@limited have a look?' });
+    const { data } = await take();
+    expect(data.run.trigger).toBe('mention');
+    await as('PATCH', `${ws}/agent/runs/${data.run.id}`, { status: 'failed', error: 'crash' });
+    const res = await member.post(`${ws}/agent-runs/${data.run.id}/restart`);
+    expect(res.data).toMatchObject({
+      agentId: limited,
+      trigger: 'mention',
+      triggerCommentId: data.run.triggerCommentId,
+      retryOfId: data.run.id,
+    });
+    await owner.post(`${ws}/agent-runs/${res.data.id}/cancel`);
+  });
+
+  it("can't be restarted or dismissed by someone who can't see the issue", async () => {
+    const hidden = (await owner.post(`${ws}/issues`, { teamId: prv, title: 'Secret' })).data;
+    await owner.patch(`${ws}/agents/${limited}`, { teamIds: [eng, prv] });
+    await owner.patch(`${ws}/issues/${hidden.id}`, { assigneeId: limited });
+    const { data } = await take();
+    await as('PATCH', `${ws}/agent/runs/${data.run.id}`, { status: 'failed', error: 'x' });
+    expect((await member.post(`${ws}/agent-runs/${data.run.id}/restart`)).statusCode).toBe(404);
+    expect((await member.post(`${ws}/agent-runs/${data.run.id}/dismiss`)).statusCode).toBe(404);
+    await owner.post(`${ws}/agent-runs/${data.run.id}/dismiss`);
+    await owner.patch(`${ws}/agents/${limited}`, { teamIds: [eng] });
+  });
+
+  it('resume now: lifts the pause and restarts what failed on the limit', async () => {
+    const i = await issue('Resume me', { assigneeId: limited });
+    const { data } = await take();
+    await failOnLimit(data.run.id);
+    expect((await take()).statusCode).toBe(204);
+    expect((await member.post(`${ws}/agents/${limited}/unpause`)).statusCode).toBe(403);
+    expect((await owner.post(`${ws}/agents/${limited}/unpause`)).statusCode).toBe(200);
+    expect((await member.get(`${ws}/agent-pauses`)).data).toEqual([]);
+    expect((await runsOf(i.id))[0]).toMatchObject({ status: 'queued', retryOfId: data.run.id });
+    const next = await take();
+    expect(next.data.run.retryOfId).toBe(data.run.id);
+    await as('PATCH', `${ws}/agent/runs/${next.data.run.id}`, { status: 'succeeded' });
+  });
+
+  it('take the reason the runner gives', async () => {
+    await issue('Slow', { assigneeId: limited });
+    const { data } = await take();
+    const res = await as('PATCH', `${ws}/agent/runs/${data.run.id}`, {
+      status: 'failed',
+      error: 'Timed out after 30 minutes',
+      failureReason: 'timeout',
+    });
+    expect(res.data).toMatchObject({ failureReason: 'timeout', retryAt: null });
+    // Not a limit: the agent isn't paused.
+    expect((await as('GET', `${ws}/agent/me`)).data.pausedUntil).toBeNull();
   });
 });

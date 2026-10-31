@@ -442,6 +442,36 @@ describe('ordo agent', () => {
       { ORDO_AGENT_KEY: keys.Claude },
     );
     expect((await runsOf(quiet.id))[0]!.error).toBe('Please log in first\n(exit code 1)');
+    expect((await runsOf(quiet.id))[0]!.failureReason).toBe('error');
+  });
+
+  it('recognises an agent that hit its usage limit, and pauses it', async () => {
+    const issue = await assign('Out of credit');
+    await ordo(
+      [
+        'agent',
+        'run',
+        '--once',
+        '-w',
+        slug,
+        '--url',
+        url,
+        '--repos',
+        join(dir, 'repos'),
+        '--',
+        'sh',
+        '-c',
+        `echo "You've hit your monthly spend limit · your session limit resets 1am (Europe/Oslo)"; exit 1`,
+      ],
+      { ORDO_AGENT_KEY: keys.Claude },
+    );
+    const [run] = await runsOf(issue.id);
+    expect(run).toMatchObject({ status: 'failed', failureReason: 'usage_limit' });
+    expect(run!.retryAt).toBeTruthy();
+    expect((await lastComment(issue.id))!.body).toContain('I hit my usage limit');
+    // So the tests after this one find the agent working again.
+    await owner.post(`${ws}/agents/${agents.Claude}/unpause`);
+    await owner.post(`${ws}/agent-runs/${(await runsOf(issue.id))[0]!.id}/cancel`);
   });
 
   it('works without a repository when checkout is off', async () => {
@@ -628,6 +658,7 @@ describe('stopping a run', () => {
     const res = await result;
     expect(res.status).toBe('failed');
     expect(res.error).toMatch(/^Timed out/);
+    expect(res.failureReason).toBe('timeout');
     await until(() => !alive(grandchild));
   });
 

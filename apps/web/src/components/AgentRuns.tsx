@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
-import { relativeTime } from '../lib/format.ts';
+import { longDate, relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { Markdown } from './Markdown.tsx';
 
@@ -27,6 +27,67 @@ export const isOpenRun = (r: AgentRun) =>
   r.status === 'claimed' ||
   r.status === 'running' ||
   r.status === 'waiting';
+
+export const isRestartable = (r: AgentRun) => r.status === 'failed' || r.status === 'cancelled';
+
+/** What a row expands to: the question, what went wrong, or the summary. */
+export const runDetail = (r: AgentRun) =>
+  r.status === 'waiting'
+    ? r.question
+    : r.status === 'failed'
+      ? (r.error ?? r.summary)
+      : (r.summary ?? r.error);
+
+/** Why a failed run failed, and whether it restarts by itself, as tags after its name. */
+export function FailureTags({ run }: { run: AgentRun }) {
+  return (
+    <>
+      {run.status === 'failed' && run.failureReason && (
+        <span className="tag ml-2 flex-none font-mono" style={{ color: RUN_STATUS_COLOR.failed }}>
+          {t(`agents.runs.failure.${run.failureReason}`)}
+        </span>
+      )}
+      {run.retryOfId && (
+        <span className="tag ml-2 flex-none font-mono">{t('agents.runs.restarted')}</span>
+      )}
+    </>
+  );
+}
+
+/** The expanded row: the agent's question, what went wrong (and what happens next), or its summary. */
+export function RunDetail({ run }: { run: AgentRun }) {
+  if (run.status === 'waiting' && run.question)
+    return (
+      <>
+        <div className="mb-1 font-mono text-[10.5px] tracking-[0.16em] text-warning uppercase">
+          {t('agents.runs.asked')}
+        </div>
+        <Markdown source={run.question} />
+      </>
+    );
+  if (run.status === 'failed')
+    return (
+      <>
+        {run.failureReason === 'usage_limit' && (
+          <p className="mb-1.5 text-[12.5px] text-warning">
+            {run.retryAt
+              ? t('agents.runs.restartsAt', { time: longDate(run.retryAt) })
+              : t('agents.runs.noAutoRestart')}
+          </p>
+        )}
+        <pre className="overflow-x-auto font-mono text-[11.5px] whitespace-pre-wrap text-muted">
+          {runDetail(run)}
+        </pre>
+      </>
+    );
+  return run.summary ? (
+    <Markdown source={run.summary} />
+  ) : (
+    <pre className="overflow-x-auto font-mono text-[11.5px] whitespace-pre-wrap text-muted">
+      {run.error}
+    </pre>
+  );
+}
 
 /**
  * The issue's agent runs: shown while an agent is assigned, or once one has worked on it. Runs
@@ -59,6 +120,11 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
     (id: string) => api.post(wsPath(ws.slug, `/agent-runs/${id}/cancel`)),
     { invalidate: [key] },
   );
+  const restart = useWsMutation(
+    ws.slug,
+    (id: string) => api.post(wsPath(ws.slug, `/agent-runs/${id}/restart`)),
+    { invalidate: [['ws', ws.slug, 'agentRuns']] },
+  );
   if (!assignedToAgent && runs.length === 0) return null;
   const busy = runs.some(isOpenRun);
   // Waiting on an answer: a reply resumes it, and so does this, without one.
@@ -79,8 +145,18 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
           </button>
         )}
       </div>
-      {runs.map((r) => (
-        <RunRow key={r.id} run={r} onCancel={() => cancel.mutate(r.id)} />
+      {runs.map((r, i) => (
+        <RunRow
+          key={r.id}
+          run={r}
+          onCancel={() => cancel.mutate(r.id)}
+          // Newest first: a failed run that a later run of its agent already covers isn't offered.
+          onRestart={
+            isRestartable(r) && !runs.slice(0, i).some((later) => later.agentId === r.agentId)
+              ? () => restart.mutate(r.id)
+              : undefined
+          }
+        />
       ))}
       {runs.length === 0 && (
         <p className="px-2 font-mono text-[12px] text-index">{t('agents.runs.empty')}</p>
@@ -89,14 +165,22 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
   );
 }
 
-function RunRow({ run, onCancel }: { run: AgentRun; onCancel: () => void }) {
+function RunRow({
+  run,
+  onCancel,
+  onRestart,
+}: {
+  run: AgentRun;
+  onCancel: () => void;
+  onRestart?: () => void;
+}) {
   const ws = useWorkspace();
   // A question shows by itself (also when a run starts waiting while open) until toggled.
   const [toggled, setToggled] = useState<boolean | null>(null);
   const open = toggled ?? run.status === 'waiting';
   const agent = ws.memberById.get(run.agentId);
   const color = RUN_STATUS_COLOR[run.status];
-  const detail = run.status === 'waiting' ? run.question : (run.summary ?? run.error);
+  const detail = runDetail(run);
   return (
     <div className="border-b border-border-soft/60">
       <div className="row group flex h-9 items-center gap-2.5 px-2">
@@ -112,6 +196,7 @@ function RunRow({ run, onCancel }: { run: AgentRun; onCancel: () => void }) {
           {run.trigger !== 'assigned' && (
             <span className="tag ml-2 flex-none font-mono">{triggerLabel(run)}</span>
           )}
+          <FailureTags run={run} />
           {run.runnerName && (
             <span className="ml-2 font-mono text-[11px] text-index">
               {t('agents.runs.on', { runner: run.runnerName })}
@@ -141,6 +226,17 @@ function RunRow({ run, onCancel }: { run: AgentRun; onCancel: () => void }) {
             <ExternalLink size={13} />
           </a>
         )}
+        {onRestart && (
+          <button
+            type="button"
+            className="flex h-6 w-6 flex-none items-center justify-center text-index hover:text-text"
+            onClick={onRestart}
+            title={t('agents.runs.restart')}
+            aria-label={t('agents.runs.restart')}
+          >
+            <RotateCcw size={12} />
+          </button>
+        )}
         {isOpenRun(run) && (
           <button
             type="button"
@@ -155,20 +251,7 @@ function RunRow({ run, onCancel }: { run: AgentRun; onCancel: () => void }) {
       </div>
       {open && detail && (
         <div className="px-8 pb-3 text-[13px]">
-          {run.status === 'waiting' && run.question ? (
-            <>
-              <div className="mb-1 font-mono text-[10.5px] tracking-[0.16em] text-warning uppercase">
-                {t('agents.runs.asked')}
-              </div>
-              <Markdown source={run.question} />
-            </>
-          ) : run.summary ? (
-            <Markdown source={run.summary} />
-          ) : (
-            <pre className="overflow-x-auto font-mono text-[11.5px] whitespace-pre-wrap text-muted">
-              {run.error}
-            </pre>
-          )}
+          <RunDetail run={run} />
         </div>
       )}
     </div>

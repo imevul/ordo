@@ -1,21 +1,27 @@
 import {
+  AGENT_AUTO_RESTARTS,
   AGENT_BRANCH_FORMAT,
   AGENT_PROTOCOL_VERSION,
   AGENT_RUN_OPEN,
   type Agent,
   type AgentIdentity,
+  type AgentPause,
   type AgentRun,
   type AgentRunContext,
+  type AgentRunFailureReason,
   type AgentRunPullRequest,
   type AgentRunTrigger,
   type AgentRunWithIssue,
   AVATAR_COLORS,
   branchName,
+  classifyFailure,
   type createAgentSchema,
+  DEFAULT_LIMIT_PAUSE_MS,
+  parseLimitReset,
   type RealtimeEvent,
   type updateAgentSchema,
 } from '@ordo/shared';
-import { and, asc, count, desc, eq, inArray, isNull, lt, not, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, not, or, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
 import type { DbOrTx } from '../db/client.ts';
@@ -96,6 +102,8 @@ export async function listAgents(db: DbOrTx, workspaceId: string): Promise<Agent
       instructions: agents.instructions,
       concurrency: agents.concurrency,
       followPullRequests: agents.followPullRequests,
+      pausedUntil: agents.pausedUntil,
+      pauseReason: agents.pauseReason,
       createdAt: agents.createdAt,
     })
     .from(agents)
@@ -123,8 +131,12 @@ export async function listAgents(db: DbOrTx, workspaceId: string): Promise<Agent
       .where(inArray(apiKeys.userId, ids))
       .orderBy(desc(apiKeys.createdAt)),
   ]);
-  return rows.map(({ disabledAt, ...r }) => ({
+  const now = new Date().toISOString();
+  return rows.map(({ disabledAt, pausedUntil, pauseReason, ...r }) => ({
     ...r,
+    ...(pausedUntil && pausedUntil > now
+      ? { pausedUntil, pauseReason }
+      : { pausedUntil: null, pauseReason: null }),
     disabled: !!disabledAt,
     teamIds: memberships.filter((m) => m.userId === r.id).map((m) => m.teamId),
     keys: keys.filter((k) => k.userId === r.id).map(({ userId: _, ...k }) => k),
@@ -287,6 +299,8 @@ export async function describeAgent(db: DbOrTx, access: Access): Promise<AgentId
       wsId: workspaces.id,
       wsSlug: workspaces.slug,
       wsName: workspaces.name,
+      pausedUntil: agents.pausedUntil,
+      pauseReason: agents.pauseReason,
     })
     .from(agents)
     .innerJoin(users, eq(users.id, agents.userId))
@@ -306,6 +320,9 @@ export async function describeAgent(db: DbOrTx, access: Access): Promise<AgentId
     username: row.username,
     workspace: { id: row.wsId, slug: row.wsSlug, name: row.wsName },
     teams: teamRows,
+    ...(row.pausedUntil && row.pausedUntil > new Date().toISOString()
+      ? { pausedUntil: row.pausedUntil, pauseReason: row.pauseReason }
+      : { pausedUntil: null, pauseReason: null }),
   };
 }
 
@@ -323,6 +340,10 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
   sessionUrl: r.sessionUrl,
   summary: r.summary,
   error: r.error,
+  failureReason: r.failureReason,
+  retryAt: r.retryAt,
+  retryOfId: r.retryOfId,
+  dismissedAt: r.dismissedAt,
   question: r.question,
   resume: r.resume,
   trigger: r.trigger,
@@ -375,7 +396,7 @@ export async function queueRun(
     commentId?: string;
     pullRequest?: AgentRunPullRequest;
   } = { kind: 'assigned' },
-  opts: { followUp?: boolean } = {},
+  opts: { followUp?: boolean; retryOfId?: string } = {},
 ) {
   const open = await ctx.tx
     .select()
@@ -401,6 +422,7 @@ export async function queueRun(
         trigger: trigger.kind,
         triggerCommentId: trigger.commentId ?? null,
         triggerDetail: trigger.pullRequest ?? null,
+        retryOfId: opts.retryOfId ?? null,
       })
       .returning(),
   );
@@ -578,6 +600,158 @@ export async function cancelRun(ctx: Ctx, runId: string): Promise<AgentRun> {
   return toAgentRun(await loadRun(ctx, runId));
 }
 
+/**
+ * Restart: the same agent on the same issue, for the same reason (the mention, the pull request),
+ * as a new run that points back at this one. An open run of the agent there already covers it.
+ */
+export async function restartRun(ctx: Ctx, runId: string): Promise<AgentRun> {
+  return toAgentRun(await restart(ctx, await loadRun(ctx, runId)));
+}
+
+async function restart(ctx: Ctx, run: RunRow) {
+  if (run.status !== 'failed' && run.status !== 'cancelled')
+    throw conflict(`This run is ${run.status}`);
+  if (!(await isActiveAgent(ctx.tx, ctx.workspaceId, run.agentId)))
+    throw badRequest('That agent is disabled or no longer exists');
+  return queueRun(
+    ctx,
+    run.issueId,
+    run.agentId,
+    {
+      kind: run.trigger,
+      commentId: run.triggerCommentId ?? undefined,
+      pullRequest: run.triggerDetail ?? undefined,
+    },
+    { followUp: true, retryOfId: run.id },
+  );
+}
+
+/** Sets a failed run aside: it leaves the open runs without being restarted. */
+export async function dismissRun(ctx: Ctx, runId: string): Promise<AgentRun> {
+  const run = await loadRun(ctx, runId);
+  if (AGENT_RUN_OPEN.includes(run.status)) throw conflict(`This run is ${run.status}`);
+  const [saved] = await ctx.tx
+    .update(agentRuns)
+    .set({ dismissedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .where(eq(agentRuns.id, run.id))
+    .returning();
+  await changed(ctx, saved!);
+  return toAgentRun(saved!);
+}
+
+/** Agents of the workspace whose claims are on hold right now. */
+export async function listPauses(db: DbOrTx, workspaceId: string): Promise<AgentPause[]> {
+  const rows = await db
+    .select({ agentId: agents.userId, pausedUntil: agents.pausedUntil, reason: agents.pauseReason })
+    .from(agents)
+    .where(
+      and(eq(agents.workspaceId, workspaceId), gt(agents.pausedUntil, new Date().toISOString())),
+    );
+  return rows.map((r) => ({ agentId: r.agentId, pausedUntil: r.pausedUntil!, reason: r.reason }));
+}
+
+/**
+ * "Resume now": lifts an agent's pause and restarts the runs that failed on its usage limit
+ * straight away, instead of at the reset time.
+ */
+export async function unpauseAgent(ctx: Ctx, agentId: string) {
+  const [agent] = await ctx.tx
+    .update(agents)
+    .set({ pausedUntil: null, pauseReason: null, updatedAt: new Date().toISOString() })
+    .where(and(eq(agents.userId, agentId), eq(agents.workspaceId, ctx.workspaceId)))
+    .returning({ id: agents.userId });
+  if (!agent) throw notFound('Agent');
+  for (const run of await limitFailures(ctx.tx, eq(agentRuns.agentId, agentId)))
+    await restart(ctx, run);
+  // Wakes the agent's runners, which wait on member and run events.
+  emit(ctx, { kind: 'member', action: 'updated', id: agentId });
+  await auditCtx(ctx, { action: 'agent.unpaused', targetType: 'user', targetId: agentId });
+  return { ok: true };
+}
+
+/**
+ * Failed runs waiting to restart after a usage limit (oldest first): not dismissed, not covered
+ * by a newer run of the agent on the issue, and still owed an automatic restart.
+ */
+async function limitFailures(db: DbOrTx, where: ReturnType<typeof eq>) {
+  return db
+    .select()
+    .from(agentRuns)
+    .where(
+      and(
+        where,
+        eq(agentRuns.status, 'failed'),
+        eq(agentRuns.failureReason, 'usage_limit'),
+        sql`${agentRuns.retryAt} is not null`,
+        isNull(agentRuns.dismissedAt),
+        notSuperseded,
+      ),
+    )
+    .orderBy(asc(agentRuns.createdAt))
+    .limit(200);
+}
+
+/** No newer run of the same agent on the same issue: nobody restarted or re-ran it since. */
+const notSuperseded = sql`not exists (select 1 from agent_runs later where later.issue_id = "agent_runs"."issue_id" and later.agent_id = "agent_runs"."agent_id" and later.created_at > "agent_runs"."created_at")`;
+
+/**
+ * Every minute: runs that failed on a usage limit restart once their reset time has passed and
+ * their agent isn't paused any more. Each restarts as its agent, so it reads as its own.
+ */
+export async function restartAfterLimits(app: FastifyInstance) {
+  const now = new Date().toISOString();
+  const due = await app.db
+    .select({ run: agentRuns })
+    .from(agentRuns)
+    .innerJoin(agents, eq(agents.userId, agentRuns.agentId))
+    .where(
+      and(
+        eq(agentRuns.status, 'failed'),
+        eq(agentRuns.failureReason, 'usage_limit'),
+        lte(agentRuns.retryAt, now),
+        isNull(agentRuns.dismissedAt),
+        notSuperseded,
+        or(isNull(agents.pausedUntil), lte(agents.pausedUntil, now)),
+      ),
+    )
+    .orderBy(asc(agentRuns.createdAt))
+    .limit(100);
+  await forEachIsolated(
+    app,
+    'agents.restart',
+    due.map((r) => r.run),
+    (run) => ({ runId: run.id, workspaceId: run.workspaceId }),
+    (run) =>
+      runInWorkspace(
+        app,
+        { workspaceId: run.workspaceId, actorId: run.agentId, source: 'system' },
+        async (ctx) => {
+          const [current] = await ctx.tx
+            .select()
+            .from(agentRuns)
+            .where(and(eq(agentRuns.id, run.id), notSuperseded))
+            .for('update', { skipLocked: true });
+          if (current?.status === 'failed' && current.retryAt && !current.dismissedAt)
+            await restart(ctx, current);
+        },
+      ),
+  );
+}
+
+/** Usage-limit failures in a row, `run`'s predecessors included: when to stop restarting. */
+async function limitStreak(tx: DbOrTx, retryOfId: string | null) {
+  let streak = 1;
+  for (let id = retryOfId; id && streak < AGENT_AUTO_RESTARTS; streak++) {
+    const [prev] = await tx
+      .select({ retryOfId: agentRuns.retryOfId, reason: agentRuns.failureReason })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, id));
+    if (prev?.reason !== 'usage_limit') break;
+    id = prev.retryOfId;
+  }
+  return streak;
+}
+
 export async function listRuns(db: DbOrTx, access: Access, issueIdOrIdentifier: string) {
   const issue = await getIssue(db, access, issueIdOrIdentifier);
   const rows = await db
@@ -590,15 +764,27 @@ export async function listRuns(db: DbOrTx, access: Access, issueIdOrIdentifier: 
 }
 
 /**
- * Runs across the workspace, on issues `access` can read: active ones (open, waiting included)
- * first by when they last changed, or finished ones, newest first.
+ * Runs across the workspace, on issues `access` can read, by when they last changed: active ones
+ * (waiting included), finished ones, or `open`: the active ones plus failed runs nobody has
+ * restarted, re-run or dismissed yet.
  */
 export async function listWorkspaceRuns(
   db: DbOrTx,
   access: Access,
-  opts: { status: 'active' | 'finished' | 'all'; agentId?: string; limit: number },
+  opts: { status: 'open' | 'active' | 'finished' | 'all'; agentId?: string; limit: number },
 ): Promise<AgentRunWithIssue[]> {
   const open = inArray(agentRuns.status, [...AGENT_RUN_OPEN]);
+  const unhandled = and(
+    eq(agentRuns.status, 'failed'),
+    isNull(agentRuns.dismissedAt),
+    notSuperseded,
+  );
+  const status = {
+    open: or(open, unhandled),
+    active: open,
+    finished: not(open),
+    all: undefined,
+  }[opts.status];
   const rows = await db
     .select({
       run: agentRuns,
@@ -616,7 +802,7 @@ export async function listWorkspaceRuns(
         eq(agentRuns.workspaceId, access.workspaceId),
         teamScope(access, issues.teamId),
         opts.agentId ? eq(agentRuns.agentId, opts.agentId) : undefined,
-        opts.status === 'active' ? open : opts.status === 'finished' ? not(open) : undefined,
+        status,
       ),
     )
     .orderBy(desc(agentRuns.updatedAt))
@@ -667,11 +853,12 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
   const [ws] = await ctx.tx.select().from(workspaces).where(eq(workspaces.id, ctx.workspaceId));
   if (workspaceSettings(ws!).agentRunsPaused) return null;
   const [agent] = await ctx.tx
-    .select({ concurrency: agents.concurrency })
+    .select({ concurrency: agents.concurrency, pausedUntil: agents.pausedUntil })
     .from(agents)
     .where(eq(agents.userId, ctx.userId))
     .for('update');
   if (!agent) throw notFound('Agent');
+  if (agent.pausedUntil && agent.pausedUntil > new Date().toISOString()) return null;
   const [{ busy }] = (await ctx.tx
     .select({ busy: sql<number>`count(*)::int` })
     .from(agentRuns)
@@ -781,6 +968,7 @@ export async function reportRun(
     sessionUrl?: string | null;
     summary?: string | null;
     error?: string | null;
+    failureReason?: AgentRunFailureReason;
     question?: string;
     resume?: string | null;
   },
@@ -817,6 +1005,7 @@ export async function reportRun(
   }
   const now = new Date().toISOString();
   const final = input.status === 'succeeded' || input.status === 'failed';
+  const failure = input.status === 'failed' ? await failureOf(ctx, run, input) : null;
   const [saved] = await ctx.tx
     .update(agentRuns)
     .set({
@@ -827,21 +1016,77 @@ export async function reportRun(
       ...(input.resume !== undefined && { resume: input.resume }),
       ...(input.status === 'running' && !run.startedAt && { startedAt: now }),
       ...(final && { finishedAt: now, leaseExpiresAt: null, startedAt: run.startedAt ?? now }),
+      ...(failure && { failureReason: failure.reason, retryAt: failure.retryAt }),
       updatedAt: now,
     })
     .where(eq(agentRuns.id, runId))
     .returning();
-  if (final) {
-    const body = saved!.summary?.trim()
-      ? saved!.summary.trim()
-      : input.status === 'failed'
-        ? `This run failed${saved!.error ? `:\n\n\`\`\`\n${saved!.error.slice(-2000)}\n\`\`\`` : '.'}`
-        : null;
-    if (body) await createComment(ctx, run.issueId, { body: body.slice(0, 50_000) });
-  }
+  if (failure?.reason === 'usage_limit') await pauseAgent(ctx, run.agentId, failure.pauseUntil);
+  // A failure is reported as one, even when the runner kept some output as the summary.
+  const body =
+    input.status === 'succeeded'
+      ? saved!.summary?.trim()
+      : failure && (await failureComment(ctx, saved!, failure));
+  if (body) await createComment(ctx, run.issueId, { body: body.slice(0, 50_000) });
   await changed(ctx, saved!);
   return toAgentRun(saved!);
 }
+
+/**
+ * Why a run failed: what its runner says, else what its output says. A usage limit pauses the
+ * agent until the limit resets (or an hour, when the output doesn't say), and the run restarts
+ * then, unless it's the `AGENT_AUTO_RESTARTS`th limit in a row.
+ */
+async function failureOf(
+  ctx: Ctx,
+  run: RunRow,
+  input: { error?: string | null; summary?: string | null; failureReason?: AgentRunFailureReason },
+) {
+  const text = [input.error, input.summary].filter(Boolean).join('\n');
+  const reason = input.failureReason ?? classifyFailure(text) ?? 'error';
+  if (reason !== 'usage_limit') return { reason, retryAt: null, pauseUntil: null };
+  const pauseUntil =
+    parseLimitReset(text) ?? new Date(Date.now() + DEFAULT_LIMIT_PAUSE_MS).toISOString();
+  const restarts = (await limitStreak(ctx.tx, run.retryOfId)) < AGENT_AUTO_RESTARTS;
+  return { reason, retryAt: restarts ? pauseUntil : null, pauseUntil };
+}
+
+/** Holds the agent's claims until `until`; a later pause already in place stays. */
+async function pauseAgent(ctx: Ctx, agentId: string, until: string | null) {
+  if (!until) return;
+  await ctx.tx
+    .update(agents)
+    .set({
+      pausedUntil: sql`greatest(coalesce(${agents.pausedUntil}, ${until}::timestamptz), ${until}::timestamptz)`,
+      pauseReason: 'usage_limit',
+      updatedAt: new Date().toISOString(),
+    })
+    .where(eq(agents.userId, agentId));
+  emit(ctx, { kind: 'member', action: 'updated', id: agentId });
+}
+
+async function failureComment(
+  ctx: Ctx,
+  run: RunRow,
+  failure: { reason: AgentRunFailureReason; retryAt: string | null; pauseUntil: string | null },
+) {
+  const error = run.error ?? run.summary;
+  const detail = error ? `\n\n\`\`\`\n${error.slice(-2000)}\n\`\`\`` : '';
+  if (failure.reason !== 'usage_limit') return `This run failed${detail ? `:${detail}` : '.'}`;
+  const [ws] = await ctx.tx.select().from(workspaces).where(eq(workspaces.id, ctx.workspaceId));
+  const zone = workspaceSettings(ws!).timezone ?? 'UTC';
+  const until = formatInZone(failure.pauseUntil!, zone);
+  return failure.retryAt
+    ? `I hit my usage limit, so I'm paused until ${until}. This run restarts by itself then.${detail}`
+    : `I hit my usage limit again, so I'm paused until ${until}. This run has failed on the limit ${AGENT_AUTO_RESTARTS} times in a row, so it won't restart by itself: restart it from Agent runs when the limit is raised.${detail}`;
+}
+
+const formatInZone = (iso: string, zone: string) =>
+  `${new Intl.DateTimeFormat('en-GB', {
+    timeZone: zone,
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(iso))} (${zone})`;
 
 /**
  * Every minute: runs whose runner went quiet go back in the queue for another runner, or fail
@@ -893,10 +1138,18 @@ async function reapLease(app: FastifyInstance, run: typeof agentRuns.$inferSelec
             ? {
                 status: 'failed',
                 error,
+                failureReason: 'runner_lost',
                 leaseExpiresAt: null,
                 finishedAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
               }
-            : { status: 'queued', error, leaseExpiresAt: null, runnerName: null },
+            : {
+                status: 'queued',
+                error,
+                leaseExpiresAt: null,
+                runnerName: null,
+                updatedAt: new Date().toISOString(),
+              },
         )
         .where(eq(agentRuns.id, run.id))
         .returning();
@@ -935,8 +1188,13 @@ export function waitForRuns(
       access,
       send: (data) => {
         const e = JSON.parse(data) as RealtimeEvent;
-        // A workspace change may be the pause lifting.
-        if (e.kind === 'agentRun' || e.kind === 'workspace') done();
+        // A workspace change, or one to the agent itself, may be a pause lifting.
+        if (
+          e.kind === 'agentRun' ||
+          e.kind === 'workspace' ||
+          (e.kind === 'member' && e.id === access.userId)
+        )
+          done();
       },
     });
   });

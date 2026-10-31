@@ -117,9 +117,11 @@ export const mcpToolSchemas = {
   list_agent_runs: z.object({
     agent: ref('Only this agent: username, name or id').optional(),
     status: z
-      .enum(['active', 'finished', 'all'])
+      .enum(['active', 'open', 'finished', 'all'])
       .default('active')
-      .describe('active: queued, working or waiting for an answer (default); finished; or all'),
+      .describe(
+        'active: queued, working or waiting for an answer (default); open: active plus failed runs nobody has restarted or dismissed; finished; or all',
+      ),
     limit: limit(200, 50),
   }),
   rerun_agent: z.object({

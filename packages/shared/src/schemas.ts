@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  AGENT_RUN_FAILURE_REASONS,
   AUDIT_CATEGORIES,
   type AuditCategory,
   CHAT_EVENT_KINDS,
@@ -1164,6 +1165,8 @@ export const reportAgentRunSchema = z
     sessionUrl: z.url().max(2000).nullish(),
     summary: z.string().max(50_000).nullish(),
     error: z.string().max(10_000).nullish(),
+    /** With `failed`, when the runner knows (a timeout, a failed checkout). Else Ordo reads the error. */
+    failureReason: z.enum(AGENT_RUN_FAILURE_REASONS).optional(),
     /** With `waiting`: what the agent asks. Posted on the issue; a person's reply resumes the run. */
     question: z.string().trim().min(1).max(10_000).optional(),
     /** Opaque: handed back on the next pickup so the runner can continue the agent's session. */
@@ -1174,9 +1177,12 @@ export const reportAgentRunSchema = z
     path: ['question'],
   });
 
-/** `GET /agent-runs`: active runs, finished ones, or both, optionally of one agent. */
+/**
+ * `GET /agent-runs`: active runs, finished ones, or both, optionally of one agent. `open` is the
+ * active ones plus failed runs nobody has restarted or dismissed yet.
+ */
 export const agentRunsQuerySchema = z.object({
-  status: z.enum(['active', 'finished', 'all']).default('all'),
+  status: z.enum(['open', 'active', 'finished', 'all']).default('all'),
   agentId: id.optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
 });

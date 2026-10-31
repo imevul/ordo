@@ -1,29 +1,37 @@
-import type { AgentRunWithIssue } from '@ordo/shared';
+import type { AgentPause, AgentRunWithIssue } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ExternalLink, Pause, Play, RotateCcw, Square } from 'lucide-react';
+import { ExternalLink, Pause, Play, RotateCcw, Square, X } from 'lucide-react';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys, useWsMutation } from '../api/queries.ts';
-import { isOpenRun, RUN_STATUS_COLOR, triggerLabel } from '../components/AgentRuns.tsx';
-import { Markdown } from '../components/Markdown.tsx';
+import {
+  FailureTags,
+  isOpenRun,
+  isRestartable,
+  RUN_STATUS_COLOR,
+  RunDetail,
+  runDetail,
+  triggerLabel,
+} from '../components/AgentRuns.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { t } from '../i18n/index.ts';
-import { relativeTime } from '../lib/format.ts';
+import { longDate, relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
-type Status = 'active' | 'finished' | 'all';
-const STATUSES: Status[] = ['active', 'finished', 'all'];
+type Status = 'open' | 'finished' | 'all';
+const STATUSES: Status[] = ['open', 'finished', 'all'];
 const COLUMNS = 'grid-cols-[9.5rem_minmax(0,1fr)_10rem_10rem_6rem_4.5rem]';
 
 /**
- * What agents are doing across the workspace: active runs (queued, working, waiting for an
- * answer) or finished ones. Runs change through realtime events, which refetch this list.
+ * What agents are doing across the workspace: open runs (queued, working, waiting for an answer,
+ * or failed and not yet restarted or dismissed) or finished ones. Runs change through realtime
+ * events, which refetch this list.
  */
 export function AgentRunsPage() {
   const ws = useWorkspace();
-  const [status, setStatus] = useState<Status>('active');
+  const [status, setStatus] = useState<Status>('open');
   const [agentId, setAgentId] = useState('');
   const agents = ws.members.filter((m) => m.kind === 'agent');
   const paused = ws.workspace.settings.agentRunsPaused;
@@ -33,6 +41,11 @@ export function AgentRunsPage() {
     // The workspace's settings come with the signed-in user's workspaces.
     { invalidate: [keys.me] },
   );
+  const { data: pauses = [] } = useQuery({
+    // Under agentRuns, so the run events that pause an agent refetch it too.
+    queryKey: ['ws', ws.slug, 'agentRuns', 'pauses'],
+    queryFn: () => api.get<AgentPause[]>(wsPath(ws.slug, '/agent-pauses')),
+  });
   const { data: runs } = useQuery({
     queryKey: ['ws', ws.slug, 'agentRuns', 'list', status, agentId],
     queryFn: () =>
@@ -103,15 +116,16 @@ export function AgentRunsPage() {
           {t('agents.runsPage.pausedBanner')}
         </div>
       )}
+      {pauses.map((p) => (
+        <PauseBanner key={p.agentId} pause={p} />
+      ))}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!runs ? (
           <Spinner />
         ) : runs.length === 0 ? (
           <EmptyState
             title={
-              status === 'active'
-                ? t('agents.runsPage.emptyActive')
-                : t('agents.runsPage.emptyTitle')
+              status === 'open' ? t('agents.runsPage.emptyOpen') : t('agents.runsPage.emptyTitle')
             }
             body={agents.length ? t('agents.runsPage.emptyBody') : t('agents.runsPage.noAgents')}
           />
@@ -137,14 +151,46 @@ export function AgentRunsPage() {
   );
 }
 
+/** An agent on hold (e.g. it hit its usage limit), with "Resume now" for admins. */
+function PauseBanner({ pause }: { pause: AgentPause }) {
+  const ws = useWorkspace();
+  const name = ws.memberById.get(pause.agentId)?.name ?? t('shell.actor.someone');
+  const vars = { name, time: longDate(pause.pausedUntil) };
+  const unpause = useWsMutation(
+    ws.slug,
+    () => api.post(wsPath(ws.slug, `/agents/${pause.agentId}/unpause`)),
+    { invalidate: [['ws', ws.slug, 'agentRuns']] },
+  );
+  return (
+    <div className="flex items-center gap-3 border-b border-border-soft bg-warning/10 px-4 py-2 text-[13px] text-warning">
+      <span className="min-w-0 flex-1">
+        {pause.reason === 'usage_limit'
+          ? t('agents.runsPage.pausedLimit', vars)
+          : t('agents.runsPage.paused', vars)}
+      </span>
+      {ws.isAdmin && (
+        <button
+          type="button"
+          className="btn btn-ghost btn-sm flex-none"
+          onClick={() => unpause.mutate(undefined)}
+          disabled={unpause.isPending}
+          title={t('agents.runsPage.resumeNowHint')}
+        >
+          <Play size={12} /> {t('agents.runsPage.resumeNow')}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RunRow({ run }: { run: AgentRunWithIssue }) {
   const ws = useWorkspace();
-  // A question shows by itself (also when a run starts waiting while open) until toggled.
+  // A question, or what went wrong, shows by itself until toggled.
   const [toggled, setToggled] = useState<boolean | null>(null);
-  const open = toggled ?? run.status === 'waiting';
+  const open = toggled ?? (run.status === 'waiting' || run.status === 'failed');
   const agent = ws.memberById.get(run.agentId);
   const color = RUN_STATUS_COLOR[run.status];
-  const detail = run.status === 'waiting' ? run.question : (run.summary ?? run.error);
+  const detail = runDetail(run);
   const invalidate = { invalidate: [['ws', ws.slug, 'agentRuns']] };
   const resume = useWsMutation(
     ws.slug,
@@ -154,6 +200,16 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
   const cancel = useWsMutation(
     ws.slug,
     () => api.post(wsPath(ws.slug, `/agent-runs/${run.id}/cancel`)),
+    invalidate,
+  );
+  const restart = useWsMutation(
+    ws.slug,
+    () => api.post(wsPath(ws.slug, `/agent-runs/${run.id}/restart`)),
+    invalidate,
+  );
+  const dismiss = useWsMutation(
+    ws.slug,
+    () => api.post(wsPath(ws.slug, `/agent-runs/${run.id}/dismiss`)),
     invalidate,
   );
   return (
@@ -175,6 +231,10 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
             </span>
             <span className="truncate text-[13.5px]">{run.issue.title}</span>
           </Link>
+          {/* The issue column is narrow below xl; the expanded row says what failed anyway. */}
+          <span className="hidden xl:contents">
+            <FailureTags run={run} />
+          </span>
           {detail && (
             <button
               type="button"
@@ -225,6 +285,30 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
               <RotateCcw size={12} />
             </button>
           )}
+          {isRestartable(run) && (
+            <button
+              type="button"
+              className="flex h-6 w-6 items-center justify-center text-index hover:text-text"
+              title={t('agents.runs.restart')}
+              aria-label={t('agents.runs.restart')}
+              disabled={restart.isPending}
+              onClick={() => restart.mutate(undefined)}
+            >
+              <RotateCcw size={12} />
+            </button>
+          )}
+          {run.status === 'failed' && !run.dismissedAt && (
+            <button
+              type="button"
+              className="flex h-6 w-6 items-center justify-center text-index hover:text-text"
+              title={t('agents.runs.dismiss')}
+              aria-label={t('agents.runs.dismiss')}
+              disabled={dismiss.isPending}
+              onClick={() => dismiss.mutate(undefined)}
+            >
+              <X size={12} />
+            </button>
+          )}
           {isOpenRun(run) && (
             <button
               type="button"
@@ -241,20 +325,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
       </div>
       {open && detail && (
         <div className="pb-3 pl-[11.5rem] pr-4 text-[13px]">
-          {run.status === 'waiting' ? (
-            <>
-              <div className="mb-1 font-mono text-[10.5px] tracking-[0.16em] text-warning uppercase">
-                {t('agents.runs.asked')}
-              </div>
-              <Markdown source={detail} />
-            </>
-          ) : run.summary ? (
-            <Markdown source={run.summary} />
-          ) : (
-            <pre className="overflow-x-auto font-mono text-[11.5px] whitespace-pre-wrap text-muted">
-              {run.error}
-            </pre>
-          )}
+          <RunDetail run={run} />
         </div>
       )}
     </div>

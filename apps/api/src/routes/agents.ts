@@ -17,13 +17,17 @@ import {
   createAgent,
   createAgentKey,
   describeAgent,
+  dismissRun,
   heartbeat,
   listAgents,
+  listPauses,
   listRuns,
   listWorkspaceRuns,
   reportRun,
   requestRun,
+  restartRun,
   revokeAgentKey,
+  unpauseAgent,
   updateAgent,
   waitForRuns,
 } from '../services/agents.ts';
@@ -74,6 +78,13 @@ export async function agentRoutes(app: FastifyInstance) {
     return mutate(app, req, (ctx) => createAgentKey(ctx, id, name));
   });
 
+  // "Resume now" on an agent paused by a usage limit; its runs that failed on it restart.
+  app.post('/agents/:id/unpause', async (req) => {
+    requireAdmin(req);
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => unpauseAgent(ctx, id));
+  });
+
   app.delete('/agents/:id/keys/:keyId', async (req) => {
     requireAdmin(req);
     const { id, keyId } = req.params as { id: string; keyId: string };
@@ -106,6 +117,20 @@ export async function agentRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     return mutate(app, req, (ctx) => cancelRun(ctx, id));
   });
+
+  // A failed (or cancelled) run again: the same agent, issue and reason, as a new run.
+  app.post('/agent-runs/:id/restart', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => restartRun(ctx, id));
+  });
+
+  app.post('/agent-runs/:id/dismiss', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => dismissRun(ctx, id));
+  });
+
+  // Agents whose claims are on hold (e.g. after a usage limit), for the Agent runs page.
+  app.get('/agent-pauses', async (req) => listPauses(db, requireAccess(req).workspaceId));
 
   // ─── the runner protocol (agent keys) ─────────────────────────────────
 

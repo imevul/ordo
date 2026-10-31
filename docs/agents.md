@@ -43,12 +43,48 @@ There are three parts:
 5. **Cancel** stops a run: its runner hears about it on its next heartbeat and stops the command. Unassigning the
    agent cancels its open runs too.
 6. **Agent runs** in the sidebar (shown once the workspace has an agent) lists what every agent is doing across the
-   workspace: active runs (queued, working, waiting for an answer) or finished ones, by agent, with Resume and Cancel.
+   workspace. It opens on **Open**: runs that are queued, working or waiting for an answer, plus failed runs nobody
+   has dealt with yet. **Finished** and **All** show the rest. Rows have Resume, Cancel, and for failed runs
+   **Restart** and **Dismiss** (see [When a run fails](#when-a-run-fails)).
 7. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
    queue for another runner. After three claims it is marked failed, with a comment on the issue.
 8. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
    while it's paused: queued runs wait, and runs already going finish. **Resume runs** picks up the queue again. (It's
    the workspace setting `agentRunsPaused`.)
+
+## When a run fails
+
+A run fails when its command exits non-zero, times out, can't check out its repositories, or its runner stops
+responding three times. The agent posts _This run failed_ on the issue with the end of the output, and the run keeps a
+**reason**: _usage limit_, _timed out_, _checkout failed_, _runner stopped responding_ or _error_.
+
+Failed runs stay in the **Open** list on the Agent runs page, with what went wrong, until someone deals with them:
+
+- **Restart** queues the same agent on the same issue again, for the same reason (the assignment, the comment that
+  mentioned it, the pull request), as a new run marked _restart_. It works for cancelled runs too, and on the issue's
+  own run list.
+- **Dismiss** sets a failed run aside without restarting it.
+
+A newer run of the same agent on the issue (a restart, or **Run again**) also takes a failed run off the Open list.
+
+### Usage limits
+
+When an agent's account runs out (Claude Code's _"You've hit your monthly spend limit … resets 1am
+(Europe/Oslo)"_, a usage or session limit, HTTP 429, an empty credit balance), Ordo recognises it in the failed
+run's output and:
+
+1. **pauses the agent** until the limit resets, read from the message, or for an hour when it doesn't say. Its
+   runners claim nothing meanwhile, so the rest of the queue waits instead of failing one issue after another.
+   `ordo agent run` logs _paused until …_.
+2. **restarts the run by itself** once the limit has reset, in the order the runs were queued. The comment on the
+   issue says when.
+
+A run that fails on the limit three times in a row stops restarting by itself (the reset time was probably misread,
+or the limit wasn't raised); restart it by hand. An admin can lift a pause early with **Resume now** in the banner on
+the Agent runs page, which restarts the runs that failed on the limit straight away.
+
+Recognising limits only works when the command fails: an agent CLI that prints the message and exits 0 reports
+success. The wrapper below passes Claude Code's errors on.
 
 ## `ordo agent run`
 
@@ -323,7 +359,14 @@ wrapper keeps the same session across questions:
 #!/bin/sh
 # claude-run.sh — command: [./claude-run.sh] in the runner file
 out=$(claude -p --output-format json --permission-mode acceptEdits ${ORDO_RESUME:+--resume "$ORDO_RESUME"})
-echo "ORDO_RESUME=$(printf '%s' "$out" | jq -r .session_id)"
+code=$?
+session=$(printf '%s' "$out" | jq -r '.session_id // empty' 2>/dev/null)
+[ -n "$session" ] && echo "ORDO_RESUME=$session"
+# A failure (a usage limit, a crash) has to exit non-zero, or Ordo records the run as done.
+if [ "$code" -ne 0 ] || [ "$(printf '%s' "$out" | jq -r '.is_error' 2>/dev/null)" = true ]; then
+  printf '%s\n' "$(printf '%s' "$out" | jq -r '.result // empty' 2>/dev/null || printf '%s' "$out")" >&2
+  exit "$((code ? code : 1))"
+fi
 printf '%s' "$out" | jq -r .result
 ```
 

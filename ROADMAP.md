@@ -130,6 +130,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   comment on issues) and Settings → AI agents with setup snippets and an agent prompt
 - [x] ✅ Agents: assignable non-human members, repositories on projects and teams, agent runs with a claim/lease
   runner protocol, and `ordo agent run` (any command, runner files with .env) — see docs/agents.md
+- [x] ✅ Failed agent runs: a reason for each failure, Restart and Dismiss on the Agent runs page (failed runs stay
+  in its Open list), and usage limits recognised: the agent pauses until the limit resets and its runs restart
 - [x] ✅ Agents and pull requests: PRs with checks and review in the issue sidebar, a project's pull request
   agent (hand-off when a PR is ready, issues for PRs opened outside Ordo), assignees woken on failing checks and
   requested changes

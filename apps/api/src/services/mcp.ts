@@ -529,6 +529,9 @@ function handlers(c: McpCaller): Handlers {
         trigger: r.trigger,
         runner: r.runnerName,
         question: r.status === 'waiting' ? r.question : undefined,
+        failureReason: r.failureReason ?? undefined,
+        error: r.status === 'failed' ? r.error?.slice(-500) : undefined,
+        retryAt: r.retryAt ?? undefined,
         sessionUrl: r.sessionUrl,
         updatedAt: r.finishedAt ?? r.startedAt ?? r.createdAt,
       }));
@@ -645,6 +648,8 @@ async function agentRunsResult(c: McpReader, dir: Directory, ref: string) {
       question: r.question,
       summary: r.summary,
       error: r.error,
+      failureReason: r.failureReason,
+      retryAt: r.retryAt,
       createdAt: r.createdAt,
       finishedAt: r.finishedAt,
     })),

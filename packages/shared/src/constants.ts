@@ -170,6 +170,7 @@ export const AUDIT_ACTIONS = [
   'agent.created',
   'agent.updated',
   'agent.disabled',
+  'agent.unpaused',
   'agent.key_created',
   'repository.created',
   'repository.updated',
@@ -349,6 +350,21 @@ export const AGENT_RUN_OPEN: readonly AgentRunStatus[] = [
   'running',
   'waiting',
 ];
+/**
+ * Why a run failed, as far as Ordo can tell. usage_limit: the agent's account hit a usage or spend
+ * limit (the agent pauses and the run restarts when the limit resets). runner_lost: its runner
+ * stopped responding on the last attempt. error: anything else, usually a non-zero exit.
+ */
+export const AGENT_RUN_FAILURE_REASONS = [
+  'usage_limit',
+  'timeout',
+  'runner_lost',
+  'checkout',
+  'error',
+] as const;
+export type AgentRunFailureReason = (typeof AGENT_RUN_FAILURE_REASONS)[number];
+/** Usage-limit failures in a row after which a run waits for a person instead of restarting. */
+export const AGENT_AUTO_RESTARTS = 3;
 /**
  * Why a run exists: its agent was assigned the issue, a person @mentioned it, Run again, or
  * something happened to one of the issue's pull requests (see `AgentRun.triggerDetail`).

@@ -1,4 +1,5 @@
 import type {
+  AgentRunFailureReason,
   AgentRunStatus,
   AgentRunTrigger,
   AuditAction,
@@ -1243,6 +1244,9 @@ export interface Agent {
   concurrency: number;
   /** Whether failing checks and requested changes on its issues' pull requests give it a run. */
   followPullRequests: boolean;
+  /** Claims hand out nothing until then (e.g. its runner hit a usage limit); null when not paused. */
+  pausedUntil: string | null;
+  pauseReason: AgentRunFailureReason | null;
   disabled: boolean;
   keys: {
     id: string;
@@ -1276,6 +1280,14 @@ export interface AgentRun {
   /** Opaque to Ordo: what the runner needs to continue the agent's session on the next pickup. */
   resume: string | null;
   error: string | null;
+  /** For a failed run: what went wrong, as far as Ordo can tell. */
+  failureReason: AgentRunFailureReason | null;
+  /** For a run that failed on a usage limit: when it restarts by itself. */
+  retryAt: string | null;
+  /** The failed run this one restarts. */
+  retryOfId: string | null;
+  /** Set when someone dismissed the failed run; it then leaves the open runs. */
+  dismissedAt: string | null;
   requestedById: string | null;
   leaseExpiresAt: string | null;
   startedAt: string | null;
@@ -1289,6 +1301,13 @@ export interface AgentRunPullRequest {
   number: number;
   url: string;
   branch: string;
+}
+
+/** An agent whose claims are on hold, for the Agent runs page. */
+export interface AgentPause {
+  agentId: string;
+  pausedUntil: string;
+  reason: AgentRunFailureReason | null;
 }
 
 /** A run with the issue it's about, for workspace-wide run lists. */
@@ -1337,4 +1356,7 @@ export interface AgentIdentity {
   username: string;
   workspace: { id: string; slug: string; name: string };
   teams: { id: string; key: string; name: string }[];
+  /** Claims hand out nothing until then (e.g. after a usage limit); null when not paused. */
+  pausedUntil: string | null;
+  pauseReason: AgentRunFailureReason | null;
 }

@@ -2,6 +2,7 @@ import type {
   AgentIdentity,
   AgentRun,
   AgentRunContext,
+  AgentRunFailureReason,
   Attachment,
   Bootstrap,
   Comment,
@@ -311,6 +312,8 @@ export class WorkspaceClient {
         sessionUrl?: string | null;
         summary?: string | null;
         error?: string | null;
+        /** With `failed`, when the runner knows why; otherwise Ordo reads the error. */
+        failureReason?: AgentRunFailureReason;
         question?: string;
         resume?: string | null;
       },

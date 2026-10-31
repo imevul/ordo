@@ -1,4 +1,5 @@
 import type {
+  AgentRunFailureReason,
   AgentRunPullRequest,
   AgentRunStatus,
   AgentRunTrigger,
@@ -1719,6 +1720,9 @@ export const agents = pgTable('agents', {
   concurrency: integer('concurrency').notNull().default(1),
   /** Whether failing checks and requested changes on its issues' pull requests give it a run. */
   followPullRequests: boolean('follow_pull_requests').notNull().default(true),
+  /** Claims hand out nothing until then, e.g. after its runner hit a usage limit. */
+  pausedUntil: ts('paused_until'),
+  pauseReason: text('pause_reason').$type<AgentRunFailureReason>(),
   createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
@@ -1749,6 +1753,16 @@ export const agentRuns = pgTable(
     sessionUrl: text('session_url'),
     summary: text('summary'),
     error: text('error'),
+    /** For a failed run: what went wrong, as far as Ordo can tell. */
+    failureReason: text('failure_reason').$type<AgentRunFailureReason>(),
+    /** For a run that failed on a usage limit: when it restarts by itself. */
+    retryAt: ts('retry_at'),
+    /** The failed run this one restarts. */
+    retryOfId: uuid('retry_of_id').references((): AnyPgColumn => agentRuns.id, {
+      onDelete: 'set null',
+    }),
+    /** A failed run someone looked at and set aside: it leaves the open runs. */
+    dismissedAt: ts('dismissed_at'),
     /** Why it was queued: assignment, a person's @mention, or Run again. */
     trigger: text('trigger').$type<AgentRunTrigger>().notNull().default('assigned'),
     triggerCommentId: uuid('trigger_comment_id').references(() => comments.id, {

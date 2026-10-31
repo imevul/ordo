@@ -1,7 +1,7 @@
 import { lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { sessions } from './db/schema.ts';
-import { reapLeases } from './services/agents.ts';
+import { reapLeases, restartAfterLimits } from './services/agents.ts';
 import { sweepAttachments } from './services/attachments.ts';
 import { autoArchive, forEachIsolated } from './services/automation.ts';
 import { runChatNotification, runChatPost } from './services/chat.ts';
@@ -47,6 +47,8 @@ export function registerJobs(app: FastifyInstance) {
   jobs.every('users.statusExpire', 60);
   jobs.define('agents.leases', () => reapLeases(app));
   jobs.every('agents.leases', 60);
+  jobs.define('agents.restart', () => restartAfterLimits(app));
+  jobs.every('agents.restart', 60);
 
   // The outbox: one dispatch per transaction, then one job per webhook delivery / integration.
   jobs.define<{ workspaceId: string; ids: number[] }>('events.dispatch', (p) =>

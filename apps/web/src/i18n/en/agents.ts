@@ -64,6 +64,24 @@ export default {
     /** Above the agent's question on a waiting run. Replying on the issue resumes it. */
     asked: 'Asked · reply on the issue to continue',
     cancel: 'Cancel',
+    /** On a failed or cancelled run: the same agent, issue and reason, as a new run. */
+    restart: 'Restart',
+    /** On a failed run: set it aside without restarting it. */
+    dismiss: 'Dismiss',
+    /** Tag on a run that restarts a failed one. */
+    restarted: 'restart',
+    /** Why a run failed, next to its status. */
+    failure: {
+      usage_limit: 'usage limit',
+      timeout: 'timed out',
+      runner_lost: 'runner stopped responding',
+      checkout: 'checkout failed',
+      error: 'error',
+    },
+    /** {time} is like "Oct 31 · 01:00". */
+    restartsAt: 'Restarts by itself at {time}, when the limit resets.',
+    noAutoRestart:
+      'Failed on the usage limit several times in a row, so it won’t restart by itself. Restart it once the limit is raised.',
     session: 'Open session',
     /** {runner} is the runner's name, e.g. jonas-laptop/claude */
     on: 'on {runner}',
@@ -105,7 +123,13 @@ export default {
     title: 'Agent runs',
     agent: 'Agent',
     allAgents: 'All agents',
-    status: { active: 'Active', finished: 'Finished', all: 'All' },
+    status: { open: 'Open', finished: 'Finished', all: 'All' },
+    /** {name} is an agent; {time} is like "Oct 31 · 01:00". */
+    pausedLimit:
+      '{name} hit its usage limit and is paused until {time}. Runs that failed on the limit restart then.',
+    paused: '{name} is paused until {time}.',
+    resumeNow: 'Resume now',
+    resumeNowHint: 'Lift the pause and restart the runs that failed on the limit now',
     columns: {
       status: 'Status',
       issue: 'Issue',
@@ -115,7 +139,7 @@ export default {
     },
     more: 'more',
     less: 'less',
-    emptyActive: 'No agent is working on anything right now',
+    emptyOpen: 'Nothing running, and no failed runs waiting for you',
     emptyTitle: 'No runs yet',
     emptyBody: 'Assign an issue to an agent and its run shows up here.',
     noAgents: 'Add an agent under Settings → Agents, then assign it an issue.',
