@@ -110,15 +110,19 @@ export async function ingestEmail(ictx: IntegrationContext, raw: string | Buffer
   await ictx.run(async (ctx) => {
     // The same message again (a redelivery, a mailbox re-scan) changes nothing.
     if (await seen(ctx.tx)) return;
+    // Only threads in this intake's team: Message-IDs travel in every copy of a mail, so anyone
+    // could otherwise reply into another intake's issues, a private team's among them.
     const [earlier] = thread.length
       ? await ctx.tx
           .select({ issueId: issueLinks.issueId })
           .from(issueLinks)
+          .innerJoin(issues, eq(issues.id, issueLinks.issueId))
           .where(
             and(
               eq(issueLinks.workspaceId, ctx.workspaceId),
               eq(issueLinks.provider, 'email'),
               inArray(issueLinks.externalId, thread),
+              eq(issues.teamId, teamId),
             ),
           )
       : [];
