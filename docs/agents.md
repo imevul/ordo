@@ -232,11 +232,12 @@ your `ordo login`.
 
 - `${VAR}` and `${VAR:-default}` expand from the environment, then `env_file`, then a sibling `.env`. An unset
   variable without a default is an error naming it. Plain `$VAR` is left alone, for the shell. In `command` and
-  `instructions`, only variables set when the file loads are expanded; the rest, and every `${ORDO_…}`, are kept as
-  written, without an error. So `claude --model ${MODEL} --mcp-config "${ORDO_MCP_CONFIG}"` gets `MODEL` from `.env`
-  and the launch contract's MCP config from the run: the string form's shell expands what's left when the run
-  starts (the list form passes it on as written). Values from `env_file` and `.env` don't reach the command's
-  environment; put what it reads itself in `env:`.
+  `instructions`, every `${ORDO_…}` is kept as written: the launch contract sets those when a run starts. A string
+  `command` also keeps variables that the agent's `env:` sets; its shell expands what's left when the run starts
+  (the list form and `instructions` pass it on as written). So `claude --model ${MODEL} --mcp-config
+  "${ORDO_MCP_CONFIG}"` gets `MODEL` from `.env` and the launch contract's MCP config from the run, and a typo like
+  `${MODLE}` fails the load instead of becoming an empty argument. Values from `env_file` and `.env` don't reach the
+  command's environment; put what it reads itself in `env:`.
 - `command` is a list (run directly; a leading `./` is relative to the file) or a string (run with `sh -c` in the
   worktree, or in an empty directory with `cwd: tmp`). Only the list form resolves `./`, so a script next to the file
   goes in a list, like `factory` above.

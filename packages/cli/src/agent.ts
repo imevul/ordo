@@ -104,25 +104,29 @@ export function parseDotenv(text: string): Record<string, string> {
  * Expands `${VAR}` and `${VAR:-default}` in every string. Plain `$VAR` is left alone, so a shell
  * command can still use the launch contract's variables (`$ORDO_PROMPT_FILE`).
  *
- * With `keepUnknown` (for `command` and `instructions`), a variable that isn't set when the file
- * loads is kept as written for the shell, and `${ORDO_…}` always is: the launch contract sets
- * those per run, and the runner's own `ORDO_TOKEN` or `ORDO_URL` must not stand in for them.
+ * With `keepOrdo` (for `command` and `instructions`), `${ORDO_…}` is kept as written: the launch
+ * contract sets those per run, and the runner's own `ORDO_TOKEN` or `ORDO_URL` must not stand in
+ * for them. With `shell` (a string `command`, run with `sh -c`), a variable that the agent's
+ * `env:` sets is kept too: the shell expands it when the run starts. Anything else that isn't
+ * set and has no default fails the load, so a typo can't become an empty argument.
  */
 export function expandVars(
   value: unknown,
   vars: Record<string, string | undefined>,
   path = '',
-  opts: { keepUnknown?: boolean } = {},
+  opts: { keepOrdo?: boolean; shell?: { env: Record<string, string> } } = {},
 ): unknown {
   if (typeof value === 'string')
     return value.replace(
       /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g,
       (match, name: string, fallback: string | undefined) => {
+        if ((opts.keepOrdo || opts.shell) && name.startsWith('ORDO_')) return match;
+        // `env:` overrides the environment in the command's process, so its value wins there.
+        if (opts.shell && Object.hasOwn(opts.shell.env, name)) return match;
         const v = vars[name];
-        if (opts.keepUnknown && (v === undefined || name.startsWith('ORDO_'))) return match;
         if (v !== undefined && v !== '') return v;
         if (fallback !== undefined) return fallback;
-        if (opts.keepUnknown) return '';
+        if (v !== undefined && (opts.keepOrdo || opts.shell)) return v;
         throw new RunnerConfigError(`${path || 'value'}: \${${name}} is not set`);
       },
     );
@@ -194,19 +198,19 @@ export async function loadRunnerFile(
   }
   for (const [k, v] of Object.entries(env)) if (v !== undefined) vars[k] = v;
 
-  // In `command` and `instructions`, only what's known now is expanded: `${ORDO_MCP_CONFIG}` and
-  // the rest of the launch contract only exist when a run starts, so the shell expands them then.
-  // `.env` and `env_file` values don't reach the command's environment, so they must go in here.
+  // `${ORDO_MCP_CONFIG}` and the rest of the launch contract only exist when a run starts, so
+  // `command` and `instructions` keep them as written. `command` is expanded per agent below,
+  // once its `env:` is known. `.env` and `env_file` values don't reach the command's
+  // environment, so they must go in here.
   type Fields = z.infer<typeof fieldsSchema>;
   const expandFields = <T extends Fields>(fields: T, where: string): T => {
     const { command, instructions, ...rest } = fields;
-    const at = (k: string) => (where ? `${where}.${k}` : k);
-    const keep = { keepUnknown: true };
+    const at = where ? `${where}.instructions` : 'instructions';
     return {
       ...(expandVars(rest, vars, where) as T),
-      ...(command !== undefined && { command: expandVars(command, vars, at('command'), keep) }),
+      ...(command !== undefined && { command }),
       ...(instructions !== undefined && {
-        instructions: expandVars(instructions, vars, at('instructions'), keep),
+        instructions: expandVars(instructions, vars, at, { keepOrdo: true }),
       }),
     };
   };
@@ -232,7 +236,12 @@ export async function loadRunnerFile(
     warnings.push(`${path} holds an API key and anyone on this machine can read it (chmod 600)`);
 
   const specs = entries.map(([label, own]): AgentSpec => {
-    const merged = { ...top, ...defaults, ...own, env: { ...defaults.env, ...own.env } };
+    const merged = {
+      ...top,
+      ...defaults,
+      ...own,
+      env: { ...top.env, ...defaults.env, ...own.env },
+    };
     const where = agents ? `agents.${label}` : path;
     const url = merged.url ?? fallback.url;
     const workspace = merged.workspace ?? fallback.workspace;
@@ -243,10 +252,22 @@ export async function loadRunnerFile(
       ['workspace', workspace],
     ] as const)
       if (!value) throw new RunnerConfigError(`${where}.${field}: required`);
+    // A list is run as written, so only the string form leaves anything for a shell to expand.
+    const commandAt = own.command
+      ? `${where}.command`
+      : defaults.command
+        ? 'defaults.command'
+        : 'command';
+    const expanded = expandVars(
+      merged.command,
+      vars,
+      commandAt,
+      typeof merged.command === 'string' ? { shell: { env: merged.env } } : { keepOrdo: true },
+    ) as string | string[];
     const command =
-      Array.isArray(merged.command) && isRelativePath(merged.command[0]!)
-        ? [resolve(baseDir, merged.command[0]!), ...merged.command.slice(1)]
-        : merged.command!;
+      Array.isArray(expanded) && isRelativePath(expanded[0]!)
+        ? [resolve(baseDir, expanded[0]!), ...expanded.slice(1)]
+        : expanded;
     return {
       label,
       url: url!.replace(/\/+$/, ''),
