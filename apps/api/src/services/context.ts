@@ -32,6 +32,8 @@ export interface Ctx {
   /** Suppresses notifications (imports, bulk system changes). */
   silent: boolean;
   meta: RequestMeta | null;
+  /** Set while automation rules act: the rules that led here, and the one acting now. */
+  automation?: { chain: string[]; rule?: { id: string; name: string } };
 }
 
 export function emit(ctx: Ctx, e: Omit<RealtimeEvent, 'workspaceId' | 'actorId'>) {
@@ -43,6 +45,8 @@ export interface DomainEventDraft {
   teamIds: string[];
   data: Record<string, unknown>;
   changes?: HistoryChange[];
+  /** Rules that caused it, oldest first (see `Ctx.automation`). */
+  automationChain?: string[];
 }
 
 /**
@@ -60,5 +64,9 @@ export function record(
     data: data as Record<string, unknown>,
     teamIds: [...new Set((opts.teamIds ?? []).filter((t): t is string => !!t))],
     changes: opts.changes,
+    automationChain: ctx.automation && [
+      ...ctx.automation.chain,
+      ...(ctx.automation.rule ? [ctx.automation.rule.id] : []),
+    ],
   });
 }

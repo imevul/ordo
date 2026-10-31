@@ -76,6 +76,23 @@ label or a priority, and then sets a priority, adds labels, assigns someone — 
 on-call rotation — and can accept the issue straight into a status. Rules run in order and every matching one
 applies; the **Ordo** bot makes the changes, so the issue's history shows them.
 
+**Automations** (team settings; team admins) are "when … then …" rules for the team's issues:
+
+- **When** an issue is created; an issue changes (optionally only certain fields); an issue moves to a status; a
+  label is added; all of an issue's sub-issues are done (the rule acts on the parent; canceled sub-issues count as
+  finished, but at least one must be done); or a pull request that closes the issue opens or merges.
+- **And the issue** is in a status, has a priority or label, is assigned to someone, is in a project, or mentions
+  some text — the same conditions as the issue filters, checked when the rule runs. Leave them empty to match
+  every issue.
+- **Then** set the status, priority, assignee (pick an agent to hand the issue to it), cycle (a specific one or
+  whichever is active), or project; add or remove labels; or post a comment.
+
+For example: when the label _Security_ is added, set priority Urgent and assign the on-call person; when an issue
+moves to _In Review_, assign the reviewer agent. Rules run in order shortly after the change, as the **Ordo** bot,
+and the activity says which automation acted. A rule acts at most once in a chain of changes that automations set
+off, and a chain stops after five rules, so two rules can't keep undoing each other. Each rule shows how often it
+ran and when it last did. Triage rules still run first, the moment an issue lands in triage.
+
 ## Issues
 
 Create an issue with `C` (or the pen icon). Type a title, optionally a description, then set

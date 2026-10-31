@@ -131,6 +131,7 @@ export default {
     dueDateRemoved: '{actor} fjernet forfallsdatoen',
     team: '{actor} flyttet saken fra {from} til {to}',
     changed: '{actor} endret {field}',
+    automation: '{actor} kjørte automatiseringen {rule}',
     fallback: {
       someone: 'noen',
       nobody: 'ingen',

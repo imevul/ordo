@@ -3,6 +3,7 @@ import type { Translation } from '../index.ts';
 import admin from './admin.ts';
 import agents from './agents.ts';
 import auth from './auth.ts';
+import automationRules from './automationRules.ts';
 import common from './common.ts';
 import customers from './customers.ts';
 import cycles from './cycles.ts';
@@ -43,6 +44,7 @@ export default {
   teams,
   templates,
   triageRules,
+  automationRules,
   sso,
   webhooks,
   integrations,

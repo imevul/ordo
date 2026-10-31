@@ -29,7 +29,7 @@ import { DATE_RANGES, filterDepth } from './filters.ts';
 import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
 import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
 import { HEX_COLOR } from './theme.ts';
-import { OFFLINE_SYNC_MODES, WORKSPACE_AI_POLICIES } from './types.ts';
+import { AUTOMATION_FIELDS, OFFLINE_SYNC_MODES, WORKSPACE_AI_POLICIES } from './types.ts';
 
 /** Request payload schemas, shared by the API (validation) and the web client (forms). */
 
@@ -439,6 +439,46 @@ export const updateTriageRuleSchema = z
   .extend({ position: z.number() })
   .partial();
 
+const automationTriggerSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('issue_created') }),
+  z.object({
+    type: z.literal('issue_updated'),
+    fields: z.array(z.enum(AUTOMATION_FIELDS)).max(AUTOMATION_FIELDS.length).optional(),
+  }),
+  z.object({ type: z.literal('status_changed'), stateIds: z.array(id).max(50).optional() }),
+  z.object({ type: z.literal('label_added'), labelIds: z.array(id).max(50).optional() }),
+  z.object({ type: z.literal('sub_issues_completed') }),
+  z.object({ type: z.literal('pull_request_opened') }),
+  z.object({ type: z.literal('pull_request_merged') }),
+]);
+
+const automationRuleFields = {
+  name: z.string().trim().min(1).max(80),
+  enabled: z.boolean(),
+  trigger: automationTriggerSchema,
+  // Declared after issueFilterSchema; see below.
+  conditions: z.lazy(() => automationConditionsSchema),
+  actions: z
+    .object({
+      stateId: id,
+      priority: z.number().int().min(0).max(4),
+      assigneeId: id.nullable(),
+      addLabelIds: z.array(id).max(20),
+      removeLabelIds: z.array(id).max(20),
+      cycleId: z.union([id, z.literal('active')]).nullable(),
+      projectId: id.nullable(),
+      comment: z.string().trim().min(1).max(10_000),
+    })
+    .partial(),
+};
+export const createAutomationRuleSchema = z
+  .object(automationRuleFields)
+  .partial({ enabled: true, conditions: true });
+export const updateAutomationRuleSchema = z
+  .object(automationRuleFields)
+  .extend({ position: z.number() })
+  .partial();
+
 export const createRecurringSchema = z.object({
   templateId: id,
   teamId: id,
@@ -610,6 +650,25 @@ export const issueFilterSchema = z
   })
   .refine((f) => filterDepth(f) <= MAX_FILTER_DEPTH, 'Filter groups nest too deeply');
 export type IssueFilter = z.infer<typeof issueFilterSchema>;
+
+/**
+ * The part of the filter model automation rules check. The bot is "me", so people are by id.
+ * Built from `conditionFields`, not `issueFilterSchema`: zod can't `.pick()` a refined object.
+ */
+const automationConditionsSchema = z
+  .object({
+    stateIds: conditionFields.stateIds,
+    stateTypes: conditionFields.stateTypes,
+    priorities: conditionFields.priorities,
+    labelIds: conditionFields.labelIds,
+    projectIds: conditionFields.projectIds,
+    milestoneIds: conditionFields.milestoneIds,
+    cycleIds: conditionFields.cycleIds,
+    q: z.string().max(200).optional(),
+    assigneeIds: z.array(idOrNone).max(200).optional(),
+    creatorIds: z.array(id).max(200).optional(),
+  })
+  .strict();
 
 export const GROUP_BY_OPTIONS = [
   'state',

@@ -10,6 +10,7 @@ import {
   workspaces,
 } from '../db/schema.ts';
 import { enqueue } from '../lib/jobs/index.ts';
+import { queueAutomations } from './automationRules.ts';
 import type { Ctx } from './context.ts';
 import { dispatchToIntegrations } from './integrations.ts';
 import { queueDelivery, wants } from './webhooks.ts';
@@ -32,6 +33,7 @@ export async function writeOutbox(ctx: Ctx) {
         teamIds: e.teamIds,
         data: e.data,
         changes: e.changes ?? null,
+        automationChain: e.automationChain ?? null,
       })),
     )
     .returning({ id: domainEvents.id });
@@ -110,6 +112,7 @@ export async function dispatchEvents(
     });
   }
   await dispatchToIntegrations(app, workspaceId, events);
+  await queueAutomations(app, workspaceId, events);
 }
 
 /**

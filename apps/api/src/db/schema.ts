@@ -6,6 +6,9 @@ import type {
   AgentRunStatus,
   AgentRunTrigger,
   AuditAction,
+  AutomationActions,
+  AutomationConditions,
+  AutomationTrigger,
   CustomFieldOption,
   CustomFieldType,
   CycleAutomation,
@@ -273,6 +276,27 @@ export const triageRules = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('triage_rules_team_idx').on(t.teamId)],
+);
+
+/** "When … then …" rules a team runs on its issues (`services/automationRules.ts`). */
+export const automationRules = pgTable(
+  'automation_rules',
+  {
+    id: pk(),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    position: doublePrecision('position').notNull().default(0),
+    trigger: jsonb('trigger').$type<AutomationTrigger>().notNull(),
+    conditions: jsonb('conditions').$type<AutomationConditions>().notNull().default({}),
+    actions: jsonb('actions').$type<AutomationActions>().notNull().default({}),
+    lastRunAt: ts('last_run_at'),
+    runCount: integer('run_count').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('automation_rules_team_idx').on(t.teamId)],
 );
 
 /** Former team keys, so identifiers in old branches, commits and links keep resolving. */
@@ -1495,6 +1519,8 @@ export const domainEvents = pgTable(
     teamIds: uuid('team_ids').array().notNull().default(sql`'{}'`),
     data: jsonb('data').$type<Record<string, unknown>>().notNull(),
     changes: jsonb('changes').$type<HistoryChange[]>(),
+    /** Set when automation rules caused it: the rules so far in the chain (loop protection). */
+    automationChain: uuid('automation_chain').array(),
     createdAt: createdAt(),
   },
   (t) => [index('domain_events_workspace_idx').on(t.workspaceId, t.id)],

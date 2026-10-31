@@ -222,6 +222,11 @@ function ChangeText({
         ),
         to: strong(ws.teamById.get(c.to as string)?.name ?? t('issue.activity.fallback.toTeam')),
       });
+    case 'automation':
+      return tx('issue.activity.automation', {
+        actor,
+        rule: strong((c.to as { name?: string } | null)?.name ?? ''),
+      });
     default:
       return tx('issue.activity.changed', { actor, field: c.field });
   }
