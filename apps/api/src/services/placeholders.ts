@@ -184,6 +184,8 @@ export const UNMERGED_COLUMNS: Record<string, string> = {
   'project_documents.created_by_id': 'written by members',
   'project_documents.updated_by_id': 'written by members',
   'customer_requests.created_by_id': 'added by members and integrations',
+  'time_entries.user_id':
+    "logged by members; imports bring no time, so placeholders don't have any",
   'initiatives.created_by': 'made by members',
   'releases.created_by': 'made by members',
   'issue_templates.assignee_id': 'templates only assign members',

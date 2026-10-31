@@ -189,6 +189,8 @@ function TimeEntryRow({ entry }: { entry: TimeEntry }) {
       <span className="flex-none font-mono text-[11px] text-index">
         {shortDate(entry.startedAt)}
       </span>
+      {/* Running timers are stopped, not edited; keep the dates lined up. */}
+      {canChange && running && <span className="w-6 flex-none" />}
       {canChange && !running && (
         <Popover
           width={320}
