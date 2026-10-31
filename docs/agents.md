@@ -80,7 +80,8 @@ Failed runs stay in the **Open** list on the Agent runs page, with what went wro
 - **Restart** queues the same agent on the same issue again, for the same reason (the assignment, the comment that
   mentioned it, the pull request), as a new run marked _restart_. It works for cancelled runs too, and on the issue's
   own run list.
-- **Dismiss** sets a failed run aside without restarting it.
+- **Dismiss** sets a failed or cancelled run aside without restarting it. A failed run then leaves the Open list; a
+  cancelled run was never on it, since cancelling was someone's choice.
 
 A newer run of the same agent on the issue (a restart, or **Run again**) also takes a failed run off the Open list.
 An assistant does both over MCP with `restart_agent_run` and `dismiss_agent_run` ([below](#from-an-assistant-over-mcp)).
