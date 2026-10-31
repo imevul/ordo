@@ -36,6 +36,7 @@ pnpm dev                    # API :3001 (tsx watch) + web :5173 (Vite, proxies /
 pnpm dev:preview            # the same on free ports with a throwaway seeded database (headless checks, agents)
 pnpm typecheck              # tsc (TypeScript 7) in every package
 pnpm test                   # Vitest; API tests use a per-run `ordo_test_<pid>` database
+pnpm e2e                    # Playwright smoke tests (apps/web/e2e) against their own dev:preview
 pnpm lint / pnpm format     # Biome
 pnpm db:generate            # after editing apps/api/src/db/schema.ts → new file in apps/api/drizzle/
 pnpm db:seed                # demo workspace "demo", login demo@ordo.test / ordo-demo-password
