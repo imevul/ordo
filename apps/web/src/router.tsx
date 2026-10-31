@@ -28,7 +28,7 @@ import {
   TeamIssuesPage,
   TrashPage,
 } from './routes/issues.tsx';
-import { ProjectDetailPage, ProjectsPage } from './routes/projects.tsx';
+import { ProjectDetailPage, ProjectsPage } from './routes/projects/index.tsx';
 import { RoadmapPage } from './routes/roadmap.tsx';
 import { SettingsPage, TeamSettingsPage } from './routes/settings/index.tsx';
 import { ViewPage, ViewsPage } from './routes/views.tsx';
