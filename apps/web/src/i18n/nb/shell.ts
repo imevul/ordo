@@ -7,6 +7,7 @@ export default {
     initiatives: 'Initiativer',
     roadmap: 'Veikart',
     insights: 'Innsikt',
+    dashboards: 'Oversikter',
     customers: 'Kunder',
     views: 'Visninger',
     trash: 'Papirkurv',

@@ -1,5 +1,6 @@
 import type {
   Account,
+  AgentActivityReport,
   ApiKey,
   Attachment,
   Bootstrap,
@@ -362,6 +363,21 @@ export const useVelocity = (slug: string, teamId: string | undefined) =>
     queryKey: ['ws', slug, 'insights', 'velocity', teamId],
     queryFn: () => api.get<Velocity>(wsPath(slug, `/insights/velocity?teamId=${teamId}`)),
     enabled: !!teamId,
+  });
+
+/** Agent runs started lately, per agent; under `agentRuns` so a run's change refetches it. */
+export const useAgentActivity = (
+  slug: string,
+  q: { days: number; agentId?: string | null; teamId?: string | null },
+) =>
+  useQuery({
+    queryKey: ['ws', slug, 'agentRuns', 'activity', q],
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(q.days) });
+      if (q.agentId) params.set('agentId', q.agentId);
+      if (q.teamId) params.set('teamId', q.teamId);
+      return api.get<AgentActivityReport>(wsPath(slug, `/agent-activity?${params}`));
+    },
   });
 
 export const useInvites = (slug: string, enabled: boolean) =>

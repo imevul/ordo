@@ -20,6 +20,7 @@ export type EntityKind =
   | 'workspace'
   | 'member'
   | 'view'
+  | 'dashboard'
   | 'favorite'
   | 'notification'
   | 'import'

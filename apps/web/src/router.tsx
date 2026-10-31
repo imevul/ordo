@@ -20,6 +20,7 @@ import { ForgotPasswordPage, ResetPasswordPage } from './routes/auth/password.ts
 import { SignupPage } from './routes/auth/signup.tsx';
 import { CustomerPage, CustomersPage } from './routes/customers.tsx';
 import { CycleDetailPage, CyclesPage } from './routes/cycles.tsx';
+import { DashboardPage, DashboardsPage } from './routes/dashboards.tsx';
 import { InboxPage } from './routes/inbox.tsx';
 import { InitiativePage, InitiativesPage } from './routes/initiatives.tsx';
 import { InsightsPage } from './routes/insights.tsx';
@@ -235,6 +236,16 @@ const insightsRoute = createRoute({
   path: '/insights',
   component: InsightsPage,
 });
+const dashboardsRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/dashboards',
+  component: DashboardsPage,
+});
+const dashboardRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/dashboard/$dashboardId',
+  component: DashboardPage,
+});
 const viewsRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/views',
@@ -299,6 +310,8 @@ const routeTree = rootRoute.addChildren([
     releaseRoute,
     roadmapRoute,
     insightsRoute,
+    dashboardsRoute,
+    dashboardRoute,
     customersRoute,
     agentRunsRoute,
     agentRunRoute,

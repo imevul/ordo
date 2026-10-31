@@ -4,6 +4,7 @@ export * from './agentUsage.ts';
 export * from './constants.ts';
 export * from './customFields.ts';
 export * from './cycles.ts';
+export * from './dashboards.ts';
 export * from './dates.ts';
 export * from './events.ts';
 export * from './filters.ts';

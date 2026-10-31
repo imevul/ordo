@@ -470,6 +470,13 @@
       "when": 1793478727837,
       "tag": "0066_agent_run_output",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1793480347549,
+      "tag": "0067_dashboards",
+      "breakpoints": true
     }
   ]
 }

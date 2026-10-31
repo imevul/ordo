@@ -7,6 +7,7 @@ import automationRules from './automationRules.ts';
 import common from './common.ts';
 import customers from './customers.ts';
 import cycles from './cycles.ts';
+import dashboards from './dashboards.ts';
 import enums from './enums.ts';
 import errors from './errors.ts';
 import imports from './imports.ts';
@@ -57,6 +58,7 @@ export default {
   initiatives,
   roadmap,
   cycles,
+  dashboards,
   inbox,
   insights,
   errors,

@@ -246,7 +246,7 @@ export const QUICK_REACTIONS = ['👍', '👎', '❤️', '🎉', '😄', '😕'
 /** Distinct emoji one comment can collect, so reactions stay a row and not a wall. */
 export const MAX_REACTION_KINDS = 20;
 
-export const FAVORITE_KINDS = ['issue', 'project', 'view', 'cycle', 'team'] as const;
+export const FAVORITE_KINDS = ['issue', 'project', 'view', 'cycle', 'team', 'dashboard'] as const;
 export type FavoriteKind = (typeof FAVORITE_KINDS)[number];
 
 /** Label palette tuned to sit on the Hotline Pink charcoal ground. */
@@ -500,6 +500,9 @@ export const API_MESSAGE_KEYS = [
   'own_comments_delete',
   'attachment_remove',
   'view_change',
+  'dashboard_change',
+  'dashboard_share',
+  'guests_dashboards',
   'guests_customers',
   'guests_cycles',
   'guests_releases',

@@ -23,6 +23,7 @@ export const shortcuts = (): { section: string; items: [string, string][] }[] =>
       ['G then T', t('shell.shortcuts.teamIssues')],
       ['G then P', t('common.projects')],
       ['G then V', t('shell.nav.views')],
+      ['G then D', t('shell.nav.dashboards')],
       ['G then S', t('common.settings')],
     ],
   },
@@ -65,6 +66,13 @@ export const shortcuts = (): { section: string; items: [string, string][] }[] =>
       ['1 – 4', t('shell.shortcuts.inboxQuickFilter')],
       ['5', t('shell.shortcuts.inboxUnreadOnly')],
       ['Shift F', t('shell.shortcuts.inboxFilters')],
+    ],
+  },
+  {
+    section: t('shell.nav.dashboards'),
+    items: [
+      ['E', t('dashboards.page.editLayout')],
+      ['A', t('dashboards.page.addWidget')],
     ],
   },
 ];

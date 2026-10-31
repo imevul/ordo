@@ -35,6 +35,7 @@ export function AppShell() {
   );
   useHotkey('g p', () => navigate({ to: '/$slug/projects', params: p }));
   useHotkey('g v', () => navigate({ to: '/$slug/views', params: p }));
+  useHotkey('g d', () => navigate({ to: '/$slug/dashboards', params: p }));
   useHotkey('g s', () =>
     navigate({ to: '/$slug/settings/$section', params: { ...p, section: 'account' } }),
   );

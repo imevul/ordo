@@ -713,6 +713,14 @@ describe('route inventory', () => {
     'DELETE /custom-fields/:id': 'manageableField checks the team (custom-fields.test.ts)',
     'PATCH /views/:id': 'owner or admin; results are filtered when queried',
     'DELETE /views/:id': 'owner or admin',
+    'GET /dashboards':
+      "listDashboards leaves out other teams' and others' private ones (dashboards.test.ts)",
+    'GET /dashboards/:id': 'getDashboard, like the list (dashboards.test.ts)',
+    'POST /dashboards': 'non-guests; a team dashboard checks team access (dashboards.test.ts)',
+    'PATCH /dashboards/:id':
+      'visible, then owner, admin or team admin; widgets query with the viewer’s access (dashboards.test.ts)',
+    'DELETE /dashboards/:id': 'visible, then owner, admin or team admin (dashboards.test.ts)',
+    'GET /agent-activity': "runs on the caller's teams only (dashboards.test.ts)",
     'GET /calendar-feeds': "the caller's own feeds (calendar.test.ts)",
     'POST /calendar-feeds':
       'the view must be visible; the feed is built with the owner’s access (calendar.test.ts)',

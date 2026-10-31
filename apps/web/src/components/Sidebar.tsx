@@ -12,6 +12,7 @@ import {
   Hexagon,
   Inbox,
   Layers,
+  LayoutDashboard,
   Lock,
   Package,
   Plus,
@@ -61,6 +62,20 @@ function FavoriteLink({ fav }: { fav: Favorite }) {
         <Link to="/$slug/view/$viewId" params={{ ...p, viewId: view.id }} className="nav-item">
           <Eye size={15} />
           <span className="truncate">{view.name}</span>
+        </Link>
+      );
+    }
+    case 'dashboard': {
+      const dashboard = ws.dashboardById.get(fav.targetId);
+      if (!dashboard) return null;
+      return (
+        <Link
+          to="/$slug/dashboard/$dashboardId"
+          params={{ ...p, dashboardId: dashboard.id }}
+          className="nav-item"
+        >
+          <LayoutDashboard size={15} />
+          <span className="truncate">{dashboard.name}</span>
         </Link>
       );
     }
@@ -249,6 +264,10 @@ export function Sidebar({
           <Link to="/$slug/insights" params={p} className="nav-item">
             <ChartLine size={15} />
             {t('shell.nav.insights')}
+          </Link>
+          <Link to="/$slug/dashboards" params={p} className="nav-item">
+            <LayoutDashboard size={15} />
+            {t('shell.nav.dashboards')}
           </Link>
           <Link to="/$slug/releases" params={p} className="nav-item">
             <Package size={15} />

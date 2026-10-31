@@ -12,6 +12,7 @@ import type {
   CustomFieldOption,
   CustomFieldType,
   CycleAutomation,
+  DashboardWidget,
   DomainEventType,
   EstimateScale,
   ExportFormat,
@@ -919,6 +920,26 @@ export const views = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [index('views_workspace_idx').on(t.workspaceId)],
+);
+
+/** Widgets pinned to a page; scoped and shared like views. The widgets are kept in order. */
+export const dashboards = pgTable(
+  'dashboards',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    shared: boolean('shared').notNull().default(true),
+    widgets: jsonb('widgets').$type<DashboardWidget[]>().notNull().default([]),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('dashboards_workspace_idx').on(t.workspaceId)],
 );
 
 /**
