@@ -27,7 +27,7 @@ services:
       ORDO_ALLOW_PRIVATE_NETWORK_TARGETS: ${ORDO_ALLOW_PRIVATE_NETWORK_TARGETS:-}
       ORDO_MAX_ATTACHMENT_MB: ${ORDO_MAX_ATTACHMENT_MB:-}
       ORDO_OFFLINE_SYNC: ${ORDO_OFFLINE_SYNC:-}
-      ORDO_TRUST_PROXY: ${ORDO_TRUST_PROXY:-true}
+      ORDO_TRUST_PROXY: ${ORDO_TRUST_PROXY:-false}
       # Outgoing mail; leave empty to configure it in Admin → Settings instead.
       ORDO_SMTP_URL: ${ORDO_SMTP_URL:-}
       ORDO_SMTP_FROM: ${ORDO_SMTP_FROM:-}

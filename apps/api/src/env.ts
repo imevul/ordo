@@ -10,13 +10,14 @@ import {
 } from '@ordo/shared';
 
 /**
- * ORDO_TRUST_PROXY: `true` (the default) means one proxy in front of Ordo, so the client IP is the
- * address that proxy saw, not the left-most X-Forwarded-For entry, which the client writes.
+ * ORDO_TRUST_PROXY: `true` means one proxy in front of Ordo, so the client IP is the address that
+ * proxy saw, not the left-most X-Forwarded-For entry, which the client writes. Unset means no proxy:
+ * believing a hop that isn't there lets anyone on the network pick the IP they're counted under.
  */
 export function proxyTrust(v: string | undefined): false | number | string {
   const value = v?.trim().toLowerCase() ?? '';
-  if (value === '' || ['1', 'true', 'yes', 'on'].includes(value)) return 1;
-  if (['0', 'false', 'no', 'off'].includes(value)) return false;
+  if (['1', 'true', 'yes', 'on'].includes(value)) return 1;
+  if (['', '0', 'false', 'no', 'off'].includes(value)) return false;
   if (/^\d+$/.test(value)) return Number(value);
   return v!.trim();
 }
