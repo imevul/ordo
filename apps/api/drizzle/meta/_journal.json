@@ -421,6 +421,13 @@
       "when": 1793466616009,
       "tag": "0059_agent_run_usage",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1793467566191,
+      "tag": "0060_repository_run_limit",
+      "breakpoints": true
     }
   ]
 }

@@ -184,6 +184,9 @@ export default {
     },
     more: 'more',
     less: 'less',
+    waitingForSlot: 'waiting for a free slot',
+    /** {repository} is a repository's name. */
+    waitingForSlotHint: '{repository} already has as many runs as it allows.',
     emptyOpen: 'Nothing running, and no failed runs waiting for you',
     emptyTitle: 'No runs yet',
     emptyBody: 'Assign an issue to an agent and its run shows up here.',
@@ -202,6 +205,7 @@ export default {
     confirmDelete: 'Delete the repository {name}? Projects and teams using it lose it.',
     /** {branch} is the default branch, e.g. main */
     branch: 'default branch {branch}',
+    maxRuns: { one: 'at most {count} run at a time', other: 'at most {count} runs at a time' },
     form: {
       label: 'Repository',
       new: 'New repository',
@@ -210,6 +214,10 @@ export default {
       url: 'Clone URL',
       urlHint: 'https://…, ssh://…, git@host:owner/repo.git, or a path on the runner.',
       defaultBranch: 'Default branch',
+      maxRuns: 'At most N runs at a time',
+      maxRunsHint:
+        'So agents don’t work over each other’s files: runs of any agent past this number wait in the queue. Leave empty for no limit.',
+      maxRunsPlaceholder: 'No limit',
       /** {repo} is owner/name, {integration} the connection's name, e.g. GitHub */
       linked: 'Linked to {repo} on {integration}.',
     },

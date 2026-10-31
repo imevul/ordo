@@ -523,12 +523,16 @@ Agents are members a runner works for; see [agents.md](agents.md) for the idea a
 | POST           | `/agent/runs/:id/heartbeat`                                      | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                                                            |
 | PATCH          | `/agent/runs/:id`                                                | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, resume?, sessionUrl?, summary?, error?, failureReason?, usage? }`                   |
 | GET            | `/repositories`                                                  | The workspace's repositories (also in the bootstrap)                                                                                                               |
-| POST           | `/repositories`                                                  | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo? }`                                                                                            |
+| POST           | `/repositories`                                                  | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo?, maxConcurrentRuns? }`                                                                        |
 | PATCH / DELETE | `/repositories/:id`                                              | _Admin._ Update / delete                                                                                                                                           |
 
 Projects take `repositoryIds` (in order) on create and update; teams take `defaultRepositoryId`. Admins can set a
 project's `pullRequestAgentId` (an agent in one of its teams, or `null`) and `pullRequestScope` (`"linked"` or
 `"all"`): who gets its pull requests when they're ready for review ([agents.md](agents.md#pull-requests)).
+
+A repository's `maxConcurrentRuns` (1–100, or `null` for no limit) caps the claimed and running runs, of any agent,
+whose issues work in it; claims skip queued runs there until one finishes. In `/agent-runs`, a queued run held back
+that way has `waitingForRepository: { id, name }` (otherwise `null`).
 
 A run's `trigger` is `assigned`, `mention`, `rerun`, `pull_request` or `scheduled` (a recurring issue); for `pull_request`, `triggerDetail` is
 `{ event: "ready_for_review" | "checks_failed" | "changes_requested", repo, number, url, branch }`.

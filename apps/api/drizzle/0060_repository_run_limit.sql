@@ -1,0 +1,1 @@
+ALTER TABLE "repositories" ADD COLUMN "max_concurrent_runs" integer;

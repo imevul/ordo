@@ -1186,6 +1186,8 @@ const repositoryFields = {
   defaultBranch: branch,
   integrationId: id.nullish(),
   externalRepo: z.string().trim().max(300).nullish(),
+  /** Runs that may work in it at once; null for no limit. */
+  maxConcurrentRuns: z.number().int().min(1).max(100).nullish(),
 };
 export const createRepositorySchema = z.object({
   ...repositoryFields,

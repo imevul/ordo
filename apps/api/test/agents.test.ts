@@ -1171,3 +1171,102 @@ describe('cost and budgets', () => {
     await owner.patch(`${ws}/agents/${spender}`, { teamIds: [eng] });
   });
 });
+
+describe('repository run limits', () => {
+  it('hold claims back while a repository has as many runs as it allows', async () => {
+    const team = (await owner.post(`${ws}/teams`, { name: 'Limits', key: 'LIM' })).data.id;
+    const shared = (
+      await owner.post(`${ws}/repositories`, {
+        name: 'monorepo',
+        url: 'https://git.example.com/acme/monorepo.git',
+        maxConcurrentRuns: 1,
+      })
+    ).data;
+    expect(shared.maxConcurrentRuns).toBe(1);
+    const free = (
+      await owner.post(`${ws}/repositories`, {
+        name: 'docs',
+        url: 'https://git.example.com/acme/docs.git',
+      })
+    ).data;
+    expect(free.maxConcurrentRuns).toBeNull();
+    expect(
+      (await owner.patch(`${ws}/repositories/${shared.id}`, { maxConcurrentRuns: 0 })).statusCode,
+    ).toBe(400);
+    await owner.patch(`${ws}/teams/${team}`, { defaultRepositoryId: shared.id });
+    const docs = (
+      await owner.post(`${ws}/projects`, {
+        name: 'Docs',
+        teamIds: [team],
+        repositoryIds: [free.id],
+      })
+    ).data;
+
+    // Two coders, each with room for more than one run.
+    const coder = async (name: string) => {
+      const id = (await owner.post(`${ws}/agents`, { name, teamIds: [team], concurrency: 3 })).data
+        .id as string;
+      const token = (await owner.post(`${ws}/agents/${id}/keys`, { name: 'k' })).data.token;
+      return {
+        id,
+        claim: () =>
+          bearer(token, 'POST', `${ws}/agent/claim`) as Promise<{
+            statusCode: number;
+            data: AgentRunContext;
+          }>,
+        finish: (runId: string) =>
+          bearer(token, 'PATCH', `${ws}/agent/runs/${runId}`, { status: 'succeeded' }),
+      };
+    };
+    const one = await coder('Monorepo Coder One');
+    const two = await coder('Monorepo Coder Two');
+    const add = async (title: string, assigneeId: string, extra: Record<string, unknown> = {}) =>
+      (await owner.post(`${ws}/issues`, { teamId: team, title, assigneeId, ...extra })).data as {
+        id: string;
+      };
+
+    const first = await add('Refactor the router', one.id);
+    const second = await add('Rename the store', two.id);
+    const taken = await one.claim();
+    expect(taken.data.issue.id).toBe(first.id);
+    // The other coder's run in the same repository waits, and says why.
+    expect((await two.claim()).statusCode).toBe(204);
+    const listed = (await owner.get(`${ws}/agent-runs?agentId=${two.id}`)).data;
+    expect(listed).toEqual([
+      expect.objectContaining({
+        status: 'queued',
+        waitingForRepository: { id: shared.id, name: 'monorepo' },
+      }),
+    ]);
+    const working = (await owner.get(`${ws}/agent-runs?agentId=${one.id}`)).data;
+    expect(working[0].waitingForRepository).toBeNull();
+
+    // Work in other repositories goes ahead meanwhile.
+    const elsewhere = await add('Fix a typo', two.id, { projectId: docs.id });
+    const other = await two.claim();
+    expect(other.data.issue.id).toBe(elsewhere.id);
+    await two.finish(other.data.run.id);
+
+    // A free slot lets the waiting run through.
+    await one.finish(taken.data.run.id);
+    const next = await two.claim();
+    expect(next.data.issue.id).toBe(second.id);
+    await two.finish(next.data.run.id);
+
+    // Concurrent claims by different agents count each other's runs.
+    await add('Race A', one.id);
+    await add('Race B', two.id);
+    const raced = await Promise.all([one.claim(), two.claim()]);
+    expect(raced.map((r) => r.statusCode).sort()).toEqual([200, 204]);
+    const winner = raced[0]!.statusCode === 200 ? one : two;
+    const loser = winner === one ? two : one;
+    await winner.finish(raced.find((r) => r.statusCode === 200)!.data.run.id);
+
+    await add('Race C', winner.id);
+    expect((await winner.claim()).statusCode).toBe(200);
+    expect((await loser.claim()).statusCode).toBe(204);
+    // Without a limit nothing waits.
+    await owner.patch(`${ws}/repositories/${shared.id}`, { maxConcurrentRuns: null });
+    expect((await loser.claim()).statusCode).toBe(200);
+  });
+});
