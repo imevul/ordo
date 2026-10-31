@@ -228,6 +228,20 @@ describe('issues', () => {
     const moved = await ada.patch(`${ws}/issues/ENG-2`, { teamId: ops.id });
     expect(moved.data.identifier).toBe('OPS-1');
     expect(ops.states.map((s: { id: string }) => s.id)).toContain(moved.data.stateId);
+
+    // Pages and links opened before the move still find it, in any later team too.
+    expect((await ada.get(`${ws}/issues/ENG-2`)).data).toMatchObject({
+      id: moved.data.id,
+      identifier: 'OPS-1',
+    });
+    const back = await ada.patch(`${ws}/issues/OPS-1`, { teamId: team().id });
+    expect(back.data.identifier).not.toBe('ENG-2');
+    for (const old of ['ENG-2', 'ops-1'])
+      expect((await ada.get(`${ws}/issues/${old}`)).data).toMatchObject({
+        id: moved.data.id,
+        identifier: back.data.identifier,
+      });
+    expect((await ada.get(`${ws}/issues/OPS-2`)).statusCode).toBe(404);
   });
 
   describe('status on a team move', () => {

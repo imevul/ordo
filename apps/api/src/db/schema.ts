@@ -687,6 +687,25 @@ export const issueSubscribers = pgTable(
   ],
 );
 
+/** Numbers an issue had in teams it moved out of, so its old identifiers keep resolving. */
+export const issueIdentifierAliases = pgTable(
+  'issue_identifier_aliases',
+  {
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    number: integer('number').notNull(),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.number] }),
+    index('issue_identifier_aliases_issue_idx').on(t.issueId),
+  ],
+);
+
 export const issueHistory = pgTable(
   'issue_history',
   {

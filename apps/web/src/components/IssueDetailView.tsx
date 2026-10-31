@@ -80,7 +80,7 @@ export function IssueDetailView({
             <section className="mt-4 border-y border-border-soft py-3 lg:hidden">
               <div className="section-label mb-2">{t('issue.detail.properties')}</div>
               <div className="grid gap-x-6 sm:grid-cols-2">
-                <IssueProperties issue={issue} team={team} compact={compact} onPatch={patch} />
+                <IssueProperties issue={issue} team={team} onPatch={patch} />
               </div>
             </section>
             <IssueDescription issue={issue} onSave={(description) => patch({ description })} />
@@ -107,7 +107,7 @@ export function IssueDetailView({
           </div>
         </div>
 
-        <IssueSidebar issue={issue} team={team} compact={compact} onPatch={patch} />
+        <IssueSidebar issue={issue} team={team} onPatch={patch} />
       </div>
     </div>
   );

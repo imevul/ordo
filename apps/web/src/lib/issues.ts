@@ -1,5 +1,6 @@
 import {
   type GroupBy,
+  ISSUE_IDENTIFIER_PATTERN,
   type Issue,
   type IssueDisplay,
   type OrderBy,
@@ -26,6 +27,16 @@ const DONE_TYPES: StateType[] = ['completed', 'canceled'];
 
 export const isDone = (ws: WorkspaceData, issue: Issue) =>
   DONE_TYPES.includes(ws.stateById.get(issue.stateId)?.type ?? 'backlog');
+
+/**
+ * The identifier an issue page opened as `asked` should show in its URL instead, if any: the
+ * issue has moved team (a queued move that was sent, or an old link) or its team key changed.
+ * Not while the server hasn't numbered it yet.
+ */
+export function newerIdentifier(asked: string, issue: Pick<Issue, 'identifier'>): string | null {
+  if (!ISSUE_IDENTIFIER_PATTERN.test(issue.identifier)) return null;
+  return asked.toUpperCase() === issue.identifier.toUpperCase() ? null : issue.identifier;
+}
 
 export function sortIssues(issues: Issue[], orderBy: OrderBy): Issue[] {
   const list = [...issues];

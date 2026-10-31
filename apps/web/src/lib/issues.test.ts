@@ -6,7 +6,14 @@ import {
   type OrderBy,
 } from '@ordo/shared';
 import { describe, expect, it } from 'vitest';
-import { groupIssues, isDone, patchForGroup, sortIssues, visibleIssues } from './issues.ts';
+import {
+  groupIssues,
+  isDone,
+  newerIdentifier,
+  patchForGroup,
+  sortIssues,
+  visibleIssues,
+} from './issues.ts';
 import type { WorkspaceData } from './workspace.tsx';
 
 let seq = 0;
@@ -133,6 +140,19 @@ describe('isDone', () => {
     expect(isDone(ws, issue({ stateId: 'canceled' }))).toBe(true);
     expect(isDone(ws, issue({ stateId: 'doing' }))).toBe(false);
     expect(isDone(ws, issue({ stateId: 'gone' }))).toBe(false);
+  });
+});
+
+describe('newerIdentifier', () => {
+  it('follows a moved issue to its new identifier', () => {
+    expect(newerIdentifier('ENG-12', { identifier: 'OPS-5' })).toBe('OPS-5');
+    expect(newerIdentifier('3f0c…', { identifier: 'OPS-5' })).toBe('OPS-5');
+  });
+
+  it('stays put when the identifier is the same or not numbered yet', () => {
+    expect(newerIdentifier('ENG-12', { identifier: 'ENG-12' })).toBeNull();
+    expect(newerIdentifier('eng-12', { identifier: 'ENG-12' })).toBeNull();
+    expect(newerIdentifier('some-id', { identifier: 'ENG-…' })).toBeNull();
   });
 });
 
