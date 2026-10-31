@@ -59,8 +59,9 @@ There are three parts:
    started, each progress step, its question and the reply that resumed it, lapsed leases, someone choosing **Run
    anyway**, and how it ended; what it's waiting on; the summary, error and failure reason; the session link; which
    run it restarts and which runs restarted it; and the prompt of its latest pickup. Anyone who can see the issue sees
-   the page, so Ordo keeps the prompt without instructions: the agent's are for admins (in its settings), and a
-   runner file's `instructions` may hold expanded environment variables. Heartbeats aren't kept one by one: the page
+   the page, so Ordo keeps the prompt without instructions, parent or related issues: the agent's instructions are
+   for admins (in its settings), a runner file's `instructions` may hold expanded environment variables, and the
+   agent may see related issues on teams the viewer can't. Heartbeats aren't kept one by one: the page
    shows when the lease runs out. The same actions as on the list are at the top.
 9. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
    queue for another runner. After three claims it is marked failed, with a comment on the issue.

@@ -1,4 +1,4 @@
-import type { AgentRun, AgentRunStatus, IssueDetail } from '@ordo/shared';
+import type { AgentRun, AgentRunStatus, AgentRunWithIssue, IssueDetail } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Bot, ExternalLink, FastForward, RotateCcw, Square } from 'lucide-react';
@@ -129,6 +129,24 @@ export function RunBlocked({ run, className = '' }: { run: AgentRun; className?:
   return (
     <div className={`truncate font-mono text-[11px] text-warning ${className}`}>
       {tx('agents.runs.waitingOn', { issues: <>{issues}</> })}
+    </div>
+  );
+}
+
+/** A queued run held back by a repository at its run limit. */
+export function RunWaitingForSlot({
+  run,
+  className = '',
+}: {
+  run: AgentRunWithIssue;
+  className?: string;
+}) {
+  if (!run.waitingForRepository) return null;
+  return (
+    <div className={`truncate font-mono text-[11px] text-index ${className}`}>
+      <span className="text-warning">{t('agents.runsPage.waitingForSlot')}</span>
+      {' · '}
+      {t('agents.runsPage.waitingForSlotHint', { repository: run.waitingForRepository.name })}
     </div>
   );
 }

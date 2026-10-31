@@ -231,7 +231,7 @@ export default {
     noTimeline: 'This run is from before Ordo kept timelines; only its times are known.',
     prompt: 'Prompt',
     promptHint:
-      "What Ordo gave the agent on its latest pickup, without the instructions: the agent's are in its settings, and the runner's aren't stored.",
+      "What Ordo gave the agent on its latest pickup, without the instructions, parent or related issues: the agent's instructions are in its settings, the runner's aren't stored, and the issue page shows the parent and related issues you can see.",
     noPrompt: 'Not picked up yet.',
     showPrompt: 'Show prompt',
     hidePrompt: 'Hide prompt',

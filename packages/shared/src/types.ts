@@ -1463,7 +1463,10 @@ export interface AgentRunEvent {
 
 /** Everything about one run, for its page: `GET /agent-runs/:id`. */
 export interface AgentRunDetail extends AgentRunWithIssue {
-  /** The prompt of the latest pickup, without the runner's or the agent's instructions. */
+  /**
+   * The prompt of the latest pickup, without the runner's or the agent's instructions, and without
+   * the parent or related issues (the agent may see teams the viewer can't).
+   */
   prompt: string | null;
   /** The comment that @mentioned the agent, for a `mention` run. */
   triggerComment: { id: string; authorId: string | null; body: string } | null;

@@ -1384,6 +1384,30 @@ describe('a run’s page', () => {
     expect(again!.data).toEqual({ runner: 'chron-host', attempt: 1 });
   });
 
+  it('keeps related issues out of the saved prompt, since the agent may see more than the viewer', async () => {
+    const parent = (await owner.post(`${ws}/issues`, { teamId: prv, title: 'Secret parent' })).data;
+    const blocked = (await owner.post(`${ws}/issues`, { teamId: prv, title: 'Secret blocked' }))
+      .data;
+    const i = await issue('Linked to private work', { parentId: parent.id });
+    await owner.post(`${ws}/issues/${i.id}/relations`, {
+      type: 'blocks',
+      relatedIssueId: blocked.id,
+    });
+    await owner.patch(`${ws}/issues/${i.id}`, { assigneeId: chronicler });
+    const { data } = await take();
+    // The agent is on PRV, so its prompt names both.
+    expect(data.prompt).toContain(`Parent issue: ${parent.identifier} Secret parent`);
+    expect(data.prompt).toContain(`- blocks: ${blocked.identifier} Secret blocked`);
+
+    const { statusCode, data: run } = await detail(member, data.run.id);
+    expect(statusCode).toBe(200);
+    expect(run.prompt).toContain(`# ${i.identifier}: Linked to private work`);
+    expect(run.prompt).not.toContain('Secret');
+    expect(run.prompt).not.toContain(parent.identifier);
+    expect(run.prompt).not.toContain(blocked.identifier);
+    await owner.post(`${ws}/agent-runs/${data.run.id}/cancel`);
+  });
+
   it('links restarts both ways and records why a run failed', async () => {
     await issue('Fails, then restarts', { assigneeId: chronicler });
     const { data } = await take();

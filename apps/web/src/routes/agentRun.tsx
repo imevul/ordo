@@ -18,6 +18,7 @@ import {
   RUN_STATUS_COLOR,
   RunBlocked,
   RunProgress,
+  RunWaitingForSlot,
   triggerLabel,
 } from '../components/AgentRuns.tsx';
 import { Markdown } from '../components/Markdown.tsx';
@@ -85,6 +86,7 @@ export function AgentRunPage() {
               </span>
             </Link>
             <RunBlocked run={run} className="mt-3 text-[12px] whitespace-normal" />
+            <RunWaitingForSlot run={run} className="mt-3 text-[12px] whitespace-normal" />
             <Restarts run={run} />
             {run.progress && (run.status === 'running' || run.status === 'claimed') && (
               <>

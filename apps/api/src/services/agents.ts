@@ -1742,9 +1742,10 @@ export function waitForRuns(
 // --- What a runner gets ----------------------------------------------------------------------
 
 /**
- * What the runner gets, and the prompt Ordo keeps: the same, without instructions. The runner's
- * may hold expanded environment variables, and the agent's are for admins only, while anyone who
- * sees the issue sees the run's page.
+ * What the runner gets, and the prompt Ordo keeps: the same, without instructions, parent or
+ * related issues. Anyone who sees the issue sees the run's page, while the runner's instructions
+ * may hold expanded environment variables, the agent's are for admins only, and the parent and
+ * relations are filtered by the agent's teams, not the viewer's.
  */
 async function runContext(
   app: FastifyInstance,
@@ -1873,7 +1874,14 @@ async function runContext(
   };
   return {
     context: { ...context, prompt: renderPrompt(context, extra) },
-    prompt: renderPrompt({ ...context, agent: { ...context.agent, instructions: '' } }, extra),
+    prompt: renderPrompt(
+      {
+        ...context,
+        agent: { ...context.agent, instructions: '' },
+        issue: { ...context.issue, parent: null, relations: [] },
+      },
+      extra,
+    ),
   };
 }
 
