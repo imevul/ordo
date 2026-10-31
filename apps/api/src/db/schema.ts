@@ -1080,6 +1080,20 @@ export const jobs = pgTable(
   ],
 );
 
+/**
+ * Dedupe keys of jobs that must run once, ever (`enqueue(…, { once: true })`). Job rows are
+ * deleted when they finish, so their own `dedupe_key` can't stop a retried parent job from queueing
+ * the same work again. Pruned with the domain events they're derived from.
+ */
+export const jobKeys = pgTable(
+  'job_keys',
+  {
+    key: text('key').primaryKey(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('job_keys_created_idx').on(t.createdAt)],
+);
+
 /** Recurring jobs: whichever instance advances `next_run_at` first enqueues the run. */
 export const schedules = pgTable('schedules', {
   name: text('name').primaryKey(),

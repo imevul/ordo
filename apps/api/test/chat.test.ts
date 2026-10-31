@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   auditLog,
   chatMessages,
+  domainEvents,
   externalAccounts,
   integrations,
   leases,
@@ -15,7 +16,7 @@ import { matrixProvider } from '../src/integrations/matrix.ts';
 import { registerProvider, unregisterProvider } from '../src/integrations/registry.ts';
 import { telegramCommand, telegramProvider } from '../src/integrations/telegram.ts';
 import type { IntegrationProvider } from '../src/integrations/types.ts';
-import { Leases } from '../src/lib/jobs/index.ts';
+import { enqueue, Leases } from '../src/lib/jobs/index.ts';
 import { createLinkCode } from '../src/services/chat.ts';
 import { Connectors, sleep } from '../src/services/connectors.ts';
 import { queueInbound } from '../src/services/integrations.ts';
@@ -205,6 +206,23 @@ describe('Slack', () => {
     await owner.patch(`${ws}/issues/${issue.id}`, { stateId: state('Done') });
     await settle(3);
     expect(posts('C1').at(-1)).toContain(`moved ${issue.identifier} to Done`);
+  });
+
+  it('posts an event once, even if the job that queued the post runs again', async () => {
+    const issue = await newIssue('Posted once');
+    await settle(3);
+    const count = posts('C1').length;
+    expect(posts('C1').at(-1)).toContain(`created ${issue.identifier}`);
+    // Its integration.event job crashed after the post ran, before deleting its own row.
+    const [event] = await app.db
+      .select({ id: domainEvents.id })
+      .from(domainEvents)
+      .where(
+        and(eq(domainEvents.type, 'issue.created'), sql`${domainEvents.data}->>'id' = ${issue.id}`),
+      );
+    await enqueue(app.db, 'integration.event', { integrationId: slack.id, eventId: event!.id });
+    await settle(3);
+    expect(posts('C1').length).toBe(count);
   });
 
   it('links an account with a one-time code', async () => {
