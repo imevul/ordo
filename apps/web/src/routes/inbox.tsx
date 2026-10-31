@@ -14,6 +14,7 @@ import { Popover } from '../components/ui/Popover.tsx';
 import { getLocale, INTL_TAG, t, tx } from '../i18n/index.ts';
 import { relativeTime } from '../lib/format.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
+import { withKept } from '../lib/inbox.ts';
 import { readPref, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
@@ -110,6 +111,7 @@ export function InboxPage() {
     setViewState(next);
     writePref('inbox.view', next);
     setSelectedId(null);
+    setKept({});
   };
   const [filterOpen, setFilterOpen] = useState(false);
   const filter = effectiveFilter(view);
@@ -122,7 +124,11 @@ export function InboxPage() {
     );
   const [snoozeOpen, setSnoozeOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const list = data ?? [];
+  // Opened under the unread filter: still shown, though now read, until the view changes.
+  const [kept, setKept] = useState<Record<string, Notification>>({});
+  const forget = (ids: string[]) =>
+    setKept((k) => Object.fromEntries(Object.entries(k).filter(([id]) => !ids.includes(id))));
+  const list = withKept(data ?? [], kept, showSnoozed);
   const selected = list.find((n) => n.id === selectedId) ?? null;
   const issue = useIssue(ws.slug, selected?.issueId ?? undefined);
 
@@ -131,6 +137,12 @@ export function InboxPage() {
     qc.invalidateQueries({ queryKey: keys.bootstrap(ws.slug) });
   };
   const markRead = async (ids?: string[], unread = false) => {
+    const readAt = unread ? null : new Date().toISOString();
+    setKept((k) =>
+      Object.fromEntries(
+        Object.entries(k).map(([id, n]) => [id, !ids || ids.includes(id) ? { ...n, readAt } : n]),
+      ),
+    );
     await api.post(
       wsPath(ws.slug, '/notifications/read'),
       ids ? { ids, unread } : { filter, snoozed: showSnoozed },
@@ -143,6 +155,7 @@ export function InboxPage() {
       until: until?.toISOString() ?? null,
     });
     if (ids.includes(selectedId ?? '')) setSelectedId(null);
+    forget(ids);
     setSnoozeOpen(false);
     refresh();
   };
@@ -152,11 +165,14 @@ export function InboxPage() {
       body.ids ? body : { ...body, filter, snoozed: showSnoozed },
     );
     if (body.ids?.includes(selectedId ?? '')) setSelectedId(null);
+    if (body.ids) forget(body.ids);
+    else setKept({});
     refresh();
   };
 
   const open = (n: Notification) => {
     setSelectedId(n.id);
+    if (view.unread) setKept((k) => ({ ...k, [n.id]: n }));
     if (!n.readAt) markRead([n.id]);
   };
 
@@ -258,6 +274,7 @@ export function InboxPage() {
                 onClick={() => {
                   setShowSnoozed(!showSnoozed);
                   setSelectedId(null);
+                  setKept({});
                 }}
                 aria-pressed={showSnoozed}
                 title={showSnoozed ? t('inbox.backToInbox') : t('inbox.showSnoozed')}
@@ -280,7 +297,12 @@ export function InboxPage() {
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
-                onClick={() => remove({ read: true })}
+                onClick={() =>
+                  // Under the unread filter the server matches no read ones; the read ones shown are those kept.
+                  view.unread
+                    ? remove({ ids: list.filter((n) => n.readAt).map((n) => n.id) })
+                    : remove({ read: true })
+                }
                 disabled={readShown === 0}
                 title={t('inbox.deleteShownRead', { count: readShown })}
                 aria-label={t('inbox.deleteShownRead', { count: readShown })}
