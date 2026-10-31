@@ -117,7 +117,8 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
   });
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [state, setState] = useState<SaveState>('saved');
+  // Change it only through setSaveState, which keeps latest.current.state in step.
+  const [state, setStateValue] = useState<SaveState>('saved');
   const base = useRef<string | null>(null);
   const edits = useRef(0);
   // Refs, so saves chained after a request and the flush on close see the latest values.
@@ -129,7 +130,7 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
 
   const setSaveState = (s: SaveState) => {
     latest.current.state = s;
-    setState(s);
+    setStateValue(s);
   };
 
   // Take the server's version when there's nothing unsaved here.
@@ -248,7 +249,7 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => {
-              setState('saved');
+              setSaveState('saved');
               qc.invalidateQueries({ queryKey: key });
             }}
           >
