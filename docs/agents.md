@@ -121,7 +121,7 @@ left alone. Set `prune: false` in a runner file to keep them.
 | -------------------------- | --------------------------------------------------------------------------------- |
 | `--key <key>`              | The agent's key (or `ORDO_AGENT_KEY`)                                             |
 | `-w <slug>`, `--url <url>` | The workspace and Ordo's address (default: your `ordo login`)                     |
-| `--repos <dir>`            | Where clones and worktrees go                                                     |
+| `--repos <dir>`            | Where clones and worktrees go (relative to the current directory)                 |
 | `--concurrency <n>`        | Runs worked on at once by this runner (default 1)                                 |
 | `--timeout <30m>`          | Kill the command and fail the run after this long                                 |
 | `--name <name>`            | What the runner is called on the issue (default `<hostname>/<label>`)             |
@@ -130,7 +130,8 @@ left alone. Set `prune: false` in a runner file to keep them.
 | `--file <yaml>`            | Read agents and commands from a runner file (repeatable); `--only a,b` picks some |
 
 `ordo agent check --file <yaml>` validates a runner file and shows who each key belongs to, without claiming
-anything.
+anything. A runner file sets `key`, `repos`, `concurrency` and `timeout` per agent, so `--key`, `--repos`,
+`--concurrency` and `--timeout` can't be combined with `--file`.
 
 ### The launch contract
 
@@ -227,7 +228,12 @@ A single-agent file puts `key` and `command` at the top level instead of `agents
 your `ordo login`.
 
 - `${VAR}` and `${VAR:-default}` expand from the environment, then `env_file`, then a sibling `.env`. An unset
-  variable without a default is an error naming it. Plain `$VAR` is left alone, for the shell.
+  variable without a default is an error naming it. Plain `$VAR` is left alone, for the shell. In `command` and
+  `instructions`, only variables set when the file loads are expanded; the rest, and every `${ORDO_…}`, are kept as
+  written, without an error. So `claude --model ${MODEL} --mcp-config "${ORDO_MCP_CONFIG}"` gets `MODEL` from `.env`
+  and the launch contract's MCP config from the run: the string form's shell expands what's left when the run
+  starts (the list form passes it on as written). Values from `env_file` and `.env` don't reach the command's
+  environment; put what it reads itself in `env:`.
 - `command` is a list (run directly; a leading `./` is relative to the file) or a string (run with `sh -c` in the
   worktree, or in an empty directory with `cwd: tmp`). Only the list form resolves `./`, so a script next to the file
   goes in a list, like `factory` above.

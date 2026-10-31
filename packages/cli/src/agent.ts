@@ -103,23 +103,36 @@ export function parseDotenv(text: string): Record<string, string> {
 /**
  * Expands `${VAR}` and `${VAR:-default}` in every string. Plain `$VAR` is left alone, so a shell
  * command can still use the launch contract's variables (`$ORDO_PROMPT_FILE`).
+ *
+ * With `keepUnknown` (for `command` and `instructions`), a variable that isn't set when the file
+ * loads is kept as written for the shell, and `${ORDO_…}` always is: the launch contract sets
+ * those per run, and the runner's own `ORDO_TOKEN` or `ORDO_URL` must not stand in for them.
  */
 export function expandVars(
   value: unknown,
   vars: Record<string, string | undefined>,
   path = '',
+  opts: { keepUnknown?: boolean } = {},
 ): unknown {
   if (typeof value === 'string')
-    return value.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g, (_, name, fallback) => {
-      const v = vars[name];
-      if (v !== undefined && v !== '') return v;
-      if (fallback !== undefined) return fallback;
-      throw new RunnerConfigError(`${path || 'value'}: \${${name}} is not set`);
-    });
-  if (Array.isArray(value)) return value.map((v, i) => expandVars(v, vars, `${path}[${i}]`));
+    return value.replace(
+      /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g,
+      (match, name: string, fallback: string | undefined) => {
+        const v = vars[name];
+        if (opts.keepUnknown && (v === undefined || name.startsWith('ORDO_'))) return match;
+        if (v !== undefined && v !== '') return v;
+        if (fallback !== undefined) return fallback;
+        if (opts.keepUnknown) return '';
+        throw new RunnerConfigError(`${path || 'value'}: \${${name}} is not set`);
+      },
+    );
+  if (Array.isArray(value)) return value.map((v, i) => expandVars(v, vars, `${path}[${i}]`, opts));
   if (value && typeof value === 'object')
     return Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [k, expandVars(v, vars, path ? `${path}.${k}` : k)]),
+      Object.entries(value).map(([k, v]) => [
+        k,
+        expandVars(v, vars, path ? `${path}.${k}` : k, opts),
+      ]),
     );
   return value;
 }
@@ -181,8 +194,30 @@ export async function loadRunnerFile(
   }
   for (const [k, v] of Object.entries(env)) if (v !== undefined) vars[k] = v;
 
-  const data = expandVars(shape.data, vars) as z.infer<typeof fileSchema>;
-  const { agents, defaults = {}, env_file: _, ...top } = data;
+  // In `command` and `instructions`, only what's known now is expanded: `${ORDO_MCP_CONFIG}` and
+  // the rest of the launch contract only exist when a run starts, so the shell expands them then.
+  // `.env` and `env_file` values don't reach the command's environment, so they must go in here.
+  type Fields = z.infer<typeof fieldsSchema>;
+  const expandFields = <T extends Fields>(fields: T, where: string): T => {
+    const { command, instructions, ...rest } = fields;
+    const at = (k: string) => (where ? `${where}.${k}` : k);
+    const keep = { keepUnknown: true };
+    return {
+      ...(expandVars(rest, vars, where) as T),
+      ...(command !== undefined && { command: expandVars(command, vars, at('command'), keep) }),
+      ...(instructions !== undefined && {
+        instructions: expandVars(instructions, vars, at('instructions'), keep),
+      }),
+    };
+  };
+  const { agents: rawAgents, defaults: rawDefaults, env_file: _, ...rawTop } = shape.data;
+  const top = expandFields(rawTop, '');
+  const defaults = rawDefaults ? expandFields(rawDefaults, 'defaults') : {};
+  const agents =
+    rawAgents &&
+    Object.fromEntries(
+      Object.entries(rawAgents).map(([l, f]) => [l, expandFields(f, `agents.${l}`)]),
+    );
   const entries: [string, z.infer<typeof fieldsSchema>][] = agents
     ? Object.entries(agents)
     : [[basename(file).replace(/\.ya?ml$/i, '') || 'agent', {}]];
@@ -873,6 +908,6 @@ async function work(
   }
 }
 
-/** For `--file` relative to the current directory and `~`. */
+/** For `--file` and `--repos`: relative to the current directory, and `~`. */
 export const runnerFilePath = (p: string, env: Record<string, string | undefined>) =>
   isAbsolute(p) ? p : resolve(expandHome(p, env));

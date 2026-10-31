@@ -18,7 +18,8 @@ ordo login https://ordo.example.com
 
 `ordo login` asks for a key (create one under **Settings → API keys**, which also shows these two lines with your
 address filled in), checks it, and saves the address, the key and a default workspace in
-`~/.config/ordo/config.json` (readable only by you; `$XDG_CONFIG_HOME` moves it). `ordo logout` deletes the file.
+`~/.config/ordo/config.json` (readable only by you: every write sets the file to `600` and its directory to `700`;
+`$XDG_CONFIG_HOME` moves it). `ordo logout` deletes the file.
 
 For scripts and CI, skip the login and set `ORDO_URL`, `ORDO_TOKEN` and, if you're in several workspaces,
 `ORDO_WORKSPACE`. They override the saved login.
@@ -55,7 +56,8 @@ Every command takes `-w, --workspace <slug>`, `--json` (machine-readable output,
 `ordo issue create --help`; `ordo issue --help` and `ordo agent --help` list their subcommands. In `ordo agent run --
 <command…>`, a `--help` after `--` goes to your command. `ordo help` prints the command list and `ordo --version`
 (`-v`, `version`) the CLI's version. Some issue commands have aliases: `issue ls` for `list`, `show` for `view`, `new`
-for `create` and `update` for `edit`. The options of `agent run` are in [agents](agents.md).
+for `create` and `update` for `edit`. The options of `agent run` are in [agents](agents.md); with `--file`, the
+runner file sets the key, repositories directory, concurrency and timeout, and the matching flags are refused.
 
 **Filters for `ordo issues`:** `--team ENG`, `--status <name or type>` (`started`, `"In Review"`; repeatable),
 `--assignee <me | username | email | none>` (repeatable), `--mine`, `--label <name>` (repeatable), `--project <name |
