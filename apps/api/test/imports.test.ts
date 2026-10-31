@@ -133,7 +133,13 @@ describe('CSV import', () => {
     expect(m.users[memberEmail.toLowerCase()]).toBe(memberId);
     // Nobody matches the ghost: a placeholder will stand in for them.
     expect(m.users['ghost@example.com']).toBe('placeholder');
-    expect(m.labels.docs).toBe('create');
+    // "docs" matches the workspace's default "Docs" label; "frontend" is new.
+    const [docs] = await app.db
+      .select({ id: labels.id })
+      .from(labels)
+      .where(and(eq(labels.workspaceId, workspaceId), eq(labels.name, 'Docs')));
+    expect(m.labels.docs).toBe(docs!.id);
+    expect(m.labels.frontend).toBe('create');
     expect(m.keepNumbers).toBe(true);
   });
 
@@ -144,7 +150,7 @@ describe('CSV import', () => {
     expect(imp.status).toBe('ready');
     expect(imp.report).toMatchObject({
       dryRun: true,
-      created: { teams: 1, people: 1, labels: 3, projects: 1, issues: 3 },
+      created: { teams: 1, people: 1, labels: 2, projects: 1, issues: 3 },
       skippedCount: 1,
     });
     expect(imp.report!.skipped[0]).toEqual({ item: 'WEB-3', message: 'It has no title' });

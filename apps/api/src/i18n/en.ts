@@ -112,4 +112,16 @@ export default {
     unassigned: 'Unassigned',
     priority: { '1': 'Urgent', '2': 'High', '3': 'Medium', '4': 'Low' },
   },
+  /** Names of the labels a new workspace starts with (DEFAULT_LABELS in shared). */
+  defaultLabels: {
+    bug: 'Bug',
+    regression: 'Regression',
+    security: 'Security',
+    feature: 'Feature',
+    improvement: 'Improvement',
+    performance: 'Performance',
+    uiux: 'UI/UX',
+    docs: 'Docs',
+    housekeeping: 'Housekeeping',
+  },
 };

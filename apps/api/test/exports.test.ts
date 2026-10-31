@@ -275,8 +275,9 @@ describe('workspace export', () => {
     expect(Object.keys(copy.customFields)).toHaveLength(5);
     expect(copy.subIssues.map((s: { title: string }) => s.title)).toEqual(['Child']);
     const boot2 = (await owner.get(`${ws2}/bootstrap`)).data as Bootstrap;
+    // "bug" matched the new workspace's default "Bug" label instead of creating a second one.
     expect(copy.labelIds.map((id: string) => boot2.labels.find((l) => l.id === id)!.name)).toEqual([
-      'bug',
+      'Bug',
     ]);
     expect(boot2.projects.map((p) => p.name)).toEqual(['Launch']);
     const team = boot2.teams.find((t) => t.id === copy.teamId)!;

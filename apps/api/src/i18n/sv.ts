@@ -112,4 +112,15 @@ export default {
     unassigned: 'Ingen ansvarig',
     priority: { '1': 'Brådskande', '2': 'Hög', '3': 'Medel', '4': 'Låg' },
   },
+  defaultLabels: {
+    bug: 'Bugg',
+    regression: 'Regression',
+    security: 'Säkerhet',
+    feature: 'Funktion',
+    improvement: 'Förbättring',
+    performance: 'Prestanda',
+    uiux: 'UI/UX',
+    docs: 'Dokumentation',
+    housekeeping: 'Underhåll',
+  },
 } satisfies Translation<typeof en>;

@@ -30,7 +30,7 @@ import {
   workspaceMembers,
   workspaces,
 } from '../db/schema.ts';
-import { localeOf } from '../i18n/index.ts';
+import { localeOf, userLocale } from '../i18n/index.ts';
 import { API_KEY_PREFIX, clearSessionCookie, createSession, requireUser } from '../lib/auth.ts';
 import { hashPassword, randomToken, sha256, verifyPassword } from '../lib/crypto.ts';
 import {
@@ -50,6 +50,7 @@ import type { Ctx } from '../services/context.ts';
 import { revokeCredentials } from '../services/credentials.ts';
 import { resolvePreferences } from '../services/digest.ts';
 import { signedFileUrl } from '../services/files.ts';
+import { createDefaultLabels } from '../services/labels.ts';
 import {
   assertNotLockedOut,
   authLimit,
@@ -722,6 +723,7 @@ export async function authRoutes(app: FastifyInstance) {
           name: input.teamName ?? input.name,
           key: input.teamKey ?? deriveKey(input.teamName ?? input.name),
         });
+        await createDefaultLabels(ctx, await userLocale(tx, user.id));
         await auditCtx(ctx, {
           action: 'workspace.created',
           targetType: 'workspace',

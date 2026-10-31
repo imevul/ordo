@@ -67,6 +67,31 @@ describe('auth & workspaces', () => {
     expect(team().defaultStateId).toBe(state('backlog').id);
   });
 
+  it("starts new workspaces with default labels in the creator's language", async () => {
+    expect(boot.labels.map((l) => l.name).sort()).toEqual([
+      'Bug',
+      'Docs',
+      'Feature',
+      'Housekeeping',
+      'Improvement',
+      'Performance',
+      'Regression',
+      'Security',
+      'UI/UX',
+    ]);
+    expect(boot.labels.find((l) => l.name === 'Bug')).toMatchObject({
+      color: '#ef4444',
+      teamId: null,
+    });
+
+    const siri = (await signup(app, 'Siri Svensk', { locale: 'sv' })).client;
+    expect((await siri.post('/api/workspaces', { name: 'Svea', slug: 'svea' })).statusCode).toBe(
+      200,
+    );
+    const svea = (await siri.get('/api/w/svea/bootstrap')).data as Bootstrap;
+    expect(svea.labels.map((l) => l.name)).toContain('Förbättring');
+  });
+
   it('rejects bad credentials', async () => {
     const res = await ada.post('/api/auth/login', {
       email: 'nobody@example.com',

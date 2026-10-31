@@ -262,6 +262,23 @@ export const LABEL_COLORS = [
   '#facc15',
 ];
 
+/**
+ * Labels every new workspace starts with; the API names them in the creator's language
+ * (`defaultLabels.<key>` in its catalogues). Colours come from LABEL_COLORS, skipping the accent pink
+ * and the focus cyan.
+ */
+export const DEFAULT_LABELS = [
+  { key: 'bug', color: '#ef4444' },
+  { key: 'regression', color: '#fb923c' },
+  { key: 'security', color: '#a78bfa' },
+  { key: 'feature', color: '#60a5fa' },
+  { key: 'improvement', color: '#22c55e' },
+  { key: 'performance', color: '#facc15' },
+  { key: 'uiux', color: '#ff5cb8' },
+  { key: 'docs', color: '#b8aab2' },
+  { key: 'housekeeping', color: '#8e7985' },
+] as const;
+
 export const AVATAR_COLORS = [
   '#ff1493',
   '#c6006f',
