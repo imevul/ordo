@@ -135,3 +135,26 @@ describe('deleting a status', () => {
     expect(await loggedIssueIds()).not.toContain(extra.id);
   });
 });
+
+describe('purging an issue', () => {
+  it('tells clients its sub-issues lost their parent', async () => {
+    const parent = await newIssue('Going away');
+    const child = await newIssue('Staying', { parentId: parent.id });
+    expect((await owner.del(`${ws}/issues/${parent.id}`)).statusCode).toBe(200);
+
+    const before = (await loggedIssueIds()).filter((id) => id === child.id).length;
+    const events = await published(async () => {
+      expect((await owner.del(`${ws}/issues/${parent.id}/purge`)).statusCode).toBe(200);
+    });
+
+    expect((await owner.get(`${ws}/issues/${child.id}`)).data.parentId).toBeNull();
+    expect(events).toContainEqual(
+      expect.objectContaining({ kind: 'issue', action: 'updated', id: child.id }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({ kind: 'issue', action: 'deleted', id: parent.id }),
+    );
+    // Sync clients catch up from the change log, not the socket.
+    expect((await loggedIssueIds()).filter((id) => id === child.id).length).toBe(before + 1);
+  });
+});

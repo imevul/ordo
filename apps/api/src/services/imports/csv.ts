@@ -73,6 +73,18 @@ function date(value: string, warnings: string[], label: string) {
   return d.toISOString();
 }
 
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** The calendar day a cell names: `03/15/2026` is the 15th whatever zone the server runs in. */
+export function calendarDate(value: string) {
+  const iso = /^(\d{4}-\d{2}-\d{2})(?:$|[T ])/.exec(value);
+  if (iso) return iso[1];
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return undefined;
+  // Without a zone the text is read as local time, so the local fields are the day it names.
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 /** Turns rows into source issues and a summary of what they refer to. */
 function convert(name: string, headers: string[], data: string[][], columns: CsvColumns): Parsed {
   const index = Object.fromEntries(
@@ -159,9 +171,8 @@ function convert(name: string, headers: string[], data: string[][], columns: Csv
     }
 
     const dueText = cell(r, 'dueDate');
-    const due = /^\d{4}-\d{2}-\d{2}$/.test(dueText)
-      ? dueText
-      : date(dueText, warnings, FIELD_LABELS.dueDate!)?.slice(0, 10);
+    const due = dueText ? calendarDate(dueText) : undefined;
+    if (dueText && !due) warnings.push(`Couldn't read the ${FIELD_LABELS.dueDate} "${dueText}"`);
     const dates = Object.fromEntries(
       DATE_FIELDS.map((f) => [f, date(cell(r, f), warnings, FIELD_LABELS[f]!)]),
     ) as Record<(typeof DATE_FIELDS)[number], string | undefined>;

@@ -83,6 +83,16 @@ describe('workspace export', () => {
     expect((await member.post(`${ws}/exports`, { format: 'json' })).statusCode).toBe(403);
   });
 
+  it('starts only one of several exports requested at once', async () => {
+    const codes = await Promise.all(
+      Array.from({ length: 4 }, () =>
+        owner.post(`${ws}/exports`, { format: 'json' }).then((r) => r.statusCode),
+      ),
+    );
+    expect(codes.sort()).toEqual([200, 409, 409, 409]);
+    await settle();
+  });
+
   it('exports everything as JSON, one export at a time', async () => {
     const first = await owner.post(`${ws}/exports`, { format: 'json' });
     expect((await owner.post(`${ws}/exports`, { format: 'csv' })).statusCode).toBe(409);

@@ -49,6 +49,11 @@ export interface EnqueueOptions {
   dedupeKey?: string;
   orderingKey?: string;
   maxAttempts?: number;
+  /**
+   * Remember `dedupeKey` after the job is done (in `job_keys`), so the job is queued at most once
+   * even when whatever queues it runs again: a retried job queueing work for each event.
+   */
+  once?: boolean;
 }
 
 export async function enqueue(
@@ -57,6 +62,22 @@ export async function enqueue(
   payload: unknown = {},
   opts: EnqueueOptions = {},
 ) {
+  if (opts.once && opts.dedupeKey) {
+    // One statement, so the key and the job go in together even outside a transaction.
+    await db.execute(sql`
+      with claimed as (
+        insert into job_keys (key) values (${opts.dedupeKey})
+        on conflict do nothing
+        returning key
+      )
+      insert into jobs (name, payload, run_at, dedupe_key, ordering_key, max_attempts)
+      select ${name}, ${JSON.stringify(payload ?? {})}::jsonb, ${(opts.runAt ?? new Date()).toISOString()},
+        key, ${opts.orderingKey ?? null}, ${opts.maxAttempts ?? 8}
+      from claimed
+      on conflict do nothing`);
+    await db.execute(sql`select pg_notify(${CHANNEL}, '')`);
+    return;
+  }
   await db
     .insert(jobs)
     .values({

@@ -1,5 +1,5 @@
 import type { Bootstrap, Issue, IssueTemplate, RecurringIssue } from '@ordo/shared';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { recurringIssues } from '../src/db/schema.ts';
@@ -12,6 +12,8 @@ let member: Client;
 let guest: Client;
 const ws = '/api/w/rec';
 const ids: Record<string, string> = {};
+
+const noonUtc = (day: string) => new Date(`${day}T12:00:00Z`);
 
 const teamIssues = async (teamId: string) =>
   ((await owner.post(`${ws}/issues/query`, { filter: { teamId } })).data as Issue[]).map(
@@ -74,9 +76,9 @@ describe('recurring issues', () => {
     });
     expect(res.statusCode).toBe(200);
     ids.schedule = (res.data as RecurringIssue).id;
-    await runRecurring(app, '2026-11-01');
+    await runRecurring(app, noonUtc('2026-11-01'));
     expect(await teamIssues(ids.pub)).toEqual([]);
-    await runRecurring(app, '2026-11-02');
+    await runRecurring(app, noonUtc('2026-11-02'));
     const [made] = (await owner.post(`${ws}/issues/query`, { filter: { teamId: ids.pub } }))
       .data as Issue[];
     expect(made).toMatchObject({
@@ -86,7 +88,7 @@ describe('recurring issues', () => {
       labelIds: [ids.bug],
       assigneeId: ids.member,
     });
-    await runRecurring(app, '2026-11-02');
+    await runRecurring(app, noonUtc('2026-11-02'));
     expect(await teamIssues(ids.pub)).toHaveLength(1);
     const [row] = await app.db
       .select()
@@ -97,7 +99,7 @@ describe('recurring issues', () => {
 
   it("don't pile up missed runs", async () => {
     await member.patch(`${ws}/recurring/${ids.schedule}`, { nextOn: '2026-09-07' });
-    await runRecurring(app, '2026-11-04');
+    await runRecurring(app, noonUtc('2026-11-04'));
     expect(await teamIssues(ids.pub)).toHaveLength(2);
     const [row] = await app.db
       .select()
@@ -108,7 +110,7 @@ describe('recurring issues', () => {
 
   it('skip paused schedules', async () => {
     await member.patch(`${ws}/recurring/${ids.schedule}`, { paused: true, nextOn: '2026-11-04' });
-    await runRecurring(app, '2026-11-04');
+    await runRecurring(app, noonUtc('2026-11-04'));
     expect(await teamIssues(ids.pub)).toHaveLength(2);
   });
 
@@ -121,11 +123,62 @@ describe('recurring issues', () => {
       unit: 'month',
       nextOn: '2026-11-04',
     });
-    await runRecurring(app, '2026-11-04');
+    await runRecurring(app, noonUtc('2026-11-04'));
     const made = (await owner.post(`${ws}/issues/query`, { filter: { teamId: ids.prv } }))
       .data as Issue[];
     expect(made).toHaveLength(1);
     expect(made[0]).toMatchObject({ title: 'Weekly sync notes', assigneeId: null });
+  });
+
+  it("fire on the workspace's day, not UTC's", async () => {
+    await owner.patch(`${ws}/`, { settings: { timezone: 'America/Los_Angeles' } });
+    const res = await owner.post(`${ws}/recurring`, {
+      templateId: ids.weekly,
+      teamId: ids.prv,
+      every: 1,
+      unit: 'week',
+      nextOn: '2026-11-09',
+    });
+    const id = (res.data as RecurringIssue).id;
+    const nextOn = async () =>
+      (await app.db.select().from(recurringIssues).where(eq(recurringIssues.id, id)))[0]!.nextOn;
+    // Monday 03:00 UTC is still Sunday afternoon in Los Angeles.
+    await runRecurring(app, new Date('2026-11-09T03:00:00Z'));
+    expect(await nextOn()).toBe('2026-11-09');
+    await runRecurring(app, new Date('2026-11-09T09:00:00Z'));
+    expect(await nextOn()).toBe('2026-11-16');
+    await owner.patch(`${ws}/`, { settings: { timezone: null } });
+    await owner.del(`${ws}/recurring/${id}`);
+  });
+
+  it('only fall back to a bare issue when the template is stale', async () => {
+    const res = await owner.post(`${ws}/recurring`, {
+      templateId: ids.weekly,
+      teamId: ids.pub,
+      every: 1,
+      unit: 'day',
+      nextOn: '2026-11-04',
+    });
+    const id = (res.data as RecurringIssue).id;
+    // A failure that has nothing to do with the template, hitting only the full issue (the bare
+    // one has no priority): the schedule must fail, not quietly make a bare issue.
+    await app.db.execute(sql`
+      create function test_fail_insert() returns trigger language plpgsql as
+        $$ begin raise exception 'disk on fire'; end $$`);
+    await app.db.execute(sql`
+      create trigger test_fail_insert before insert on issues
+        for each row when (new.priority = 3) execute function test_fail_insert()`);
+    const before = await teamIssues(ids.pub);
+    try {
+      await runRecurring(app, noonUtc('2026-11-05'));
+    } finally {
+      await app.db.execute(sql`drop trigger test_fail_insert on issues`);
+      await app.db.execute(sql`drop function test_fail_insert`);
+    }
+    expect(await teamIssues(ids.pub)).toEqual(before);
+    const [row] = await app.db.select().from(recurringIssues).where(eq(recurringIssues.id, id));
+    expect(row!.nextOn).toBe('2026-11-04');
+    await owner.del(`${ws}/recurring/${id}`);
   });
 
   it('follow team access and template rules', async () => {

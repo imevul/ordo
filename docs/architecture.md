@@ -253,7 +253,10 @@ through their `chat` adapter (`post`, `direct`, `linkHint`).
   committed; `pg_notify('ordo_jobs')` wakes idle workers on commit.
 - Every API instance runs workers that claim jobs with a short `UPDATE … FOR UPDATE SKIP LOCKED`, run them outside a
   transaction, delete them on success and retry with exponential backoff on failure, finally marking them `dead`.
-- `orderingKey` serialises related jobs (oldest first); `dedupeKey` makes enqueueing idempotent.
+- `orderingKey` serialises related jobs (oldest first); `dedupeKey` makes enqueueing idempotent
+  while the job exists. Finished jobs are deleted, so work queued by a job that may run again
+  (per-event integration and chat-post jobs) also sets `once: true`, which keeps the key in
+  `job_keys` for 30 days.
 - `jobs.every(name, seconds)` schedules recurring work; whichever instance advances the schedule row runs it.
 - `Leases` (with fencing tokens) keep singleton work — long-lived bot connections — on one instance.
 

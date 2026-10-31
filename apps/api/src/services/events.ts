@@ -1,7 +1,14 @@
 import type { WebhookPayload } from '@ordo/shared';
 import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { domainEvents, users, webhookDeliveries, webhooks, workspaces } from '../db/schema.ts';
+import {
+  domainEvents,
+  jobKeys,
+  users,
+  webhookDeliveries,
+  webhooks,
+  workspaces,
+} from '../db/schema.ts';
 import { enqueue } from '../lib/jobs/index.ts';
 import type { Ctx } from './context.ts';
 import { dispatchToIntegrations } from './integrations.ts';
@@ -105,8 +112,12 @@ export async function dispatchEvents(
   await dispatchToIntegrations(app, workspaceId, events);
 }
 
-/** Events are kept for a month (enough to debug and redeliver), deliveries likewise. */
+/**
+ * Events are kept for a month (enough to debug and redeliver), deliveries likewise. So are the
+ * once-only job keys made from them: no event that old is dispatched again.
+ */
 export async function pruneEvents(app: FastifyInstance) {
+  await app.db.delete(jobKeys).where(lt(jobKeys.createdAt, sql`now() - interval '30 days'`));
   await app.db
     .delete(domainEvents)
     .where(lt(domainEvents.createdAt, sql`now() - interval '30 days'`));

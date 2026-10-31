@@ -1,14 +1,15 @@
-import type {
-  CreateIssueInput,
-  CreateRecurringInput,
-  RecurrenceUnit,
-  RecurringIssue,
+import {
+  type CreateIssueInput,
+  type CreateRecurringInput,
+  dayInZone,
+  type RecurrenceUnit,
+  type RecurringIssue,
 } from '@ordo/shared';
 import { and, asc, eq, lte } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
-import { issueTemplates, recurringIssues } from '../db/schema.ts';
-import { badRequest, notFound } from '../lib/errors.ts';
+import { issueTemplates, recurringIssues, workspaces } from '../db/schema.ts';
+import { badRequest, HttpError, notFound } from '../lib/errors.ts';
 import { type Access, canReadTeam, teamScope } from './access.ts';
 import { forEachIsolated, runAutomation } from './automation.ts';
 import { type Ctx, emit } from './context.ts';
@@ -106,20 +107,27 @@ export async function deleteRecurring(ctx: Ctx, id: string) {
 
 /**
  * Hourly: every schedule due today or earlier creates its issue, once (missed runs don't pile
- * up), and moves on to its next date after today.
+ * up), and moves on to its next date after today. "Today" is the workspace's, as for cycles.
  */
-export async function runRecurring(app: FastifyInstance, today = isoDay(new Date())) {
-  const due = await app.db
-    .select({ schedule: recurringIssues, template: issueTemplates })
+export async function runRecurring(app: FastifyInstance, at = new Date()) {
+  // No zone is more than 14 hours ahead of UTC: nothing due anywhere is past tomorrow in UTC.
+  const rows = await app.db
+    .select({ schedule: recurringIssues, template: issueTemplates, settings: workspaces.settings })
     .from(recurringIssues)
     .innerJoin(issueTemplates, eq(issueTemplates.id, recurringIssues.templateId))
-    .where(and(lte(recurringIssues.nextOn, today), eq(recurringIssues.paused, false)));
+    .innerJoin(workspaces, eq(workspaces.id, recurringIssues.workspaceId))
+    .where(
+      and(lte(recurringIssues.nextOn, addDays(isoDay(at), 1)), eq(recurringIssues.paused, false)),
+    );
+  const due = rows
+    .map((row) => ({ ...row, today: dayInZone(row.settings.timezone, at) }))
+    .filter((row) => row.schedule.nextOn <= row.today);
   await forEachIsolated(
     app,
     'issues.recur',
     due,
     ({ schedule }) => ({ recurringId: schedule.id, workspaceId: schedule.workspaceId }),
-    (row) => runSchedule(app, row, today),
+    (row) => runSchedule(app, row, row.today),
   );
 }
 
@@ -150,12 +158,13 @@ async function runSchedule(
       labelIds: template.labelIds,
     };
     // What the template sets may have gone stale (someone left the team, a label moved); the
-    // issue still gets made, with what's left.
+    // issue still gets made, with what's left. Those are 400s; anything else is a real failure.
     const attempt = (input: CreateIssueInput) =>
       ctx.tx.transaction((tx) => createIssue({ ...ctx, tx }, input));
-    const issue = await attempt(full).catch(() =>
-      attempt({ teamId: full.teamId, title: full.title, description: full.description }),
-    );
+    const issue = await attempt(full).catch((err) => {
+      if (!(err instanceof HttpError && err.statusCode === 400)) throw err;
+      return attempt({ teamId: full.teamId, title: full.title, description: full.description });
+    });
     await ctx.tx
       .update(recurringIssues)
       .set({ nextOn: next, lastIssueId: issue.id })

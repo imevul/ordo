@@ -298,6 +298,7 @@ export async function chatFeed(ictx: IntegrationContext, event: IntegrationEvent
       } satisfies ChatPost,
       {
         dedupeKey: `cp:${ictx.integration.id}:${event.id}:${channel.id}`,
+        once: true,
         orderingKey: `chat:${ictx.integration.id}:${channel.id}`,
       },
     );

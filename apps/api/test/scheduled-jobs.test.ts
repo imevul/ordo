@@ -159,13 +159,13 @@ describe('one failure does not stop the rest', () => {
       ).filter((i) => i.title === 'Standup notes');
     const undo = await failWhen('issues', 'insert', `new.team_id = '${eng.id}'`);
     try {
-      await runRecurring(app, '2026-11-02');
+      await runRecurring(app, new Date('2026-11-02T12:00:00Z'));
     } finally {
       await undo();
     }
     expect(await standups(eng)).toHaveLength(0);
     expect(await standups(ops)).toHaveLength(1);
-    await runRecurring(app, '2026-11-02');
+    await runRecurring(app, new Date('2026-11-02T12:00:00Z'));
     expect(await standups(eng)).toHaveLength(1);
     expect(await standups(ops)).toHaveLength(1);
   });

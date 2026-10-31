@@ -9,6 +9,7 @@ import { auditLog, domainEvents, integrations, issues, users, webhooks } from '.
 import { registerProvider, unregisterProvider } from '../src/integrations/registry.ts';
 import type { IntegrationEvent } from '../src/integrations/types.ts';
 import { runInWorkspace } from '../src/lib/mutate.ts';
+import { dispatchEvents } from '../src/services/events.ts';
 import { createIssue } from '../src/services/issues.ts';
 import { upsertIssueLink } from '../src/services/links.ts';
 import { type Client, signup, testApp } from './helpers.ts';
@@ -363,6 +364,24 @@ describe('integration framework', () => {
     expect(
       seen.find((e) => (e.data as { title?: string }).title === 'Human made')!.teamIds,
     ).toEqual([teamA().id]);
+  });
+
+  it('hands each event to an integration once, even if its dispatch runs again', async () => {
+    seen.length = 0;
+    const issue = (await owner.post(`${ws}/issues`, { teamId: teamA().id, title: 'Only once' }))
+      .data;
+    await settle(2);
+    expect(seen.map((e) => (e.data as { id: string }).id)).toEqual([issue.id]);
+    // The dispatch job's worker died after its jobs ran and before deleting its own row.
+    const ids = (
+      await app.db
+        .select({ id: domainEvents.id })
+        .from(domainEvents)
+        .where(sql`${domainEvents.data}->>'id' = ${issue.id}`)
+    ).map((e) => e.id);
+    await dispatchEvents(app, { workspaceId: boot.workspace.id, ids });
+    await settle(2);
+    expect(seen).toHaveLength(1);
   });
 
   it('tracks errors and recovers', async () => {

@@ -246,6 +246,7 @@ export async function dispatchToIntegrations(
           {
             orderingKey: `integration:${integration.id}`,
             dedupeKey: `ie:${integration.id}:${event.id}`,
+            once: true,
           },
         );
       }
