@@ -11,6 +11,7 @@ import {
   needs,
   type Op,
   overlayComments,
+  overlayIssue,
   overlayIssues,
   type PendingOp,
 } from './outbox.ts';
@@ -474,6 +475,11 @@ export class Engine {
     for (const issue of this.state.issues.values())
       if (issue.identifier.toUpperCase() === wanted) return issue;
     return undefined;
+  }
+
+  /** An issue fetched from the server (its page) with the outbox on top. */
+  overlayIssue<T extends Issue>(issue: T): T {
+    return overlayIssue(issue, this.pending, this.state.bootstrap);
   }
 
   /** The server's comments kept for an issue (from memory, else the store). */

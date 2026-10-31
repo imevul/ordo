@@ -1,5 +1,4 @@
 import { branchName, type IssueDetail, type Team } from '@ordo/shared';
-import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   Archive,
@@ -15,7 +14,7 @@ import {
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../../api/client.ts';
-import { invalidateIssues, useWsMutation } from '../../api/queries.ts';
+import { useRestoreIssues, useTrashIssues, useWsMutation } from '../../api/queries.ts';
 import { t } from '../../i18n/index.ts';
 import { useHotkey } from '../../lib/hotkeys.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
@@ -42,7 +41,6 @@ export function IssueHeader({
   onAiPanel: (kind: AiPanelKind) => void;
 }) {
   const ws = useWorkspace();
-  const qc = useQueryClient();
   const navigate = useNavigate();
   const aiEnabled = useAiEnabled();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -65,25 +63,22 @@ export function IssueHeader({
       ],
     },
   );
-  const done = () => invalidateIssues(qc, ws.slug);
+  const trashIssues = useTrashIssues(ws.slug);
+  const restore = useRestoreIssues(ws.slug);
 
-  const trash = async () => {
-    await api.del(wsPath(ws.slug, `/issues/${issue.id}`));
-    done();
-    toast(t('issue.detail.trashed', { identifier: issue.identifier }), {
-      action: {
-        label: t('common.undo'),
-        onClick: async () => {
-          await api.post(wsPath(ws.slug, `/issues/${issue.id}/restore`));
-          done();
-        },
+  // Through the outbox with the local copy: offline it's queued, and Undo is queued after it.
+  const trash = () =>
+    trashIssues.mutate([issue.id], {
+      onSuccess: () => {
+        toast(t('issue.detail.trashed', { identifier: issue.identifier }), {
+          action: { label: t('common.undo'), onClick: () => restore.mutate([issue.id]) },
+        });
+        if (compact) return;
+        if (team)
+          navigate({ to: '/$slug/team/$key/$tab', params: { ...p, key: team.key, tab: 'all' } });
+        else navigate({ to: '/$slug', params: p });
       },
     });
-    if (compact) return;
-    if (team)
-      navigate({ to: '/$slug/team/$key/$tab', params: { ...p, key: team.key, tab: 'all' } });
-    else navigate({ to: '/$slug', params: p });
-  };
 
   // Linking a PR is as easy as naming the branch after the issue.
   const copyBranch = () =>

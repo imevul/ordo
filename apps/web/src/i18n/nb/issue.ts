@@ -31,6 +31,7 @@ export default {
     teamUnavailable: 'Teamet er ikke tilgjengelig',
     teamUnavailableTitle: 'Du kan ikke se teamet til saken, eller det er ikke lastet ennå',
     movedTo: 'Flyttet til {identifier}',
+    movedToTeam: 'Flyttet til {team}',
     setParent: 'Velg overordnet sak',
     removeParent: 'Fjern overordnet sak',
     created: '<k>> opprettet</k> {time}',

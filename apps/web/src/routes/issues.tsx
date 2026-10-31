@@ -5,7 +5,13 @@ import { RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
-import { invalidateIssues, useIssue, useIssues, useSearch } from '../api/queries.ts';
+import {
+  invalidateIssues,
+  useIssue,
+  useIssues,
+  useRestoreIssues,
+  useSearch,
+} from '../api/queries.ts';
 import { IssueDetailView } from '../components/IssueDetailView.tsx';
 import { IssuesView } from '../components/IssuesView.tsx';
 import { StatusIcon, TeamIcon } from '../components/icons.tsx';
@@ -255,11 +261,11 @@ export function TrashPage() {
   const ws = useWorkspace();
   const qc = useQueryClient();
   const { data, isLoading } = useIssues(ws.slug, { trashed: true });
-  const restore = async (issue: Issue) => {
-    await api.post(wsPath(ws.slug, `/issues/${issue.id}/restore`));
-    invalidateIssues(qc, ws.slug);
-    toast.success(t('issues.trash.restored', { id: issue.identifier }));
-  };
+  const restoreIssues = useRestoreIssues(ws.slug);
+  const restore = (issue: Issue) =>
+    restoreIssues.mutate([issue.id], {
+      onSuccess: () => toast.success(t('issues.trash.restored', { id: issue.identifier })),
+    });
   const purge = async (issue: Issue) => {
     if (
       !(await confirmDialog({

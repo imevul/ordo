@@ -216,6 +216,14 @@ export default {
         one: 'Flytt av {id} till papperskorgen',
         other: 'Flytt av {count} ärenden till papperskorgen',
       },
+      issueRestore: {
+        one: 'Återställning av {id} från papperskorgen',
+        other: 'Återställning av {count} ärenden från papperskorgen',
+      },
+      issueMove: {
+        one: 'Flytt av {id} till {team}',
+        other: 'Flytt av {count} ärenden till {team}',
+      },
       commentCreate: 'Kommentar på {id}',
       commentUpdate: 'Redigering av en kommentar på {id}',
       commentDelete: 'Borttagning av en kommentar på {id}',

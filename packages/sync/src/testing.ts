@@ -61,10 +61,13 @@ const bootstrapFor = (teams: string[]) =>
   ({
     workspace: { id: 'ws-1', name: 'W', slug: 'w' },
     teams: teams.map((id) => ({ id, name: id, key: id.toUpperCase() })),
+    labels: [],
   }) as unknown as Bootstrap;
 
 export class FakeServer {
   issues = new Map<string, Issue>();
+  /** In the trash: out of the copy, but restorable. */
+  trashed = new Map<string, Issue>();
   comments = new Map<string, Comment>();
   teams = ['team-1', 'team-2'];
   epoch = 1;
@@ -195,8 +198,27 @@ export class FakeServer {
         return op.ids.length === 1 ? updated[0] : updated;
       }
       case 'issue.trash':
-        for (const id of op.ids) this.remove(id);
+        for (const id of op.ids) {
+          const i = this.issues.get(id);
+          if (i) this.trashed.set(id, i);
+          this.remove(id);
+        }
         return { ok: true };
+      case 'issue.restore':
+        for (const id of op.ids) {
+          const i = this.trashed.get(id);
+          this.trashed.delete(id);
+          if (i) this.put(i);
+        }
+        return { ok: true };
+      case 'issue.move':
+        return op.ids.map((id) => {
+          const n = this.issues.size + 1;
+          const key = op.teamId.toUpperCase();
+          const moved = { ...this.issues.get(id)!, teamId: op.teamId, identifier: `${key}-${n}` };
+          this.put(moved);
+          return moved;
+        });
       case 'comment.create': {
         const c = { ...comment(op.comment.id, op.comment.issueId, op.comment.body) };
         this.putComment(c);

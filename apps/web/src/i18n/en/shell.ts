@@ -212,6 +212,14 @@ export default {
       issueCreate: 'New issue “{title}”',
       issueUpdate: { one: 'Change to {id}', other: 'Change to {count} issues' },
       issueTrash: { one: 'Moving {id} to the trash', other: 'Moving {count} issues to the trash' },
+      issueRestore: {
+        one: 'Restoring {id} from the trash',
+        other: 'Restoring {count} issues from the trash',
+      },
+      issueMove: {
+        one: 'Moving {id} to {team}',
+        other: 'Moving {count} issues to {team}',
+      },
       commentCreate: 'Comment on {id}',
       commentUpdate: 'Edit to a comment on {id}',
       commentDelete: 'Deleting a comment on {id}',

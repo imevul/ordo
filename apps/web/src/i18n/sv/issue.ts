@@ -31,6 +31,7 @@ export default {
     teamUnavailable: 'Teamet är inte tillgängligt',
     teamUnavailableTitle: 'Du kan inte se ärendets team, eller så har det inte laddats än',
     movedTo: 'Flyttat till {identifier}',
+    movedToTeam: 'Flyttat till {team}',
     setParent: 'Välj överordnat ärende',
     removeParent: 'Ta bort överordnat ärende',
     created: '<k>> skapat</k> {time}',

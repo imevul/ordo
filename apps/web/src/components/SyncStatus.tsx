@@ -86,6 +86,16 @@ function Unsaved({ entry, onDiscard }: { entry: PendingOp; onDiscard: () => void
     case 'issue.trash':
       what = t('shell.sync.op.issueTrash', { id: name(op.ids[0]!), count: op.ids.length });
       break;
+    case 'issue.restore':
+      what = t('shell.sync.op.issueRestore', { id: name(op.ids[0]!), count: op.ids.length });
+      break;
+    case 'issue.move':
+      what = t('shell.sync.op.issueMove', {
+        id: name(op.ids[0]!),
+        count: op.ids.length,
+        team: engine?.getState().bootstrap?.teams.find((tm) => tm.id === op.teamId)?.name ?? '',
+      });
+      break;
     case 'comment.create':
       what = t('shell.sync.op.commentCreate', { id: name(op.comment.issueId) });
       text = op.comment.body;

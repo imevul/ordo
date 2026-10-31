@@ -7,16 +7,15 @@ import {
   type UpdateIssueInput,
   type View,
 } from '@ordo/shared';
-import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { ChartColumn, Plus, Save, Trash2, X } from 'lucide-react';
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
 import {
-  invalidateIssues,
   useBatchUpdateIssues,
   useIssues,
+  useRestoreIssues,
   useTrashIssues,
   useUpdateIssue,
   useWsMutation,
@@ -57,7 +56,6 @@ interface Props {
 export function IssuesView(props: Props) {
   const ws = useWorkspace();
   const navigate = useNavigate();
-  const qc = useQueryClient();
   const { baseFilter, teamId, storageKey, view } = props;
 
   const [userFilter, setUserFilter] = useState<IssueFilter>(() =>
@@ -118,6 +116,7 @@ export function IssuesView(props: Props) {
   const update = useUpdateIssue(ws.slug);
   const batch = useBatchUpdateIssues(ws.slug);
   const trash = useTrashIssues(ws.slug);
+  const restore = useRestoreIssues(ws.slug);
 
   const targets = useMemo(
     () => (selected.size ? [...selected] : focusedId ? [focusedId] : []),
@@ -163,12 +162,7 @@ export function IssuesView(props: Props) {
         toast(t('issues.view.movedToTrash', { count: ids.length }), {
           action: {
             label: t('common.undo'),
-            onClick: async () => {
-              await Promise.all(
-                ids.map((id) => api.post(wsPath(ws.slug, `/issues/${id}/restore`))),
-              );
-              invalidateIssues(qc, ws.slug);
-            },
+            onClick: () => restore.mutate(ids),
           },
         }),
     });
