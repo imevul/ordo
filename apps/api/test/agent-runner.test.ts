@@ -190,6 +190,39 @@ describe('runner files', () => {
     );
     await expect(loadRunnerFile(missing, {})).rejects.toThrow('agents.x.command: required');
   });
+
+  it('load every runner-file example in the docs', async () => {
+    const docs = join(import.meta.dirname, '../../../docs');
+    const examples = readdirSync(docs, { recursive: true, encoding: 'utf8' })
+      .filter((f) => f.endsWith('.md'))
+      .flatMap((f) =>
+        [...readFileSync(join(docs, f), 'utf8').matchAll(/```ya?ml\n([\s\S]*?)```/g)]
+          .map((m) => m[1]!)
+          .filter((text) => text.includes('ordo agent run --file'))
+          .map((text) => ({ doc: f, text })),
+      );
+    expect(examples.length).toBeGreaterThan(0);
+    for (const { doc, text } of examples) {
+      const where = mkdtempSync(join(tmpdir(), 'ordo-docs-'));
+      const name = /ordo agent run --file (\S+)/.exec(text)![1]!;
+      writeFileSync(join(where, name), text);
+      chmodSync(join(where, name), 0o600);
+      // Empty env_file entries, and a placeholder for every ${VAR} without a default.
+      const envFiles = /^env_file:\s*\[?([^\]#\n]*)/m.exec(text)?.[1]?.split(',') ?? [];
+      for (const f of envFiles) if (f.trim()) writeFileSync(join(where, f.trim()), '');
+      const env = Object.fromEntries(
+        [...text.matchAll(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g)].map((m) => [m[1]!, 'ordo_key']),
+      );
+      const { agents: specs } = await loadRunnerFile(join(where, name), env).catch((err) => {
+        throw new Error(`${doc}: ${name}: ${(err as Error).message}`);
+      });
+      for (const spec of specs) {
+        // `sh -c` doesn't resolve ./ against the file: a relative script would never be found.
+        const first = Array.isArray(spec.command) ? spec.command[0]! : spec.command.split(/\s/)[0]!;
+        expect(first, `${doc}: ${name}: agents.${spec.label}.command`).not.toMatch(/^\.\.?\//);
+      }
+    }
+  });
 });
 
 describe('ordo agent', () => {
