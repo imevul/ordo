@@ -17,13 +17,16 @@ import type {
   Issue,
   IssueDetail,
   IssueFilter,
+  IssueTime,
   Me,
   Notification,
   NotificationType,
   OAuthGrant,
   ProjectUpdate,
+  RunningTimer,
   SearchResults,
   SessionInfo,
+  TimeReport,
   UpdateIssueInput,
   Velocity,
 } from '@ordo/shared';
@@ -332,6 +335,29 @@ export const useActiveAgentRunCount = (slug: string, enabled: boolean) =>
     queryFn: () => api.get<{ count: number }>(wsPath(slug, '/agent-runs/active-count')),
     select: (d) => d.count,
     enabled,
+  });
+
+// Time queries live under ['ws', slug, 'time'] so realtime timeEntry events refetch them all.
+export const useIssueTime = (slug: string, issueId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['ws', slug, 'time', 'issue', issueId],
+    queryFn: () => api.get<IssueTime>(wsPath(slug, `/issues/${issueId}/time-entries`)),
+    enabled,
+  });
+
+export const useRunningTimer = (slug: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['ws', slug, 'time', 'timer'],
+    queryFn: () => api.get<RunningTimer | null>(wsPath(slug, '/timer')),
+    enabled,
+  });
+
+export const useTimeReport = (slug: string, query: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['ws', slug, 'time', 'report', query],
+    queryFn: () => api.get<TimeReport>(wsPath(slug, `/time-entries/report?${query}`)),
+    enabled,
+    placeholderData: keepPreviousData,
   });
 
 export const useProjectUpdates = (slug: string, projectId: string) =>

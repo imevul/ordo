@@ -14,6 +14,7 @@ import { CustomerRequests } from './CustomerRequests.tsx';
 import { IssueAttachments } from './IssueAttachments.tsx';
 import { IssueLinks } from './IssueLinks.tsx';
 import { IssuePullRequests } from './IssuePullRequests.tsx';
+import { IssueTime } from './IssueTime.tsx';
 import { IssueHeader } from './issue/IssueHeader.tsx';
 import { IssueRelations } from './issue/IssueRelations.tsx';
 import { IssueProperties, IssueSidebar } from './issue/IssueSidebar.tsx';
@@ -105,6 +106,7 @@ export function IssueDetailView({
               <IssueLinks issue={issue} onChange={done} />
               <AgentRuns issue={issue} />
               <CustomerRequests issue={issue} onChange={done} />
+              <IssueTime issue={issue} />
 
               <Activity issue={issue} focusCommentId={focusCommentId} />
             </div>

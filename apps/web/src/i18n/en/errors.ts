@@ -113,5 +113,8 @@ export default {
     username_claimed: '{username} is already claimed by someone else here',
     attachment_too_large: 'Attachments can be up to {maxMb} MB',
     max_reactions: 'A comment can have at most {max} different reactions',
+    time_tracking_off: 'Time tracking is off in this workspace',
+    own_time_entries: 'You can only change your own time entries',
+    no_timer: 'No timer is running',
   },
 };

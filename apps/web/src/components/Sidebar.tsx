@@ -7,6 +7,7 @@ import {
   ChartLine,
   ChevronRight,
   CircleDot,
+  Clock,
   Eye,
   Goal,
   Hexagon,
@@ -32,6 +33,7 @@ import type { RealtimeStatus } from '../api/realtime.ts';
 import { t } from '../i18n/index.ts';
 import { readPref, ui, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
+import { RunningTimerItem } from './IssueTime.tsx';
 import { OrdoMark, ProjectIcon, TeamIcon } from './icons.tsx';
 import { ProfileMenu } from './ProfileMenu.tsx';
 import { SyncStatus } from './SyncStatus.tsx';
@@ -243,6 +245,7 @@ export function Sidebar({
             <Target size={15} />
             {t('shell.nav.myIssues')}
           </Link>
+          {ws.workspace.settings.timeTracking && <RunningTimerItem />}
         </div>
 
         <div className="mt-5 mb-1 px-2 font-mono text-[10.5px] font-semibold tracking-[0.2em] text-index uppercase">
@@ -277,6 +280,12 @@ export function Sidebar({
             <Link to="/$slug/customers" params={p} className="nav-item">
               <Building2 size={15} />
               {t('shell.nav.customers')}
+            </Link>
+          )}
+          {ws.workspace.settings.timeTracking && (
+            <Link to="/$slug/time" params={p} className="nav-item">
+              <Clock size={15} />
+              {t('timeTracking.report.nav')}
             </Link>
           )}
           {hasAgents && (

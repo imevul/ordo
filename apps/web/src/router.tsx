@@ -35,6 +35,7 @@ import { ProjectDetailPage, ProjectsPage } from './routes/projects/index.tsx';
 import { ReleasePage, ReleasesPage } from './routes/releases.tsx';
 import { RoadmapPage } from './routes/roadmap.tsx';
 import { SettingsPage, TeamSettingsPage } from './routes/settings/index.tsx';
+import { TimeReportPage } from './routes/time.tsx';
 import { ViewPage, ViewsPage } from './routes/views.tsx';
 import { NotFound, WorkspaceIndex, WorkspaceLayout } from './routes/workspace.tsx';
 
@@ -221,6 +222,11 @@ const customersRoute = createRoute({
   path: '/customers',
   component: CustomersPage,
 });
+const timeRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/time',
+  component: TimeReportPage,
+});
 const customerRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/customer/$customerId',
@@ -313,6 +319,7 @@ const routeTree = rootRoute.addChildren([
     dashboardsRoute,
     dashboardRoute,
     customersRoute,
+    timeRoute,
     agentRunsRoute,
     agentRunRoute,
     customerRoute,
