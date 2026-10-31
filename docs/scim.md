@@ -12,6 +12,11 @@ people your directory adds have no password, so they sign in through your provid
 - **Verify your email domain** under **Settings → Access → Domains**. The directory can only add people at verified
   domains, and only sees members there (plus anyone it added itself).
 - Set up [single sign-on](sso.md) with the same provider, so the people it adds can sign in.
+- **Check that existing accounts have verified their address.** The directory links only accounts that have; it
+  moves an unverified one to a placeholder address and creates a second account for the person. Without mail,
+  sign-up never verifies anyone, so on such an instance this hits every existing password user. Admin → Users marks
+  unverified addresses: send each of those people a **password reset link** first. Setting a password from the
+  link verifies the address.
 
 ## Connect your identity provider
 
@@ -65,6 +70,10 @@ Accounts are shared between workspaces on an instance, so a directory gets limit
 
 - It can add people only at the workspace's **verified domains**, and change someone's email only from one verified
   domain to another. Names change only for people at those domains.
+- It links an existing account only if that account has **verified** its address. An unverified account at the
+  address (anyone can claim an address without proving it) is moved to a placeholder address, kept with its work,
+  and the directory gets a fresh account. If it was really theirs, an instance admin can
+  send its holder a password reset link (Admin → Users) to get back in and pick another address.
 - It never suspends or removes an **owner** (you'll see a `403` in your provider's logs); change owners in Ordo.
 - A token works for one workspace only, and isn't an API key: it can't read issues or act as anyone.
 - Revoking a token (Settings → Authentication) stops it immediately.

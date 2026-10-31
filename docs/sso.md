@@ -14,6 +14,11 @@ when your provider offers both; it's simpler to set up.
 3. If your provider lives on your LAN (e.g. `http://keycloak.lan`), an instance admin has to turn on **Allow private
    network targets** (Admin → Settings), or set `ORDO_ALLOW_PRIVATE_NETWORK_TARGETS=true`. Plain-`http` issuers only
    work with that setting on.
+4. **Check that existing accounts have verified their address.** SSO matches only accounts that have. One that hasn't
+   is moved to a placeholder address at its owner's first SSO sign-in, and they get a second, new account. Without
+   mail, sign-up never verifies anyone, so on such an instance this hits every existing password user. Admin → Users
+   marks unverified addresses: send each of those people a **password reset link** first. Setting a password from the
+   link verifies the address.
 
 ## Add the provider
 
@@ -87,8 +92,10 @@ providers accept by default).
   address isn't on a verified domain — and who linked their identity themselves — get a one-click sign-in.
 - Neither lookup reveals whether someone has an account: answers depend only on the domain or the workspace.
 - **First sign-in:** if the address is verified and its domain is verified for your workspace, Ordo creates the
-  account (or matches the existing one with that address) and adds it to the workspace with the provider's default
-  role (member or guest).
+  account (or matches the existing one with that address, if that account has verified it) and adds it to the
+  workspace with the provider's default role (member or guest). An existing account that never verified the address
+  isn't matched: it moves to a placeholder address and the person gets a fresh account, so nobody can claim an
+  address ahead of its owner and wait for them to sign in.
 - **Anyone else** (other domains, unverified addresses, existing accounts with a different address) links the identity
   themselves: sign in as usual, then **Settings → Connected accounts → Connect**.
 - People can unlink identities, except their only way to sign in.

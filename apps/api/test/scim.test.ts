@@ -195,14 +195,17 @@ describe('users', () => {
     expect(refused.statusCode).toBe(400);
     expect(json(refused).scimType).toBe('invalidValue');
 
-    // An account from before, not yet in this workspace.
+    // A verified account from before, not yet in this workspace.
     const email = `existing-${++n}@${domain}`;
     const { client } = await signup(app, 'Existing Person');
     const [me] = await app.db
       .select()
       .from(users)
       .where(eq(users.email, (await client.get('/api/auth/me')).data.email));
-    await app.db.update(users).set({ email }).where(eq(users.id, me!.id));
+    await app.db
+      .update(users)
+      .set({ email, emailVerifiedAt: new Date().toISOString() })
+      .where(eq(users.id, me!.id));
     const linked = await scim('POST', '/Users', {
       ...oktaUser('x'),
       userName: email,
@@ -211,6 +214,104 @@ describe('users', () => {
     expect(linked.statusCode).toBe(201);
     expect(json(linked).id).toBe(me!.id);
     expect(await member(me!.id)).not.toBeNull();
+  });
+
+  it("doesn't link an unverified account with a password at the address, and frees the address", async () => {
+    // Someone signs up as the person-to-be and moves to their address without proving it.
+    const email = `squatted-${++n}@${domain}`;
+    const squatter = await signup(app, 'Squatter Person');
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    await squatter.client.post('/api/me/email', { email, password: 'correct horse battery' });
+    const [before] = await app.db.select().from(users).where(eq(users.id, squatterId));
+    expect(before).toMatchObject({ email, emailVerifiedAt: null });
+    expect(before!.passwordHash).not.toBeNull();
+
+    const res = await scim('POST', '/Users', {
+      ...oktaUser('x'),
+      userName: email,
+      emails: [{ value: email, primary: true }],
+    });
+    expect(res.statusCode).toBe(201);
+    const created = json(res);
+    expect(created.id).not.toBe(squatterId);
+    expect(created.userName).toBe(email);
+    const [account] = await app.db.select().from(users).where(eq(users.id, created.id));
+    expect(account).toMatchObject({ email, passwordHash: null });
+    expect(account!.emailVerifiedAt).not.toBeNull();
+    expect(await member(created.id)).not.toBeNull();
+
+    // The squatter keeps their account, at another address, outside the workspace.
+    expect(await member(squatterId)).toBeNull();
+    const [after] = await app.db.select().from(users).where(eq(users.id, squatterId));
+    expect(after!.email).not.toBe(email);
+    expect(after!.email).toMatch(/\.invalid$/);
+    const login = await app.inject({
+      method: 'POST',
+      url: '/api/auth/login',
+      payload: { email, password: 'correct horse battery' },
+    });
+    expect(login.statusCode).not.toBe(200);
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
+    expect(logged!.data).toMatchObject({ from: email, via: 'scim' });
+  });
+
+  it('moves a provisioned user onto an address an unverified account squats', async () => {
+    const { user } = await provision('mover');
+    const email = `moved-${++n}@${domain}`;
+    const squatter = await signup(app, 'Squatter Person');
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    await squatter.client.post('/api/me/email', { email, password: 'correct horse battery' });
+    const res = await scim('PATCH', `/Users/${user.id}`, {
+      schemas: [PATCH],
+      Operations: [{ op: 'replace', path: 'userName', value: email }],
+    });
+    expect(res.statusCode).toBe(200);
+    expect(json(res).userName).toBe(email);
+    const [moved] = await app.db.select().from(users).where(eq(users.id, user.id));
+    expect(moved!.email).toBe(email);
+    const [after] = await app.db.select().from(users).where(eq(users.id, squatterId));
+    expect(after!.email).toMatch(/\.invalid$/);
+    expect(await member(squatterId)).toBeNull();
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
+    expect(logged!.data).toMatchObject({
+      from: email,
+      via: 'scim',
+      reason: 'unverified_address_claimed',
+    });
+  });
+
+  it("doesn't link an unverified account without a password at the address", async () => {
+    const email = `passwordless-${++n}@${domain}`;
+    const squatter = await signup(app, 'Passwordless Person');
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    await app.db
+      .update(users)
+      .set({ email, emailVerifiedAt: null, passwordHash: null })
+      .where(eq(users.id, squatterId));
+
+    const res = await scim('POST', '/Users', {
+      ...oktaUser('x'),
+      userName: email,
+      emails: [{ value: email, primary: true }],
+    });
+    expect(res.statusCode).toBe(201);
+    const created = json(res);
+    expect(created.id).not.toBe(squatterId);
+    expect(await member(created.id)).not.toBeNull();
+    expect(await member(squatterId)).toBeNull();
+    const [after] = await app.db.select().from(users).where(eq(users.id, squatterId));
+    expect(after!.email).toMatch(/\.invalid$/);
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
+    expect(logged!.data).toMatchObject({ from: email, via: 'scim' });
   });
 
   it("lists members at the workspace's domains, but not others", async () => {

@@ -183,7 +183,9 @@ Notable choices:
     Identity is read only from the verified assertion; Issuer, Destination and Recipient are checked on top of the
     library's signature, time, audience and InResponseTo checks; any DOCTYPE is refused.
     Accounts are created or matched by email only for trusted emails (OIDC `email_verified`, or SAML with the provider's
-    "trust emails" on) at the workspace's verified domains; otherwise identities are linked explicitly. Require-SSO is checked in `authorizeWorkspace` (HTTP and WebSocket):
+    "trust emails" on) at the workspace's verified domains, and matched only to accounts whose `email_verified_at` is
+    set (`claimableUser`, shared with SCIM: an unverified holder is moved to an `.invalid` address); otherwise
+    identities are linked explicitly. Require-SSO is checked in `authorizeWorkspace` (HTTP and WebSocket):
     the session's `auth_provider_id` must belong to the workspace; owners pass (password sign-ins are audited as
     `auth.sso_bypass`); `sso_expires_at` caps SSO session length in `resolveUser`.
 - Sessions: 32 random bytes in an `HttpOnly`, `SameSite=Lax` cookie; stored as SHA-256; 30-day sliding expiry.

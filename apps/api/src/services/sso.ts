@@ -16,6 +16,7 @@ import { badRequest, one } from '../lib/errors.ts';
 import { escapeHtml as esc } from '../lib/html.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from './audit.ts';
+import type { RequestMeta } from './context.ts';
 import { publishChanges } from './sync.ts';
 import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 
@@ -129,6 +130,44 @@ export async function uniqueUsername(tx: DbOrTx, base: string) {
   }
 }
 
+/**
+ * The account an identity that proves `email` (SSO at a verified domain, SCIM) may take over, if
+ * any. An unverified account never proved the address: anyone can create one through open sign-up,
+ * an open invite or an email change without mail, to sit there until the real person arrives. So
+ * it isn't linked; it moves to an address of its own (and can't sign in by email any more) and the
+ * caller creates a fresh account. Bots and placeholders come back as they are, for the caller to refuse.
+ */
+export async function claimableUser(
+  tx: DbOrTx,
+  email: string,
+  entry: { workspaceId: string; actorId: string | null; via: 'sso' | 'scim' },
+  meta: RequestMeta | null,
+) {
+  const [existing] = await tx
+    .select({ id: users.id, kind: users.kind, emailVerifiedAt: users.emailVerifiedAt })
+    .from(users)
+    .where(eq(users.email, email));
+  if (!existing || existing.emailVerifiedAt || existing.kind !== 'human') return existing ?? null;
+  const released = `unverified-${existing.id}@released.ordo.invalid`;
+  await tx
+    .update(users)
+    .set({ email: released, updatedAt: new Date().toISOString() })
+    .where(eq(users.id, existing.id));
+  await audit(
+    tx,
+    {
+      action: 'auth.email_changed',
+      workspaceId: entry.workspaceId,
+      actorId: entry.actorId,
+      targetType: 'user',
+      targetId: existing.id,
+      data: { from: email, to: released, via: entry.via, reason: 'unverified_address_claimed' },
+    },
+    meta,
+  );
+  return null;
+}
+
 export class SsoError extends Error {}
 
 /**
@@ -162,7 +201,12 @@ export async function resolveSsoUser(
           "This sign-in isn't linked to an Ordo account. Sign in another way, then connect it under Settings → Connected accounts.",
         );
       }
-      const [existing] = await tx.select().from(users).where(eq(users.email, email!));
+      const existing = await claimableUser(
+        tx,
+        email!,
+        { workspaceId: provider.workspaceId, actorId: null, via: 'sso' },
+        { ip, userAgent: null },
+      );
       if (existing) userId = existing.id;
       else {
         const created = one(
