@@ -1,9 +1,12 @@
 import {
+  AGENT_OUTPUT_LINES,
+  AGENT_OUTPUT_RETENTION_MS,
   type Agent,
   type AgentIdentity,
   type AgentRun,
   type AgentRunContext,
   type AgentRunDetail,
+  type AgentRunOutput,
   type AgentUsageTotal,
   type Bootstrap,
   type Comment,
@@ -12,9 +15,14 @@ import {
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { agentRuns, domainEvents } from '../src/db/schema.ts';
+import { agentRunOutput, agentRuns, domainEvents } from '../src/db/schema.ts';
 import { runInWorkspace } from '../src/lib/mutate.ts';
-import { reapLeases, reportProgress, restartAfterLimits } from '../src/services/agents.ts';
+import {
+  pruneRunOutput,
+  reapLeases,
+  reportProgress,
+  restartAfterLimits,
+} from '../src/services/agents.ts';
 import { type Client, type Json, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -1492,5 +1500,116 @@ describe('a run’s page', () => {
     expect((await detail(member, run!.id)).statusCode).toBe(404);
     expect((await detail(member, '00000000-0000-4000-8000-000000000000')).statusCode).toBe(404);
     await owner.post(`${ws}/agent-runs/${run!.id}/cancel`);
+  });
+});
+
+describe('live output', () => {
+  let scribe: string;
+  let scribeKey: string;
+  const as = (method: string, url: string, body?: unknown) => bearer(scribeKey, method, url, body);
+  const send = (runId: string, lines: unknown) =>
+    as('POST', `${ws}/agent/runs/${runId}/output`, { lines });
+  const read = async (who: Client, runId: string) =>
+    (await who.get(`${ws}/agent-runs/${runId}/output`)) as {
+      statusCode: number;
+      data: AgentRunOutput;
+    };
+  const take = async () =>
+    ((await as('POST', `${ws}/agent/claim?runner=scribe-host`)) as { data: AgentRunContext }).data;
+  /** A run of the scribe's on a new issue, claimed. */
+  const start = async (title: string, teamId = eng) => {
+    const i = (await owner.post(`${ws}/issues`, { teamId, title, assigneeId: scribe })).data;
+    const context = await take();
+    expect(context.issue.id).toBe(i.id);
+    return context.run.id;
+  };
+
+  beforeAll(async () => {
+    scribe = (
+      await owner.post(`${ws}/agents`, {
+        name: 'Scribe',
+        // Test files share a database; a name of its own keeps @mentions on this agent.
+        username: `scribe-${Date.now().toString(36)}`,
+        teamIds: [eng, prv],
+        concurrency: 5,
+      })
+    ).data.id;
+    scribeKey = (await owner.post(`${ws}/agents/${scribe}/keys`, { name: 's' })).data.token;
+  });
+
+  it('keeps the tail of what the run printed, for people who can see the issue', async () => {
+    const runId = await start('Print things');
+    expect((await read(owner, runId)).data).toEqual({ lines: [], total: 0, updatedAt: null });
+    expect((await send(runId, ['\x1b[32mok\x1b[0m one', 'two'])).data).toEqual({
+      accepted: true,
+    });
+    expect((await send(runId, ['three'])).data).toEqual({ accepted: true });
+    const { data } = await read(member, runId);
+    expect(data.lines).toEqual(['ok one', 'two', 'three']);
+    expect(data.total).toBe(3);
+    expect(data.updatedAt).toBeTruthy();
+
+    // Bounded: only the last lines stay.
+    await send(
+      runId,
+      Array.from({ length: 500 }, (_, n) => `line ${n}`),
+    );
+    const capped = (await read(owner, runId)).data;
+    expect(capped.lines).toHaveLength(AGENT_OUTPUT_LINES);
+    expect(capped.lines.at(-1)).toBe('line 499');
+    expect(capped.total).toBe(503);
+
+    // A cache hint for the run's page, not a change that sync clients log.
+    const logged = await app.db.execute(
+      sql`select 1 from sync_changes where kind = 'agentRunOutput' limit 1`,
+    );
+    expect([...logged]).toHaveLength(0);
+    await owner.post(`${ws}/agent-runs/${runId}/cancel`);
+  });
+
+  it('is only for the run’s own agent, and for those who can see its issue', async () => {
+    const runId = await start('Hidden output', prv);
+    await send(runId, ['AWS_SECRET=hunter2']);
+    expect((await read(owner, runId)).data.lines).toEqual(['AWS_SECRET=hunter2']);
+    expect((await read(member, runId)).statusCode).toBe(404);
+    const other = (await owner.post(`${ws}/agents`, { name: 'Copycat', teamIds: [prv] })).data.id;
+    const otherKey = (await owner.post(`${ws}/agents/${other}/keys`, { name: 'k' })).data.token;
+    const url = `${ws}/agent/runs/${runId}/output`;
+    expect((await bearer(otherKey, 'POST', url, { lines: ['x'] })).statusCode).toBe(404);
+    expect((await send(runId, [])).statusCode).toBe(400);
+    expect((await send(runId, 'not a list')).statusCode).toBe(400);
+    await owner.post(`${ws}/agent-runs/${runId}/cancel`);
+  });
+
+  it('takes none once the run has stopped, and starts over on a new pickup', async () => {
+    const runId = await start('Stop and go');
+    await send(runId, ['first pickup']);
+    await owner.post(`${ws}/agent-runs/${runId}/cancel`);
+    expect((await send(runId, ['too late'])).data).toEqual({ accepted: false });
+    expect((await read(owner, runId)).data.lines).toEqual(['first pickup']);
+
+    // The runner goes quiet; the next pickup prints its own output.
+    const again = await start('Lapse');
+    await send(again, ['attempt one']);
+    await app.db
+      .update(agentRuns)
+      .set({ leaseExpiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(eq(agentRuns.id, again));
+    await reapLeases(app);
+    expect((await take()).run.id).toBe(again);
+    expect((await read(owner, again)).data).toMatchObject({ lines: [], total: 0 });
+    await owner.post(`${ws}/agent-runs/${again}/cancel`);
+  });
+
+  it('is deleted a while after the last line', async () => {
+    const runId = await start('Old news');
+    await send(runId, ['stale']);
+    await owner.post(`${ws}/agent-runs/${runId}/cancel`);
+    await app.db
+      .update(agentRunOutput)
+      .set({ updatedAt: new Date(Date.now() - AGENT_OUTPUT_RETENTION_MS - 1000).toISOString() })
+      .where(eq(agentRunOutput.runId, runId));
+    await pruneRunOutput(app);
+    expect((await read(owner, runId)).data).toEqual({ lines: [], total: 0, updatedAt: null });
   });
 });

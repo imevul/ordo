@@ -25,7 +25,9 @@ export type EntityKind =
   | 'import'
   | 'export'
   | 'repository'
-  | 'agentRun';
+  | 'agentRun'
+  /** New live output of a run (`id` is the run's). Not in the change log: nothing syncs it. */
+  | 'agentRunOutput';
 
 export interface RealtimeEvent {
   kind: EntityKind;

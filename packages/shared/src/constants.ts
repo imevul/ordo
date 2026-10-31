@@ -383,6 +383,15 @@ export const AGENT_AUTO_RESTARTS = 3;
 /** How long a run's claim holds without a heartbeat; each heartbeat renews it. */
 export const AGENT_LEASE_MS = 5 * 60_000;
 /**
+ * A running run's live output: Ordo keeps only its tail (the last lines, and at most so many
+ * bytes in all, each line cut short), since output can hold secrets and grows without end.
+ */
+export const AGENT_OUTPUT_LINES = 200;
+export const AGENT_OUTPUT_BYTES = 64 * 1024;
+export const AGENT_OUTPUT_LINE_CHARS = 1000;
+/** A run's output is deleted this long after its runner last sent some. */
+export const AGENT_OUTPUT_RETENTION_MS = 7 * 86_400_000;
+/**
  * Why a run exists: its agent was assigned the issue, a person @mentioned it, Run again,
  * something happened to one of the issue's pull requests (see `AgentRun.triggerDetail`), or a
  * recurring schedule created the issue with the agent as assignee.

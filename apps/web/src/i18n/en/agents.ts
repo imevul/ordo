@@ -227,6 +227,15 @@ export default {
     summary: 'Summary',
     error: 'Error',
     noResult: 'No summary or error yet.',
+    output: 'Output',
+    /** Tag next to Output while the run works: it updates as the command prints. */
+    outputLive: 'Live',
+    outputHint:
+      "The end of what the agent's command printed in its latest pickup, as its runner sent it. Anyone who can see the issue can read it, and it's deleted a week after the last line.",
+    outputWaiting: 'Nothing printed yet.',
+    outputNone: 'No output: the runner sent none, or it has been deleted.',
+    /** Above the lines when older ones were dropped; {shown} and {total} are numbers. */
+    outputTail: 'The last {shown} of {total} lines',
     timeline: 'Timeline',
     noTimeline: 'This run is from before Ordo kept timelines; only its times are known.',
     prompt: 'Prompt',

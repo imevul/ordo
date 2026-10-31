@@ -63,6 +63,9 @@ There are three parts:
    for admins (in its settings), a runner file's `instructions` may hold expanded environment variables, and the
    agent may see related issues on teams the viewer can't. Heartbeats aren't kept one by one: the page
    shows when the lease runs out. The same actions as on the list are at the top.
+
+   While the run works, **Output** shows the last 200 lines its command printed, updating every few seconds (see
+   [Live output](#live-output)).
 9. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
    queue for another runner. After three claims it is marked failed, with a comment on the issue.
 10. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
@@ -169,6 +172,7 @@ left alone. Set `prune: false` in a runner file to keep them.
 | `--name <name>`            | What the runner is called on the issue (default `<hostname>/<label>`)             |
 | `--once`                   | Work through what's queued now, then exit (for cron or CI)                        |
 | `-v, --verbose`            | Echo the command's output                                                         |
+| `--no-output`              | Don't send the command's output to Ordo ([Live output](#live-output))             |
 | `--file <yaml>`            | Read agents and commands from a runner file (repeatable); `--only a,b` picks some |
 
 `ordo agent check --file <yaml>` validates a runner file and shows who each key belongs to, without claiming
@@ -216,6 +220,19 @@ command: claude -p --permission-mode acceptEdits --mcp-config "$ORDO_MCP_CONFIG"
 
 That's the string form (run with `sh -c`), which expands `$ORDO_MCP_CONFIG`; the list form doesn't. To let it use
 the CLI instead, allow `"Bash(ordo:*)"`. Add `"Bash(git:*)"` and the like for what else it should run.
+
+### Live output
+
+While the command works, the runner sends what it prints (stdout and stderr, without the `ORDO_…=` lines above) to
+Ordo every two seconds, and the run's page shows the last 200 lines as they come. Terminal colours are stripped and
+long lines cut at 1,000 characters. Claude Code's `--output-format json` prints nothing until it's done; with
+`--output-format stream-json --verbose` the page follows along, and each event is shown as what the agent said and
+the tools it called (`→ Bash: pnpm test`) rather than as JSON. Usage and the summary are read from its last line.
+
+Output can hold secrets the command printed, so Ordo keeps little of it and not for long: only the last 200 lines
+(64 KB) of the latest pickup, readable by whoever can see the issue, like the rest of the run, and deleted a week
+after the last line came in. A new pickup (after a question, or another runner taking over) starts over. To send
+none, set `output: false` for an agent in its runner file, or run with `--no-output`.
 
 ### Runner files
 
@@ -286,7 +303,8 @@ your `ordo login`.
   worktree, or in an empty directory with `cwd: tmp`). Only the list form resolves `./`, so a script next to the file
   goes in a list, like `factory` above.
 - Per agent: `key`, `command`, `repos`, `concurrency`, `timeout` (`90s`, `30m`, `2h`), `env`, `cwd` (`worktree` or
-  `tmp`), `checkout` (`true` or `false`), `prune` (`true` or `false`) and `instructions`. Unknown fields are errors.
+  `tmp`), `checkout` (`true` or `false`), `prune` (`true` or `false`), `output` (`true` or `false`, see
+  [Live output](#live-output)) and `instructions`. Unknown fields are errors.
 - `instructions` add up instead of replacing each other: the top level's, then `defaults`', then the agent's own,
   followed by the agent's instructions from Ordo. They go into the run's prompt (and `agent.instructions` in the run
   file), so a runner can describe its machine or its tools without changing the agent for everyone else. Ordo
@@ -295,13 +313,18 @@ your `ordo login`.
 
 ## Writing your own runner
 
-The runner protocol is three calls with the agent's key (see [api.md](api.md#agents-and-repositories)):
+The runner protocol is three calls with the agent's key (see [api.md](api.md#agents-and-repositories)), and a
+fourth if you want [live output](#live-output):
 
 ```text
 POST  /api/w/<ws>/agent/claim?wait=30&runner=<name>   → 200 AgentRunContext, or 204 when there's nothing
 POST  /api/w/<ws>/agent/runs/<id>/heartbeat          → { cancelled } — at least every 5 minutes
 PATCH /api/w/<ws>/agent/runs/<id>                    { status: running | waiting | succeeded | failed, question?, resume?, sessionUrl?, summary?, error? }
+POST  /api/w/<ws>/agent/runs/<id>/output             { lines: [...] } → { accepted } — new lines, every few seconds
 ```
+
+Send output in batches (at most 1,000 lines, two calls a second per run); send the last batch before the final
+report, since a run that no longer works takes none (`accepted: false`).
 
 `claim` takes an optional body `{ "instructions": "…" }`: the runner's own instructions, put before the agent's in
 the run's prompt and `agent.instructions`, and not stored. `claim` long-polls: it answers as soon as a run is queued for the agent, or with `204` after `wait` seconds. Each
