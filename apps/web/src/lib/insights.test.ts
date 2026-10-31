@@ -1,6 +1,16 @@
-import type { Issue } from '@ordo/shared';
+import type { InsightsDay, Issue } from '@ordo/shared';
 import { describe, expect, it } from 'vitest';
-import { breakdown, burnUp, durations, formatDays, weeklyFlow, weekStart } from './insights.ts';
+import {
+  breakdown,
+  burndown,
+  burnUp,
+  cumulativeFlow,
+  durations,
+  formatDays,
+  timelineBurnUp,
+  weeklyFlow,
+  weekStart,
+} from './insights.ts';
 import type { WorkspaceData } from './workspace.tsx';
 
 const NOW = Date.parse('2026-10-28T12:00:00Z'); // a Wednesday
@@ -129,5 +139,61 @@ describe('durations', () => {
     expect(d.lead!.median).toBe(11.5);
     expect(formatDays(0.25)).toBe('6 h');
     expect(formatDays(2.54)).toBe('2.5 d');
+  });
+});
+
+const day = (iso: string, open: number, done: number, canceled = 0): InsightsDay => ({
+  day: iso,
+  issues: { triage: 0, backlog: 0, unstarted: open, started: 0, completed: done, canceled },
+  points: { triage: 0, backlog: 0, unstarted: open * 2, started: 0, completed: done * 2, canceled },
+});
+
+describe('timeline charts', () => {
+  const days = [
+    day('2026-10-01', 10, 0, 3),
+    day('2026-10-02', 9, 1),
+    day('2026-10-03', 8, 2),
+    day('2026-10-04', 7, 3),
+    day('2026-10-05', 6, 4),
+  ];
+
+  it('burns up and stacks the flow without canceled work', () => {
+    expect(timelineBurnUp(days, 'estimate')[0]).toEqual({
+      day: '2026-10-01',
+      scope: 20,
+      completed: 0,
+    });
+    const flow = cumulativeFlow(days, 'count');
+    expect(flow.map((f) => f.type)).not.toContain('canceled');
+    expect(flow.find((f) => f.type === 'completed')!.values).toEqual([0, 1, 2, 3, 4]);
+  });
+
+  it('forecasts completion at the recent rate, with an ideal line to the target', () => {
+    const b = burndown(days, 'count', '2026-10-08');
+    expect(b.rate).toBe(1);
+    // 6 left at one a day: done six days after the last day.
+    expect(b.forecastDate).toBe('2026-10-11');
+    expect(b.x.at(-1)).toBe('2026-10-11');
+    expect(b.remaining.slice(0, 6)).toEqual([10, 9, 8, 7, 6, null]);
+    expect(b.ideal[0]).toBe(10);
+    expect(b.ideal[7]).toBe(0);
+    expect(b.ideal[8]).toBeNull();
+    expect(b.forecast[3]).toBeNull();
+    expect(b.forecast[4]).toBe(6);
+    expect(b.forecast.at(-1)).toBe(0);
+  });
+
+  it('starts the ideal line on the first day with work', () => {
+    const b = burndown([day('2026-10-01', 0, 0), day('2026-10-02', 4, 0)], 'count', '2026-10-06');
+    expect(b.ideal.slice(0, 3)).toEqual([null, 4, 3]);
+    expect(b.ideal[5]).toBe(0);
+  });
+
+  it('gives no forecast without progress, nor past the horizon', () => {
+    const flat = [day('2026-10-01', 5, 0), day('2026-10-02', 5, 0)];
+    expect(burndown(flat, 'count', null).forecastDate).toBeNull();
+    const slow = [day('2026-10-01', 1000, 0), day('2026-10-02', 999, 1)];
+    expect(burndown(slow, 'count', null).forecastDate).toBeNull();
+    expect(burndown([day('2026-10-01', 0, 3)], 'count', null).done).toBe(true);
   });
 });

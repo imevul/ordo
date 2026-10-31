@@ -6,6 +6,7 @@ export default {
     myIssues: 'Mina ärenden',
     initiatives: 'Initiativ',
     roadmap: 'Färdplan',
+    insights: 'Insikter',
     customers: 'Kunder',
     views: 'Vyer',
     trash: 'Papperskorg',

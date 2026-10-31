@@ -35,9 +35,6 @@ export default {
   },
   chart: {
     title: 'Framsteg över tid',
-    label: '{name}: omfång och klara ärenden per dag',
-    scope: 'Omfång',
-    completed: 'Klara',
   },
   overview: {
     pullRequestAgent: 'Agent för pull requests',

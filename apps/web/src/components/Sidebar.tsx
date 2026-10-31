@@ -4,6 +4,7 @@ import {
   Bot,
   Building2,
   ChartGantt,
+  ChartLine,
   ChevronRight,
   CircleDot,
   Eye,
@@ -243,6 +244,10 @@ export function Sidebar({
           <Link to="/$slug/roadmap" params={p} className="nav-item">
             <ChartGantt size={15} />
             {t('shell.nav.roadmap')}
+          </Link>
+          <Link to="/$slug/insights" params={p} className="nav-item">
+            <ChartLine size={15} />
+            {t('shell.nav.insights')}
           </Link>
           {!ws.isGuest && (
             <Link to="/$slug/customers" params={p} className="nav-item">

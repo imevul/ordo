@@ -1382,3 +1382,47 @@ export interface AgentIdentity {
   pausedUntil: string | null;
   pauseReason: AgentRunFailureReason | null;
 }
+
+/** Issues (and their estimates) in each status type at the end of one day (UTC). */
+export interface InsightsDay {
+  day: string;
+  issues: Record<StateType, number>;
+  points: Record<StateType, number>;
+}
+
+/**
+ * `GET /insights/timeline`: what the scope held each day, rebuilt from issue history, so work added
+ * late, moved out, re-estimated or deleted counts only while it was there.
+ */
+export interface InsightsTimeline {
+  from: string;
+  to: string;
+  days: InsightsDay[];
+}
+
+export interface IssueAmount {
+  issues: number;
+  points: number;
+}
+
+export interface VelocityCycle {
+  cycleId: string;
+  number: number;
+  name: string | null;
+  startsAt: string;
+  endsAt: string;
+  /** Still running: its numbers are so far, and it isn't in the average. */
+  current: boolean;
+  /** In the cycle at the end of its first day, not canceled. */
+  committed: IssueAmount;
+  /** In the cycle and completed at its end (or now, while it runs). */
+  completed: IssueAmount;
+}
+
+/** `GET /insights/velocity`: oldest cycle first. */
+export interface Velocity {
+  teamId: string;
+  cycles: VelocityCycle[];
+  /** Completed per finished cycle; null without any. */
+  average: IssueAmount | null;
+}

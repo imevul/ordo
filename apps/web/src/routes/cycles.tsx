@@ -3,11 +3,12 @@ import { Link, useParams } from '@tanstack/react-router';
 import { Plus } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
-import { useWsMutation } from '../api/queries.ts';
+import { useVelocity, useWsMutation } from '../api/queries.ts';
 import { IssuesView } from '../components/IssuesView.tsx';
 import { TeamIcon } from '../components/icons.tsx';
 import { EmptyState, PageHeader, Sep } from '../components/PageHeader.tsx';
 import { ProgressBar, ProgressStats } from '../components/Progress.tsx';
+import { MeasureSelect, useMeasure, VelocityChart } from '../components/TimelineCharts.tsx';
 import { Modal } from '../components/ui/Modal.tsx';
 import { t } from '../i18n/index.ts';
 import { addDays, shortDate } from '../lib/format.ts';
@@ -133,6 +134,24 @@ function CycleRow({ cycle, teamKey, badge }: { cycle: Cycle; teamKey: string; ba
   );
 }
 
+/** What the team committed to and finished per cycle: how much to take into the next one. */
+function TeamVelocity({ teamId }: { teamId: string }) {
+  const ws = useWorkspace();
+  const { data } = useVelocity(ws.slug, teamId);
+  const points = !!data?.cycles.some((c) => c.committed.points + c.completed.points > 0);
+  const [measure, setMeasure] = useMeasure(points);
+  if (!data) return null;
+  return (
+    <section className="mb-8">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="section-label flex-1">{t('insights.velocity.title')}</div>
+        {points && <MeasureSelect value={measure} onChange={setMeasure} />}
+      </div>
+      <VelocityChart velocity={data} measure={measure} height={160} />
+    </section>
+  );
+}
+
 export function CyclesPage() {
   const ws = useWorkspace();
   const { key } = useParams({ from: '/$slug/team/$key/cycles' });
@@ -180,6 +199,7 @@ export function CyclesPage() {
           />
         ) : (
           <div className="mx-auto max-w-4xl">
+            {current.length + past.length > 0 && <TeamVelocity teamId={team.id} />}
             {(
               [
                 ['current', t('cycles.current'), current, t('cycles.active')],
@@ -229,7 +249,7 @@ export function CycleDetailPage() {
         storageKey={`cycle:${team.id}`}
         defaultDisplay={{ layout: 'board' }}
         createDefaults={{ teamId: team.id, cycleId: cycle.id }}
-        burn={{ from: cycle.startsAt, to: cycle.endsAt }}
+        burn={{ from: cycle.startsAt, to: cycle.endsAt, cycleId: cycle.id }}
         insightsOpen
         actions={
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEdit(true)}>

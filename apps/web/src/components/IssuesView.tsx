@@ -46,7 +46,7 @@ interface Props {
   actions?: ReactNode;
   tabs?: ReactNode;
   /** A time box (cycle): the insights panel shows a burn-up across it. */
-  burn?: { from: string; to: string };
+  burn?: { from: string; to: string; cycleId?: string };
   /** Open the insights panel until the person closes it (remembered per screen). */
   insightsOpen?: boolean;
   emptyTitle?: string;
@@ -350,7 +350,14 @@ export function IssuesView(props: Props) {
           )}
         </div>
         {insights && data && (
-          <InsightsPanel issues={data} burn={props.burn} onClose={() => toggleInsights(false)} />
+          <InsightsPanel
+            issues={data}
+            burn={props.burn}
+            filtered={Object.values(userFilter).some(
+              (v) => v != null && v !== false && (!Array.isArray(v) || v.length > 0),
+            )}
+            onClose={() => toggleInsights(false)}
+          />
         )}
       </div>
 

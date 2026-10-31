@@ -21,6 +21,7 @@ import { CustomerPage, CustomersPage } from './routes/customers.tsx';
 import { CycleDetailPage, CyclesPage } from './routes/cycles.tsx';
 import { InboxPage } from './routes/inbox.tsx';
 import { InitiativePage, InitiativesPage } from './routes/initiatives.tsx';
+import { InsightsPage } from './routes/insights.tsx';
 import {
   IssuePage,
   MyIssuesPage,
@@ -210,6 +211,11 @@ const roadmapRoute = createRoute({
   path: '/roadmap',
   component: RoadmapPage,
 });
+const insightsRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/insights',
+  component: InsightsPage,
+});
 const viewsRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/views',
@@ -271,6 +277,7 @@ const routeTree = rootRoute.addChildren([
     initiativesRoute,
     initiativeRoute,
     roadmapRoute,
+    insightsRoute,
     customersRoute,
     agentRunsRoute,
     customerRoute,

@@ -503,6 +503,38 @@ describe('MCP tools', () => {
   });
 });
 
+describe('insights', () => {
+  const total = (day: { issues: Record<string, number> }) =>
+    Object.values(day.issues).reduce((a, b) => a + b, 0);
+
+  it('hide private teams, their cycles and their issues', async () => {
+    for (const who of DENIED) {
+      for (const q of [
+        `teamId=${ids.prv}`,
+        `cycleId=${ids.cycle}`,
+        `projectId=${ids.secretProject}`,
+      ])
+        expect((await c[who].get(`${ws}/insights/timeline?${q}`)).statusCode, who).toBe(404);
+      expect((await c[who].get(`${ws}/insights/velocity?teamId=${ids.prv}`)).statusCode, who).toBe(
+        404,
+      );
+    }
+    for (const who of ALLOWED) {
+      expect((await c[who].get(`${ws}/insights/timeline?teamId=${ids.prv}`)).statusCode, who).toBe(
+        200,
+      );
+      expect((await c[who].get(`${ws}/insights/velocity?teamId=${ids.prv}`)).statusCode, who).toBe(
+        200,
+      );
+    }
+    const last = async (who: keyof typeof c, q: string) =>
+      total((await c[who].get(`${ws}/insights/timeline?${q}`)).data.days.at(-1));
+    expect(await last('member', `projectId=${ids.mixedProject}`)).toBe(1);
+    expect(await last('insider', `projectId=${ids.mixedProject}`)).toBe(2);
+    expect(await last('member', '')).toBeLessThan(await last('owner', ''));
+  });
+});
+
 /**
  * Every workspace route must be accounted for: exercised by this matrix, or listed with the reason
  * it needs no team check. A new route that is in neither list fails the build.
@@ -535,6 +567,8 @@ describe('route inventory', () => {
     'PATCH /teams/:teamId/members/:userId',
     'POST /teams/:teamId/states',
     'POST /teams/:teamId/cycles',
+    'GET /insights/timeline',
+    'GET /insights/velocity',
     'POST /projects',
     'POST /views',
     'POST /labels',

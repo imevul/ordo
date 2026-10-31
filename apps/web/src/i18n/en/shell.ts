@@ -5,6 +5,7 @@ export default {
     myIssues: 'My issues',
     initiatives: 'Initiatives',
     roadmap: 'Roadmap',
+    insights: 'Insights',
     customers: 'Customers',
     views: 'Views',
     trash: 'Trash',

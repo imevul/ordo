@@ -319,8 +319,20 @@ its filters applied:
   median and 75th percentile.
 
 Switch between counting issues and summing estimates when the issues have estimates. Hover a chart for exact values.
-Project pages show **progress over time** — scope and completed issues day by day since the project started. Charts
-use the issues as they are now: an issue added to a cycle late counts from the day it was created.
+
+Charts over time are rebuilt from each issue's history, so an issue added to a cycle or project late counts from the
+day it joined, one moved out or deleted stops counting that day, and a new estimate counts from when it changed. (A
+cycle's burn-up in the panel does this for the whole cycle; with filters on, it counts the filtered issues as they
+are now.)
+
+- **Project pages** show a **burndown** — work left day by day, an ideal line to the target date, and a **forecast**
+  of when it's done at the pace of the last four weeks, with how far that is from the target — and a **cumulative
+  flow** of issues per status type.
+- **Cycles** (a team's cycle list) shows **velocity**: per cycle, what was in it at the end of its first day
+  (committed) and what was completed in it by its end, with the average of the finished cycles. Use it to decide how
+  much to take into the next one.
+- **Insights** in the sidebar has the same charts for the whole workspace, one team or one project: a burn-up, the
+  cumulative flow, a project's burndown and a team's velocity, over the last 4 to 52 weeks.
 
 ## Search and the command menu
 

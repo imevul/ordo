@@ -1,4 +1,4 @@
-import { type Issue, STATE_TYPES } from '@ordo/shared';
+import { type InsightsDay, type Issue, STATE_TYPES, type StateType } from '@ordo/shared';
 import { t } from '../i18n/index.ts';
 import { priorityLabel } from '../i18n/labels.ts';
 import type { WorkspaceData } from './workspace.tsx';
@@ -173,6 +173,98 @@ export function burnUp(
     out.push({ day: isoDay(d), scope, completed });
   }
   return out;
+}
+
+const pick = (d: InsightsDay, m: Measure) => (m === 'count' ? d.issues : d.points);
+const sum = (r: Record<StateType, number>) =>
+  STATE_TYPES.reduce((a, s) => (s === 'canceled' ? a : a + r[s]), 0);
+
+/** Scope (everything not canceled) and completed work per day of a history timeline. */
+export function timelineBurnUp(days: InsightsDay[], m: Measure): BurnPoint[] {
+  return days.map((d) => ({ day: d.day, scope: sum(pick(d, m)), completed: pick(d, m).completed }));
+}
+
+/** Status types bottom to top in a cumulative flow: finished work settles at the bottom. */
+export const FLOW_TYPES = ['completed', 'started', 'unstarted', 'backlog', 'triage'] as const;
+
+/** Per status type (canceled left out) per day, for a stacked cumulative flow chart. */
+export function cumulativeFlow(days: InsightsDay[], m: Measure) {
+  return FLOW_TYPES.map((type) => ({ type, values: days.map((d) => pick(d, m)[type]) }));
+}
+
+export interface Burndown {
+  /** Days from the first of the timeline to whichever is last: today, the target, the forecast. */
+  x: string[];
+  /** Work left each day up to today. */
+  remaining: (number | null)[];
+  /** Straight from the first day with work left to zero on the target date. */
+  ideal: (number | null)[];
+  /** From today's remaining work down to zero at the recent rate. */
+  forecast: (number | null)[];
+  /** When the remaining work is done at the recent rate; null without progress to go by. */
+  forecastDate: string | null;
+  /** Completed per day over the last `window` days. */
+  rate: number;
+  /** Nothing left to do. */
+  done: boolean;
+}
+
+/**
+ * Work left per day, an ideal line to `target`, and a forecast at the rate work was completed over
+ * the last `window` days (or since the start, if shorter). The forecast runs at most `horizon` days
+ * past today; further than that, there's no date to promise.
+ */
+export function burndown(
+  days: InsightsDay[],
+  m: Measure,
+  target: string | null,
+  window = 28,
+  horizon = 365,
+): Burndown {
+  const points = timelineBurnUp(days, m);
+  const left = points.map((p) => Math.max(0, p.scope - p.completed));
+  const today = points.at(-1);
+  const remaining = left.at(-1) ?? 0;
+  const span = Math.min(window, points.length - 1);
+  const rate =
+    span > 0
+      ? Math.max(0, (today!.completed - points[points.length - 1 - span]!.completed) / span)
+      : 0;
+  const start = points.length ? dayOf(points[0]!.day) : 0;
+  const end = today ? dayOf(today.day) : 0;
+  const ahead = rate > 0 ? Math.ceil(remaining / rate) : null;
+  const forecastDate =
+    remaining > 0 && ahead !== null && ahead <= horizon ? isoDay(end + ahead * DAY) : null;
+  let last = end;
+  if (target && dayOf(target) > last) last = dayOf(target);
+  if (forecastDate && dayOf(forecastDate) > last) last = dayOf(forecastDate);
+  const x: string[] = [];
+  for (let d = start; d <= last; d += DAY) x.push(isoDay(d));
+  const targetAt = target ? dayOf(target) : null;
+  // The ideal starts on the first day with work, so a project that began empty still gets one.
+  const k = Math.max(
+    0,
+    left.findIndex((v) => v > 0),
+  );
+  const from = start + k * DAY;
+  const first = left[k] ?? 0;
+  return {
+    x,
+    remaining: x.map((_, i) => left[i] ?? null),
+    ideal: x.map((day) => {
+      const d = dayOf(day);
+      if (targetAt === null || targetAt <= from || d < from || d > targetAt) return null;
+      return Math.max(0, first * (1 - (d - from) / (targetAt - from)));
+    }),
+    forecast: x.map((day) => {
+      const d = dayOf(day);
+      if (!forecastDate || d < end) return null;
+      return Math.max(0, remaining - ((d - end) / DAY) * rate);
+    }),
+    forecastDate,
+    rate,
+    done: remaining === 0 && points.length > 0,
+  };
 }
 
 export interface Durations {
