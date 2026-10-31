@@ -30,6 +30,7 @@ import {
   TrashPage,
 } from './routes/issues.tsx';
 import { ProjectDetailPage, ProjectsPage } from './routes/projects/index.tsx';
+import { ReleasePage, ReleasesPage } from './routes/releases.tsx';
 import { RoadmapPage } from './routes/roadmap.tsx';
 import { SettingsPage, TeamSettingsPage } from './routes/settings/index.tsx';
 import { ViewPage, ViewsPage } from './routes/views.tsx';
@@ -191,6 +192,18 @@ const initiativeRoute = createRoute({
   path: '/initiative/$initiativeId',
   component: InitiativePage,
 });
+const releasesRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/releases',
+  component: ReleasesPage,
+});
+const releaseRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/release/$releaseId',
+  validateSearch: (s: Record<string, unknown>): { tab?: 'issues' | 'suggested' } =>
+    s.tab === 'issues' || s.tab === 'suggested' ? { tab: s.tab } : {},
+  component: ReleasePage,
+});
 const agentRunsRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/agent-runs',
@@ -276,6 +289,8 @@ const routeTree = rootRoute.addChildren([
     projectRoute,
     initiativesRoute,
     initiativeRoute,
+    releasesRoute,
+    releaseRoute,
     roadmapRoute,
     insightsRoute,
     customersRoute,

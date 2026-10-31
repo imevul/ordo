@@ -21,6 +21,8 @@ import {
   Picker,
   PriorityProp,
   ProjectProp,
+  ReleaseProp,
+  releaseOptions,
   StatusProp,
   teamOptions,
 } from '../properties.tsx';
@@ -113,6 +115,11 @@ export function IssueProperties({
       {team?.cyclesEnabled && (
         <Field label={t('common.cycle')}>
           <CycleProp issue={issue} onPatch={onPatch} variant="field" />
+        </Field>
+      )}
+      {(issue.releaseId || releaseOptions(ws, issue.teamId).length > 1) && (
+        <Field label={t('common.release')}>
+          <ReleaseProp issue={issue} onPatch={onPatch} variant="field" />
         </Field>
       )}
       {team && team.estimateScale !== 'none' && (

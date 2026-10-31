@@ -255,6 +255,19 @@ are made by a bot called **Ordo**, without notifications, and show in each issue
 ended when you turned automation on keep their issues. "Today" is the date in the workspace's time zone
 (workspace settings → _Time zone_; UTC unless you pick one).
 
+## Releases
+
+A **release** (sidebar → _Releases_) groups finished issues into a version, such as "v0.2", with release notes.
+Create one for the whole workspace or for one team; a team's release only takes that team's issues. Its
+_Suggested_ tab lists done issues that are in no release and were completed after the previous release went out:
+tick the ones you want and add them. You can also pick the _Release_ on an issue.
+
+**Release** puts it out. Its issue list is frozen (issues can't join or leave it) until you **reopen** it. If it
+has no notes yet, Ordo drafts them from its issues, one section per label (Features, Bugs, …) and _Other changes_
+for issues without one. Edit the notes in the _Notes_ tab, or redraft them with _Draft from issues_. Download them as
+a Markdown file or copy them, to paste into a changelog or a forge release. Guests can read releases but not change
+them.
+
 ## Projects
 
 Projects collect issues toward a goal, possibly across teams. Each has a **status** (backlog, planned, in

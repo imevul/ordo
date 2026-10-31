@@ -68,6 +68,8 @@ export function useRealtime(slug: string): RealtimeStatus {
       if (kinds.has('issue') || kinds.has('cycle') || kinds.has('project'))
         inv(['ws', slug, 'insights']);
       if (kinds.has('notification')) inv(keys.notifications(slug));
+      if (kinds.has('release')) inv(['ws', slug, 'release']);
+      if (kinds.has('release') || kinds.has('issue')) inv(['ws', slug, 'releaseSuggestions']);
       if (kinds.has('customer') || kinds.has('issue')) inv(['ws', slug, 'customerRequests']);
       if (kinds.has('document')) {
         inv(['ws', slug, 'documents']);
