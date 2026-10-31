@@ -11,6 +11,7 @@ export * from './i18n.ts';
 export * from './imports.ts';
 export * from './integrations.ts';
 export * from './mcp.ts';
+export * from './releases.ts';
 export * from './schemas.ts';
 export * from './sort.ts';
 export * from './theme.ts';

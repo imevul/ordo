@@ -148,6 +148,7 @@ function draftIssue(
     projectId: input.projectId ?? null,
     milestoneId: input.milestoneId ?? null,
     cycleId: input.cycleId ?? null,
+    releaseId: input.releaseId ?? null,
     parentId: input.parentId ?? null,
     estimate: input.estimate ?? null,
     dueDate: input.dueDate ?? null,

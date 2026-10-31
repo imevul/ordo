@@ -472,6 +472,7 @@ export const createIssueSchema = z.object({
   projectId: id.nullish(),
   milestoneId: id.nullish(),
   cycleId: id.nullish(),
+  releaseId: id.nullish(),
   parentId: id.nullish(),
   estimate: z.number().int().min(0).max(100).nullish(),
   dueDate: isoDate.nullish(),
@@ -491,6 +492,7 @@ export const updateIssueSchema = z.object({
   projectId: id.nullish(),
   milestoneId: id.nullish(),
   cycleId: id.nullish(),
+  releaseId: id.nullish(),
   parentId: id.nullish(),
   estimate: z.number().int().min(0).max(100).nullish(),
   dueDate: isoDate.nullish(),
@@ -540,6 +542,7 @@ const conditionFields = {
   projectIds: z.array(idOrNone).max(200).optional(),
   milestoneIds: z.array(idOrNone).max(200).optional(),
   cycleIds: z.array(idOrNone).max(200).optional(),
+  releaseIds: z.array(idOrNone).max(200).optional(),
   /**
    * Custom field id → wanted values: option ids, user ids or `me`, a number or date written out,
    * or `none` for no value. A multi-select matches when it has any of the options.
@@ -819,6 +822,20 @@ export const createProjectUpdateSchema = z.object({
   body: z.string().trim().min(1).max(50_000),
   health: z.enum(PROJECT_HEALTH),
 });
+
+export const createReleaseSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  /** Left out for a workspace-wide release. */
+  teamId: id.nullish(),
+  notes: markdown.optional(),
+  targetDate: isoDate.nullish(),
+});
+export type CreateReleaseInput = z.infer<typeof createReleaseSchema>;
+/** The team can't change: the release's issues were picked for it. */
+export const updateReleaseSchema = createReleaseSchema.omit({ teamId: true }).partial();
+export type UpdateReleaseInput = z.infer<typeof updateReleaseSchema>;
+/** Releasing drafts notes from its issues when it has none yet, unless `draft` is false. */
+export const releaseReleaseSchema = z.object({ draft: z.boolean().optional() });
 
 export const createCycleSchema = z
   .object({

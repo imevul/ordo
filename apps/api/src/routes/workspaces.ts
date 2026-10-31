@@ -36,6 +36,7 @@ import { listLabels } from '../services/labels.ts';
 import { workspacePlaceholders } from '../services/placeholders.ts';
 import { assertProjectLead, listProjects } from '../services/projects.ts';
 import { listRecurring } from '../services/recurring.ts';
+import { listReleases } from '../services/releases.ts';
 import { listRepositories } from '../services/repositories.ts';
 import { toView } from '../services/serialize.ts';
 import { publishChanges } from '../services/sync.ts';
@@ -136,6 +137,7 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
     initiatives: await listInitiatives(db, access, projects),
     projects,
     cycles,
+    releases: await listReleases(db, access),
     views: viewRows.map(toView),
     favorites: favoriteRows
       .filter((f) => visibleTarget(f.kind, f.targetId))

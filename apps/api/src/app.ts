@@ -54,6 +54,7 @@ import { placeholderRoutes } from './routes/placeholders.ts';
 import { projectRoutes } from './routes/projects.ts';
 import { pushRoutes } from './routes/push.ts';
 import { realtimeRoutes } from './routes/realtime.ts';
+import { releaseRoutes } from './routes/releases.ts';
 import { repositoryRoutes } from './routes/repositories.ts';
 import { scimAdminRoutes, scimRoutes } from './routes/scim.ts';
 import { searchRoutes } from './routes/search.ts';
@@ -253,6 +254,7 @@ export async function buildApp(
       await w.register(teamRoutes);
       await w.register(cycleRoutes);
       await w.register(insightsRoutes);
+      await w.register(releaseRoutes);
       await w.register(issueRoutes);
       await w.register(attachmentRoutes);
       await w.register(projectRoutes);

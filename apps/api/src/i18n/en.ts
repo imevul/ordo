@@ -112,4 +112,8 @@ export default {
     unassigned: 'Unassigned',
     priority: { '1': 'Urgent', '2': 'High', '3': 'Medium', '4': 'Low' },
   },
+  releases: {
+    /** Heading in drafted release notes for issues without a label. */
+    otherHeading: 'Other changes',
+  },
 };
