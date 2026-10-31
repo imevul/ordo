@@ -293,19 +293,35 @@ describe('users', () => {
     expect(logged!.data).toMatchObject({ from: email, via: 'scim' });
   });
 
-  it('signs a released account out and suspends it from its workspaces', async () => {
-    const email = `armed-${++n}@${domain}`;
+  /** A squatter at `email` with a session and an API key; `bearer` tries the key. */
+  async function armedSquatter(email: string, opts: { ownWorkspace?: boolean } = {}) {
     const squatter = await signup(app, 'Armed Squatter');
     const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
-    const theirSlug = `own-${slug}-${n}`;
-    await squatter.client.post('/api/workspaces', {
-      name: 'Own',
-      slug: theirSlug,
-      teamName: 'Own',
-      teamKey: 'OWN',
-    });
+    if (opts.ownWorkspace) {
+      await squatter.client.post('/api/workspaces', {
+        name: 'Own',
+        slug: `own-${slug}-${n}`,
+        teamName: 'Own',
+        teamKey: 'OWN',
+      });
+    }
     await squatter.client.post('/api/me/email', { email, password: 'correct horse battery' });
     const key = (await squatter.client.post('/api/me/api-keys', { name: 'cli' })).data.token;
+    const bearer = async () =>
+      (
+        await app.inject({
+          method: 'GET',
+          url: '/api/auth/me',
+          headers: { authorization: `Bearer ${key}` },
+        })
+      ).statusCode;
+    expect(await bearer()).toBe(200);
+    return { client: squatter.client, id: squatterId, bearer };
+  }
+
+  it('signs a released account out and revokes its keys', async () => {
+    const email = `armed-${++n}@${domain}`;
+    const squatter = await armedSquatter(email);
 
     const res = await scim('POST', '/Users', {
       ...oktaUser('x'),
@@ -313,28 +329,47 @@ describe('users', () => {
       emails: [{ value: email, primary: true }],
     });
     expect(res.statusCode).toBe(201);
+    expect(json(res).id).not.toBe(squatter.id);
 
     expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(401);
-    const viaKey = await app.inject({
-      method: 'GET',
-      url: '/api/auth/me',
-      headers: { authorization: `Bearer ${key}` },
+    expect(await squatter.bearer()).toBe(401);
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatter.id)));
+    expect(logged!.data).toMatchObject({
+      via: 'scim',
+      revoked: { sessions: 1, apiKeys: 1, memberships: 0 },
     });
-    expect(viaKey.statusCode).toBe(401);
+  });
+
+  it('refuses an armed squatter with a workspace; the reset that unblocks it disarms them', async () => {
+    const email = `armed-owner-${++n}@${domain}`;
+    const squatter = await armedSquatter(email, { ownWorkspace: true });
+    const body = { ...oktaUser('x'), userName: email, emails: [{ value: email, primary: true }] };
+
+    const res = await scim('POST', '/Users', body);
+    expect(res.statusCode).toBe(409);
+    expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(200);
+
+    const reset = await new Client(app).post('/api/auth/reset', {
+      token: await createToken(app.db, squatter.id, 'password_reset', 60),
+      password: 'owner horse battery',
+    });
+    expect(reset.statusCode, reset.body).toBe(200);
+    expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(401);
+    expect(await squatter.bearer()).toBe(401);
+
+    const linked = await scim('POST', '/Users', body);
+    expect(linked.statusCode).toBe(201);
+    expect(json(linked).id).toBe(squatter.id);
+    // The owner keeps the workspace the account was in; nothing is suspended.
     const memberships = await app.db
       .select()
       .from(workspaceMembers)
-      .where(eq(workspaceMembers.userId, squatterId));
-    expect(memberships).toHaveLength(1);
-    expect(memberships[0]!.suspendedAt).not.toBeNull();
-    const [suspended] = await app.db
-      .select()
-      .from(auditLog)
-      .where(and(eq(auditLog.action, 'member.suspended'), eq(auditLog.targetId, squatterId)));
-    expect(suspended).toMatchObject({
-      workspaceId: memberships[0]!.workspaceId,
-      data: { via: 'scim', reason: 'unverified_address_claimed' },
-    });
+      .where(eq(workspaceMembers.userId, squatter.id));
+    expect(memberships.length).toBeGreaterThan(0);
+    expect(memberships.every((m) => m.suspendedAt === null)).toBe(true);
   });
 
   it('moves a provisioned user onto an address an unverified account squats', async () => {

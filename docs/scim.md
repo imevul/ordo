@@ -17,7 +17,9 @@ people your directory adds have no password, so they sign in through your provid
   membership, issues, comments or uploads): that user gets a `409` until the address is verified, and the rest of the
   sync carries on. Without mail, sign-up never verifies anyone, so on such an instance this hits every existing
   password user. Admin → Users marks unverified addresses: send each of those people a **password reset link** first.
-  Setting a password from the link verifies the address.
+  Setting a password from the link verifies the address. That first reset also removes every other way into the
+  account (sessions, passkeys, linked sign-ins, API keys, connected apps), in case someone else had
+  claimed the address; they set those up again afterwards.
 
 ## Connect your identity provider
 
@@ -73,10 +75,11 @@ Accounts are shared between workspaces on an instance, so a directory gets limit
   domain to another. Names change only for people at those domains.
 - It links an existing account only if that account has **verified** its address. An unverified account at the
   address (anyone can claim an address without proving it) that is empty (not an instance admin, and no memberships,
-  issues, comments or uploads) is moved to a placeholder address and the directory gets a fresh account. One that has been used is
-  probably the person's own: the directory gets a `409` (`uniqueness`) for that user, also when moving someone onto
-  the address, and the audit log records the refusal. Send its holder a password reset link (Admin → Users); once
-  they've set a password the address is verified and the next sync links the account.
+  issues, comments or uploads) is moved to a placeholder address and signed out everywhere, and the directory gets a
+  fresh account. One that has been used is probably the person's own: the directory gets a `409` (`uniqueness`) for
+  that user, also when moving someone onto the address, and the audit log records the refusal. Send its holder a
+  password reset link (Admin → Users); once they've set a password the address is verified, the account's other
+  ways in are gone, and the next sync links the account.
 - It never suspends or removes an **owner** (you'll see a `403` in your provider's logs); change owners in Ordo.
 - A token works for one workspace only, and isn't an API key: it can't read issues or act as anyone.
 - Revoking a token (Settings → Authentication) stops it immediately.

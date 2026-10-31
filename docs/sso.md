@@ -19,7 +19,9 @@ when your provider offers both; it's simpler to set up.
    address is refused until the address is verified, and the refusal shows in the audit log. Without mail, sign-up
    never verifies anyone, so on such an instance this hits every existing password user. Admin → Users marks
    unverified addresses: send each of those people a **password reset link** first. Setting a password from the
-   link verifies the address.
+   link verifies the address. Because Ordo can't tell whether the account was really theirs until then, that first
+   reset also removes every other way into it: sessions, passkeys, linked sign-ins, API keys and connected apps.
+   They set those up again afterwards. (An authenticator app stays: it only works after the password.)
 
 ## Add the provider
 
@@ -95,10 +97,11 @@ providers accept by default).
 - **First sign-in:** if the address is verified and its domain is verified for your workspace, Ordo creates the
   account (or matches the existing one with that address, if that account has verified it) and adds it to the
   workspace with the provider's default role (member or guest). An existing account that never verified the address
-  isn't matched. If it's empty (not an instance admin, no memberships, issues, comments or uploads), it moves to a placeholder address and
-  the person gets a fresh account, so nobody can claim an address ahead of its owner and wait for them to sign in.
-  If it has been used, sign-in is refused with "verify the address first" until its owner does (a password reset
-  link verifies it); then SSO links that account.
+  isn't matched. If it's empty (not an instance admin, no memberships, issues, comments or uploads), it moves to a
+  placeholder address, is signed out everywhere, and the person gets a fresh account, so nobody can claim an address
+  ahead of its owner and wait for them to sign in. If it has been used, sign-in is refused with "verify the address
+  first" until its owner does with a password reset link. That reset removes every other way into the account (see
+  [before you start](#before-you-start)), in case someone else had claimed it; then SSO links that account.
 - **Anyone else** (other domains, unverified addresses, existing accounts with a different address) links the identity
   themselves: sign in as usual, then **Settings → Connected accounts → Connect**.
 - People can unlink identities, except their only way to sign in.

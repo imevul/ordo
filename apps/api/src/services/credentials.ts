@@ -1,6 +1,16 @@
 import { eq } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
-import { apiKeys, calendarFeeds, oauthClients, oauthCodes, oauthGrants } from '../db/schema.ts';
+import {
+  apiKeys,
+  authTokens,
+  calendarFeeds,
+  oauthClients,
+  oauthCodes,
+  oauthGrants,
+  passkeys,
+  sessions,
+  userIdentities,
+} from '../db/schema.ts';
 import { audit } from './audit.ts';
 import type { RequestMeta } from './context.ts';
 
@@ -77,4 +87,40 @@ export async function revokeCredentials(
     );
   }
   return { apiKeys: keys.length, oauthGrants: grants.length, calendarFeeds: feeds.length };
+}
+
+/**
+ * Every way to sign in or act as the account: sessions, passkeys, linked SSO identities, pending
+ * email links and what `revokeCredentials` covers. Whoever held an unverified account may not own
+ * the address, so this runs when such an account is released (`claimableUser` in sso.ts) and when
+ * a password reset first proves the address: after that, the new password is the only way in
+ * known to belong to the owner. TOTP and recovery codes stay: they only work after a password, so
+ * they let no one in, and removing them would let a reset link alone get past someone's 2FA.
+ */
+export async function revokeSignIns(
+  tx: DbOrTx,
+  userId: string,
+  via: 'reset' | 'released',
+  meta: RequestMeta | null,
+) {
+  const signedOut = await tx
+    .delete(sessions)
+    .where(eq(sessions.userId, userId))
+    .returning({ id: sessions.id });
+  const keys = await tx
+    .delete(passkeys)
+    .where(eq(passkeys.userId, userId))
+    .returning({ id: passkeys.id });
+  const identities = await tx
+    .delete(userIdentities)
+    .where(eq(userIdentities.userId, userId))
+    .returning({ id: userIdentities.id });
+  await tx.delete(authTokens).where(eq(authTokens.userId, userId));
+  const credentials = await revokeCredentials(tx, userId, via, meta);
+  return {
+    sessions: signedOut.length,
+    passkeys: keys.length,
+    identities: identities.length,
+    ...credentials,
+  };
 }

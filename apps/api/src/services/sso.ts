@@ -6,11 +6,8 @@ import {
   attachments,
   authProviders,
   authStates,
-  authTokens,
   comments,
   issues,
-  passkeys,
-  sessions,
   teamMembers,
   userIdentities,
   users,
@@ -24,7 +21,7 @@ import { escapeHtml as esc } from '../lib/html.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from './audit.ts';
 import type { RequestMeta } from './context.ts';
-import { revokeCredentials } from './credentials.ts';
+import { revokeSignIns } from './credentials.ts';
 import { publishChanges } from './sync.ts';
 import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 
@@ -148,8 +145,10 @@ type ClaimEntry = {
 /**
  * An unverified account at the address that has been used (memberships, issues, comments,
  * uploads): most likely the real person, who signed up before anything could verify them.
- * Releasing it would take their work away, so the claim stops until they verify the address (a
- * password reset does). Thrown inside the transaction; callers audit it after the rollback.
+ * Releasing it would take their work away, so the claim stops until they verify the address with
+ * a password reset. It may still be a squatter's who joined somewhere, so that first reset also
+ * removes every other way in (`revokeSignIns`). Thrown inside the transaction; callers audit it
+ * after the rollback.
  */
 export class ClaimRefused extends Error {
   constructor(
@@ -253,9 +252,10 @@ export async function claimableUser(
 
 /**
  * Whoever held a released account may be the squatter `claimableUser` guards against: signed in,
- * with keys and passkeys, a member of the workspace they joined with the borrowed address. This
- * takes away every way to sign in or act as the account, and its pending email links, and suspends
- * its memberships: that keeps its history and lets an admin restore an honest mistake.
+ * with keys and passkeys. This takes away every way to sign in or act as the account, and its
+ * pending email links, and suspends its memberships: that keeps its history and lets an admin
+ * restore an honest mistake. (A membership makes `claimableUser` refuse instead, so suspending
+ * only catches one added while the claim ran.)
  */
 async function releaseUnverified(
   tx: DbOrTx,
@@ -263,20 +263,7 @@ async function releaseUnverified(
   entry: { actorId: string | null; via: 'sso' | 'scim'; events: RealtimeEvent[] },
   meta: RequestMeta | null,
 ) {
-  const signedOut = await tx
-    .delete(sessions)
-    .where(eq(sessions.userId, userId))
-    .returning({ id: sessions.id });
-  const keys = await tx
-    .delete(passkeys)
-    .where(eq(passkeys.userId, userId))
-    .returning({ id: passkeys.id });
-  const identities = await tx
-    .delete(userIdentities)
-    .where(eq(userIdentities.userId, userId))
-    .returning({ id: userIdentities.id });
-  await tx.delete(authTokens).where(eq(authTokens.userId, userId));
-  const credentials = await revokeCredentials(tx, userId, 'released', meta);
+  const revoked = await revokeSignIns(tx, userId, 'released', meta);
 
   const suspended = await tx
     .update(workspaceMembers)
@@ -304,13 +291,7 @@ async function releaseUnverified(
       actorId: entry.actorId ?? undefined,
     });
   }
-  return {
-    sessions: signedOut.length,
-    passkeys: keys.length,
-    identities: identities.length,
-    ...credentials,
-    memberships: suspended.length,
-  };
+  return { ...revoked, memberships: suspended.length };
 }
 
 export class SsoError extends Error {}

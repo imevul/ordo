@@ -47,7 +47,7 @@ import { requestMeta } from '../lib/mutate.ts';
 import { systemAccess } from '../services/access.ts';
 import { audit, auditCtx } from '../services/audit.ts';
 import type { Ctx } from '../services/context.ts';
-import { revokeCredentials } from '../services/credentials.ts';
+import { revokeCredentials, revokeSignIns } from '../services/credentials.ts';
 import { resolvePreferences } from '../services/digest.ts';
 import { signedFileUrl } from '../services/files.ts';
 import {
@@ -406,29 +406,50 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/auth/reset', authLimit, async (req, reply) => {
     const input = parse(resetPasswordSchema, req.body);
     const passwordHash = await hashPassword(input.password);
-    const userId = await db.transaction(async (tx) => {
+    const { userId, guarded } = await db.transaction(async (tx) => {
       const token = await consumeToken(tx, 'password_reset', input.token);
+      const [before] = await tx
+        .select({
+          id: users.id,
+          emailVerifiedAt: users.emailVerifiedAt,
+          totpEnabledAt: users.totpEnabledAt,
+        })
+        .from(users)
+        .where(eq(users.id, token.userId))
+        .for('update');
+      // With 2FA on, a reset link alone doesn't sign you in; asked before passkeys may go below.
+      const guarded = !!before && (await hasSecondFactor(tx, before));
       // Resetting by email also proves the address.
       await tx
         .update(users)
         .set({ passwordHash, emailVerifiedAt: sql`coalesce(${users.emailVerifiedAt}, now())` })
         .where(eq(users.id, token.userId));
       // Whoever had the account may have minted keys or connected apps: none of it survives.
-      await tx.delete(sessions).where(eq(sessions.userId, token.userId));
+      if (before?.emailVerifiedAt) {
+        await tx.delete(sessions).where(eq(sessions.userId, token.userId));
+        await audit(
+          tx,
+          { action: 'auth.password_changed', actorId: token.userId, data: { via: 'reset' } },
+          requestMeta(req),
+        );
+        await revokeCredentials(tx, token.userId, 'reset', requestMeta(req));
+        return { userId: token.userId, guarded };
+      }
+      // It never proved the address before, so it may have been a squatter's, and SSO and SCIM
+      // link it from now on: passkeys, linked identities and email links go too.
+      const revoked = await revokeSignIns(tx, token.userId, 'reset', requestMeta(req));
       await audit(
         tx,
-        { action: 'auth.password_changed', actorId: token.userId, data: { via: 'reset' } },
+        {
+          action: 'auth.password_changed',
+          actorId: token.userId,
+          data: { via: 'reset', verified: true, revoked },
+        },
         requestMeta(req),
       );
-      await revokeCredentials(tx, token.userId, 'reset', requestMeta(req));
-      return token.userId;
+      return { userId: token.userId, guarded };
     });
-    const [user] = await db
-      .select({ id: users.id, totpEnabledAt: users.totpEnabledAt })
-      .from(users)
-      .where(eq(users.id, userId));
-    // With 2FA on, a reset link alone doesn't sign you in.
-    if (user && (await hasSecondFactor(db, user))) return { ok: true, signedIn: false };
+    if (guarded) return { ok: true, signedIn: false };
     await createSession(app, reply, userId, req);
     return { ok: true, signedIn: true };
   });
