@@ -698,4 +698,35 @@ describe('planning', () => {
       (await tool('update_issue', { issue: loose.identifier, milestone: 'Alpha' })).error,
     ).toContain('Say which project');
   });
+  it('lets agents plan in their teams, though they join as guests', async () => {
+    const eng = boot.teams.find((t) => t.key === 'ENG')!.id;
+    const bot = (await ada.post(`${ws}/agents`, { name: 'Planner Bot', teamIds: [eng] })).data;
+    const botKey = (await ada.post(`${ws}/agents/${bot.id}/keys`, { name: 'p' })).data.token;
+    const cycle = await tool(
+      'create_cycle',
+      { team: 'ENG', startsAt: '2030-05-06', endsAt: '2030-05-13' },
+      botKey,
+    );
+    expect(cycle).toMatchObject({ team: 'ENG', startsAt: '2030-05-06' });
+    expect(
+      await tool(
+        'update_cycle',
+        { team: 'ENG', cycle: String(cycle.number), name: 'Week 19' },
+        botKey,
+      ),
+    ).toMatchObject({ name: 'Week 19' });
+    const m = await tool('create_milestone', { project: 'Rocket', name: 'Gamma' }, botKey);
+    expect(m).toMatchObject({ project: 'Rocket', name: 'Gamma' });
+    // Planning only: the project itself stays out of an agent's reach.
+    const [rocket] = (await ada.get(`${ws}/projects`)).data.filter(
+      (p: { name: string }) => p.name === 'Rocket',
+    );
+    const res = await app.inject({
+      method: 'PATCH',
+      url: `${ws}/projects/${rocket.id}`,
+      headers: { authorization: `Bearer ${botKey}`, 'content-type': 'application/json' },
+      payload: { name: 'Hijacked' },
+    });
+    expect(res.statusCode).toBe(403);
+  });
 });

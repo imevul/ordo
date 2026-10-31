@@ -8,10 +8,14 @@ import { type Ctx, emit, record } from './context.ts';
 import { progressBy } from './progress.ts';
 import { toCycle } from './serialize.ts';
 
-/** Cycles are planned by the team: anyone who can read the team, except guests. */
+/**
+ * Cycles are planned by the team: anyone who can read the team, except guests. Agents are guests
+ * of their teams only to limit what they see; they plan there like members.
+ */
 export function assertCanPlan(ctx: Ctx, teamId: string) {
   assertTeamAccess(ctx.access, teamId);
-  if (ctx.access.isGuest) throw forbidden('Guests cannot manage cycles').as('guests_cycles');
+  if (ctx.access.isGuest && !ctx.access.isAgent)
+    throw forbidden('Guests cannot manage cycles').as('guests_cycles');
 }
 
 export async function createCycle(

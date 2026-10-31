@@ -7,7 +7,7 @@ import {
 } from '@ordo/shared';
 import { type AnyColumn, and, eq, inArray, or, type SQL, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
-import { teamMembers, teams, workspaceMembers } from '../db/schema.ts';
+import { teamMembers, teams, users, workspaceMembers } from '../db/schema.ts';
 import { forbidden, notFound } from '../lib/errors.ts';
 
 /**
@@ -26,6 +26,8 @@ export interface Access {
   isOwner: boolean;
   isAdmin: boolean;
   isGuest: boolean;
+  /** An agent account: a guest of its teams that may still plan there (cycles, milestones). */
+  isAgent: boolean;
   /** Teams this user can read and work in. */
   teamIds: string[];
   /** Teams this user administers (all readable teams for workspace admins). */
@@ -42,7 +44,7 @@ export async function computeAccess(
   workspaceId: string,
   role: MemberRole,
 ): Promise<Access> {
-  const [allTeams, memberships] = await Promise.all([
+  const [allTeams, memberships, [user]] = await Promise.all([
     db
       .select({ id: teams.id, private: teams.private })
       .from(teams)
@@ -52,6 +54,7 @@ export async function computeAccess(
       .from(teamMembers)
       .innerJoin(teams, eq(teams.id, teamMembers.teamId))
       .where(and(eq(teamMembers.userId, userId), eq(teams.workspaceId, workspaceId))),
+    db.select({ kind: users.kind }).from(users).where(eq(users.id, userId)),
   ]);
   const joined = new Set(memberships.map((m) => m.teamId));
   const isAdmin = isAdminRole(role);
@@ -65,6 +68,7 @@ export async function computeAccess(
     isOwner: isOwnerRole(role),
     isAdmin,
     isGuest: isGuestRole(role),
+    isAgent: user?.kind === 'agent',
     teamIds: readable,
     adminTeamIds: isAdmin
       ? readable
@@ -83,6 +87,7 @@ export function systemAccess(workspaceId: string, actorId: string): Access {
     isOwner: true,
     isAdmin: true,
     isGuest: false,
+    isAgent: false,
     teamIds: [],
     adminTeamIds: [],
     memberTeamIds: [],

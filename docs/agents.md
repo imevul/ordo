@@ -25,7 +25,7 @@ There are three parts:
    A run's repositories are its project's, or else its team's default. Ordo stores only the address; runners bring
    their own git credentials.
 2. **An agent** (_Settings → Agents_, admins). Give it a name and the teams it may work in. It can only see and be
-   assigned issues there (agents are guests of those teams). _Instructions_ are added to every run's prompt, for
+   assigned issues there (agents are guests of those teams, who may also plan cycles and milestones). _Instructions_ are added to every run's prompt, for
    example "Run `pnpm test` before opening a pull request. Never push to main." _Runs at once_ caps how many of its
    runs are worked on at the same time, across all its runners.
 3. **A key** for the agent, shown once. A key only works for the agent's workspace, can't sign in to the web app, and
@@ -405,7 +405,8 @@ to an agent.
 - A runner executes whatever its command does, with the access of the account it runs as. Use the command's own
   safeguards (for example Claude Code's permission modes), a container, or a dedicated user, and give the runner git
   credentials that can push branches but not protected ones.
-- An agent's key reads everything in the agent's teams and can do what a guest of those teams can. Give agents only
-  the teams they need, and revoke keys you no longer use.
+- An agent's key reads everything in the agent's teams and can do what a guest of those teams can, plus planning
+  there: creating and changing cycles, and project milestones. It can't change projects themselves, team settings
+  or anything outside its teams. Give agents only the teams they need, and revoke keys you no longer use.
 - Prompts include issue text and comments, which anyone who can comment can write. Treat them as input from those
   people, not as trusted instructions.

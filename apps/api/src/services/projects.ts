@@ -204,11 +204,15 @@ export async function listProjects(
   );
 }
 
-/** A project the caller can see and change: visible through one of its teams, and not a guest. */
-export async function loadProject(ctx: Ctx, id: string) {
+/**
+ * A project the caller can see and change: visible through one of its teams, and not a guest.
+ * With `plan`, an agent (a guest of its teams) may too, for planning work such as milestones.
+ */
+export async function loadProject(ctx: Ctx, id: string, opts: { plan?: boolean } = {}) {
   const [visible] = await listProjects(ctx.tx, ctx.access, id);
   if (!visible) throw notFound('Project');
-  if (ctx.access.isGuest) throw forbidden('Guests cannot change projects').as('guests_projects');
+  if (ctx.access.isGuest && !(opts.plan && ctx.access.isAgent))
+    throw forbidden('Guests cannot change projects').as('guests_projects');
   const [p] = await ctx.tx.select().from(projects).where(eq(projects.id, id));
   return p!;
 }
@@ -226,7 +230,7 @@ export async function projectChanged(ctx: Ctx, projectId: string) {
 export async function loadMilestone(ctx: Ctx, id: string) {
   const [m] = await ctx.tx.select().from(projectMilestones).where(eq(projectMilestones.id, id));
   if (!m) throw notFound('Milestone');
-  await loadProject(ctx, m.projectId);
+  await loadProject(ctx, m.projectId, { plan: true });
   return m;
 }
 
@@ -236,7 +240,7 @@ export async function createMilestone(
   projectId: string,
   input: CreateMilestoneInput,
 ): Promise<{ milestone: Milestone; project: Project }> {
-  await loadProject(ctx, projectId);
+  await loadProject(ctx, projectId, { plan: true });
   const [{ last }] = (await ctx.tx
     .select({ last: max(projectMilestones.sortOrder) })
     .from(projectMilestones)
