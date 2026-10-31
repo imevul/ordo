@@ -535,6 +535,10 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
       return a('apiKeyCreated');
     case 'api_key.revoked':
       return a('apiKeyRevoked');
+    case 'calendar_feed.created':
+      return a('calendarFeedCreated');
+    case 'calendar_feed.revoked':
+      return a('calendarFeedRevoked');
     case 'oauth.authorized':
       return a('oauthAuthorized');
     case 'oauth.revoked':

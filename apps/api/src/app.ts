@@ -30,6 +30,7 @@ import { aiRoutes } from './routes/ai.ts';
 import { attachmentDownloadRoutes, attachmentRoutes } from './routes/attachments.ts';
 import { authRoutes } from './routes/auth.ts';
 import { authProviderRoutes } from './routes/authProviders.ts';
+import { calendarFeedRoutes, calendarRoutes } from './routes/calendar.ts';
 import { customerRoutes } from './routes/customers.ts';
 import { customFieldRoutes } from './routes/customFields.ts';
 import { cycleRoutes } from './routes/cycles.ts';
@@ -226,6 +227,7 @@ export async function buildApp(
   await app.register(pushRoutes, { prefix: '/api' });
   await app.register(fileRoutes, { prefix: '/api' });
   await app.register(attachmentDownloadRoutes, { prefix: '/api' });
+  await app.register(calendarFeedRoutes, { prefix: '/api' });
   await app.register(joiningRoutes, { prefix: '/api' });
   await app.register(ssoRoutes, { prefix: '/api' });
   await app.register(scimRoutes, { prefix: '/api/scim/v2' });
@@ -265,6 +267,7 @@ export async function buildApp(
       await w.register(customerRoutes);
       await w.register(documentRoutes);
       await w.register(viewRoutes);
+      await w.register(calendarRoutes);
       await w.register(notificationRoutes);
       await w.register(searchRoutes);
       await w.register(webhookRoutes);

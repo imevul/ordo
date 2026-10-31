@@ -661,6 +661,16 @@ export interface ApiKey {
   createdAt: string;
 }
 
+/** A secret iCal URL. Its token (and so the URL) is returned once, when the feed is created. */
+export interface CalendarFeed {
+  id: string;
+  /** Null for the personal feed: due dates of your issues, your teams' cycles, milestones. */
+  viewId: string | null;
+  prefix: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
 /** An app as the consent screen and the connected-apps list show it. */
 export interface OAuthClientInfo {
   name: string;

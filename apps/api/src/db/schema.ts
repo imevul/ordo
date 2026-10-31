@@ -896,6 +896,37 @@ export const views = pgTable(
   (t) => [index('views_workspace_idx').on(t.workspaceId)],
 );
 
+/**
+ * Secret iCal URLs (`/api/calendar/<token>.ics`) a calendar app polls without a session. One per
+ * user and workspace for "my dates" (no view), plus one per subscribed saved view. Only the
+ * sha256 of the token is stored; the feed is built with the user's access at fetch time.
+ */
+export const calendarFeeds = pgTable(
+  'calendar_feeds',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    viewId: uuid('view_id').references(() => views.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull().unique(),
+    prefix: text('prefix').notNull(),
+    lastUsedAt: ts('last_used_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('calendar_feeds_user_idx').on(t.userId, t.workspaceId),
+    // One feed per user and view, and one personal feed (no view) per user and workspace.
+    uniqueIndex('calendar_feeds_user_view_idx').on(t.userId, t.viewId),
+    uniqueIndex('calendar_feeds_user_personal_idx')
+      .on(t.userId, t.workspaceId)
+      .where(sql`${t.viewId} is null`),
+  ],
+);
+
 export const favorites = pgTable(
   'favorites',
   {

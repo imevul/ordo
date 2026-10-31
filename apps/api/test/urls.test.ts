@@ -5,6 +5,7 @@ import { safeRedirect } from '../src/services/sso.ts';
 describe('redactUrl', () => {
   it('keeps secrets in URLs out of the logs', () => {
     expect(redactUrl('/api/invites/abc123/accept')).toBe('/api/invites/…/accept');
+    expect(redactUrl('/api/calendar/ordo_cal_s3cret.ics')).toBe('/api/calendar/….ics');
     expect(redactUrl('/api/hooks/gitlab/inbound-key')).toBe('/api/hooks/gitlab/…');
     expect(redactUrl('/api/hooks/github/app-1234')).toBe('/api/hooks/github/app-1234');
     expect(redactUrl('/api/files/f1?exp=99&sig=s3cret')).toBe('/api/files/f1?exp=99&sig=…');

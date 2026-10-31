@@ -311,7 +311,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
     across cycles, cumulative flow; charts from issue history (scope as it was each day, not as it is now)
   - [ ] ⬜ Dashboards: pin charts and saved views to a team or workspace page
   - [ ] ⬜ Releases: group done issues into a version and write its release notes (optionally AI-drafted)
-  - [ ] ⬜ Calendar feeds: an iCal URL with due dates, cycles and milestones, per person or per view
+  - [x] ✅ Calendar feeds: an iCal URL with due dates, cycles and milestones, per person or per view
 - [ ] ⬜ Intake
   - [ ] ⬜ Public request forms per team: no sign-in, a triage issue linked to a customer
 

@@ -94,6 +94,15 @@ const canSignIn = and(isNull(users.disabledAt), eq(users.kind, 'human'));
 /** Agents act through API keys, and only through them: they have no sessions, OAuth grants or SSO. */
 const canUseApiKey = and(isNull(users.disabledAt), inArray(users.kind, ['human', 'agent']));
 
+/** The user, if they may still sign in; for credentials checked outside a request (calendar feeds). */
+export async function signInUser(db: Db, userId: string): Promise<AuthUser | null> {
+  const [row] = await db
+    .select(userColumns)
+    .from(users)
+    .where(and(eq(users.id, userId), canSignIn));
+  return row ?? null;
+}
+
 // last_seen_at is a hint for the sessions list, so write it at most this often.
 const LAST_SEEN_RESOLUTION = 5 * 60_000;
 

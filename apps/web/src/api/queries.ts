@@ -3,6 +3,7 @@ import type {
   ApiKey,
   Attachment,
   Bootstrap,
+  CalendarFeed,
   Comment,
   CommentReaction,
   CreateIssueInput,
@@ -61,6 +62,7 @@ export const keys = {
   projectUpdates: (slug: string, projectId: string) =>
     ['ws', slug, 'projectUpdates', projectId] as const,
   invites: (slug: string) => ['ws', slug, 'invites'] as const,
+  calendarFeeds: (slug: string) => ['ws', slug, 'calendarFeeds'] as const,
   search: (slug: string, q: string) => ['ws', slug, 'search', q] as const,
   workload: (slug: string, cycleId?: string) =>
     cycleId ? (['ws', slug, 'workload', cycleId] as const) : (['ws', slug, 'workload'] as const),
@@ -377,6 +379,12 @@ export const useSessions = () =>
 
 export const useApiKeys = () =>
   useQuery({ queryKey: keys.apiKeys, queryFn: () => api.get<ApiKey[]>('/me/api-keys') });
+
+export const useCalendarFeeds = (slug: string) =>
+  useQuery({
+    queryKey: keys.calendarFeeds(slug),
+    queryFn: () => api.get<CalendarFeed[]>(wsPath(slug, '/calendar-feeds')),
+  });
 
 export const useOAuthGrants = () =>
   useQuery({

@@ -310,6 +310,8 @@ export default {
       passkeyAdded: 'added a passkey',
       passkeyRemoved: 'removed a passkey',
       apiKeyRevoked: 'revoked an API key',
+      calendarFeedCreated: 'created a calendar feed',
+      calendarFeedRevoked: 'revoked a calendar feed',
       oauthAuthorized: 'connected an app',
       oauthRevoked: 'disconnected an app',
       aiUpdated: 'changed AI assistance settings',
