@@ -235,7 +235,8 @@ Claim an agent's runs and launch the command for each one, in a worktree of the 
   --name <name>                  What the runner is called on the issue
   --once                         Work through what's queued now, then exit
   -v, --verbose                  Echo the command's output
-  -f, --file <yaml>              A runner file (repeatable)
+  --no-output                    Don't send the command's output to the run's page
+  -f, --file <yaml>            A runner file (repeatable)
   --only <labels>                Only these agents from the runner files`,
   'agent check': `Usage: ordo agent check --file <yaml> [--only a,b]
 
@@ -998,6 +999,7 @@ async function agentSpecs(
     name: { type: 'string' },
     once: { type: 'boolean' },
     verbose: { type: 'boolean', short: 'v' },
+    'no-output': { type: 'boolean' },
   });
   const { io, config } = ctx;
   const fallback = {
@@ -1059,9 +1061,12 @@ async function agentSpecs(
         prune: true,
         baseDir: process.cwd(),
         instructions: '',
+        output: true,
       },
     ];
   }
+  // Off for every agent, whatever the runner files say.
+  if (values['no-output']) specs = specs.map((a) => ({ ...a, output: false }));
   if (values.only) {
     const only = (values.only as string).split(',').map((x) => x.trim());
     const unknown = only.filter((l) => !specs.some((a) => a.label === l));

@@ -2020,3 +2020,21 @@ export const agentRunEvents = pgTable(
   },
   (t) => [index('agent_run_events_run_idx').on(t.runId, t.id)],
 );
+
+/**
+ * The tail of a run's live output in its latest pickup (capped, see `AGENT_OUTPUT_LINES`). Its own
+ * table so listing runs never reads it; deleted a while after the last line (`pruneRunOutput`).
+ */
+export const agentRunOutput = pgTable(
+  'agent_run_output',
+  {
+    runId: uuid('run_id')
+      .primaryKey()
+      .references(() => agentRuns.id, { onDelete: 'cascade' }),
+    lines: jsonb('lines').$type<string[]>().notNull().default([]),
+    /** Lines received in all, dropped ones included. */
+    total: integer('total').notNull().default(0),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('agent_run_output_updated_idx').on(t.updatedAt)],
+);

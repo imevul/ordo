@@ -2,6 +2,7 @@ import {
   AGENT_AUTO_RESTARTS,
   AGENT_BRANCH_FORMAT,
   AGENT_LEASE_MS,
+  AGENT_OUTPUT_RETENTION_MS,
   AGENT_PROTOCOL_VERSION,
   AGENT_RUN_OPEN,
   type Agent,
@@ -13,12 +14,14 @@ import {
   type AgentRunDetail,
   type AgentRunEventKind,
   type AgentRunFailureReason,
+  type AgentRunOutput,
   type AgentRunPullRequest,
   type AgentRunTrigger,
   type AgentRunUsageReport,
   type AgentRunWithIssue,
   type AgentUsageTotal,
   AVATAR_COLORS,
+  appendOutput,
   branchName,
   classifyFailure,
   type createAgentSchema,
@@ -52,6 +55,7 @@ import type { z } from 'zod';
 import type { DbOrTx } from '../db/client.ts';
 import {
   agentRunEvents,
+  agentRunOutput,
   agentRuns,
   agents,
   apiKeys,
@@ -1201,7 +1205,11 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
     .where(eq(agentRuns.id, next.id))
     .returning();
   // Deleted since the select (its issue went away): nothing to claim this time.
-  if (run) await logRun(ctx, run.id, 'claimed', { runner: runnerName, attempt: run.attempts });
+  if (run) {
+    await logRun(ctx, run.id, 'claimed', { runner: runnerName, attempt: run.attempts });
+    // Like progress: what an earlier pickup printed doesn't describe this one.
+    await ctx.tx.delete(agentRunOutput).where(eq(agentRunOutput.runId, run.id));
+  }
   return run ?? null;
 }
 
@@ -1286,6 +1294,62 @@ export async function reportProgress(
   const teamId = await teamOfIssue(ctx.tx, run.issueId);
   emit(ctx, { kind: 'agentRun', action: 'updated', id: run.id, issueId: run.issueId, teamId });
   return toAgentRun(saved!);
+}
+
+/**
+ * Lines the run's command printed, added to the tail Ordo keeps (capped, see `appendOutput`).
+ * Only while it works: a cancelled run's runner may send a last batch, which is dropped. Viewers
+ * hear of it by an event of its own, so run lists don't refetch every few seconds.
+ */
+export async function appendRunOutput(ctx: Ctx, runId: string, lines: string[]) {
+  const run = await ownRun(ctx, runId);
+  if (run.status !== 'claimed' && run.status !== 'running') return { accepted: false };
+  const [kept] = await ctx.tx.select().from(agentRunOutput).where(eq(agentRunOutput.runId, runId));
+  const next = appendOutput(kept?.lines ?? [], lines);
+  const total = (kept?.total ?? 0) + lines.length;
+  const now = new Date().toISOString();
+  await ctx.tx
+    .insert(agentRunOutput)
+    .values({ runId, lines: next, total, updatedAt: now })
+    .onConflictDoUpdate({
+      target: agentRunOutput.runId,
+      set: { lines: next, total, updatedAt: now },
+    });
+  const teamId = await teamOfIssue(ctx.tx, run.issueId);
+  emit(ctx, { kind: 'agentRunOutput', action: 'updated', id: runId, issueId: run.issueId, teamId });
+  return { accepted: true };
+}
+
+/** The run's output tail, for anyone who can see its issue (output can hold secrets). */
+export async function getRunOutput(
+  db: DbOrTx,
+  access: Access,
+  runId: string,
+): Promise<AgentRunOutput> {
+  const [row] = await db
+    .select({
+      lines: agentRunOutput.lines,
+      total: agentRunOutput.total,
+      at: agentRunOutput.updatedAt,
+    })
+    .from(agentRuns)
+    .innerJoin(issues, eq(issues.id, agentRuns.issueId))
+    .leftJoin(agentRunOutput, eq(agentRunOutput.runId, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        eq(agentRuns.workspaceId, access.workspaceId),
+        teamScope(access, issues.teamId),
+      ),
+    );
+  if (!row) throw notFound('Run');
+  return { lines: row.lines ?? [], total: row.total ?? 0, updatedAt: row.at };
+}
+
+/** Hourly: output nobody added to for `AGENT_OUTPUT_RETENTION_MS` goes, so it isn't kept forever. */
+export async function pruneRunOutput(app: FastifyInstance) {
+  const cutoff = new Date(Date.now() - AGENT_OUTPUT_RETENTION_MS).toISOString();
+  await app.db.delete(agentRunOutput).where(lt(agentRunOutput.updatedAt, cutoff));
 }
 
 /** Keeps a claim alive. Tells the runner when a person cancelled the run, so it can stop. */

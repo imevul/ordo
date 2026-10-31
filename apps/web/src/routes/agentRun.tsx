@@ -3,11 +3,12 @@ import {
   type AgentRun,
   type AgentRunDetail,
   type AgentRunEvent,
+  type AgentRunOutput,
 } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { ExternalLink, FastForward, RotateCcw, Square, X } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
 import {
@@ -94,6 +95,7 @@ export function AgentRunPage() {
                 <RunProgress run={run} className="text-[12.5px]" />
               </>
             )}
+            <Output run={run} />
             <Result run={run} />
             <div className="section-label mt-8 mb-2">{t('agents.runPage.timeline')}</div>
             <Timeline run={run} />
@@ -245,6 +247,67 @@ function Restarts({ run }: { run: AgentRunDetail }) {
         </p>
       )}
     </div>
+  );
+}
+
+/**
+ * The tail of what the run's command printed. Output events refetch it while the run works; a new
+ * pickup (attempts) starts over, as the server does. It follows the end unless you scroll up.
+ */
+function Output({ run }: { run: AgentRunDetail }) {
+  const ws = useWorkspace();
+  const working = run.status === 'claimed' || run.status === 'running';
+  const { data } = useQuery({
+    queryKey: ['ws', ws.slug, 'agentRunOutput', run.id, run.attempts],
+    queryFn: () => api.get<AgentRunOutput>(wsPath(ws.slug, `/agent-runs/${run.id}/output`)),
+    enabled: run.attempts > 0,
+  });
+  const box = useRef<HTMLPreElement>(null);
+  const pinned = useRef(true);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: scroll again whenever lines arrive
+  useLayoutEffect(() => {
+    if (box.current && pinned.current) box.current.scrollTop = box.current.scrollHeight;
+  }, [data]);
+  if (!data || (!working && data.lines.length === 0 && !run.startedAt)) return null;
+  return (
+    <>
+      <div className="mt-8 mb-2 flex items-center gap-3">
+        <div className="section-label flex-1">{t('agents.runPage.output')}</div>
+        {working && (
+          <span className="tag flex items-center gap-1.5 font-mono">
+            <span className="h-[6px] w-[6px] animate-pulse bg-primary" />
+            {t('agents.runPage.outputLive')}
+          </span>
+        )}
+      </div>
+      <p className="mb-2 text-[12.5px] text-muted">{t('agents.runPage.outputHint')}</p>
+      {data.lines.length === 0 ? (
+        <p className="font-mono text-[12px] text-index">
+          {working ? t('agents.runPage.outputWaiting') : t('agents.runPage.outputNone')}
+        </p>
+      ) : (
+        <>
+          {data.total > data.lines.length && (
+            <p className="mb-1 font-mono text-[11px] text-index">
+              {t('agents.runPage.outputTail', { shown: data.lines.length, total: data.total })}
+            </p>
+          )}
+          {/* The panel's fill doesn't scroll: the box scrolls inside it (panel-clip). */}
+          <div className="panel panel-clip">
+            <pre
+              ref={box}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+              }}
+              className="panel-body max-h-[28rem] overflow-auto p-3 font-mono text-[11.5px] leading-[1.55] break-words whitespace-pre-wrap"
+            >
+              {data.lines.join('\n')}
+            </pre>
+          </div>
+        </>
+      )}
+    </>
   );
 }
 
@@ -445,9 +508,11 @@ function Prompt({ prompt }: { prompt: string | null }) {
         <>
           <p className="mb-2 text-[12.5px] text-muted">{t('agents.runPage.promptHint')}</p>
           {open && (
-            <pre className="panel max-h-[32rem] overflow-auto p-3 font-mono text-[11.5px] whitespace-pre-wrap">
-              {prompt}
-            </pre>
+            <div className="panel panel-clip">
+              <pre className="panel-body max-h-[32rem] overflow-auto p-3 font-mono text-[11.5px] whitespace-pre-wrap">
+                {prompt}
+              </pre>
+            </div>
           )}
         </>
       )}

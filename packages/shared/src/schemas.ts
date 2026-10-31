@@ -1416,6 +1416,14 @@ export const reportAgentRunSchema = z
   });
 
 /**
+ * `POST /agent/runs/:id/output`: lines the run's command printed since the last call. Ordo keeps
+ * the last `AGENT_OUTPUT_LINES` and cuts long lines short, so sending more is harmless but wasted.
+ */
+export const agentRunOutputSchema = z.object({
+  lines: z.array(z.string().max(10_000)).min(1).max(1000),
+});
+
+/**
  * `GET /agent-runs`: active runs, finished ones, or both, optionally of one agent. `open` is the
  * active ones plus failed runs nobody has restarted or dismissed yet.
  */

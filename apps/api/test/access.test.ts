@@ -829,6 +829,10 @@ describe('route inventory', () => {
       "ownRun: the calling agent's own runs only (agents.test.ts, another agent's run)",
     'PATCH /agent/runs/:id':
       "ownRun: the calling agent's own runs only (agents.test.ts, another agent's run)",
+    'POST /agent/runs/:id/output':
+      "ownRun: the calling agent's own runs only (agents.test.ts, live output)",
+    'GET /agent-runs/:id/output':
+      "getRunOutput is scoped to the caller's teams (agents.test.ts, live output)",
     'GET /repositories': 'names and URLs, workspace-wide like the bootstrap (agents.test.ts)',
     'POST /repositories': 'workspace admins only (agents.test.ts)',
     'PATCH /repositories/:id': 'workspace admins only',

@@ -6,9 +6,12 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { Ordo, OrdoError, type WorkspaceClient } from '@ordo/sdk';
 import {
+  AGENT_OUTPUT_LINES,
   type AgentRunContext,
   type AgentRunRepository,
   type AgentRunUsageReport,
+  cleanOutputLine,
+  describeAgentEvent,
   parseUsage,
 } from '@ordo/shared';
 import { parse as parseYaml } from 'yaml';
@@ -49,6 +52,8 @@ export interface AgentSpec {
   baseDir: string;
   /** Added before the agent's own instructions (from Ordo) in every run's prompt. */
   instructions: string;
+  /** Send the command's output to Ordo as it runs, for the run's page. */
+  output: boolean;
 }
 
 export class RunnerConfigError extends Error {}
@@ -72,6 +77,7 @@ const fieldsSchema = z
     cwd: z.enum(['worktree', 'tmp']),
     checkout: z.boolean(),
     prune: z.boolean(),
+    output: z.boolean(),
     instructions: z.string().max(20_000),
   })
   .partial()
@@ -291,6 +297,7 @@ export async function loadRunnerFile(
       cwd: merged.cwd ?? 'worktree',
       checkout: merged.checkout ?? true,
       prune: merged.prune ?? true,
+      output: merged.output ?? true,
       baseDir,
       // Instructions add up rather than override: shared conventions first, then this agent's.
       instructions: [top.instructions, defaults.instructions, own.instructions]
@@ -693,6 +700,52 @@ export async function launch(
   }
 }
 
+// ─── live output ─────────────────────────────────────────────────────
+
+/**
+ * Sends a run's output to Ordo every `everyMs`, so its page shows it as it happens. Claude Code's
+ * `stream-json` events are condensed to what it said and did. At most the last
+ * `AGENT_OUTPUT_LINES` wait between sends, and a failed send is dropped: it's only for watching.
+ * It stops once Ordo says the run no longer works.
+ */
+export function outputStream(
+  send: (lines: string[]) => Promise<{ accepted: boolean } | undefined>,
+  everyMs = 2000,
+) {
+  let buffer: string[] = [];
+  let sending: Promise<unknown> | null = null;
+  let stopped = false;
+  const flush = () => {
+    if (sending || stopped || !buffer.length) return sending;
+    const lines = buffer;
+    buffer = [];
+    sending = send(lines)
+      .then((r) => {
+        if (r && !r.accepted) stopped = true;
+      })
+      .catch(() => {})
+      .finally(() => {
+        sending = null;
+      });
+    return sending;
+  };
+  const timer = setInterval(flush, everyMs);
+  timer.unref?.();
+  return {
+    push(line: string) {
+      if (stopped) return;
+      buffer.push(...(describeAgentEvent(line) ?? [line]).map(cleanOutputLine));
+      if (buffer.length > AGENT_OUTPUT_LINES) buffer = buffer.slice(-AGENT_OUTPUT_LINES);
+    },
+    /** Sends what's left; before the final report, which ends the run's live output. */
+    async close() {
+      clearInterval(timer);
+      await sending;
+      await flush();
+    },
+  };
+}
+
 // ─── serving an agent ────────────────────────────────────────────────
 
 export interface ServeOptions {
@@ -917,6 +970,7 @@ async function work(
       return undefined;
     });
   const held: string[] = [];
+  let output: ReturnType<typeof outputStream> | null = null;
   try {
     let repoPaths: { name: string; path: string }[] = [];
     if (spec.checkout && context.repositories.length) {
@@ -939,6 +993,15 @@ async function work(
     }
     const workdir = spec.cwd === 'worktree' && repoPaths[0] ? repoPaths[0].path : null;
     const pending: Promise<unknown>[] = [];
+    output = spec.output
+      ? outputStream((lines) =>
+          ws.agent.output(runId, lines).catch((err: Error) => {
+            opts.log(`${id} sending output failed: ${err.message}`);
+            return undefined;
+          }),
+        )
+      : null;
+    const live = output;
     const result = await launch(spec, context, {
       workdir,
       repoPaths,
@@ -953,9 +1016,13 @@ async function work(
       onResume: (token) => {
         pending.push(report({ resume: token }));
       },
-      onOutput: opts.verbose ? (line) => opts.log(`${id} │ ${line}`) : undefined,
+      onOutput: (line) => {
+        live?.push(line);
+        if (opts.verbose) opts.log(`${id} │ ${line}`);
+      },
     });
-    await Promise.all(pending);
+    // The rest of the output first: Ordo takes none once the run has ended.
+    await Promise.all([...pending, live?.close()]);
     const cost = result.usage.costUsd;
     if (cost !== undefined) opts.log(`${id} cost $${cost.toFixed(2)}`);
     // A cancelled run's tokens were spent all the same.
@@ -984,6 +1051,7 @@ async function work(
       opts.log(`${id} ${result.status}${result.error ? `: ${result.error.split('\n')[0]}` : ''}`);
   } finally {
     clearInterval(beat);
+    void output?.close();
     for (const path of held) inUse.delete(path);
   }
 }

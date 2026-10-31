@@ -308,6 +308,17 @@ export class WorkspaceClient {
       ),
 
     /**
+     * Live output: lines the command printed since the last call, for the run's page. Ordo keeps
+     * the last 200; `accepted` is false once the run no longer works (cancelled, waiting).
+     */
+    output: (runId: string, lines: string[]) =>
+      this.request<{ accepted: boolean }>(
+        'POST',
+        `/agent/runs/${encodeURIComponent(runId)}/output`,
+        { lines },
+      ),
+
+    /**
      * Started (`running`), finished (a summary is posted on the issue), or `waiting` with a
      * `question`. `resume` is handed back on the next pickup. Once a run is waiting, other
      * reports change nothing but `sessionUrl` and `resume`.

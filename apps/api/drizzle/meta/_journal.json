@@ -463,6 +463,13 @@
       "when": 1793472028394,
       "tag": "0065_automation_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1793478727837,
+      "tag": "0066_agent_run_output",
+      "breakpoints": true
     }
   ]
 }

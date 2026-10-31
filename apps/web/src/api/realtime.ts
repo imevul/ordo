@@ -15,6 +15,7 @@ const OUTSIDE_BOOTSTRAP = new Set<RealtimeEvent['kind']>([
   'export',
   'document',
   'agentRun',
+  'agentRunOutput',
 ]);
 
 /**
@@ -79,6 +80,8 @@ export function useRealtime(slug: string): RealtimeStatus {
       if (kinds.has('import')) inv(['ws', slug, 'imports']);
       if (kinds.has('export')) inv(['ws', slug, 'exports']);
       if (kinds.has('agentRun')) inv(['ws', slug, 'agentRuns']);
+      // Only the run pages showing output: it comes every few seconds while a run works.
+      if (kinds.has('agentRunOutput')) inv(['ws', slug, 'agentRunOutput']);
       if (kinds.has('issue') || kinds.has('cycle') || kinds.has('team')) inv(keys.workload(slug));
       if (bootstrapStale) inv(keys.bootstrap(slug));
       if (kinds.has('member') || kinds.has('workspace')) inv(keys.me);

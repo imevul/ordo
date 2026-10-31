@@ -1566,6 +1566,18 @@ export interface AgentRunDetail extends AgentRunWithIssue {
   events: AgentRunEvent[];
 }
 
+/**
+ * `GET /agent-runs/:id/output`: the tail of what the run's command printed in its latest pickup,
+ * as its runner sent it, oldest line first.
+ */
+export interface AgentRunOutput {
+  lines: string[];
+  /** Lines received in all this pickup; more than `lines.length` when older ones were dropped. */
+  total: number;
+  /** When the runner last sent some; null when it sent none, or it has since been deleted. */
+  updatedAt: string | null;
+}
+
 /** A repository as a run sees it: where to clone and which branch to work on. */
 export interface AgentRunRepository extends Repository {
   suggestedBranch: string;
