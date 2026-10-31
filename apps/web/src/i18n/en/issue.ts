@@ -132,6 +132,8 @@ export default {
     dueDateRemoved: '{actor} removed the due date',
     team: '{actor} moved from {from} to {to}',
     changed: '{actor} changed {field}',
+    /** the line under changes an automation rule made */
+    automation: '{actor} ran the automation {rule}',
     // Stand-ins when what a change points at no longer exists.
     fallback: {
       someone: 'someone',

@@ -146,6 +146,8 @@ export interface Team {
   triageRules: TriageRule[];
   /** Each member's capacity per cycle when they have none of their own; null for no default. */
   defaultCapacity: number | null;
+  /** "When … then …" rules, in order. */
+  automationRules: AutomationRule[];
   memberIds: string[];
   /** `capacity`: per cycle, null uses `defaultCapacity`. */
   members: { userId: string; role: TeamRole; capacity: number | null }[];
@@ -189,6 +191,94 @@ export interface TriageRule {
   position: number;
   conditions: TriageConditions;
   actions: TriageActions;
+}
+
+/**
+ * What sets an automation rule off. `sub_issues_completed` acts on the parent once every
+ * sub-issue is closed (at least one done); the pull request triggers act on the linked issue.
+ */
+export const AUTOMATION_TRIGGERS = [
+  'issue_created',
+  'issue_updated',
+  'status_changed',
+  'label_added',
+  'sub_issues_completed',
+  'pull_request_opened',
+  'pull_request_merged',
+] as const;
+export type AutomationTriggerType = (typeof AUTOMATION_TRIGGERS)[number];
+
+/** Fields an `issue_updated` trigger can watch (history field names). */
+export const AUTOMATION_FIELDS = [
+  'state',
+  'priority',
+  'assignee',
+  'labels',
+  'project',
+  'milestone',
+  'cycle',
+  'parent',
+  'estimate',
+  'dueDate',
+  'title',
+  'description',
+] as const;
+export type AutomationField = (typeof AUTOMATION_FIELDS)[number];
+
+export type AutomationTrigger =
+  | { type: 'issue_created' }
+  /** Any of `fields` changed; none given means any change. */
+  | { type: 'issue_updated'; fields?: AutomationField[] }
+  /** Moved into one of `stateIds`; none given means any move. */
+  | { type: 'status_changed'; stateIds?: string[] }
+  /** One of `labelIds` was added; none given means any label. */
+  | { type: 'label_added'; labelIds?: string[] }
+  | { type: 'sub_issues_completed' }
+  | { type: 'pull_request_opened' }
+  | { type: 'pull_request_merged' };
+
+/** The issue must also match this part of the filter model when the rule runs. */
+export type AutomationConditions = Pick<
+  IssueFilter,
+  | 'stateIds'
+  | 'stateTypes'
+  | 'priorities'
+  | 'assigneeIds'
+  | 'creatorIds'
+  | 'labelIds'
+  | 'projectIds'
+  | 'milestoneIds'
+  | 'cycleIds'
+  | 'q'
+>;
+
+/** What a rule does. Missing means leave as is; null clears. */
+export interface AutomationActions {
+  stateId?: string;
+  priority?: number;
+  /** A person or an agent (assigning an agent hands the issue to it). */
+  assigneeId?: string | null;
+  addLabelIds?: string[];
+  removeLabelIds?: string[];
+  /** `active`: the team's cycle running today, if any. */
+  cycleId?: string | null;
+  projectId?: string | null;
+  /** Posted as the Ordo bot (Markdown). */
+  comment?: string;
+}
+
+export interface AutomationRule {
+  id: string;
+  teamId: string;
+  name: string;
+  enabled: boolean;
+  position: number;
+  trigger: AutomationTrigger;
+  conditions: AutomationConditions;
+  actions: AutomationActions;
+  /** When it last acted on an issue. */
+  lastRunAt: string | null;
+  runCount: number;
 }
 
 export type SlaHours = Partial<Record<'1' | '2' | '3' | '4', number>>;

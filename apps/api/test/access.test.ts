@@ -665,6 +665,10 @@ describe('route inventory', () => {
     'POST /teams/:teamId/triage-rules': 'loadTeam(admin), like workflow states (triage.test.ts)',
     'PATCH /triage-rules/:id': "loadTeam(admin) of the rule's team (triage.test.ts)",
     'DELETE /triage-rules/:id': "loadTeam(admin) of the rule's team (triage.test.ts)",
+    'POST /teams/:teamId/automation-rules':
+      'loadTeam(admin), like triage rules (automation-rules.test.ts)',
+    'PATCH /automation-rules/:id': "loadTeam(admin) of the rule's team (automation-rules.test.ts)",
+    'DELETE /automation-rules/:id': "loadTeam(admin) of the rule's team (automation-rules.test.ts)",
     'GET /customers': 'workspace-level; guests get none (customers.test.ts)',
     'POST /customers': 'non-guests (customers.test.ts)',
     'PATCH /customers/:id': 'loadCustomer: workspace-scoped, non-guests (customers.test.ts)',

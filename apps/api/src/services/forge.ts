@@ -17,6 +17,7 @@ import {
   workspaces,
 } from '../db/schema.ts';
 import type { IntegrationContext } from '../integrations/types.ts';
+import { queuePullRequestAutomation } from './automationRules.ts';
 import type { Ctx } from './context.ts';
 import { updateIssue } from './issues.ts';
 import { type PullRequestData, upsertIssueLink } from './links.ts';
@@ -283,6 +284,13 @@ export async function applyPullRequest(
       linked.push({ issueId: issue.id, created: !prev });
       const event = prEvent(pr.state);
       if (event && data.closes) await automate(ctx, issue, event);
+      if (data.closes) {
+        const isOpen = (s: string | null | undefined) => s === 'open' || s === 'review';
+        if (pr.state === 'merged' && prev?.state !== 'merged')
+          await queuePullRequestAutomation(ctx, issue.id, 'pull_request_merged');
+        else if (isOpen(pr.state) && !isOpen(prev?.state))
+          await queuePullRequestAutomation(ctx, issue.id, 'pull_request_opened');
+      }
       if (handedOffTo) {
         await tagQueuedRun(ctx, issue.id, handedOffTo, {
           event: 'ready_for_review',

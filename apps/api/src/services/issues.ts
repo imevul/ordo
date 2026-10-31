@@ -705,7 +705,7 @@ export async function assertProject(ctx: Ctx, projectId: string) {
   if (!p) throw badRequest('Unknown project').as('unknown_project');
 }
 
-async function assertCycle(ctx: Ctx, teamId: string, cycleId: string) {
+export async function assertCycle(ctx: Ctx, teamId: string, cycleId: string) {
   const [c] = await ctx.tx
     .select({ id: cycles.id })
     .from(cycles)
@@ -796,10 +796,12 @@ async function recordHistory(
   at: { actorId?: string | null; createdAt?: string } = {},
 ) {
   if (changes.length === 0) return;
+  const rule = ctx.automation?.rule;
   await ctx.tx.insert(issueHistory).values({
     issueId,
     actorId: at.actorId === undefined ? ctx.userId : at.actorId,
-    changes,
+    // The activity line names the automation rule that made the change.
+    changes: rule ? [...changes, { field: 'automation', from: null, to: rule }] : changes,
     createdAt: at.createdAt,
   });
 }

@@ -370,6 +370,49 @@ describe('GitHub (token)', () => {
     await owner.patch(`${ws}/teams/${team().id}`, { gitAutomation: {} });
   });
 
+  it('runs automation rules when a closing pull request opens or merges', async () => {
+    const opened = await owner.post(`${ws}/teams/${team().id}/automation-rules`, {
+      name: 'Opened PRs are high priority',
+      trigger: { type: 'pull_request_opened' },
+      actions: { priority: 2 },
+    });
+    const merged = await owner.post(`${ws}/teams/${team().id}/automation-rules`, {
+      name: 'Say thanks on merge',
+      trigger: { type: 'pull_request_merged' },
+      actions: { comment: 'Merged, thanks!' },
+    });
+    const issue = await newIssue('Automated PR');
+    const head = { ref: `${issue.identifier.toLowerCase()}-auto` };
+    await deliver('pull_request', {
+      action: 'opened',
+      repository,
+      pull_request: pr({ number: 13, head }),
+    });
+    await settle(2);
+    expect((await detail(issue.id)).priority).toBe(2);
+    // A review request isn't "opened" again.
+    await owner.patch(`${ws}/issues/${issue.id}`, { priority: 4 });
+    await deliver('pull_request', {
+      action: 'review_requested',
+      repository,
+      pull_request: pr({ number: 13, head, requested_reviewers: [{ login: 'bob' }] }),
+    });
+    await settle(2);
+    expect((await detail(issue.id)).priority).toBe(4);
+    await deliver('pull_request', {
+      action: 'closed',
+      repository,
+      pull_request: pr({ number: 13, head, state: 'closed', merged: true }),
+    });
+    await settle(2);
+    const comments = (await owner.get(`${ws}/issues/${issue.id}/comments`)).data as {
+      body: string;
+    }[];
+    expect(comments.map((c) => c.body)).toEqual(['Merged, thanks!']);
+    await owner.del(`${ws}/automation-rules/${opened.data.id}`);
+    await owner.del(`${ws}/automation-rules/${merged.data.id}`);
+  });
+
   it('polls instead when GitHub cannot reach Ordo', async () => {
     const issue = await newIssue('Polled');
     forge.on('GET', '/repos/acme/app/pulls', [
