@@ -188,7 +188,8 @@ Team screens have tabs: **All**, **Active** (unstarted + started), **Backlog**, 
 
 Filter any list, then **Save view** to give it a name. Views are shared with the workspace unless you untick
 the option. Open one from **Views** in the sidebar; change its filters or display and press **Save** to
-update it. Star views and projects to pin them under _Favorites_.
+update it. Star views and projects to pin them under _Favorites_. The calendar button on a view gives a URL to
+subscribe to its due dates in a calendar app (see **Calendar** under [Your account](#your-account)).
 
 ## My issues and Inbox
 
@@ -414,8 +415,13 @@ Open **Settings** (workspace menu, or `G` then `S`):
 - **API keys** — personal keys for scripts and integrations ([API docs](api.md)). Resetting your password with
   **Forgot password?** revokes all of them, along with every app you've connected (below), so nothing someone else
   set up while they had your account keeps working. Changing your password or turning on the authenticator app
-  offers the same (_Also revoke my API keys and connected apps_, on by default). Each revoked key and app shows in
-  the audit log.
+  offers the same (_Also revoke my API keys, connected apps and calendar feeds_, on by default). Each revoked key
+  and app shows in the audit log.
+- **Calendar** — a secret iCal URL for Google Calendar, Outlook or Apple Calendar (_Open in calendar app_, or paste
+  it as a subscription): the due dates of your open issues, the cycles of your teams and the milestones of their
+  projects, as all-day events that update on their own (Google can take several hours to refresh). Saved views can
+  be subscribed to as well. Anyone with a URL can read those dates, so it's shown once; **New URL** replaces it and
+  the trash button revokes it. A feed only shows what you can see in the workspace right now.
 - **AI agents** — connect Claude, Claude Code, Cursor or VS Code to Ordo's MCP server: the URL, setup snippets for
   OAuth sign-in or an API key, a prompt that lets your agent set itself up, and the apps you've connected, which you
   can disconnect ([MCP docs](mcp.md)). When an app signs in with OAuth, Ordo shows which app is asking and for

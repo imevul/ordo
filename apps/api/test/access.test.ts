@@ -709,6 +709,10 @@ describe('route inventory', () => {
     'DELETE /custom-fields/:id': 'manageableField checks the team (custom-fields.test.ts)',
     'PATCH /views/:id': 'owner or admin; results are filtered when queried',
     'DELETE /views/:id': 'owner or admin',
+    'GET /calendar-feeds': "the caller's own feeds (calendar.test.ts)",
+    'POST /calendar-feeds':
+      'the view must be visible; the feed is built with the owner’s access (calendar.test.ts)',
+    'DELETE /calendar-feeds/:id': "the caller's own feeds (calendar.test.ts)",
     'PATCH /': 'workspace admins only',
     'GET /invites': 'workspace admins only',
     'DELETE /invites/:id': 'workspace admins only',

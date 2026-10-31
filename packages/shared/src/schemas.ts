@@ -70,6 +70,9 @@ export const changePasswordSchema = z.object({
 
 export const createApiKeySchema = z.object({ name: name });
 
+/** A calendar feed: the personal one (no view), or one for a saved view. */
+export const createCalendarFeedSchema = z.object({ viewId: id.nullable().default(null) });
+
 export const forgotPasswordSchema = z.object({ email: z.email() });
 
 export const resetPasswordSchema = z.object({

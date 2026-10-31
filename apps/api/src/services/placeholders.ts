@@ -146,6 +146,7 @@ export const UNMERGED_COLUMNS: Record<string, string> = {
   'imports.created_by_id': 'imports are started by members',
   'workspace_exports.created_by_id': 'exports are made by admins',
   'api_keys.user_id': 'placeholders never sign in',
+  'calendar_feeds.user_id': 'placeholders never sign in',
   'auth_states.user_id': 'placeholders never sign in',
   'auth_tokens.user_id': 'placeholders never sign in',
   'sessions.user_id': 'placeholders never sign in',

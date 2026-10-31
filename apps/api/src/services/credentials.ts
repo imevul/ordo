@@ -1,12 +1,12 @@
 import { eq } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
-import { apiKeys, oauthClients, oauthCodes, oauthGrants } from '../db/schema.ts';
+import { apiKeys, calendarFeeds, oauthClients, oauthCodes, oauthGrants } from '../db/schema.ts';
 import { audit } from './audit.ts';
 import type { RequestMeta } from './context.ts';
 
 /**
  * Revokes everything that lets a script or app act as this person without a session: personal
- * API keys, connected OAuth apps and their pending authorization codes. Run after a password
+ * API keys, connected OAuth apps and their pending authorization codes, calendar feeds. Run after a password
  * reset (and, when asked, a password change or turning on 2FA), so a key or MCP grant minted by
  * whoever had the account doesn't outlive the recovery; and when an unverified account is released
  * from an address someone proved (`claimableUser` in sso.ts). Each revocation is audited as if the
@@ -58,5 +58,23 @@ export async function revokeCredentials(
       meta,
     );
   }
-  return { apiKeys: keys.length, oauthGrants: grants.length };
+  const feeds = await tx
+    .delete(calendarFeeds)
+    .where(eq(calendarFeeds.userId, userId))
+    .returning({ id: calendarFeeds.id, workspaceId: calendarFeeds.workspaceId });
+  for (const feed of feeds) {
+    await audit(
+      tx,
+      {
+        action: 'calendar_feed.revoked',
+        workspaceId: feed.workspaceId,
+        actorId: userId,
+        targetType: 'calendar_feed',
+        targetId: feed.id,
+        data: { via },
+      },
+      meta,
+    );
+  }
+  return { apiKeys: keys.length, oauthGrants: grants.length, calendarFeeds: feeds.length };
 }

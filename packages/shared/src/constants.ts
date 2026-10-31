@@ -139,6 +139,8 @@ export const AUDIT_ACTIONS = [
   'placeholder.merged',
   'api_key.created',
   'api_key.revoked',
+  'calendar_feed.created',
+  'calendar_feed.revoked',
   'oauth.authorized',
   'oauth.revoked',
   'workspace.created',
@@ -181,7 +183,7 @@ export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** Groups of audit actions, by prefix, for filtering the audit log. */
 export const AUDIT_CATEGORIES = {
-  security: ['auth.', 'sso.', 'scim.', 'api_key.', 'oauth.', 'domain.'],
+  security: ['auth.', 'sso.', 'scim.', 'api_key.', 'calendar_feed.', 'oauth.', 'domain.'],
   members: ['member.', 'invite.', 'placeholder.', 'admin.'],
   teams: ['team.'],
   workspace: ['workspace.', 'settings.'],

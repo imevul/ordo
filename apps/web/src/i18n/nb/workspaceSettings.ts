@@ -301,6 +301,8 @@ export default {
       passkeyAdded: 'la til en tilgangsnøkkel',
       passkeyRemoved: 'fjernet en tilgangsnøkkel',
       apiKeyRevoked: 'tilbakekalte en API-nøkkel',
+      calendarFeedCreated: 'opprettet en kalenderstrøm',
+      calendarFeedRevoked: 'tilbakekalte en kalenderstrøm',
       oauthAuthorized: 'koblet til en app',
       oauthRevoked: 'koblet fra en app',
       aiUpdated: 'endret innstillingene for KI-hjelp',
