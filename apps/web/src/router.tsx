@@ -9,6 +9,7 @@ import {
 import { Toaster } from 'sonner';
 import { ConfirmHost } from './components/ui/Modal.tsx';
 import { AdminPage } from './routes/admin/index.tsx';
+import { AgentRunPage } from './routes/agentRun.tsx';
 import { AgentRunsPage } from './routes/agentRuns.tsx';
 import { EmailLinkPage } from './routes/auth/emailLink.tsx';
 import { InvitePage } from './routes/auth/invite.tsx';
@@ -209,6 +210,11 @@ const agentRunsRoute = createRoute({
   path: '/agent-runs',
   component: AgentRunsPage,
 });
+const agentRunRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/agent-runs/$runId',
+  component: AgentRunPage,
+});
 const customersRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/customers',
@@ -295,6 +301,7 @@ const routeTree = rootRoute.addChildren([
     insightsRoute,
     customersRoute,
     agentRunsRoute,
+    agentRunRoute,
     customerRoute,
     viewsRoute,
     viewRoute,

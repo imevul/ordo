@@ -1,5 +1,6 @@
 import type {
   AgentPauseReason,
+  AgentRunEventKind,
   AgentRunFailureReason,
   AgentRunStatus,
   AgentRunTrigger,
@@ -1444,6 +1445,32 @@ export interface AgentRunWithIssue extends AgentRun {
   issue: IssueRef;
   /** For a queued run: a repository at its run limit that holds it back, if one does. */
   waitingForRepository: { id: string; name: string } | null;
+}
+
+/**
+ * One step in a run's timeline. `data` by kind: claimed `{ runner, attempt }`, progress
+ * `{ step, percent }`, asked `{ question }`, resumed `{ commentId? }` (the reply that answered),
+ * lapsed `{ runner, attempt, failed }`, failed `{ reason, error }`, cancelled `{ reason }`,
+ * queued `{ retryOfId? }`.
+ */
+export interface AgentRunEvent {
+  id: string;
+  kind: AgentRunEventKind;
+  data: Record<string, unknown>;
+  actorId: string | null;
+  at: string;
+}
+
+/** Everything about one run, for its page: `GET /agent-runs/:id`. */
+export interface AgentRunDetail extends AgentRunWithIssue {
+  /** The prompt of the latest pickup, without the runner's or the agent's instructions. */
+  prompt: string | null;
+  /** The comment that @mentioned the agent, for a `mention` run. */
+  triggerComment: { id: string; authorId: string | null; body: string } | null;
+  /** Runs that restart this one, oldest first. */
+  restartedBy: Pick<AgentRun, 'id' | 'status' | 'createdAt'>[];
+  /** Oldest first. Runs from before the timeline existed have none. */
+  events: AgentRunEvent[];
 }
 
 /** A repository as a run sees it: where to clone and which branch to work on. */

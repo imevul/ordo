@@ -9,11 +9,11 @@ import {
   FailureTags,
   isOpenRun,
   isRestartable,
-  RUN_STATUS_COLOR,
   RunAnywayButton,
   RunBlocked,
   RunDetail,
   RunProgress,
+  RunStatusLink,
   RunUsage,
   runDetail,
   triggerLabel,
@@ -271,7 +271,6 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
   const [toggled, setToggled] = useState<boolean | null>(null);
   const open = toggled ?? (run.status === 'waiting' || run.status === 'failed');
   const agent = ws.memberById.get(run.agentId);
-  const color = RUN_STATUS_COLOR[run.status];
   const detail = runDetail(run);
   const invalidate = { invalidate: [['ws', ws.slug, 'agentRuns']] };
   const resume = useWsMutation(
@@ -303,9 +302,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
     <div className="border-b border-border-soft/60">
       <div className={`row grid h-11 ${COLUMNS} items-center gap-3 px-4`}>
         <span>
-          <span className="chip" style={{ ['--chip' as string]: color }}>
-            {t(`agents.runs.status.${run.status}`)}
-          </span>
+          <RunStatusLink run={run} />
         </span>
         <span className="flex min-w-0 items-center gap-2">
           <Link

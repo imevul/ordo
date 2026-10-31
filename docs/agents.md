@@ -54,11 +54,19 @@ There are three parts:
    workspace. It opens on **Open**: runs that are queued, working or waiting for an answer, plus failed runs nobody
    has dealt with yet. **Finished** and **All** show the rest. Rows have Resume, Cancel, and for failed runs
    **Restart** and **Dismiss** (see [When a run fails](#when-a-run-fails)).
-8. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
+8. A run's status (on the Agent runs page or the issue) opens **its page**, the whole story in one place: the issue,
+   agent, why it ran and who asked; a timeline of when it was queued, picked up (by which runner, which attempt),
+   started, each progress step, its question and the reply that resumed it, lapsed leases, someone choosing **Run
+   anyway**, and how it ended; what it's waiting on; the summary, error and failure reason; the session link; which
+   run it restarts and which runs restarted it; and the prompt of its latest pickup. Anyone who can see the issue sees
+   the page, so Ordo keeps the prompt without instructions: the agent's are for admins (in its settings), and a
+   runner file's `instructions` may hold expanded environment variables. Heartbeats aren't kept one by one: the page
+   shows when the lease runs out. The same actions as on the list are at the top.
+9. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
    queue for another runner. After three claims it is marked failed, with a comment on the issue.
-9. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
-   while it's paused: queued runs wait, and runs already going finish. **Resume runs** picks up the queue again. (It's
-   the workspace setting `agentRunsPaused`.)
+10. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
+    while it's paused: queued runs wait, and runs already going finish. **Resume runs** picks up the queue again. (It's
+    the workspace setting `agentRunsPaused`.)
 
 ## When a run fails
 
