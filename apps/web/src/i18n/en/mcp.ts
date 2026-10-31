@@ -122,6 +122,9 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       list_agent_runs: 'What agents are doing across the workspace: active or finished runs.',
       rerun_agent: "Ask the issue's agent to work on it again, optionally with a note.",
       cancel_agent_run: "Stop the agent's queued or running work on an issue.",
+      restart_agent_run:
+        "Restart an issue's failed or cancelled run as a new run, for any agent on it.",
+      dismiss_agent_run: "Set an issue's failed run aside, so it leaves the open runs.",
       current_run: 'The runs the agent is working on now.',
       report_run: 'Report on a run: a session link, started, or finished with a summary.',
       ask_question: 'Ask a person something and pause; a reply on the issue resumes the run.',

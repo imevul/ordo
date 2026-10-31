@@ -38,6 +38,13 @@ const issueFields = {
   dueDate: isoDate.nullable().optional(),
 };
 
+/** A finished run, by issue (and agent) since runs have no identifier people type, or by id. */
+const failedRun = z.object({
+  issue: issue.optional().describe('Issue identifier (e.g. "ENG-42") or id; required without run'),
+  agent: ref('Only runs of this agent: username, name or id').optional(),
+  run: z.uuid().optional().describe('The run id (see agent_runs), instead of issue and agent'),
+});
+
 export const mcpToolSchemas = {
   list_teams: z.object({}),
   list_statuses: z.object({ team }),
@@ -135,6 +142,8 @@ export const mcpToolSchemas = {
       .describe('Markdown, posted as a comment first so the agent reads it'),
   }),
   cancel_agent_run: z.object({ issue }),
+  restart_agent_run: failedRun,
+  dismiss_agent_run: failedRun,
   current_run: z.object({}),
   report_run: z.object({
     run: z.uuid().optional().describe('The run (default: your only open run)'),
@@ -288,6 +297,20 @@ export const MCP_TOOLS: {
     name: 'cancel_agent_run',
     title: 'Cancel agent run',
     description: "Stop the agent's queued or running work on an issue.",
+    readOnly: false,
+  },
+  {
+    name: 'restart_agent_run',
+    title: 'Restart agent run',
+    description:
+      "Restart an issue's latest failed or cancelled run (of agent, when several agents' runs failed) as a new run: same agent, issue and trigger. Works for mention runs too.",
+    readOnly: false,
+  },
+  {
+    name: 'dismiss_agent_run',
+    title: 'Dismiss agent run',
+    description:
+      "Set an issue's latest failed or cancelled run aside without restarting it, so it leaves the open runs.",
     readOnly: false,
   },
   {

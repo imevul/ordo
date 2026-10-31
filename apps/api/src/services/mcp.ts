@@ -1,4 +1,5 @@
 import {
+  type AgentRun,
   type Cycle,
   createCommentSchema,
   createIssueSchema,
@@ -23,11 +24,13 @@ import type { Access } from './access.ts';
 import {
   askQuestion,
   cancelRun,
+  dismissRun,
   heldRuns,
   listRuns,
   listWorkspaceRuns,
   reportRun,
   requestRun,
+  restartRun,
 } from './agents.ts';
 import { createComment, listComments } from './comments.ts';
 import type { Ctx } from './context.ts';
@@ -522,6 +525,7 @@ function handlers(c: McpCaller): Handlers {
       const runs = await listWorkspaceRuns(c.app.db, c.access, { status, agentId, limit });
       const names = await dir.people(runs.map((r) => r.agentId));
       return runs.map((r) => ({
+        run: r.id,
         issue: r.issue.identifier,
         title: r.issue.title,
         agent: names.get(r.agentId) ?? null,
@@ -556,6 +560,18 @@ function handlers(c: McpCaller): Handlers {
         for (const r of open) await cancelRun(ctx, r.id);
       });
       return agentRunsResult(c, dir, target.id);
+    },
+
+    restart_agent_run: async (a) => {
+      const runId = await finishedRun(c, dir, a);
+      const saved = await c.run((ctx) => restartRun(ctx, runId));
+      return { restarted: runId, ...(await agentRunsResult(c, dir, saved.issueId)) };
+    },
+
+    dismiss_agent_run: async (a) => {
+      const runId = await finishedRun(c, dir, a);
+      const saved = await c.run((ctx) => dismissRun(ctx, runId));
+      return { dismissed: runId, ...(await agentRunsResult(c, dir, saved.issueId)) };
     },
 
     current_run: async () => {
@@ -625,6 +641,38 @@ async function onlyHeldRun(c: McpCaller) {
   return held[0]!.id;
 }
 
+/**
+ * The run restart_agent_run and dismiss_agent_run act on: `run` itself, or on the issue the latest
+ * run of each agent (of `agent`, if given) that failed or was cancelled and isn't dismissed. An
+ * agent whose latest run is active or succeeded has nothing to handle. When several agents
+ * qualify, the caller has to name one.
+ */
+async function finishedRun(c: McpCaller, dir: Directory, a: McpToolArgs<'restart_agent_run'>) {
+  if (a.run) return a.run;
+  if (!a.issue) throw badRequest('Say which run: give issue (and agent), or run.');
+  const issue = await getIssue(c.app.db, c.access, a.issue);
+  const agentId = a.agent ? await dir.person(a.agent) : undefined;
+  const latest = new Map<string, AgentRun>();
+  // Newest first, so the first run seen per agent is its latest.
+  for (const r of await listRuns(c.app.db, c.access, issue.id))
+    if (!latest.has(r.agentId) && (!agentId || r.agentId === agentId)) latest.set(r.agentId, r);
+  const candidates = [...latest.values()].filter(
+    (r) => (r.status === 'failed' || r.status === 'cancelled') && !r.dismissedAt,
+  );
+  const [only] = candidates;
+  if (!only)
+    throw badRequest(
+      `No failed or cancelled run${a.agent ? ` of ${a.agent}` : ''} on ${issue.identifier} to act on. See agent_runs.`,
+    );
+  if (candidates.length > 1) {
+    const names = await dir.people(candidates.map((r) => r.agentId));
+    throw badRequest(
+      `Runs of several agents failed on ${issue.identifier} (${candidates.map((r) => names.get(r.agentId)?.username ?? r.agentId).join(', ')}); say which with agent, or give run.`,
+    );
+  }
+  return only.id;
+}
+
 function requireAgent(c: McpCaller) {
   if (!c.agent) throw badRequest('Only an agent has runs; this key belongs to a person.');
 }
@@ -639,6 +687,7 @@ async function agentRunsResult(c: McpReader, dir: Directory, ref: string) {
     assignee:
       (issue.assigneeId && (await dir.people([issue.assigneeId])).get(issue.assigneeId)) || null,
     runs: runs.map((r) => ({
+      run: r.id,
       agent: names.get(r.agentId) ?? null,
       status: r.status,
       runner: r.runnerName,
@@ -650,6 +699,8 @@ async function agentRunsResult(c: McpReader, dir: Directory, ref: string) {
       error: r.error,
       failureReason: r.failureReason,
       retryAt: r.retryAt,
+      retryOf: r.retryOfId ?? undefined,
+      dismissed: !!r.dismissedAt || undefined,
       createdAt: r.createdAt,
       finishedAt: r.finishedAt,
     })),
