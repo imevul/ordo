@@ -258,6 +258,41 @@ describe('sign-in', () => {
     expect(logged!.data).toMatchObject({ from: claims.email, via: 'sso' });
   });
 
+  it("doesn't link an unverified account without a password at the address", async () => {
+    const claims = person('passwordless');
+    const squatter = await signup(app, 'Passwordless Person');
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    await app.db
+      .update(users)
+      .set({ email: claims.email, emailVerifiedAt: null, passwordHash: null })
+      .where(eq(users.id, squatterId));
+
+    const { client } = await sso(claims);
+    const me = (await client.get('/api/auth/me')).data;
+    expect(me.id).not.toBe(squatterId);
+    expect(me.email).toBe(claims.email);
+    expect(await roleOf(claims.email)).toBe('member');
+
+    const [after] = await app.db.select().from(users).where(eq(users.id, squatterId));
+    expect(after!.email).toMatch(/\.invalid$/);
+    expect(
+      await app.db.select().from(userIdentities).where(eq(userIdentities.userId, squatterId)),
+    ).toEqual([]);
+    expect(
+      await app.db
+        .select()
+        .from(workspaceMembers)
+        .where(
+          and(eq(workspaceMembers.workspaceId, wsId), eq(workspaceMembers.userId, squatterId)),
+        ),
+    ).toEqual([]);
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
+    expect(logged!.data).toMatchObject({ from: claims.email, via: 'sso' });
+  });
+
   it('lets signed-in users link an identity explicitly', async () => {
     const someone = await signup(app, 'Linker Person');
     await join(someone.client);

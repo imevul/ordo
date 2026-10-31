@@ -270,8 +270,48 @@ describe('users', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(json(res).userName).toBe(email);
+    const [moved] = await app.db.select().from(users).where(eq(users.id, user.id));
+    expect(moved!.email).toBe(email);
     const [after] = await app.db.select().from(users).where(eq(users.id, squatterId));
     expect(after!.email).toMatch(/\.invalid$/);
+    expect(await member(squatterId)).toBeNull();
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
+    expect(logged!.data).toMatchObject({
+      from: email,
+      via: 'scim',
+      reason: 'unverified_address_claimed',
+    });
+  });
+
+  it("doesn't link an unverified account without a password at the address", async () => {
+    const email = `passwordless-${++n}@${domain}`;
+    const squatter = await signup(app, 'Passwordless Person');
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    await app.db
+      .update(users)
+      .set({ email, emailVerifiedAt: null, passwordHash: null })
+      .where(eq(users.id, squatterId));
+
+    const res = await scim('POST', '/Users', {
+      ...oktaUser('x'),
+      userName: email,
+      emails: [{ value: email, primary: true }],
+    });
+    expect(res.statusCode).toBe(201);
+    const created = json(res);
+    expect(created.id).not.toBe(squatterId);
+    expect(await member(created.id)).not.toBeNull();
+    expect(await member(squatterId)).toBeNull();
+    const [after] = await app.db.select().from(users).where(eq(users.id, squatterId));
+    expect(after!.email).toMatch(/\.invalid$/);
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
+    expect(logged!.data).toMatchObject({ from: email, via: 'scim' });
   });
 
   it("lists members at the workspace's domains, but not others", async () => {

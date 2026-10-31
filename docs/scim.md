@@ -12,6 +12,11 @@ people your directory adds have no password, so they sign in through your provid
 - **Verify your email domain** under **Settings → Access → Domains**. The directory can only add people at verified
   domains, and only sees members there (plus anyone it added itself).
 - Set up [single sign-on](sso.md) with the same provider, so the people it adds can sign in.
+- **Check that existing accounts have verified their address.** The directory links only accounts that have; it
+  moves an unverified one to a placeholder address and creates a second account for the person. Without mail,
+  sign-up never verifies anyone, so on such an instance this hits every existing password user. Admin → Users marks
+  unverified addresses: send each of those people a **password reset link** first. Setting a password from the
+  link verifies the address.
 
 ## Connect your identity provider
 

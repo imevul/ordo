@@ -14,6 +14,11 @@ when your provider offers both; it's simpler to set up.
 3. If your provider lives on your LAN (e.g. `http://keycloak.lan`), an instance admin has to turn on **Allow private
    network targets** (Admin → Settings), or set `ORDO_ALLOW_PRIVATE_NETWORK_TARGETS=true`. Plain-`http` issuers only
    work with that setting on.
+4. **Check that existing accounts have verified their address.** SSO matches only accounts that have. One that hasn't
+   is moved to a placeholder address at its owner's first SSO sign-in, and they get a second, new account. Without
+   mail, sign-up never verifies anyone, so on such an instance this hits every existing password user. Admin → Users
+   marks unverified addresses: send each of those people a **password reset link** first. Setting a password from the
+   link verifies the address.
 
 ## Add the provider
 
