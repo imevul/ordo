@@ -95,10 +95,11 @@ archive fails (the database container is down, the disk is full…), so the `fin
 failed run, and cron mails you the error if it can send mail. Both files are written as `*.tmp` and renamed only once
 they're complete and pass `gzip -t`.
 
-`make restore` checks the file with `gzip -t` before it stops the app, then loads the dump in a single transaction
-that stops at the first SQL error. If anything fails, the database is rolled back to what it was, the uploads aren't
-touched and the app stays stopped; fix the problem and restore again, or `docker compose start app` to run on the old
-data.
+`make restore` checks the dump and the uploads archive before it stops the app, then loads the dump in a single
+transaction that stops at the first SQL error. If that fails, the database is rolled back to what it was and the
+uploads aren't touched. The uploads are unpacked next to the current ones and swapped in only once that succeeds, so a
+failure there keeps the old files (with the restored database). Either way the app is started again when the restore
+ends; fix the problem and restore again.
 
 ### Restoring onto a new host
 
