@@ -437,6 +437,31 @@ describe('sign-in', () => {
     expect(await roleOf(claims.email)).toBe('member');
   });
 
+  it('refuses to release an unverified instance admin, even without workspaces', async () => {
+    // The first sign-up runs the instance from Admin and never joined a workspace.
+    const claims = person('instanceadmin');
+    const admin = await signup(app, 'Instance Admin');
+    const adminId = (await admin.client.get('/api/auth/me')).data.id;
+    await app.db
+      .update(users)
+      .set({ email: claims.email, emailVerifiedAt: null, isInstanceAdmin: true })
+      .where(eq(users.id, adminId));
+
+    const refused = await sso(claims);
+    expect(decodeURIComponent(refused.location)).toMatch(
+      /^\/login\?error=An account with this address exists but hasn't verified it/,
+    );
+    const [after] = await app.db.select().from(users).where(eq(users.id, adminId));
+    expect(after).toMatchObject({ email: claims.email, isInstanceAdmin: true });
+    const holders = await app.db.select().from(users).where(eq(users.email, claims.email));
+    expect(holders.map((u) => u.id)).toEqual([adminId]);
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.claim_refused'), eq(auditLog.targetId, adminId)));
+    expect(logged).toMatchObject({ data: { email: claims.email, via: 'sso' } });
+  });
+
   it('lets signed-in users link an identity explicitly', async () => {
     const someone = await signup(app, 'Linker Person');
     await join(someone.client);

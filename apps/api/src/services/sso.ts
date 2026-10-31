@@ -208,12 +208,22 @@ export async function claimableUser(
   entry: ClaimEntry,
   meta: RequestMeta | null,
 ) {
-  const [existing] = await tx
-    .select({ id: users.id, kind: users.kind, emailVerifiedAt: users.emailVerifiedAt })
+  const [row] = await tx
+    .select({
+      id: users.id,
+      kind: users.kind,
+      emailVerifiedAt: users.emailVerifiedAt,
+      isInstanceAdmin: users.isInstanceAdmin,
+    })
     .from(users)
     .where(eq(users.email, email));
-  if (!existing || existing.emailVerifiedAt || existing.kind !== 'human') return existing ?? null;
-  if (await hasFootprint(tx, existing.id)) throw new ClaimRefused(existing.id, email, entry);
+  if (!row) return null;
+  const { isInstanceAdmin, ...existing } = row;
+  if (existing.emailVerifiedAt || existing.kind !== 'human') return existing;
+  // A squatter can't make themselves instance admin, but the first sign-up is one, often unverified.
+  if (isInstanceAdmin || (await hasFootprint(tx, existing.id))) {
+    throw new ClaimRefused(existing.id, email, entry);
+  }
   const released = `unverified-${existing.id}@released.ordo.invalid`;
   await tx
     .update(users)

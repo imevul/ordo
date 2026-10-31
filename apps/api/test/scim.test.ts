@@ -455,6 +455,31 @@ describe('users', () => {
     expect(await member(earlyId)).not.toBeNull();
   });
 
+  it('refuses to release an unverified instance admin, even without workspaces', async () => {
+    const email = `instance-admin-${++n}@${domain}`;
+    const admin = await signup(app, 'Instance Admin');
+    const adminId = (await admin.client.get('/api/auth/me')).data.id;
+    await app.db
+      .update(users)
+      .set({ email, emailVerifiedAt: null, isInstanceAdmin: true })
+      .where(eq(users.id, adminId));
+
+    const res = await scim('POST', '/Users', {
+      ...oktaUser('x'),
+      userName: email,
+      emails: [{ value: email, primary: true }],
+    });
+    expect(res.statusCode).toBe(409);
+    expect(json(res)).toMatchObject({ scimType: 'uniqueness' });
+    const [after] = await app.db.select().from(users).where(eq(users.id, adminId));
+    expect(after).toMatchObject({ email, isInstanceAdmin: true });
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.claim_refused'), eq(auditLog.targetId, adminId)));
+    expect(logged).toMatchObject({ data: { email, via: 'scim' } });
+  });
+
   it("lists members at the workspace's domains, but not others", async () => {
     const all = json(await scim('GET', '/Users?count=200'));
     const names = all.Resources.map((r: { userName: string }) => r.userName);
