@@ -405,8 +405,19 @@ curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
 | PATCH / DELETE       | `/templates/:id`                | Same fields except `teamId` (`null` clears a default)                                                                                                                                                  |
 | POST                 | `/views`                        | `{ name, filters, display?, shared?, teamId? }`                                                                                                                                                        |
 | PATCH / DELETE       | `/views/:id`                    | Owner or admin                                                                                                                                                                                         |
+| GET / POST           | `/dashboards`                   | Shared ones and yours, on teams you see (also in `bootstrap.dashboards`) / create `{ name, description?, teamId?, shared?, widgets? }`; not guests                                                     |
+| GET                  | `/dashboards/:id`               | One dashboard                                                                                                                                                                                          |
+| PATCH / DELETE       | `/dashboards/:id`               | `{ name?, description?, shared?, widgets? }`, widgets replaced as a whole. Owner, admin, or the team's admins for a shared team dashboard; only the owner or an admin changes `shared`                 |
+| GET                  | `/agent-activity`               | `?days=7&agentId=&teamId=` → `{ since, agents: [{ agentId, runs, succeeded, failed, open, costUsd, durationMs }] }`, runs started since then on issues you can see                                     |
 | GET / POST           | `/calendar-feeds`               | Your iCal feeds here / create `{ viewId? }` → `{ feed, url }`. The `url` is shown once; creating again replaces that feed                                                                              |
 | DELETE               | `/calendar-feeds/:id`           | Revoke one of your feeds                                                                                                                                                                               |
+
+**Dashboard widgets.** Each has an `id` (unique in the dashboard), an optional `title`, a width `w` (1–4 columns)
+and height `h` (1–3 rows), in grid order, and a `type`: `chart` (`chart`: `burnUp`, `cumulativeFlow` over
+`teamId`, `projectId`, `teamId` with `currentCycle: true`, or the workspace, with `weeks`; `burndown` with
+`projectId`; `velocity` with `teamId`; `breakdown` with `filters` and `slice`; `flow` with `filters`; and
+`measure`: `count` or `estimate`), `view` (`viewId`, `limit`), `count` (`filters`, `measure`) or `agents` (`days`,
+`agentId?`, `teamId?`). Widgets read with the viewer's access, like everything else.
 
 **Calendar feeds.** `GET /api/calendar/<token>.ics` (no session, no header: the token in the URL is the
 credential) answers `text/calendar` with all-day events. Without a view: the due dates of your open issues, the

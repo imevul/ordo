@@ -34,6 +34,7 @@ import { calendarFeedRoutes, calendarRoutes } from './routes/calendar.ts';
 import { customerRoutes } from './routes/customers.ts';
 import { customFieldRoutes } from './routes/customFields.ts';
 import { cycleRoutes } from './routes/cycles.ts';
+import { dashboardRoutes } from './routes/dashboards.ts';
 import { documentRoutes } from './routes/documents.ts';
 import { exportRoutes } from './routes/exports.ts';
 import { fileRoutes } from './routes/files.ts';
@@ -267,6 +268,7 @@ export async function buildApp(
       await w.register(customerRoutes);
       await w.register(documentRoutes);
       await w.register(viewRoutes);
+      await w.register(dashboardRoutes);
       await w.register(calendarRoutes);
       await w.register(notificationRoutes);
       await w.register(searchRoutes);

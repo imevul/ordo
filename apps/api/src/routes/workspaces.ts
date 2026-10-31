@@ -29,6 +29,7 @@ import { emit } from '../services/context.ts';
 import { listCustomers } from '../services/customers.ts';
 import { listCustomFields } from '../services/customFields.ts';
 import { listCycles } from '../services/cycles.ts';
+import { listDashboards } from '../services/dashboards.ts';
 import { deleteFile, saveFile, signedFileUrl } from '../services/files.ts';
 import { listInitiatives } from '../services/initiatives.ts';
 import { workspaceBots } from '../services/integrations.ts';
@@ -108,6 +109,7 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
     listFormerMembers(db, access),
     listRepositories(db, ws.id),
   ]);
+  const dashboards = await listDashboards(db, access);
   // Favorites only for things still visible.
   const visibleTarget = (kind: string, id: string) =>
     kind === 'project'
@@ -116,7 +118,9 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
         ? teamList.some((t) => t.id === id)
         : kind === 'view'
           ? viewRows.some((v) => v.id === id)
-          : true;
+          : kind === 'dashboard'
+            ? dashboards.some((d) => d.id === id)
+            : true;
   return {
     workspace: toWorkspace(app, workspace[0]!),
     role: ws.role,
@@ -139,6 +143,7 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
     cycles,
     releases: await listReleases(db, access),
     views: viewRows.map(toView),
+    dashboards,
     favorites: favoriteRows
       .filter((f) => visibleTarget(f.kind, f.targetId))
       .map((f) => ({ id: f.id, kind: f.kind, targetId: f.targetId, sortOrder: f.sortOrder })),

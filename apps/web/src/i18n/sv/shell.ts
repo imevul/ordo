@@ -7,6 +7,7 @@ export default {
     initiatives: 'Initiativ',
     roadmap: 'Färdplan',
     insights: 'Insikter',
+    dashboards: 'Översikter',
     customers: 'Kunder',
     views: 'Vyer',
     trash: 'Papperskorg',

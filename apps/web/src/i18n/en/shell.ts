@@ -6,6 +6,7 @@ export default {
     initiatives: 'Initiatives',
     roadmap: 'Roadmap',
     insights: 'Insights',
+    dashboards: 'Dashboards',
     releases: 'Releases',
     customers: 'Customers',
     views: 'Views',

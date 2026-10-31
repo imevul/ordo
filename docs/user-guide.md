@@ -208,6 +208,28 @@ the option. Open one from **Views** in the sidebar; change its filters or displa
 update it. Star views and projects to pin them under _Favorites_. The calendar button on a view gives a URL to
 subscribe to its due dates in a calendar app (see **Calendar** under [Your account](#your-account)).
 
+## Dashboards
+
+A dashboard pins what you check every day to one page: **Dashboards** in the sidebar (`G` then `D`), then **New
+dashboard**. Make it for the whole workspace or for one team, which only people who can see the team see. Shared
+dashboards are for everyone who can see them. Untick sharing for one only you see.
+
+**Edit layout** (`E`) shows the dashboard as a grid of four columns. **Add widget** (`A`) to pin one of these:
+
+- **Chart**: a burn-up or cumulative flow for the workspace, a team, a project or a team's _current cycle_ (it
+  follows along as cycles change); a project's burndown with its forecast; a team's velocity; or, over any
+  filter, a breakdown (by status, priority, assignee…) or created vs completed per week.
+- **Saved view**: the first issues of a view, in the view's order, with a link to the rest.
+- **Number**: how many issues (or points) match a filter, like "urgent and open".
+- **Agent activity**: agent runs started in the last days, per agent: how many finished, failed or are still open,
+  and what they cost.
+
+Drag widgets to reorder them, or use the arrows. **W−/W+** and **H−/H+** make them narrower, wider, shorter or
+taller. **Save layout** (or `E` again) keeps the changes; **Cancel** drops them. Each widget shows only what you can
+see, so a teammate with fewer teams may see smaller numbers on the same dashboard. A dashboard is changed by its
+owner, workspace admins, and, for a shared team dashboard, the team's admins. Star a dashboard to pin it under
+_Favorites_.
+
 ## My issues and Inbox
 
 **My issues** has three tabs: assigned to you, created by you, and subscribed.

@@ -160,6 +160,7 @@ export const UNMERGED_COLUMNS: Record<string, string> = {
   'external_accounts.user_id': 'claimed or linked by people themselves',
   'favorites.user_id': 'personal to members',
   'views.owner_id': 'personal to members',
+  'dashboards.owner_id': 'personal to members',
   'notifications.user_id': "placeholders aren't notified",
   'comment_reactions.user_id': "imports bring no reactions, so placeholders don't have any",
   'team_members.user_id': "placeholders aren't members",

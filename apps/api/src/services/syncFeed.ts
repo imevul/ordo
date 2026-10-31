@@ -30,6 +30,7 @@ const BOOTSTRAP_KINDS = new Set([
   'initiative',
   'customer',
   'view',
+  'dashboard',
   'favorite',
 ]);
 

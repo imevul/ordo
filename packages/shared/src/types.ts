@@ -26,6 +26,7 @@ import type {
 } from './constants.ts';
 import { DEFAULT_LOCALE, NOTIFICATION_TYPES } from './constants.ts';
 import type { CustomField, CustomFieldValue } from './customFields.ts';
+import type { Dashboard } from './dashboards.ts';
 import {
   DEFAULT_BRANCH_FORMAT,
   type GitAutomation,
@@ -813,6 +814,7 @@ export interface Bootstrap {
   /** Without their notes. */
   releases: Release[];
   views: View[];
+  dashboards: Dashboard[];
   favorites: Favorite[];
   unreadCount: number;
   /** The model this workspace uses (its own or the instance's), or null when there is none; `enabled` is the workspace's switch. */
