@@ -24,7 +24,8 @@ import {
   USERNAME_PATTERN,
 } from './constants.ts';
 import { CUSTOM_FIELD_TYPES } from './customFields.ts';
-import { isTimeZone } from './dates.ts';
+import { canonicalTimeZone, isTimeZone } from './dates.ts';
+import { DATE_RANGES, filterDepth } from './filters.ts';
 import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
 import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
 import { HEX_COLOR } from './theme.ts';
@@ -504,29 +505,95 @@ const userRef = z.union([id, z.literal('me')]);
 const userRefOrNone = z.union([id, z.literal('me'), z.literal('none')]);
 const idOrNone = z.union([id, z.literal('none')]);
 
-export const issueFilterSchema = z.object({
-  teamId: id.optional(),
-  stateIds: z.array(id).optional(),
+/** A date condition: a relative range, absolute days (inclusive), or both. */
+export const dateFilterSchema = z.object({
+  range: z.enum(DATE_RANGES).optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+});
+export type DateFilter = z.infer<typeof dateFilterSchema>;
+
+/** `none`: no estimate; `min`/`max`: an estimate within them. Empty: any estimate. */
+export const estimateFilterSchema = z.object({
+  none: z.boolean().optional(),
+  min: z.number().int().min(0).max(1000).optional(),
+  max: z.number().int().min(0).max(1000).optional(),
+});
+export type EstimateFilter = z.infer<typeof estimateFilterSchema>;
+
+const conditionFields = {
+  stateIds: z.array(id).max(200).optional(),
   stateTypes: z.array(z.enum(STATE_TYPES)).optional(),
   priorities: z.array(z.number().int().min(0).max(4)).optional(),
-  assigneeIds: z.array(userRefOrNone).optional(),
-  creatorIds: z.array(userRef).optional(),
-  labelIds: z.array(id).optional(),
-  projectIds: z.array(idOrNone).optional(),
-  milestoneIds: z.array(idOrNone).optional(),
-  cycleIds: z.array(idOrNone).optional(),
-  parentId: id.optional(),
+  assigneeIds: z.array(userRefOrNone).max(200).optional(),
+  creatorIds: z.array(userRef).max(200).optional(),
+  labelIds: z.array(id).max(200).optional(),
+  projectIds: z.array(idOrNone).max(200).optional(),
+  milestoneIds: z.array(idOrNone).max(200).optional(),
+  cycleIds: z.array(idOrNone).max(200).optional(),
   /**
    * Custom field id → wanted values: option ids, user ids or `me`, a number or date written out,
    * or `none` for no value. A multi-select matches when it has any of the options.
    */
   customFields: z.record(id, z.array(z.string().max(100)).min(1).max(100)).optional(),
-  subscribedBy: z.literal('me').optional(),
-  q: z.string().max(200).optional(),
-  trashed: z.boolean().optional(),
-  /** Archived issues are left out unless included, or asked for alone. */
-  archived: z.enum(['include', 'only']).optional(),
-});
+  dueDate: dateFilterSchema.optional(),
+  createdAt: dateFilterSchema.optional(),
+  updatedAt: dateFilterSchema.optional(),
+  completedAt: dateFilterSchema.optional(),
+  estimate: estimateFilterSchema.optional(),
+  /** Open and blocked by an open issue (true), or not (false). */
+  blocked: z.boolean().optional(),
+  /** Open and blocking an open issue. */
+  blocking: z.boolean().optional(),
+  hasPullRequest: z.boolean().optional(),
+  hasSubIssues: z.boolean().optional(),
+  isSubIssue: z.boolean().optional(),
+};
+
+/**
+ * Conditions on an issue, all of which must hold. Each condition in `exclude` must not hold
+ * ("is not"), and at least one `or` group must match.
+ */
+export type IssueConditions = z.infer<z.ZodObject<typeof conditionFields>> & {
+  exclude?: IssueConditions;
+  or?: IssueConditions[];
+};
+
+const MAX_FILTER_DEPTH = 4;
+
+export const issueConditionsSchema: z.ZodType<IssueConditions> = z.lazy(() =>
+  z.object({
+    ...conditionFields,
+    exclude: issueConditionsSchema.optional(),
+    or: z.array(issueConditionsSchema).max(20).optional(),
+  }),
+);
+
+export const issueFilterSchema = z
+  .object({
+    teamId: id.optional(),
+    parentId: id.optional(),
+    subscribedBy: z.literal('me').optional(),
+    q: z.string().max(200).optional(),
+    trashed: z.boolean().optional(),
+    /** Archived issues are left out unless included, or asked for alone. */
+    archived: z.enum(['include', 'only']).optional(),
+    /** Where "today" is for relative dates (default UTC). Not part of saved views. */
+    tz: z
+      .string()
+      .max(64)
+      .transform((zone, ctx) => {
+        const name = canonicalTimeZone(zone);
+        if (!name) ctx.addIssue({ code: 'custom', message: 'Unknown time zone' });
+        return name ?? zone;
+      })
+      .optional(),
+    weekStartsOn: z.union([z.literal(0), z.literal(1)]).optional(),
+    ...conditionFields,
+    exclude: issueConditionsSchema.optional(),
+    or: z.array(issueConditionsSchema).max(20).optional(),
+  })
+  .refine((f) => filterDepth(f) <= MAX_FILTER_DEPTH, 'Filter groups nest too deeply');
 export type IssueFilter = z.infer<typeof issueFilterSchema>;
 
 export const GROUP_BY_OPTIONS = [
