@@ -51,10 +51,17 @@ This runs `git pull --ff-only` (when a git remote is configured), rebuilds the i
 and recreates the containers. Database migrations run automatically when the app starts, inside a transaction;
 if one fails the app refuses to start and the previous data is untouched. **Take a backup before updating.**
 
-**Behind a reverse proxy?** `ORDO_TRUST_PROXY` used to default to `true`; it now defaults to `false`. If your `.env`
-doesn't set it (an `.env` copied from an older `.env.example` already has `ORDO_TRUST_PROXY=true`), add
-`ORDO_TRUST_PROXY=true` before updating, or every request is counted under the proxy's address. See
-[HTTPS and reverse proxies](#https-and-reverse-proxies).
+**Check `ORDO_TRUST_PROXY` in your `.env`.** It used to default to `true`; it now defaults to `false`. An `.env`
+copied from an older `.env.example` sets `ORDO_TRUST_PROXY=true` itself, so the new default doesn't reach it:
+
+- **No reverse proxy** (browsers connect to port 3000 directly): set `ORDO_TRUST_PROXY=false`. With `true`, anyone
+  who can reach the port can send a made-up `X-Forwarded-For`, get around the per-IP sign-in limits and put fake
+  addresses in the audit log.
+- **Behind a reverse proxy:** make sure `.env` has `ORDO_TRUST_PROXY=true` (add it if it's missing, or every request
+  is counted under the proxy's address), and set `ORDO_BIND=127.0.0.1` or firewall port 3000 so only the proxy can
+  connect. See [HTTPS and reverse proxies](#https-and-reverse-proxies).
+
+`make up` and `make update` print a warning when `ORDO_TRUST_PROXY` is on while Ordo is published on every interface.
 
 ## Email
 

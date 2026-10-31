@@ -8,7 +8,7 @@ BACKUP_DIR   ?= backups
 -include local.mk
 
 .DEFAULT_GOAL := help
-.PHONY: help up down restart update logs ps status seed backup restore psql ensure-secret admin reset-password \
+.PHONY: help up down restart update logs ps status seed backup restore psql ensure-secret check-proxy admin reset-password \
         publish dev dev-db dev-down install build test typecheck lint format db-generate check-bundle clean
 
 help: ## Show this help
@@ -37,9 +37,27 @@ ensure-secret: .env
 		echo "Added ORDO_SECRET_KEY to .env — keep a copy with your backups."; \
 	}
 
+# Warns when Ordo believes X-Forwarded-For while published on every interface: anyone who can reach the port
+# directly could then fake their IP (ENG-46). Old .env files copied from .env.example set ORDO_TRUST_PROXY=true.
+check-proxy:
+	@test -f .env || exit 0; \
+		val() { sed -n "s/^$$1=//p" .env | tail -n 1 | sed 's/[[:space:]]#.*//' | tr -d "\"' \t" | tr 'A-Z' 'a-z'; }; \
+		trust=$$(val ORDO_TRUST_PROXY); bind=$$(val ORDO_BIND); \
+		case "$$trust" in ''|0|false|no|off) ;; *) \
+			case "$${bind:-0.0.0.0}" in 0.0.0.0|::|'[::]') \
+				echo; \
+				echo "  Warning: .env has ORDO_TRUST_PROXY=$$trust while Ordo is published on all interfaces."; \
+				echo "  Anyone who can reach the port directly can fake their IP (sign-in limits, audit log)."; \
+				echo "  No reverse proxy? Set ORDO_TRUST_PROXY=false. Behind one? Set ORDO_BIND=127.0.0.1"; \
+				echo "  or firewall the port. See docs/self-hosting.md#https-and-reverse-proxies."; \
+				echo;; \
+			esac;; \
+		esac
+
 up: .env ensure-secret ## Build and start Ordo in the background
 	$(COMPOSE) up -d --build --wait
 	@. ./.env; echo; echo "  Ordo is up → $${ORDO_PUBLIC_URL:-http://localhost:3000}"; echo
+	@$(MAKE) --no-print-directory check-proxy
 
 down: ## Stop Ordo (data is kept)
 	$(COMPOSE) down
@@ -75,6 +93,7 @@ update: .env ensure-secret ## Pull the latest code, rebuild and restart (migrati
 	$(COMPOSE) up -d --wait
 	@docker image prune -f >/dev/null
 	@echo "Updated."
+	@$(MAKE) --no-print-directory check-proxy
 
 logs: ## Follow application logs
 	$(COMPOSE) logs -f --tail=200 app
