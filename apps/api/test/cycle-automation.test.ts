@@ -111,28 +111,45 @@ describe('cycle automation', () => {
   });
 
   it('puts started work into the active cycle when asked to', async () => {
+    // A team of its own: the cycles planned above would overlap a cycle around today's date.
+    const own = (await owner.post(`${ws}/teams`, { name: 'Act', key: 'ACT' })).data as Team;
+    await owner.patch(`${ws}/teams/${own.id}`, { cyclesEnabled: true });
     const today = isoDay(new Date());
     const active = (
-      await owner.post(`${ws}/teams/${team.id}/cycles`, {
+      await owner.post(`${ws}/teams/${own.id}/cycles`, {
         startsAt: addDays(today, -3),
         endsAt: addDays(today, 4),
       })
     ).data as Cycle;
-    const started = team.states.find((s) => s.type === 'started')!.id;
-    const issue = (await owner.post(`${ws}/issues`, { teamId: team.id, title: 'Work' }))
+    const started = own.states.find((s) => s.type === 'started')!.id;
+    const issue = (await owner.post(`${ws}/issues`, { teamId: own.id, title: 'Work' }))
       .data as Issue;
     await owner.patch(`${ws}/issues/${issue.id}`, { stateId: started });
     expect(((await owner.get(`${ws}/issues/${issue.id}`)).data as Issue).cycleId).toBeNull();
 
-    await owner.patch(`${ws}/teams/${team.id}`, { cycleAutomation: { addStarted: true } });
-    const later = (await owner.post(`${ws}/issues`, { teamId: team.id, title: 'More' }))
+    await owner.patch(`${ws}/teams/${own.id}`, {
+      cycleAutomation: { enabled: true, addStarted: true },
+    });
+    const later = (await owner.post(`${ws}/issues`, { teamId: own.id, title: 'More' }))
       .data as Issue;
     await owner.patch(`${ws}/issues/${later.id}`, { stateId: started });
     expect(((await owner.get(`${ws}/issues/${later.id}`)).data as Issue).cycleId).toBe(active.id);
     const born = (
-      await owner.post(`${ws}/issues`, { teamId: team.id, title: 'Born started', stateId: started })
+      await owner.post(`${ws}/issues`, { teamId: own.id, title: 'Born started', stateId: started })
     ).data as Issue;
     expect(born.cycleId).toBe(active.id);
+
+    // When cycles overlap, the one that started last is the current one.
+    const newer = (
+      await owner.post(`${ws}/teams/${own.id}/cycles`, {
+        startsAt: addDays(today, -1),
+        endsAt: addDays(today, 6),
+      })
+    ).data as Cycle;
+    const third = (await owner.post(`${ws}/issues`, { teamId: own.id, title: 'Overlap' }))
+      .data as Issue;
+    await owner.patch(`${ws}/issues/${third.id}`, { stateId: started });
+    expect(((await owner.get(`${ws}/issues/${third.id}`)).data as Issue).cycleId).toBe(newer.id);
   });
 
   it('leaves cycles that ended before automation was turned on alone', async () => {

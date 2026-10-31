@@ -162,6 +162,7 @@ export const UNMERGED_COLUMNS: Record<string, string> = {
   'notifications.user_id': "placeholders aren't notified",
   'comment_reactions.user_id': "imports bring no reactions, so placeholders don't have any",
   'team_members.user_id': "placeholders aren't members",
+  'cycle_capacities.user_id': 'only team members have one, and placeholders are none',
   'workspace_members.user_id': "placeholders aren't members",
   'scim_users.user_id': "placeholders aren't members",
   'scim_group_members.user_id': "placeholders aren't members",

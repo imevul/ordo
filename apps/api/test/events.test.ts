@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import type { Bootstrap, IssueDetail, WebhookPayload } from '@ordo/shared';
-import { and, count, eq, sql } from 'drizzle-orm';
+import { and, asc, count, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { auditLog, domainEvents, integrations, issues, users, webhooks } from '../src/db/schema.ts';
@@ -85,7 +85,8 @@ describe('outbox', () => {
     const rows = await app.db
       .select()
       .from(domainEvents)
-      .where(eq(domainEvents.workspaceId, boot.workspace.id));
+      .where(eq(domainEvents.workspaceId, boot.workspace.id))
+      .orderBy(asc(domainEvents.id));
     expect(rows.length).toBe(before + 2);
     const [created, updated] = rows.slice(-2);
     expect(created).toMatchObject({ type: 'issue.created', source: 'web', actorId: ownerId });

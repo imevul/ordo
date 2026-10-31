@@ -38,6 +38,17 @@ beforeAll(async () => {
   const quiet = await create(ids.pub, 'Quiet issue', 'Nothing to see.');
   await owner.post(`${ws}/issues/${quiet}/comments`, { body: 'Seen with websocket proxies too' });
   await create(ids.prv, 'Realtime secret plan');
+  const binned = await create(ids.pub, 'Realtime binned idea');
+  await owner.del(`${ws}/issues/${binned}`);
+  // Another workspace of the same person, with matching words.
+  await owner.post('/api/workspaces', {
+    name: 'Elsewhere',
+    slug: 'find-elsewhere',
+    teamName: 'Far',
+    teamKey: 'FAR',
+  });
+  const far = (await owner.get('/api/w/find-elsewhere/bootstrap')).data.teams[0].id;
+  await owner.post('/api/w/find-elsewhere/issues', { teamId: far, title: 'Realtime elsewhere' });
 });
 
 afterAll(() => app.close());
@@ -65,6 +76,19 @@ describe('full-text search', () => {
   it('respects private teams', async () => {
     expect(await search(member, 'realtime')).not.toContain('Realtime secret plan');
     expect(await search(member, 'realtime')).toHaveLength(2);
+  });
+
+  it("leaves out trashed issues and other workspaces' issues", async () => {
+    const hits = await search(owner, 'realtime');
+    expect(hits).not.toContain('Realtime binned idea');
+    expect(hits).not.toContain('Realtime elsewhere');
+    expect(await search(owner, 'binned')).toEqual([]);
+    expect(await search(owner, 'elsewhere')).toEqual([]);
+    expect(await search(owner, 'FAR-1')).toEqual([]);
+    const there = await owner.get(`/api/w/find-elsewhere/search?q=realtime`);
+    expect((there.data as SearchResults).issues.map((i) => i.title)).toEqual([
+      'Realtime elsewhere',
+    ]);
   });
 
   it('applies to issue filters too', async () => {

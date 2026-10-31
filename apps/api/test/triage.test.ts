@@ -79,11 +79,16 @@ describe('triage rules', () => {
       conditions: { sources: ['api', 'web'] },
       actions: { rotation: [ids.ada, ids.alan] },
     });
+    expect(
+      (await member.patch(`${ws}/triage-rules/${ids.crash}`, { enabled: false })).statusCode,
+    ).toBe(403);
+    expect((await member.del(`${ws}/triage-rules/${ids.crash}`)).statusCode).toBe(403);
     const listed = ((await owner.get(`${ws}/bootstrap`)).data as Bootstrap).teams[0]!.triageRules;
     expect(listed.map((r) => r.name)).toEqual([
       'Crashes are urgent bugs',
       'API reports go to the on-call rotation',
     ]);
+    expect(listed[0]!.enabled).toBe(true);
   });
 
   it('sort new triage issues, as the Ordo bot', async () => {

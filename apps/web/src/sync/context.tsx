@@ -118,11 +118,13 @@ export function useSyncState(): SyncState | null {
  * Issues matching `filter` from the copy: undefined when the copy can't answer (no copy yet, or
  * a filter it can't run), so the caller asks the server.
  */
-export function useLocalIssues(filter: IssueFilter, userId: string) {
+/** `day` is only there to match again when it changes, for filters on relative dates. */
+export function useLocalIssues(filter: IssueFilter, userId: string, day?: string) {
   const sync = useSync();
   const state = useSyncState();
   const key = JSON.stringify(filter);
   const local = matchesLocally(filter);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new day matches relative dates anew
   const issues = useMemo(() => {
     if (!state?.ready || !local) return undefined;
     const types = new Map(
@@ -133,7 +135,7 @@ export function useLocalIssues(filter: IssueFilter, userId: string) {
     const out: Issue[] = [];
     for (const issue of state.issues.values()) if (matchIssue(issue, wanted, ctx)) out.push(issue);
     return out;
-  }, [state, local, key, userId]);
+  }, [state, local, key, userId, day]);
   return {
     issues,
     /** Wait a moment: the copy is opening and may have the answer. */

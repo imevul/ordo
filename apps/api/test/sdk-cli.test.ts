@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { chmod, readFile, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -6,7 +6,7 @@ import { type Io, run } from '@ordo/cli';
 import { NameError, Names, Ordo, OrdoError, parsePriority } from '@ordo/sdk';
 import type { Bootstrap } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -397,5 +397,398 @@ describe('cli', () => {
     expect(JSON.parse(res.stdout)[0].identifier).toBe('ENG-2');
     const web = await ordo(['issue', 'view', 'ENG-2', '--web']);
     expect(web.opened).toEqual([`${url}/kit/issue/ENG-2`]);
+  });
+});
+
+/** People to resolve, in the order they joined Kit. */
+let grace: Client;
+let graceId: string;
+
+async function joinKit(name: string, username: string) {
+  const invite = (await ada.post('/api/w/kit/invites', {})).data[0].token;
+  const { client } = await signup(app, name, { inviteToken: invite });
+  await client.patch('/api/me', { username });
+  return { client, id: (await client.get('/api/auth/me')).data.id as string };
+}
+
+describe('sdk resources', () => {
+  const kit = () => new Ordo({ url, token }).workspace('kit');
+  let ops: Bootstrap['teams'][number];
+
+  beforeAll(async () => {
+    ({ client: grace, id: graceId } = await joinKit('Grace Hopper', 'cli-grace'));
+    // The same full name twice, so a name alone is ambiguous.
+    await joinKit('Grace Hopper', 'cli-grace2');
+    ops = (await ada.post('/api/w/kit/teams', { name: 'Ops', key: 'OPS' })).data;
+    await ada.post('/api/w/kit/labels', { name: 'Infra', color: '#22c55e', teamId: ops.id });
+  });
+
+  it('archives, links, trashes and keeps the history of an issue', async () => {
+    const ws = kit();
+    const issue = await ws.issues.create({ teamId: boot.teams[0]!.id, title: 'Lifecycle' });
+    expect(await ws.issues.list({}, { limit: 2 })).toHaveLength(2);
+
+    await ws.issues.update(issue.identifier, { priority: 2 });
+    await ws.issues.link(issue.identifier, { url: 'https://example.com/spec', title: 'Spec' });
+    await ws.issues.archive(issue.identifier);
+    expect((await ws.issues.get(issue.identifier)).archivedAt).toBeTruthy();
+    expect((await ws.issues.list({ q: 'Lifecycle' })).map((i) => i.id)).not.toContain(issue.id);
+    await ws.issues.unarchive(issue.identifier);
+    const detail = await ws.issues.get(issue.identifier);
+    expect(detail.archivedAt).toBeNull();
+    expect(detail.links).toContainEqual(
+      expect.objectContaining({ url: 'https://example.com/spec', title: 'Spec', provider: 'web' }),
+    );
+    const fields = (await ws.issues.history(issue.identifier)).flatMap((h) =>
+      h.changes.map((c) => c.field),
+    );
+    expect(fields).toEqual(expect.arrayContaining(['priority', 'archived']));
+
+    expect(await ws.issues.trash(issue.identifier)).toEqual({ ok: true });
+    expect((await ws.issues.list({ q: 'Lifecycle' })).map((i) => i.id)).not.toContain(issue.id);
+    expect((await ws.issues.list({ trashed: true })).map((i) => i.id)).toContain(issue.id);
+  });
+
+  it('reads teams, projects, cycles, labels, search, notifications and health', async () => {
+    const ws = kit();
+    const eng = boot.teams[0]!;
+    await ada.post('/api/w/kit/projects', { name: 'Widget launch', teamIds: [eng.id] });
+    await ada.post(`/api/w/kit/teams/${eng.id}/cycles`, {
+      startsAt: '2030-01-03',
+      endsAt: '2030-01-11',
+    });
+    await ada.post(`/api/w/kit/teams/${eng.id}/cycles`, {
+      startsAt: '2030-01-11',
+      endsAt: '2030-01-18',
+    });
+    const widget = await ws.issues.create({ teamId: eng.id, title: 'Widget polish' });
+
+    expect((await ws.teams()).map((t) => t.key).sort()).toEqual(['ENG', 'OPS']);
+    expect((await ws.projects()).map((p) => p.name)).toEqual(['Widget launch']);
+    expect((await ws.cycles()).map((c) => [c.teamId, c.number])).toEqual(
+      expect.arrayContaining([
+        [eng.id, 1],
+        [eng.id, 2],
+      ]),
+    );
+    expect((await ws.labels()).map((l) => l.name).sort()).toEqual(['Bug', 'Infra']);
+    const found = await ws.search('widget');
+    expect(found.issues.map((i) => i.id)).toContain(widget.id);
+    expect(found.projects.map((p) => p.name)).toEqual(['Widget launch']);
+
+    // Grace hands Ada an issue; Ada's inbox says so.
+    const handed = (
+      await grace.post('/api/w/kit/issues', {
+        teamId: eng.id,
+        title: 'Over to you',
+        assigneeId: (await new Ordo({ url, token }).me()).id,
+      })
+    ).data;
+    await app.jobs.drain();
+    expect(await ws.notifications()).toContainEqual(
+      expect.objectContaining({ type: 'issue_assigned', issueId: handed.id }),
+    );
+
+    const health = await new Ordo({ url, token }).health();
+    expect(health).toMatchObject({ ok: true, version: expect.any(String) });
+  });
+
+  it('resolves projects, team-only labels and ambiguous people', async () => {
+    const me = await new Ordo({ url, token }).me();
+    const names = new Names(await kit().bootstrap(), me.id);
+    expect(names.project('widget LAUNCH').name).toBe('Widget launch');
+    expect(() => names.project('Nope')).toThrow('No project "Nope". Projects: Widget launch');
+
+    // A team's own label only exists in that team.
+    const eng = names.team('ENG');
+    expect(names.label('infra', names.team('ops')).name).toBe('Infra');
+    expect(names.label('bug', names.team('ops')).name).toBe('Bug');
+    expect(() => names.label('Infra', eng)).toThrow('No label "Infra". Labels: Bug');
+    expect(() => names.label('Infra')).toThrow(NameError);
+
+    expect(names.member('cli-grace').id).toBe(graceId);
+    expect(() => names.member('Grace Hopper')).toThrow(
+      '"Grace Hopper" matches @cli-grace, @cli-grace2; use a username',
+    );
+    expect(() => names.member('nobody@example.com')).toThrow('No member "nobody@example.com"');
+
+    expect(parsePriority(2)).toBe(2);
+    expect(parsePriority(' High ')).toBe(2);
+    for (const bad of ['5', 'critical', '', -1])
+      expect(() => parsePriority(bad)).toThrow(
+        /No priority .*Use urgent, high, medium, low or none/,
+      );
+  });
+
+  it("finds the current and next cycle by the workspace's day, not UTC's", async () => {
+    const me = await new Ordo({ url, token }).me();
+    expect(
+      (await ada.patch('/api/w/kit', { settings: { timezone: 'Pacific/Kiritimati' } })).statusCode,
+    ).toBe(200);
+    const boot = await kit().bootstrap();
+    await ada.patch('/api/w/kit', { settings: { timezone: null } });
+    expect(boot.workspace.settings.timezone).toBe('Pacific/Kiritimati');
+    const utc = {
+      ...boot,
+      workspace: { ...boot.workspace, settings: { ...boot.workspace.settings, timezone: null } },
+    };
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      // 20:00 UTC on 10 January is already 10:00 on the 11th at UTC+14, when cycle 2 begins.
+      vi.setSystemTime(new Date('2030-01-10T20:00:00Z'));
+      const inZone = new Names(boot, me.id);
+      const eng = inZone.team('ENG');
+      expect(inZone.cycle(eng, 'current').number).toBe(2);
+      expect(() => inZone.cycle(eng, 'next')).toThrow('No next cycle in ENG');
+      const inUtc = new Names(utc, me.id);
+      expect(inUtc.cycle(eng, 'current').number).toBe(1);
+      expect(inUtc.cycle(eng, 'next').number).toBe(2);
+      expect(inUtc.cycle(eng, '#2').number).toBe(2);
+      expect(() => inUtc.cycle(inUtc.team('OPS'), 'current')).toThrow('No current cycle in OPS');
+      expect(() => inUtc.cycle(eng, '9')).toThrow('No "9" cycle in ENG');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('cli, more', () => {
+  const issueOf = async (identifier: string) =>
+    (await ada.get(`/api/w/kit/issues/${identifier}`)).data;
+  const fresh = () => mkdtempSync(join(tmpdir(), 'ordo-cli-'));
+  const create = async (title: string) =>
+    (await ada.post('/api/w/kit/issues', { teamId: boot.teams[0]!.id, title })).data as {
+      id: string;
+      identifier: string;
+    };
+
+  it('signs out by deleting the saved login', async () => {
+    const env = { XDG_CONFIG_HOME: fresh() };
+    expect((await ordo(['login', url, '--token', token], { env })).code).toBe(0);
+    const file = join(env.XDG_CONFIG_HOME, 'ordo', 'config.json');
+    expect(existsSync(file)).toBe(true);
+    const out = await ordo(['logout'], { env });
+    expect(out.code).toBe(0);
+    expect(out.stdout).toContain('Signed out');
+    expect(existsSync(file)).toBe(false);
+    const after = await ordo(['whoami'], { env });
+    expect(after.code).toBe(1);
+    expect(after.stderr).toContain('not signed in; run "ordo login" first');
+    // Signing out twice is fine.
+    expect((await ordo(['logout'], { env })).code).toBe(0);
+  });
+
+  it('lists workspaces and switches the default with use', async () => {
+    await ada.post('/api/workspaces', { name: 'Kit Two', slug: 'kit2', teamKey: 'TWO' });
+    const file = join(configDir, 'ordo', 'config.json');
+    const listed = await ordo(['workspaces']);
+    expect(listed.code, listed.stderr).toBe(0);
+    expect(listed.stdout).toMatch(/^\*\s+kit\s+owner\s+Kit$/m);
+    expect(listed.stdout).toMatch(/^\s+kit2\s+owner\s+Kit Two$/m);
+    try {
+      const used = await ordo(['use', 'kit2']);
+      expect(used.code, used.stderr).toBe(0);
+      expect(used.stdout).toBe('Using kit2.\n');
+      expect(JSON.parse(await readFile(file, 'utf8'))).toEqual({ url, token, workspace: 'kit2' });
+      expect((await stat(file)).mode & 0o777).toBe(0o600);
+      expect((await ordo(['workspaces'])).stdout).toMatch(/^\*\s+kit2\s/m);
+      expect((await ordo(['teams'])).stdout).toContain('TWO');
+      const refused = await ordo(['use', 'nope']);
+      expect(refused.stderr).toContain('You\'re not in a workspace "nope". Yours: kit, kit2');
+      expect(JSON.parse(await readFile(file, 'utf8')).workspace).toBe('kit2');
+    } finally {
+      await ordo(['use', 'kit']);
+    }
+    expect(JSON.parse(await readFile(file, 'utf8')).workspace).toBe('kit');
+  });
+
+  it('picks the only workspace by itself, and asks when there are several', async () => {
+    const solo = (await signup(app, 'Solo Sam')).client;
+    await solo.post('/api/workspaces', { name: 'Solo', slug: 'solo', teamKey: 'SOL' });
+    const key = (await solo.post('/api/me/api-keys', { name: 'cli' })).data.token;
+    const env = { XDG_CONFIG_HOME: fresh(), ORDO_URL: url, ORDO_TOKEN: key };
+    const one = await ordo(['issue', 'create', 'Alone here'], { env });
+    expect(one.code, one.stderr).toBe(0);
+    expect(one.stdout).toContain(`${url}/solo/issue/SOL-1`);
+    expect((await solo.get('/api/w/solo/issues/SOL-1')).data.title).toBe('Alone here');
+
+    await solo.post('/api/workspaces', { name: 'Duo', slug: 'duo', teamKey: 'DUO' });
+    const several = await ordo(['teams'], { env });
+    expect(several.code).toBe(2);
+    expect(several.stderr).toContain('which workspace? Pass -w <slug>');
+    expect((await ordo(['teams', '-w', 'duo'], { env })).stdout).toContain('DUO');
+    expect((await ordo(['teams'], { env: { ...env, ORDO_WORKSPACE: 'solo' } })).stdout).toContain(
+      'SOL',
+    );
+  });
+
+  it('lists teams with their statuses', async () => {
+    const res = await ordo(['teams']);
+    expect(res.code, res.stderr).toBe(0);
+    const eng = res.stdout.split('\n').find((l) => l.startsWith('ENG'))!;
+    expect(eng).toMatch(/^ENG\s+Eng\s+/);
+    expect(eng).toContain('Todo → In Progress');
+    expect(res.stdout).toMatch(/^OPS\s+Ops\s+/m);
+    const json = JSON.parse((await ordo(['teams', '--json'])).stdout);
+    expect(json.map((t: { key: string }) => t.key).sort()).toEqual(['ENG', 'OPS']);
+  });
+
+  it('searches issues and projects', async () => {
+    const res = await ordo(['search', 'widget']);
+    expect(res.code, res.stderr).toBe(0);
+    expect(res.stdout).toMatch(/ENG-\d+\s+\S.*Widget polish/);
+    expect(res.stdout).toContain('Projects\n  Widget launch');
+    expect((await ordo(['search', 'zzqxv'])).stdout).toBe('Nothing found.\n');
+    expect((await ordo(['search'])).code).toBe(2);
+  });
+
+  it('prints the branch name and cancels with close --canceled', async () => {
+    const branch = await ordo(['issue', 'branch', 'ENG-5']);
+    expect(branch.code, branch.stderr).toBe(0);
+    expect(branch.stdout).toBe('cli-ada/eng-5-cli-issue\n');
+    expect(JSON.parse((await ordo(['issue', 'branch', 'eng-5', '--json'])).stdout)).toEqual({
+      branch: 'cli-ada/eng-5-cli-issue',
+    });
+
+    const issue = await create('Not doing this');
+    const closed = await ordo(['issue', 'close', issue.identifier, '--canceled']);
+    expect(closed.code, closed.stderr).toBe(0);
+    expect(closed.stdout).toBe(`${issue.identifier} → Canceled\n`);
+    const after = await issueOf(issue.identifier);
+    expect(after.canceledAt).toBeTruthy();
+    expect(after.completedAt).toBeNull();
+    expect(boot.teams[0]!.states.find((st) => st.id === after.stateId)?.type).toBe('canceled');
+  });
+
+  it('edits every field by name, and clears them with none', async () => {
+    const parent = await create('Parent epic');
+    const issue = await create('Edit me');
+    const dir = mkdtempSync(join(tmpdir(), 'ordo-edit-'));
+    writeFileSync(join(dir, 'desc.md'), '# From a file\n\nWith *Markdown*.\n');
+    const edited = await ordo([
+      'issue',
+      'edit',
+      issue.identifier,
+      '--assignee',
+      'cli-grace',
+      '--project',
+      'widget launch',
+      '--cycle',
+      '2',
+      '--parent',
+      parent.identifier.toLowerCase(),
+      '--estimate',
+      '3',
+      '--due',
+      '2031-02-03',
+      '--add-label',
+      'bug',
+      '--description-file',
+      join(dir, 'desc.md'),
+    ]);
+    expect(edited.code, edited.stderr).toBe(0);
+    expect(edited.stdout).toBe(`Updated ${issue.identifier}\n`);
+    const kitBoot = (await ada.get('/api/w/kit/bootstrap')).data as Bootstrap;
+    const bug = kitBoot.labels.find((l) => l.name === 'Bug')!.id;
+    const cycle2 = kitBoot.cycles.find((c) => c.teamId === boot.teams[0]!.id && c.number === 2)!;
+    expect(await issueOf(issue.identifier)).toMatchObject({
+      assigneeId: graceId,
+      projectId: kitBoot.projects.find((p) => p.name === 'Widget launch')!.id,
+      cycleId: cycle2.id,
+      parentId: parent.id,
+      estimate: 3,
+      dueDate: '2031-02-03',
+      labelIds: [bug],
+      description: '# From a file\n\nWith *Markdown*.\n',
+    });
+
+    const cleared = await ordo([
+      'issue',
+      'edit',
+      issue.identifier,
+      '--project',
+      'none',
+      '--cycle',
+      'none',
+      '--parent',
+      'none',
+      '--estimate',
+      'none',
+      '--due',
+      'none',
+      '--remove-label',
+      'Bug',
+      '--unassign',
+    ]);
+    expect(cleared.code, cleared.stderr).toBe(0);
+    expect(await issueOf(issue.identifier)).toMatchObject({
+      assigneeId: null,
+      projectId: null,
+      cycleId: null,
+      parentId: null,
+      estimate: null,
+      dueDate: null,
+      labelIds: [],
+    });
+
+    await ordo(['issue', 'edit', issue.identifier, '--assignee', 'me']);
+    expect((await issueOf(issue.identifier)).assigneeId).toBe(
+      (await new Ordo({ url, token }).me()).id,
+    );
+    await ordo(['issue', 'edit', issue.identifier, '--assignee', 'none']);
+    expect((await issueOf(issue.identifier)).assigneeId).toBeNull();
+
+    // Bad values are refused before anything changes.
+    const bad = await ordo(['issue', 'edit', issue.identifier, '--estimate', 'lots']);
+    expect(bad.code).toBe(2);
+    expect(bad.stderr).toContain('--estimate takes a number');
+    // The test cycles are in 2030: none is current today.
+    const noCycle = await ordo(['issue', 'edit', issue.identifier, '--cycle', 'current']);
+    expect(noCycle.code).toBe(1);
+    expect(noCycle.stderr).toContain('No current cycle in ENG');
+    expect((await issueOf(issue.identifier)).cycleId).toBeNull();
+    expect((await ordo(['issue', 'edit', issue.identifier])).code).toBe(2);
+  });
+
+  it('comments from a file', async () => {
+    const issue = await create('File comment');
+    const dir = mkdtempSync(join(tmpdir(), 'ordo-comment-'));
+    writeFileSync(join(dir, 'body.md'), 'Line one\n\nLine two\n');
+    const res = await ordo([
+      'issue',
+      'comment',
+      issue.identifier,
+      '--body-file',
+      join(dir, 'body.md'),
+    ]);
+    expect(res.code, res.stderr).toBe(0);
+    const comments = (await ada.get(`/api/w/kit/issues/${issue.id}/comments`)).data;
+    expect(comments.map((c: { body: string }) => c.body)).toEqual(['Line one\n\nLine two']);
+    expect(
+      (await ordo(['issue', 'comment', issue.identifier, '-F', join(dir, 'nope.md')])).code,
+    ).toBe(1);
+  });
+
+  it('sends a JSON body from a file with api --data @file', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ordo-api-'));
+    writeFileSync(
+      join(dir, 'issue.json'),
+      JSON.stringify({ teamId: boot.teams[0]!.id, title: 'Made with api', priority: 4 }),
+    );
+    const res = await ordo([
+      'api',
+      'post',
+      'api/w/kit/issues',
+      '--data',
+      `@${join(dir, 'issue.json')}`,
+    ]);
+    expect(res.code, res.stderr).toBe(0);
+    const made = JSON.parse(res.stdout);
+    expect(await issueOf(made.identifier)).toMatchObject({ title: 'Made with api', priority: 4 });
+
+    writeFileSync(join(dir, 'bad.json'), '{nope');
+    const bad = await ordo(['api', 'POST', '/w/kit/issues', '--data', `@${join(dir, 'bad.json')}`]);
+    expect(bad.code).toBe(2);
+    expect(bad.stderr).toContain('--data must be JSON');
   });
 });

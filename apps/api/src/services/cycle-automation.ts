@@ -1,5 +1,5 @@
 import { type CycleAutomation, cycleAutomationOf, dayInZone } from '@ordo/shared';
-import { and, asc, eq, isNull, lte, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, lte, notInArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import { cycles, issues, teams, workflowStates, workspaces } from '../db/schema.ts';
@@ -146,11 +146,14 @@ export async function cycleForStartedIssue(ctx: Ctx, teamId: string, at = new Da
   const auto = cycleAutomationOf(team?.auto);
   if (!team?.cyclesEnabled || !auto.enabled || !auto.addStarted) return null;
   const today = await workspaceToday(ctx.tx, ctx.workspaceId, at);
+  // Cycles may overlap; the one that started last is the current one.
   const [active] = await ctx.tx
     .select({ id: cycles.id })
     .from(cycles)
     .where(
       and(eq(cycles.teamId, teamId), lte(cycles.startsAt, today), sql`${cycles.endsAt} > ${today}`),
-    );
+    )
+    .orderBy(desc(cycles.startsAt), desc(cycles.number))
+    .limit(1);
   return active?.id ?? null;
 }

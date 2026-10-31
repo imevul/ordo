@@ -1,5 +1,5 @@
 import type { Bootstrap, Invite } from '@ordo/shared';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { instanceSettings, users } from '../src/db/schema.ts';
@@ -98,6 +98,22 @@ describe('invites', () => {
     expect((await member.post(`${ws}/invites`, { role: 'admin' })).statusCode).toBe(403);
     expect((await guest.post(`${ws}/invites`, {})).statusCode).toBe(403);
     await owner.patch(`${ws}/`, { settings: { invitePolicy: 'admins' } });
+  });
+
+  it("doesn't let members invite people into private teams they aren't in", async () => {
+    const hidden = (await owner.post(`${ws}/teams`, { name: 'Hidden', key: 'HID', private: true }))
+      .data;
+    const { client: member } = await join('member');
+    await owner.patch(`${ws}/`, { settings: { invitePolicy: 'members' } });
+    try {
+      const before = ((await owner.get(`${ws}/invites`)).data as Invite[]).length;
+      const res = await member.post(`${ws}/invites`, { role: 'member', teamIds: [hidden.id] });
+      expect(res.statusCode).toBe(400);
+      expect(res.data.messageKey).toBe('unknown_team');
+      expect((await owner.get(`${ws}/invites`)).data).toHaveLength(before);
+    } finally {
+      await owner.patch(`${ws}/`, { settings: { invitePolicy: 'admins' } });
+    }
   });
 });
 
@@ -225,6 +241,9 @@ describe('domains and auto-join', () => {
     });
     // Auto-join is off, and the address isn't verified yet.
     expect((await person.get('/api/workspaces/joinable')).data).toEqual([]);
+    const early = await person.post(`/api/workspaces/${boot.workspace.id}/join`);
+    expect(early.statusCode).toBe(403);
+    expect(early.data.messageKey).toBe('invite_needed');
     await owner.patch(`${ws}/`, { settings: { domainAutoJoin: true, autoJoinRole: 'guest' } });
     expect((await person.get('/api/workspaces/joinable')).data).toEqual([]);
     await app.db
@@ -238,6 +257,33 @@ describe('domains and auto-join', () => {
     });
     expect(((await person.get(`${ws}/bootstrap`)).data as Bootstrap).role).toBe('guest');
     await owner.patch(`${ws}/`, { settings: { domainAutoJoin: false } });
+  });
+
+  it("doesn't auto-join people at a domain that isn't verified", async () => {
+    const domain = `unverified-${Date.now()}.test`;
+    expect((await owner.post(`${ws}/domains`, { domain })).statusCode).toBe(200);
+    await owner.patch(`${ws}/`, { settings: { domainAutoJoin: true, autoJoinRole: 'member' } });
+    try {
+      const person = new Client(app);
+      const email = `uma@${domain}`;
+      const signedUp = await person.post('/api/auth/signup', {
+        name: 'Uma',
+        email,
+        password: 'correct horse battery',
+      });
+      expect(signedUp.statusCode).toBe(200);
+      await app.db
+        .update(users)
+        .set({ emailVerifiedAt: new Date().toISOString() })
+        .where(eq(users.email, email));
+      expect((await person.get('/api/workspaces/joinable')).data).toEqual([]);
+      const res = await person.post(`/api/workspaces/${boot.workspace.id}/join`);
+      expect(res.statusCode).toBe(403);
+      expect(res.data.messageKey).toBe('invite_needed');
+      expect((await person.get(`${ws}/bootstrap`)).statusCode).not.toBe(200);
+    } finally {
+      await owner.patch(`${ws}/`, { settings: { domainAutoJoin: false } });
+    }
   });
 });
 
@@ -358,18 +404,22 @@ describe('instance admin', () => {
     ).toBe(400);
 
     const local = await testApp({ settingsFromEnv: {} });
-    const root = new Client(local);
-    await root
-      .post('/api/auth/signup', {
+    const written = ['allowWorkspaceCreation', 'smtp'];
+    const saved = await local.db
+      .select()
+      .from(instanceSettings)
+      .where(inArray(instanceSettings.key, written));
+    try {
+      const root = new Client(local);
+      const signedUp = await root.post('/api/auth/signup', {
         name: 'Root',
         email: `root-${Date.now()}@example.com`,
         password: 'correct horse battery',
-      })
-      .catch(() => {});
-    const rootId = (await root.get('/api/auth/me')).data.id;
-    if (rootId)
+      });
+      expect(signedUp.statusCode, signedUp.body).toBe(200);
+      const rootId = (await root.get('/api/auth/me')).data.id as string;
+      expect(rootId).toBeTruthy();
       await local.db.update(users).set({ isInstanceAdmin: true }).where(eq(users.id, rootId));
-    if (rootId) {
       const res = await root.patch('/api/admin/settings', {
         allowWorkspaceCreation: false,
         smtp: {
@@ -386,9 +436,11 @@ describe('instance admin', () => {
         .where(eq(instanceSettings.key, 'smtp'));
       expect(JSON.stringify(stored!.value)).not.toContain('s3cret');
       expect((await root.get('/api/config')).data.allowWorkspaceCreation).toBe(false);
-      // Clean up the shared database for other test files.
-      await local.db.delete(instanceSettings);
+    } finally {
+      // The database is shared with other test files: put back only what this test changed.
+      await local.db.delete(instanceSettings).where(inArray(instanceSettings.key, written));
+      if (saved.length) await local.db.insert(instanceSettings).values(saved);
+      await local.close();
     }
-    await local.close();
   });
 });

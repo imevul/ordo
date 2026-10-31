@@ -167,9 +167,13 @@ Git automation**. Details: [integrations](integrations/README.md).
 
 Every issue screen (team issues, my issues, project and cycle issues, views) works the same way:
 
-- **Filter** narrows by status, priority, assignee, creator, labels, project, cycle or a
-  [custom field](#custom-fields). Filters combine with AND;
-  values within one filter combine with OR.
+- **Filter** narrows by status, priority, assignee, creator, labels, project, milestone, cycle, due/created/updated/
+  completed date (Overdue, Today, This week, Last 7 or 30 days, Next 2 weeks, or a range of days), estimate,
+  whether an issue is blocked, blocks another, has a pull request, has sub-issues or is a sub-issue, and
+  [custom fields](#custom-fields) with choices (select, multi-select, person). Filters combine with AND; values within
+  one filter combine with OR. Click **is** on a filter to turn it into **is not**. **Add an "or" group** starts a group
+  of filters; an issue has to match one of the groups, e.g. "has a pull request" _or_ "estimate ≥ 5". Blocked,
+  blocking and pull request filters always ask the server, even with an offline copy.
 - **Display** sets grouping, ordering and whether to show completed issues, sub-issues and empty groups.
 - The **list / board** toggle (or `V`) switches layouts. On the board, drag cards between columns to change the
   grouped property, and within a column to reorder (when ordering is _Manual_).
@@ -231,6 +235,17 @@ Cycles are a team's time-boxed iterations (usually 1–2 weeks). Turn them on pe
 **Cycles** (dates default to the two weeks after the last cycle), and assign issues with the _Cycle_ property
 or `Shift C`. A cycle page shows scope, started, completed and remaining counts, with points when you use
 estimates.
+
+**Workload** (the _Workload_ button on a cycle page) lists each team member, agents included, with what they have in
+the cycle against their capacity. Load is the sum of estimates once any issue in the cycle has one, otherwise the
+number of issues; canceled issues don't count, and the darker part of the bar is what's done. Someone over capacity
+shows in the warning colour. Assignees outside the team and unassigned issues come last. Drag an issue onto someone to
+assign it to them.
+
+Capacity comes from three places, most specific first: the cycle (click someone's numbers in the panel, for a
+vacation or a short week; clear it to go back), the person (team settings → _Members_), and the team (team settings
+→ _Capacity per cycle_). It's in the same unit as the load: points, or issues when nothing is estimated. Team admins
+set the person and team defaults; anyone but guests can set a cycle's.
 
 **Cycle automation** (team settings → _Cycle automation_) lets cycles run themselves. Pick a length (1–8 weeks), an
 optional cooldown, the weekday they start on and how many to plan ahead; Ordo then keeps that many cycles on the

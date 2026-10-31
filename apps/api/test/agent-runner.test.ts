@@ -11,7 +11,14 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { type Io, run } from '@ordo/cli';
-import { expandVars, launch, loadRunnerFile, parseDotenv, pruneWorktrees } from '@ordo/cli/agent';
+import {
+  expandVars,
+  launch,
+  loadRunnerFile,
+  parseDotenv,
+  pruneWorktrees,
+  serveAgent,
+} from '@ordo/cli/agent';
 import { Ordo } from '@ordo/sdk';
 import type { AgentRun, AgentRunContext, Bootstrap, Comment } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
@@ -24,6 +31,7 @@ let url: string;
 let dir: string;
 let eng: string;
 let team: Bootstrap['teams'][number];
+let repoId: string;
 const keys: Record<string, string> = {};
 const agents: Record<string, string> = {};
 const slug = 'runner';
@@ -56,6 +64,27 @@ const git = (cwd: string, ...args: string[]) =>
     encoding: 'utf8',
   }).trim();
 
+/** Where the runner clones the workspace's repository (`checkout` names it after the repo). */
+const clonePath = () => join(dir, 'repos', `app-${repoId.slice(0, 8)}`);
+
+const until = async (ok: () => boolean, ms = 5000) => {
+  for (const end = Date.now() + ms; !ok(); ) {
+    if (Date.now() > end) throw new Error('timed out waiting');
+    await new Promise((r) => setTimeout(r, 25));
+  }
+};
+
+/** A shell command that marks itself started, then waits until the test lets it go on. */
+const gated = (name: string, then: string) => {
+  const started = join(dir, `${name}.started`);
+  const go = join(dir, `${name}.go`);
+  return {
+    command: `touch "${started}"; until [ -f "${go}" ]; do sleep 0.05; done; ${then}`,
+    started: () => existsSync(started),
+    release: () => writeFileSync(go, ''),
+  };
+};
+
 function write(name: string, text: string) {
   const path = join(dir, name);
   writeFileSync(path, text);
@@ -83,6 +112,7 @@ beforeAll(async () => {
   team = (await owner.get(`${ws}/bootstrap`)).data.teams[0];
   eng = team.id;
   const repo = (await owner.post(`${ws}/repositories`, { name: 'app', url: bare })).data;
+  repoId = repo.id;
   await owner.patch(`${ws}/teams/${eng}`, { defaultRepositoryId: repo.id });
   for (const name of ['Claude', 'Docs']) {
     agents[name] = (
@@ -460,11 +490,7 @@ describe('ordo agent', () => {
 
   it('carries on in the worktree a branch is already checked out in', async () => {
     const issue = await assign('Switched branch');
-    const clone = join(
-      dir,
-      'repos',
-      readdirSync(join(dir, 'repos')).find((d) => !d.endsWith('.worktrees'))!,
-    );
+    const clone = clonePath();
     // An old-style worktree whose agent switched it to the issue's branch.
     const other = `${clone}.worktrees/somebody_${issue.identifier.toLowerCase()}-old`;
     git(clone, 'worktree', 'add', '--quiet', '-b', 'somebody/old', other, 'origin/main');
@@ -482,9 +508,8 @@ describe('ordo agent', () => {
 
   it('carries on with a branch named the old way, per agent', async () => {
     const issue = await assign('Legacy work');
-    const clone = readdirSync(join(dir, 'repos')).find((d) => !d.endsWith('.worktrees'))!;
     const legacy = `runner-claude/${issue.identifier.toLowerCase()}-legacy-work`;
-    git(join(dir, 'repos', clone), 'branch', legacy, 'origin/main');
+    git(clonePath(), 'branch', legacy, 'origin/main');
     const file = write(
       'legacy.yaml',
       `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Claude}\ncommand: 'git rev-parse --abbrev-ref HEAD'\nrepos: ./repos\n`,
@@ -734,6 +759,7 @@ describe('ordo agent', () => {
 
   it("says so when Ordo doesn't take the final report", async () => {
     const issue = await assign('Cancelled while running');
+    const cmd = gated('report', 'echo done');
     const running = ordo(
       [
         'agent',
@@ -748,24 +774,119 @@ describe('ordo agent', () => {
         '--',
         'sh',
         '-c',
-        'sleep 1; echo done',
+        cmd.command,
       ],
       { ORDO_AGENT_KEY: keys.Claude },
     );
-    // Cancel it in Ordo while the command is still going.
-    for (let i = 0; i < 50; i++) {
-      const [r] = await runsOf(issue.id);
-      if (r && r.status !== 'queued') {
-        await owner.post(`${ws}/agent-runs/${r.id}/cancel`);
-        break;
-      }
-      await new Promise((ok) => setTimeout(ok, 50));
-    }
+    // Cancel it in Ordo while the command is still going, then let the command finish.
+    await until(cmd.started, 15_000);
+    const [r] = await runsOf(issue.id);
+    expect((await owner.post(`${ws}/agent-runs/${r!.id}/cancel`)).statusCode).toBe(200);
+    cmd.release();
     const res = await running;
     expect(res.stdout).toContain(
       `${issue.identifier} finished (succeeded), but Ordo didn't take the report: This run is cancelled`,
     );
     expect(res.stdout).not.toContain(`${issue.identifier} succeeded`);
+  });
+
+  it("fails the run as a checkout failure when the repository can't be cloned", async () => {
+    const ops = (await owner.post(`${ws}/teams`, { name: 'Ops', key: 'OPS' })).data;
+    const gone = (
+      await owner.post(`${ws}/repositories`, { name: 'gone', url: join(dir, 'missing.git') })
+    ).data;
+    await owner.patch(`${ws}/teams/${ops.id}`, { defaultRepositoryId: gone.id });
+    const agent = (await owner.post(`${ws}/agents`, { name: 'Runner Ops', teamIds: [ops.id] }))
+      .data;
+    const key = (await owner.post(`${ws}/agents/${agent.id}/keys`, { name: 'test' })).data.token;
+    const issue = (
+      await owner.post(`${ws}/issues`, {
+        teamId: ops.id,
+        title: 'Nowhere to clone',
+        assigneeId: agent.id,
+      })
+    ).data;
+    const marker = join(dir, 'checkout-ran');
+    const res = await ordo(
+      [
+        'agent',
+        'run',
+        '--once',
+        '-w',
+        slug,
+        '--url',
+        url,
+        '--repos',
+        join(dir, 'repos'),
+        '--',
+        'sh',
+        '-c',
+        `touch "${marker}"`,
+      ],
+      { ORDO_AGENT_KEY: key },
+    );
+    expect(res.code).toBe(0);
+    expect(res.stdout).toContain(`${issue.identifier} checkout failed`);
+    const [runRow] = await runsOf(issue.id);
+    expect(runRow).toMatchObject({ status: 'failed', failureReason: 'checkout' });
+    expect(runRow!.error).toMatch(/^Checkout failed on /);
+    // The command never ran.
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it('stops a worker whose claims are refused', async () => {
+    // Accepted by agent/me, then refused at claim, as when a key is revoked mid-run.
+    const refusing: typeof fetch = (input, init) =>
+      String(input).includes('/agent/claim')
+        ? Promise.resolve(
+            Response.json({ error: 'forbidden', message: 'Key revoked' }, { status: 403 }),
+          )
+        : fetch(input, init);
+    const file = write(
+      'refused.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Docs}\ncheckout: false\ncommand: 'true'\n`,
+    );
+    let stdout = '';
+    const io: Io = {
+      env: { XDG_CONFIG_HOME: join(dir, 'config'), HOME: dir },
+      stdout: (t) => {
+        stdout += t;
+      },
+      stderr: () => {},
+      readStdin: async () => '',
+      prompt: async () => '',
+      openUrl: () => {},
+      color: false,
+      width: 120,
+      fetch: refusing,
+    };
+    // Without --once: it returns only because the worker gave up.
+    expect(await run(['agent', 'run', '--file', file], io)).toBe(0);
+    expect(stdout).toContain('the key was refused (Key revoked); stopping');
+
+    // A key Ordo doesn't know at all (401), straight through serveAgent.
+    const lines: string[] = [];
+    await serveAgent(
+      {
+        label: 'nope',
+        url,
+        workspace: slug,
+        key: 'ordo_nope',
+        command: 'true',
+        repos: join(dir, 'repos'),
+        concurrency: 2,
+        timeoutMs: 0,
+        env: {},
+        cwd: 'tmp',
+        checkout: false,
+        prune: false,
+        baseDir: dir,
+        instructions: '',
+      },
+      { log: (l) => lines.push(l), signal: new AbortController().signal },
+    );
+    // Each worker stops on its own.
+    expect(lines.filter((l) => l.includes('the key was refused'))).toHaveLength(2);
   });
 });
 
@@ -793,12 +914,6 @@ describe('stopping a run', () => {
       );
     } catch {
       return false;
-    }
-  };
-  const until = async (ok: () => boolean, ms = 5000) => {
-    for (const end = Date.now() + ms; !ok(); ) {
-      if (Date.now() > end) throw new Error('timed out waiting');
-      await new Promise((r) => setTimeout(r, 25));
     }
   };
   const pidIn = (file: string) => Number(readFileSync(join(dir, file), 'utf8'));
@@ -898,9 +1013,13 @@ describe('stopping a run', () => {
     };
 
     const issue = await assign('Finish after Ctrl-C');
-    const r = start('sleep 1; echo "Finished anyway" > "$ORDO_SUMMARY_FILE"');
-    await until(() => r.out().includes(`${issue.identifier} running`), 15_000);
+    const cmd = gated('ctrl-c', 'echo "Finished anyway" > "$ORDO_SUMMARY_FILE"');
+    const r = start(cmd.command);
+    await until(() => r.out().includes(`${issue.identifier} running`) && cmd.started(), 15_000);
     r.ctrlC();
+    // The command only finishes once the runner has stopped taking runs.
+    await until(() => r.out().includes('Not taking new runs'));
+    cmd.release();
     expect(await r.exited).toBe(0);
     expect(r.out()).toContain('Not taking new runs');
     expect(r.out()).toContain(`${issue.identifier} succeeded`);

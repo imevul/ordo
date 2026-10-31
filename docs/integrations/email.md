@@ -10,7 +10,8 @@ in its **triage** if the team has triage (otherwise in its default status), with
   each get a customer of their own,
 - a link to the message under the issue's _Links_.
 
-Replies in the same thread (by `In-Reply-To` / `References`) are added as comments instead of new issues. The same
+Replies in the same thread (by `In-Reply-To` / `References`) are added as comments instead of new issues, as long as
+the issue is still in this address's team; a reply to an issue that has moved to another team starts a new one. The same
 message delivered twice is only processed once. Out-of-office replies, bounces and bulk mail are ignored. Triage rules
 can match mail with the source **email**.
 

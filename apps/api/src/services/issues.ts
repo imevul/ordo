@@ -2,14 +2,21 @@ import {
   type AgentRunTrigger,
   type CreateIssueInput,
   type CustomFieldValue,
+  DATE_FILTER_FIELDS,
+  type DateFilter,
+  type DateFilterField,
   defaultAssigneeFor,
+  type FilterClock,
+  filterClock,
   type HistoryChange,
   ISSUE_IDENTIFIER_PATTERN,
   type Issue,
+  type IssueConditions,
   type IssueDetail,
   type IssueFilter,
   type IssueRef,
   type IssueRelation,
+  rangeDays,
   type SlaHours,
   SORT_GAP,
   type StateType,
@@ -138,7 +145,6 @@ function baseQuery(db: DbOrTx) {
 /** Translates an IssueFilter into SQL conditions, limited to teams `access` can read. `me` is the viewer. */
 export function filterConditions(access: Access, f: IssueFilter): SQL[] {
   const userId = access.userId;
-  const me = (v: string) => (v === 'me' ? userId : v);
   const conds: SQL[] = [eq(issues.workspaceId, access.workspaceId)];
   const scope = teamScope(access, issues.teamId);
   if (scope) conds.push(scope);
@@ -147,19 +153,69 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
   if (f.archived === 'only') conds.push(isNotNull(issues.archivedAt));
   else if (f.archived !== 'include' && !f.trashed) conds.push(isNull(issues.archivedAt));
   if (f.teamId) conds.push(eq(issues.teamId, f.teamId));
-  if (f.stateIds?.length) conds.push(inArray(issues.stateId, f.stateIds));
-  if (f.stateTypes?.length) {
+  if (f.parentId) conds.push(eq(issues.parentId, f.parentId));
+  if (f.subscribedBy === 'me') {
     conds.push(
-      inArray(
-        issues.stateId,
-        sql`(select ws.id from workflow_states ws where ws.type in (${sql.join(
-          f.stateTypes.map((t) => sql`${t}`),
-          sql`, `,
-        )}))`,
+      exists(
+        sql`(select 1 from issue_subscribers su where su.issue_id = "issues"."id" and su.user_id = ${userId})`,
       ),
     );
   }
-  if (f.priorities?.length) conds.push(inArray(issues.priority, f.priorities));
+  if (f.q?.trim()) conds.push(textConditions(f.q.trim()).match);
+  const tz = f.tz ?? 'UTC';
+  conds.push(...conditionParts(f, { userId, tz, clock: filterClock(tz, f.weekStartsOn) }));
+  return conds;
+}
+
+interface FilterEnv {
+  userId: string;
+  tz: string;
+  clock: FilterClock;
+}
+
+const OPEN_STATE = sql`(select ws.type from workflow_states ws where ws.id = "issues"."state_id") not in ('completed', 'canceled')`;
+
+/** NULL-safe "not": a condition that is unknown for an issue (a NULL column) counts as false. */
+const negate = (c: SQL) => sql`not coalesce((${c}), false)`;
+
+function dateCondition(field: DateFilterField, d: DateFilter, env: FilterEnv): SQL {
+  const col = issues[field];
+  if (d.range === 'none') return isNull(col);
+  // Timestamps count on the day they fall on in the filter's zone; `matchIssue` does the same.
+  const day = field === 'dueDate' ? sql`${col}` : sql`(${col} at time zone ${env.tz})::date`;
+  const parts: SQL[] = [isNotNull(col)];
+  const bound = (from?: string, to?: string) => {
+    if (from) parts.push(sql`${day} >= ${from}::date`);
+    if (to) parts.push(sql`${day} <= ${to}::date`);
+  };
+  if (d.range && d.range !== 'any') {
+    if (d.range === 'overdue') parts.push(OPEN_STATE);
+    const r = rangeDays(d.range, env.clock);
+    bound(r.from, r.to);
+  }
+  bound(d.from, d.to);
+  return and(...parts)!;
+}
+
+/** One SQL condition per condition set in `c`, so `exclude` can negate them one at a time. */
+function conditionParts(c: IssueConditions, env: FilterEnv): SQL[] {
+  const me = (v: string) => (v === 'me' ? env.userId : v);
+  const conds: SQL[] = [];
+  const list = (values: string[]) =>
+    sql.join(
+      values.map((v) => sql`${v}`),
+      sql`, `,
+    );
+  if (c.stateIds?.length) conds.push(inArray(issues.stateId, c.stateIds));
+  if (c.stateTypes?.length) {
+    conds.push(
+      inArray(
+        issues.stateId,
+        sql`(select ws.id from workflow_states ws where ws.type in (${list(c.stateTypes)}))`,
+      ),
+    );
+  }
+  if (c.priorities?.length) conds.push(inArray(issues.priority, c.priorities));
   const nullable = (
     col:
       | typeof issues.assigneeId
@@ -176,33 +232,70 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
     if (values.includes('none')) parts.push(isNull(col));
     conds.push(parts.length === 1 ? parts[0]! : or(...parts)!);
   };
-  nullable(issues.assigneeId, f.assigneeIds, me);
-  nullable(issues.projectId, f.projectIds);
-  nullable(issues.milestoneId, f.milestoneIds);
-  nullable(issues.cycleId, f.cycleIds);
-  if (f.creatorIds?.length) conds.push(inArray(issues.creatorId, f.creatorIds.map(me)));
-  if (f.labelIds?.length) {
+  nullable(issues.assigneeId, c.assigneeIds, me);
+  nullable(issues.projectId, c.projectIds);
+  nullable(issues.milestoneId, c.milestoneIds);
+  nullable(issues.cycleId, c.cycleIds);
+  if (c.creatorIds?.length) conds.push(inArray(issues.creatorId, c.creatorIds.map(me)));
+  if (c.labelIds?.length) {
     conds.push(
       exists(
-        sql`(select 1 from issue_labels fl where fl.issue_id = "issues"."id" and fl.label_id in (${sql.join(
-          f.labelIds.map((l) => sql`${l}`),
-          sql`, `,
-        )}))`,
+        sql`(select 1 from issue_labels fl where fl.issue_id = "issues"."id" and fl.label_id in (${list(c.labelIds)}))`,
       ),
     );
   }
-  for (const [fieldId, wanted] of Object.entries(f.customFields ?? {})) {
+  for (const [fieldId, wanted] of Object.entries(c.customFields ?? {})) {
     conds.push(customFieldCondition(fieldId, wanted.map(me)));
   }
-  if (f.parentId) conds.push(eq(issues.parentId, f.parentId));
-  if (f.subscribedBy === 'me') {
-    conds.push(
-      exists(
-        sql`(select 1 from issue_subscribers su where su.issue_id = "issues"."id" and su.user_id = ${userId})`,
-      ),
-    );
+  for (const field of DATE_FILTER_FIELDS) {
+    const d = c[field];
+    if (d) conds.push(dateCondition(field, d, env));
   }
-  if (f.q?.trim()) conds.push(textConditions(f.q.trim()).match);
+  if (c.estimate) {
+    const { none, min, max } = c.estimate;
+    const bounded = min !== undefined || max !== undefined;
+    const set: SQL[] = [isNotNull(issues.estimate)];
+    if (min !== undefined) set.push(sql`${issues.estimate} >= ${min}`);
+    if (max !== undefined) set.push(sql`${issues.estimate} <= ${max}`);
+    const options: SQL[] = [];
+    if (none) options.push(isNull(issues.estimate));
+    if (bounded || !none) options.push(and(...set)!);
+    conds.push(options.length === 1 ? options[0]! : or(...options)!);
+  }
+  const flag = (value: boolean | undefined, cond: SQL) => {
+    if (value !== undefined) conds.push(value ? cond : negate(cond));
+  };
+  // A "blocks" relation counts while both issues are open and out of the trash: a finished
+  // issue neither blocks nor waits.
+  const blocks = (self: string, other: string) =>
+    and(
+      OPEN_STATE,
+      exists(
+        sql`(select 1 from issue_relations br join issues b on b.id = br.${sql.raw(other)} join workflow_states bs on bs.id = b.state_id where br.${sql.raw(self)} = "issues"."id" and br.type = 'blocks' and b.deleted_at is null and bs.type not in ('completed', 'canceled'))`,
+      ),
+    )!;
+  flag(c.blocked, blocks('related_issue_id', 'issue_id'));
+  flag(c.blocking, blocks('issue_id', 'related_issue_id'));
+  flag(
+    c.hasPullRequest,
+    exists(
+      sql`(select 1 from issue_links pl where pl.issue_id = "issues"."id" and pl.kind = 'pull_request')`,
+    ),
+  );
+  // Like subIssueCount: trashed sub-issues don't count.
+  flag(
+    c.hasSubIssues,
+    exists(
+      sql`(select 1 from issues si where si.parent_id = "issues"."id" and si.deleted_at is null)`,
+    ),
+  );
+  flag(c.isSubIssue, isNotNull(issues.parentId));
+  if (c.exclude) {
+    const excluded = conditionParts(c.exclude, env);
+    if (excluded.length) conds.push(and(...excluded.map(negate))!);
+  }
+  if (c.or?.length)
+    conds.push(or(...c.or.map((g) => and(...conditionParts(g, env)) ?? sql`true`))!);
   return conds;
 }
 

@@ -2,7 +2,15 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { Secret, TOTP } from 'otpauth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { issues, jobs, notifications, schedules, sessions, users } from '../src/db/schema.ts';
+import {
+  issues,
+  jobs,
+  notifications,
+  passkeys,
+  schedules,
+  sessions,
+  users,
+} from '../src/db/schema.ts';
 import { proxyTrust } from '../src/env.ts';
 import { enqueue } from '../src/lib/jobs/index.ts';
 import { Client, captureMail, linkIn, signup, testApp } from './helpers.ts';
@@ -445,6 +453,45 @@ describe('sessions', () => {
     expect((await other.get('/api/auth/me')).statusCode).toBe(401);
     expect((await client.get('/api/auth/me')).statusCode).toBe(200);
   });
+
+  it("can't revoke someone else's session", async () => {
+    const victim = await signup(app, 'Vic Victim');
+    const victimId = (await victim.client.get('/api/auth/me')).data.id;
+    const [row] = await app.db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(eq(sessions.userId, victimId));
+    const { client: mallory } = await signup(app, 'Mal Lory');
+    // The listed id is the session id's first 16 characters; answering ok either way says nothing.
+    const res = await mallory.del(`/api/me/sessions/${row!.id.slice(0, 16)}`);
+    expect(res.statusCode).toBe(200);
+    expect(await app.db.select().from(sessions).where(eq(sessions.id, row!.id))).toHaveLength(1);
+    expect((await victim.client.get('/api/auth/me')).statusCode).toBe(200);
+  });
+});
+
+describe('passkeys of another account', () => {
+  it('can be neither renamed nor removed', async () => {
+    const owner = await signup(app, 'Pia Passkey');
+    const ownerId = (await owner.client.get('/api/auth/me')).data.id;
+    const [key] = await app.db
+      .insert(passkeys)
+      .values({
+        userId: ownerId,
+        credentialId: `cred-${Date.now()}`,
+        publicKey: 'not-a-real-key',
+        name: 'YubiKey',
+      })
+      .returning();
+    const { client: mallory } = await signup(app, 'Mal Passkey');
+    expect(
+      (await mallory.patch(`/api/me/passkeys/${key!.id}`, { name: 'Mine now' })).statusCode,
+    ).toBe(404);
+    const del = await mallory.req('DELETE', `/api/me/passkeys/${key!.id}`, { password: PASSWORD });
+    expect(del.statusCode).toBe(404);
+    const [still] = await app.db.select().from(passkeys).where(eq(passkeys.id, key!.id));
+    expect(still).toMatchObject({ userId: ownerId, name: 'YubiKey' });
+  });
 });
 
 describe('language', () => {
@@ -645,20 +692,24 @@ describe('notification emails', () => {
         for each row execute function fail_retry_mail();`),
     );
     const mark = inbox.length;
-    await enqueue(app.db, 'notifications.email');
-    await app.jobs.drain();
-    const [failed] = await app.db
-      .select()
-      .from(jobs)
-      .where(and(eq(jobs.name, 'notifications.email'), eq(jobs.status, 'pending')))
-      .orderBy(desc(jobs.id))
-      .limit(1);
-    expect(failed!.attempts).toBe(1);
-    expect(failed!.lastError).toContain('insert into "jobs"');
-
-    await app.db.execute(sql`
-      drop trigger fail_retry_mail on jobs;
-      drop function fail_retry_mail();`);
+    let failed: typeof jobs.$inferSelect | undefined;
+    // The trigger is on a table every test file shares: never leave it behind.
+    try {
+      await enqueue(app.db, 'notifications.email');
+      await app.jobs.drain();
+      [failed] = await app.db
+        .select()
+        .from(jobs)
+        .where(and(eq(jobs.name, 'notifications.email'), eq(jobs.status, 'pending')))
+        .orderBy(desc(jobs.id))
+        .limit(1);
+      expect(failed!.attempts).toBe(1);
+      expect(failed!.lastError).toContain('insert into "jobs"');
+    } finally {
+      await app.db.execute(sql`
+        drop trigger if exists fail_retry_mail on jobs;
+        drop function if exists fail_retry_mail();`);
+    }
     await app.db.update(jobs).set({ runAt: sql`now()` }).where(eq(jobs.id, failed!.id));
     await app.jobs.drain();
     await app.jobs.drain();

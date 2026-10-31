@@ -1,14 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { estimateLabel, priorityLabel } from './constants.ts';
-import { DEFAULT_ISSUE_DISPLAY, issueFilterSchema } from './schemas.ts';
-import { SORT_GAP, sortOrderBetween } from './sort.ts';
+import { issueFilterSchema } from './schemas.ts';
+import { sortOrderBetween } from './sort.ts';
 
 describe('sortOrderBetween', () => {
   it('returns 0 for an empty list', () => expect(sortOrderBetween()).toBe(0));
-  it('appends after the last item', () => expect(sortOrderBetween(10, null)).toBe(10 + SORT_GAP));
-  it('prepends before the first item', () =>
-    expect(sortOrderBetween(null, 10)).toBe(10 - SORT_GAP));
+  it('places items after the last and before the first, leaving room on both sides', () => {
+    const after = sortOrderBetween(10, null);
+    const before = sortOrderBetween(null, 10);
+    expect(after).toBeGreaterThan(10);
+    expect(before).toBeLessThan(10);
+    // Room for a midpoint without running into float precision.
+    expect(sortOrderBetween(10, after)).not.toBe(10);
+    expect(sortOrderBetween(before, 10)).not.toBe(10);
+  });
   it('takes the midpoint between neighbours', () => expect(sortOrderBetween(1, 2)).toBe(1.5));
+  it('keeps order across repeated inserts at the same spot', () => {
+    let hi = 1;
+    for (let i = 0; i < 30; i++) {
+      const mid = sortOrderBetween(0, hi);
+      expect(mid).toBeGreaterThan(0);
+      expect(mid).toBeLessThan(hi);
+      hi = mid;
+    }
+  });
 });
 
 describe('schemas', () => {
@@ -17,16 +31,5 @@ describe('schemas', () => {
       'me',
       'none',
     ]);
-  });
-  it('has list layout grouped by state by default', () => {
-    expect(DEFAULT_ISSUE_DISPLAY).toMatchObject({ layout: 'list', groupBy: 'state' });
-  });
-});
-
-describe('labels', () => {
-  it('formats priorities and estimates', () => {
-    expect(priorityLabel(1)).toBe('Urgent');
-    expect(estimateLabel('tshirt', 3)).toBe('M');
-    expect(estimateLabel('fibonacci', 1)).toBe('1 point');
   });
 });

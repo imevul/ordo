@@ -1,10 +1,13 @@
-import type {
-  Bootstrap,
-  Comment,
-  CreateIssueInput,
-  CustomFieldValue,
-  Issue,
-  UpdateIssueInput,
+import {
+  type Bootstrap,
+  type Comment,
+  type CreateIssueInput,
+  type CustomFieldValue,
+  defaultAssigneeFor,
+  type Issue,
+  isAdminRole,
+  type Team,
+  type UpdateIssueInput,
 } from '@ordo/shared';
 import { patchIssue, toggleReaction } from './optimistic.ts';
 
@@ -80,6 +83,46 @@ export function needs(op: Op): string[] {
 
 // ─── issues ──────────────────────────────────────────────────────────────
 
+/** Where a new issue starts when no status is given, picked as the server picks it. */
+function defaultState(team: Team | undefined) {
+  const states = [...(team?.states ?? [])].sort((a, b) => a.position - b.position);
+  return (
+    states.find((s) => s.id === team?.defaultStateId) ??
+    states.find((s) => s.type === 'backlog') ??
+    states.find((s) => s.type === 'unstarted') ??
+    states[0]
+  );
+}
+
+/**
+ * Leaving the assignee out means the usual person (the project's choice, else the workspace's)
+ * if they can work in the team; triage leaves it to whoever triages. As the server decides it.
+ */
+function guessAssignee(
+  input: CreateIssueInput,
+  team: Team | undefined,
+  stateType: string | undefined,
+  bootstrap: Bootstrap | null,
+): string | null {
+  if (input.assigneeId !== undefined) return input.assigneeId;
+  if (!bootstrap || !team || stateType === 'triage') return null;
+  // Partial bootstraps (tests, older caches) just have no default.
+  const projects = bootstrap.projects ?? [];
+  const projectId =
+    (input.milestoneId &&
+      projects.find((p) => p.milestones?.some((m) => m.id === input.milestoneId))?.id) ||
+    input.projectId;
+  const project = projectId ? projects.find((p) => p.id === projectId) : null;
+  const userId = defaultAssigneeFor(bootstrap.workspace?.settings?.defaultAssigneeId, project);
+  const member = userId ? bootstrap.members?.find((m) => m.id === userId) : undefined;
+  if (!member) return null;
+  const canWork =
+    isAdminRole(member.role) ||
+    team.memberIds?.includes(member.id) ||
+    (member.role === 'member' && !team.private);
+  return canWork ? member.id : null;
+}
+
 /** What a new issue looks like until the server numbers it. */
 function draftIssue(
   input: CreateIssueInput & { id: string },
@@ -87,12 +130,10 @@ function draftIssue(
   at: string,
 ): Issue {
   const team = bootstrap?.teams.find((t) => t.id === input.teamId);
-  const stateId =
-    input.stateId ??
-    team?.defaultStateId ??
-    team?.states?.find((s) => s.type === 'backlog')?.id ??
-    team?.states?.[0]?.id ??
-    '';
+  const state = input.stateId
+    ? team?.states?.find((s) => s.id === input.stateId)
+    : defaultState(team);
+  const stateId = input.stateId ?? state?.id ?? '';
   return {
     id: input.id,
     identifier: `${team?.key ?? '?'}-…`,
@@ -102,7 +143,7 @@ function draftIssue(
     description: input.description ?? '',
     stateId,
     priority: input.priority ?? 0,
-    assigneeId: input.assigneeId ?? null,
+    assigneeId: guessAssignee(input, team, state?.type, bootstrap),
     creatorId: null,
     projectId: input.projectId ?? null,
     milestoneId: input.milestoneId ?? null,
@@ -144,11 +185,8 @@ function moveIssue(issue: Issue, teamId: string, bootstrap: Bootstrap | null, no
   return {
     ...issue,
     teamId,
-    stateId:
-      states.find((s) => s.type === type)?.id ??
-      team?.defaultStateId ??
-      states[0]?.id ??
-      issue.stateId,
+    stateId: states.find((s) => s.type === type)?.id ?? defaultState(team)?.id ?? issue.stateId,
+    // Cleared even when it lands in a started status: cycle automation doesn't apply to moves.
     cycleId: null,
     // Team-scoped labels and fields from the old team no longer apply.
     labelIds: issue.labelIds.filter((id) => {

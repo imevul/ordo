@@ -1,5 +1,6 @@
 import { isGuestRole, isTeamAdminRole, type Team, type TeamRole } from '@ordo/shared';
 import { Plus, Trash2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { api, wsPath } from '../../../api/client.ts';
 import { useWsMutation } from '../../../api/queries.ts';
 import { Picker } from '../../../components/properties.tsx';
@@ -8,6 +9,49 @@ import { t } from '../../../i18n/index.ts';
 import { roleLabel } from '../../../i18n/labels.ts';
 import { useWorkspace } from '../../../lib/workspace.tsx';
 import { SettingsCard } from '../ui.tsx';
+
+/** A capacity per cycle, saved on blur or Enter; empty means none (null). */
+export function CapacityInput({
+  value,
+  placeholder,
+  onSave,
+  label,
+  className,
+}: {
+  value: number | null;
+  placeholder?: number | null;
+  onSave: (value: number | null) => void;
+  label: string;
+  className: string;
+}) {
+  const [text, setText] = useState(value == null ? '' : String(value));
+  useEffect(() => setText(value == null ? '' : String(value)), [value]);
+  const commit = () => {
+    const next = text.trim() === '' ? null : Number(text);
+    if (next != null && (!Number.isInteger(next) || next < 0)) {
+      setText(value == null ? '' : String(value));
+      return;
+    }
+    if (next !== value) onSave(next);
+  };
+  return (
+    <input
+      type="number"
+      min={0}
+      max={10000}
+      step={1}
+      className={className}
+      value={text}
+      placeholder={placeholder == null ? '' : String(placeholder)}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+      }}
+      aria-label={label}
+    />
+  );
+}
 
 /** Team membership. Team admins (and workspace admins) add people, change roles and remove them. */
 export function TeamMembers({ team }: { team: Team }) {
@@ -18,6 +62,14 @@ export function TeamMembers({ team }: { team: Team }) {
   );
   const setRole = useWsMutation(ws.slug, (v: { userId: string; role: TeamRole }) =>
     api.patch(wsPath(ws.slug, `/teams/${team.id}/members/${v.userId}`), { role: v.role }),
+  );
+  const setCapacity = useWsMutation(
+    ws.slug,
+    (v: { userId: string; capacity: number | null }) =>
+      api.patch(wsPath(ws.slug, `/teams/${team.id}/members/${v.userId}`), {
+        capacity: v.capacity,
+      }),
+    { success: t('teams.members.capacitySaved') },
   );
   const remove = useWsMutation(ws.slug, (userId: string) =>
     api.del(wsPath(ws.slug, `/teams/${team.id}/members/${userId}`)),
@@ -61,7 +113,7 @@ export function TeamMembers({ team }: { team: Team }) {
           />
         </div>
       )}
-      {team.members.map(({ userId, role }) => {
+      {team.members.map(({ userId, role, capacity }) => {
         const m = ws.memberById.get(userId);
         if (!m) return null;
         return (
@@ -73,6 +125,24 @@ export function TeamMembers({ team }: { team: Team }) {
                 <span className="ml-2 tag font-mono">{t('teams.members.guest')}</span>
               )}
             </span>
+            {canAdmin ? (
+              <CapacityInput
+                value={capacity}
+                placeholder={team.defaultCapacity}
+                onSave={(c) => setCapacity.mutate({ userId, capacity: c })}
+                label={t('teams.members.capacityOf', { name: m.name })}
+                className="h-7 w-20 border border-border bg-bg px-2 font-mono text-[12px] outline-none focus:border-primary"
+              />
+            ) : (
+              capacity != null && (
+                <span
+                  className="font-mono text-[12px] text-muted"
+                  title={t('teams.members.capacityOf', { name: m.name })}
+                >
+                  {capacity}
+                </span>
+              )
+            )}
             {canAdmin ? (
               <select
                 className="h-7 border border-border bg-bg px-2 text-[12px] outline-none focus:border-primary"

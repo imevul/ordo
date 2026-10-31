@@ -1,6 +1,8 @@
 import type { Bootstrap, ProjectDocument } from '@ordo/shared';
+import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { projectDocuments } from '../src/db/schema.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -92,8 +94,16 @@ describe('project documents', () => {
 
   it('can be deleted, and go with their project', async () => {
     expect((await member.del(`${ws}/documents/${ids.doc}`)).statusCode).toBe(200);
-    await owner.post(`${ws}/projects/${ids.project}/documents`, { title: 'Notes' });
-    await owner.del(`${ws}/projects/${ids.project}`);
+    expect((await owner.get(`${ws}/documents/${ids.doc}`)).statusCode).toBe(404);
+    const notes = (await owner.post(`${ws}/projects/${ids.project}/documents`, { title: 'Notes' }))
+      .data as ProjectDocument;
+    expect((await owner.del(`${ws}/projects/${ids.project}`)).statusCode).toBe(200);
     expect((await owner.get(`${ws}/projects/${ids.project}/documents`)).statusCode).toBe(404);
+    expect((await owner.get(`${ws}/documents/${notes.id}`)).statusCode).toBe(404);
+    const rows = await app.db
+      .select()
+      .from(projectDocuments)
+      .where(inArray(projectDocuments.id, [ids.doc, notes.id]));
+    expect(rows).toEqual([]);
   });
 });

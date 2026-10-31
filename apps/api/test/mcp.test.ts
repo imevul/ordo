@@ -891,3 +891,68 @@ describe('planning', () => {
     expect(res.statusCode).toBe(403);
   });
 });
+
+describe("a member's key", () => {
+  let memberKey: string;
+  let secret: string;
+  let open: string;
+
+  beforeAll(async () => {
+    await ada.post(`${ws}/teams`, { name: 'Hush', key: 'HSH', private: true });
+    secret = (await tool('create_issue', { team: 'HSH', title: 'Quiet merger plans' })).identifier;
+    open = (await tool('create_issue', { team: 'ENG', title: 'Public roadmap' })).identifier;
+    const mo = (
+      await signup(app, 'Mo Member', {
+        inviteToken: (await ada.post(`${ws}/invites`, { role: 'member' })).data[0].token,
+      })
+    ).client;
+    memberKey = (await mo.post('/api/me/api-keys', { name: 'mcp' })).data.token;
+  });
+
+  it("can't read or change issues of a private team it isn't in", async () => {
+    expect((await tool('get_issue', { issue: secret }, memberKey)).error).toBe('Issue not found');
+    expect((await tool('update_issue', { issue: secret, title: 'Leaked' }, memberKey)).error).toBe(
+      'Issue not found',
+    );
+    expect((await tool('add_comment', { issue: secret, body: 'hi' }, memberKey)).error).toBe(
+      'Issue not found',
+    );
+    const found = await tool('search_issues', { query: 'merger', includeClosed: true }, memberKey);
+    expect(found.count).toBe(0);
+    // The team itself is unknown to them, and the error doesn't name it.
+    const team = (await tool('search_issues', { team: 'HSH' }, memberKey)).error;
+    expect(team).toContain('ENG (Engineering)');
+    expect(team).not.toContain('Hush');
+
+    const still = await tool('get_issue', { issue: secret });
+    expect(still.title).toBe('Quiet merger plans');
+    expect(still.comments).toEqual([]);
+  });
+
+  it("can't relate to, unrelate from or see relations to such issues", async () => {
+    for (const [issue, other] of [
+      [open, secret],
+      [secret, open],
+    ]) {
+      expect((await tool('add_relation', { issue, type: 'related', other }, memberKey)).error).toBe(
+        'Issue not found',
+      );
+    }
+    expect((await tool('get_issue', { issue: open })).relations).toEqual([]);
+
+    // The owner relates them; the member sees neither the relation nor can remove it.
+    await tool('add_relation', { issue: open, type: 'blocked_by', other: secret });
+    expect((await tool('get_issue', { issue: open }, memberKey)).relations).toEqual([]);
+    for (const [issue, other] of [
+      [open, secret],
+      [secret, open],
+    ]) {
+      expect((await tool('remove_relation', { issue, other }, memberKey)).error).toBe(
+        'Issue not found',
+      );
+    }
+    expect((await tool('get_issue', { issue: open })).relations).toMatchObject([
+      { type: 'blocked_by', identifier: secret },
+    ]);
+  });
+});

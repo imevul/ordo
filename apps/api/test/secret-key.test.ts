@@ -1,12 +1,23 @@
 import { randomBytes } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { SiteInvite } from '@ordo/shared';
-import { eq } from 'drizzle-orm';
+import type { InstanceSettings, SiteInvite } from '@ordo/shared';
+import { eq, getTableColumns } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { Secret, TOTP } from 'otpauth';
 import { afterAll, describe, expect, it } from 'vitest';
-import { instanceKeys, users } from '../src/db/schema.ts';
+import {
+  authProviders,
+  imports,
+  instanceKeys,
+  instanceSettings,
+  integrationApps,
+  integrations,
+  matrixCryptoStores,
+  users,
+  workspaceAiProviders,
+  workspaces,
+} from '../src/db/schema.ts';
 import { Keyring } from '../src/lib/secrets.ts';
 import { decryptAiKey } from '../src/services/ai/assist.ts';
 import { beginTotp, verifyTotp } from '../src/services/mfa.ts';
@@ -286,5 +297,109 @@ describe('rotate-key', () => {
       rotated: 0,
       failed: ['instance_keys:test:value'],
     });
+  });
+});
+
+describe('rotate-key, for every registered secret', () => {
+  it('moves each entry of ENCRYPTED_COLUMNS and ENCRYPTED_SETTINGS to the new key', async () => {
+    const url = await freshDatabase('secret_registry');
+    const app = await open(url, KEY_A);
+    const tess = await signup(app, 'Reg Istry');
+    const slug = `reg${randomBytes(3).toString('hex')}`;
+    await tess.client.post('/api/workspaces', {
+      name: 'Reg',
+      slug,
+      teamName: 'Core',
+      teamKey: 'REG',
+    });
+    const [ws] = await app.db.select().from(workspaces).where(eq(workspaces.slug, slug));
+    const workspaceId = ws!.id;
+
+    // One row per table, so each entry has something to rotate. A new entry fails below until it
+    // gets a row here.
+    await tess.client.post(`/api/w/${slug}/webhooks`, { url: 'https://hooks.example.com/r' });
+    await tess.client.post(`/api/w/${slug}/invites`, { role: 'member' });
+    await app.db.insert(authProviders).values({ workspaceId, name: 'Okta' });
+    const [appRow] = await app.db
+      .insert(integrationApps)
+      .values({ provider: 'github', name: 'GitHub App' })
+      .returning();
+    const [integration] = await app.db
+      .insert(integrations)
+      .values({
+        workspaceId,
+        provider: 'matrix',
+        appId: appRow!.id,
+        name: 'Matrix',
+        inboundToken: randomBytes(16).toString('hex'),
+      })
+      .returning();
+    await app.db
+      .insert(matrixCryptoStores)
+      .values({ integrationId: integration!.id, data: 'placeholder' });
+    await app.db
+      .insert(workspaceAiProviders)
+      .values({ workspaceId, provider: 'openai', model: 'm' });
+    await app.db.insert(imports).values({ workspaceId, source: 'csv', name: 'x.csv' });
+    await app.db.insert(instanceKeys).values({ key: 'registry', value: 'placeholder' });
+
+    // Every value written under the old key, the way the app would, with the entry's own AAD.
+    const oldKey = new Keyring(KEY_A);
+    const written: { aad: string; plain: string; read: () => Promise<string | undefined> }[] = [];
+    for (const { table, id, column, aad } of ENCRYPTED_COLUMNS) {
+      const field = Object.entries(getTableColumns(table)).find(([, c]) => c === column)![0];
+      const rows = (await app.db.select({ id }).from(table)) as { id: string }[];
+      expect(rows.length, `no fixture row for ${aad('…')}`).toBeGreaterThan(0);
+      for (const row of rows) {
+        const plain = `secret for ${aad(row.id)}`;
+        await app.db
+          .update(table)
+          .set({ [field]: oldKey.encrypt(plain, aad(row.id)) } as never)
+          .where(eq(id, row.id));
+        written.push({
+          aad: aad(row.id),
+          plain,
+          read: async () =>
+            (
+              (await app.db.select({ v: column }).from(table).where(eq(id, row.id))) as {
+                v: string;
+              }[]
+            )[0]?.v,
+        });
+      }
+    }
+    const fixtures: { [K in (typeof ENCRYPTED_SETTINGS)[number]['key']]: InstanceSettings[K] } = {
+      smtp: { url: 'smtp://placeholder', from: 'Ordo <ordo@example.com>' },
+      ai: { provider: 'openai', model: 'm', baseUrl: 'http://localhost:1/v1', apiKey: 'x' },
+    };
+    for (const { key, field, aad } of ENCRYPTED_SETTINGS) {
+      const plain = `secret for ${aad}`;
+      const value = { ...fixtures[key], [field]: oldKey.encrypt(plain, aad) };
+      await app.settings.set(key, value as never, null);
+      written.push({
+        aad,
+        plain,
+        read: async () => {
+          const [row] = await app.db
+            .select()
+            .from(instanceSettings)
+            .where(eq(instanceSettings.key, key));
+          return (row?.value as Record<string, string> | undefined)?.[field];
+        },
+      });
+    }
+
+    const onlyB = new Keyring(KEY_B);
+    expect(await countUnreadableSecrets(app.db, onlyB)).toBe(written.length);
+    expect(await rotateSecrets(app.db, app.settings, new Keyring(KEY_B, KEY_A))).toEqual({
+      rotated: written.length,
+      failed: [],
+    });
+    expect(await countUnreadableSecrets(app.db, onlyB)).toBe(0);
+    for (const w of written) {
+      const value = await w.read();
+      expect(value, w.aad).toMatch(/^v1\./);
+      expect(onlyB.decrypt(value!, w.aad), w.aad).toBe(w.plain);
+    }
   });
 });

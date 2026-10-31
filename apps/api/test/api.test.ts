@@ -1,4 +1,5 @@
-import type { Bootstrap, Issue, IssueDetail } from '@ordo/shared';
+import { randomUUID } from 'node:crypto';
+import type { Bootstrap, HistoryEntry, Issue, IssueDetail } from '@ordo/shared';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -413,7 +414,7 @@ describe('issues', () => {
   });
 
   it('trashes and restores issues', async () => {
-    await ada.del(`${ws}/issues/${first.id}`);
+    expect((await ada.del(`${ws}/issues/${first.id}`)).statusCode).toBe(200);
     const live = (await ada.post(`${ws}/issues/query`, { filter: {} })).data as Issue[];
     expect(live.some((i) => i.id === first.id)).toBe(false);
     const trash = (await ada.post(`${ws}/issues/query`, { filter: { trashed: true } }))
@@ -428,12 +429,31 @@ describe('issues', () => {
   it('bulk-updates issues', async () => {
     const all = (await ada.post(`${ws}/issues/query`, { filter: { teamId: team().id } }))
       .data as Issue[];
-    const res = await ada.post(`${ws}/issues/batch`, {
-      ids: all.map((i) => i.id),
-      patch: { priority: 1 },
-    });
+    expect(all.some((i) => i.priority !== 1)).toBe(true);
+    const ids = all.map((i) => i.id);
+    const res = await ada.post(`${ws}/issues/batch`, { ids, patch: { priority: 1 } });
     expect(res.statusCode).toBe(200);
+    expect((res.data as Issue[]).map((i) => i.id)).toEqual(ids);
     expect((res.data as Issue[]).every((i) => i.priority === 1)).toBe(true);
+    for (const before of all) {
+      const saved = (await ada.get(`${ws}/issues/${before.id}`)).data as Issue;
+      expect(saved.priority).toBe(1);
+      if (before.priority === 1) continue;
+      const history = (await ada.get(`${ws}/issues/${before.id}/history`)).data as HistoryEntry[];
+      expect(history.flatMap((h) => h.changes)).toContainEqual({
+        field: 'priority',
+        from: before.priority,
+        to: 1,
+      });
+    }
+
+    // One unknown id fails the whole batch: nothing is half-applied.
+    const mixed = await ada.post(`${ws}/issues/batch`, {
+      ids: [ids[0], randomUUID()],
+      patch: { priority: 3 },
+    });
+    expect(mixed.statusCode).toBe(404);
+    expect(((await ada.get(`${ws}/issues/${ids[0]}`)).data as Issue).priority).toBe(1);
   });
 });
 

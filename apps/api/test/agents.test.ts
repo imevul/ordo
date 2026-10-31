@@ -909,7 +909,7 @@ describe('failed runs', () => {
     await owner.post(`${ws}/agent-runs/${res.data.id}/cancel`);
   });
 
-  it("can't be restarted or dismissed by someone who can't see the issue", async () => {
+  it("can't be cancelled, restarted, run or dismissed by someone who can't see the issue", async () => {
     const hidden = (await owner.post(`${ws}/issues`, { teamId: prv, title: 'Secret' })).data;
     await owner.patch(`${ws}/agents/${limited}`, { teamIds: [eng, prv] });
     await owner.patch(`${ws}/issues/${hidden.id}`, { assigneeId: limited });
@@ -917,8 +917,23 @@ describe('failed runs', () => {
     await as('PATCH', `${ws}/agent/runs/${data.run.id}`, { status: 'failed', error: 'x' });
     expect((await member.post(`${ws}/agent-runs/${data.run.id}/restart`)).statusCode).toBe(404);
     expect((await member.post(`${ws}/agent-runs/${data.run.id}/dismiss`)).statusCode).toBe(404);
+    expect((await member.post(`${ws}/agent-runs/${data.run.id}/cancel`)).statusCode).toBe(404);
+    expect((await member.post(`${ws}/agent-runs/${data.run.id}/run-anyway`)).statusCode).toBe(404);
+    expect((await runsOf(hidden.id))[0]).toMatchObject({ status: 'failed', dismissedAt: null });
     await owner.post(`${ws}/agent-runs/${data.run.id}/dismiss`);
     await owner.patch(`${ws}/agents/${limited}`, { teamIds: [eng] });
+  });
+
+  it("can't be reported on by another agent", async () => {
+    const other = (await owner.post(`${ws}/agents`, { name: 'Other', teamIds: [eng] })).data.id;
+    const otherKey = (await owner.post(`${ws}/agents/${other}/keys`, { name: 'k' })).data.token;
+    const i = await issue('Mine, not yours', { assigneeId: limited });
+    const { data } = await take();
+    const url = `${ws}/agent/runs/${data.run.id}`;
+    expect((await bearer(otherKey, 'POST', `${url}/heartbeat`)).statusCode).toBe(404);
+    expect((await bearer(otherKey, 'PATCH', url, { status: 'succeeded' })).statusCode).toBe(404);
+    expect((await runsOf(i.id))[0]!.status).toBe('claimed');
+    expect((await as('PATCH', url, { status: 'succeeded' })).statusCode).toBe(200);
   });
 
   it('resume now: lifts the pause and restarts what failed on the limit', async () => {

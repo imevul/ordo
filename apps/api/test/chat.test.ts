@@ -5,11 +5,15 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   auditLog,
+  authTokens,
   chatMessages,
   domainEvents,
   externalAccounts,
   integrations,
+  issues,
   leases,
+  users,
+  workspaceMembers,
 } from '../src/db/schema.ts';
 import { discordProvider } from '../src/integrations/discord.ts';
 import { matrixProvider } from '../src/integrations/matrix.ts';
@@ -315,6 +319,68 @@ describe('Slack', () => {
     await command('UEVE', 'new Something');
     await settle();
     expect(lastResponse()).toContain('Link your Ordo account first');
+  });
+
+  it("refuses /ordo new from a linked person who's suspended, disabled or no longer a member", async () => {
+    const member = and(
+      eq(workspaceMembers.workspaceId, boot.workspace.id),
+      eq(workspaceMembers.userId, bobId),
+    );
+    const [membership] = await app.db.select().from(workspaceMembers).where(member);
+    const tryNew = async (title: string) => {
+      await command('UBOB', `new ALP ${title}`);
+      await settle();
+      expect(lastResponse(), title).toContain('Link your Ordo account first');
+      expect((await app.db.select().from(issues).where(eq(issues.title, title))).length).toBe(0);
+    };
+    try {
+      await app.db.update(workspaceMembers).set({ suspendedAt: sql`now()` }).where(member);
+      await tryNew('While suspended');
+      await app.db.update(workspaceMembers).set({ suspendedAt: null }).where(member);
+
+      await app.db.update(users).set({ disabledAt: sql`now()` }).where(eq(users.id, bobId));
+      await tryNew('While disabled');
+      await app.db.update(users).set({ disabledAt: null }).where(eq(users.id, bobId));
+
+      await app.db.delete(workspaceMembers).where(member);
+      await tryNew('After leaving');
+    } finally {
+      await app.db.update(users).set({ disabledAt: null }).where(eq(users.id, bobId));
+      await app.db
+        .insert(workspaceMembers)
+        .values(membership!)
+        .onConflictDoUpdate({
+          target: [workspaceMembers.workspaceId, workspaceMembers.userId],
+          set: { suspendedAt: null },
+        });
+    }
+    await command('UBOB', 'new ALP Back again');
+    await settle();
+    expect(lastResponse()).toContain('Created ALP-');
+  });
+
+  it('refuses link codes that have expired or belong to another integration', async () => {
+    const expired = await linkCode(slack.id);
+    // Codes last 15 minutes.
+    await app.db
+      .update(authTokens)
+      .set({ expiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(and(eq(authTokens.userId, bobId), eq(authTokens.kind, 'chat_link')));
+    await command('UNEW', `link ${expired}`);
+    await settle();
+    expect(lastResponse()).toContain('invalid or has expired');
+
+    const elsewhere = await createLinkCode(app, bobId, boot.workspace.id, randomUUID());
+    await command('UNEW', `link ${elsewhere}`);
+    await settle();
+    expect(lastResponse()).toContain('invalid or has expired');
+    const linked = await app.db
+      .select()
+      .from(externalAccounts)
+      .where(
+        and(eq(externalAccounts.integrationId, slack.id), eq(externalAccounts.externalId, 'UNEW')),
+      );
+    expect(linked).toEqual([]);
   });
 
   it('files a message from the message shortcut, quoting and linking it', async () => {

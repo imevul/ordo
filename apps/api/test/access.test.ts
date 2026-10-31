@@ -314,6 +314,10 @@ describe('notifications', () => {
         .map((n) => n.type);
     expect(await types('insider')).toContain('issue_mention');
     expect(await types('member')).toHaveLength(0);
+    const counts = async (who: keyof typeof c) =>
+      (await c[who].get(`${ws}/notifications/counts`)).data as Record<string, number>;
+    expect((await counts('insider')).issue_mention).toBeGreaterThan(0);
+    expect((await counts('member')).issue_mention).toBeUndefined();
   });
 });
 
@@ -346,6 +350,20 @@ describe('roles and teams', () => {
       (await c.insider.patch(`${ws}/teams/${ids.prv}`, { description: 'Run by Ines' })).statusCode,
     ).toBe(200);
     await c.owner.patch(`${ws}/teams/${ids.prv}/members/${ids.insider}`, { role: 'member' });
+  });
+
+  it('lets people leave teams, but only team admins remove others', async () => {
+    const remove = (who: keyof typeof c, team: string, user: string) =>
+      c[who].del(`${ws}/teams/${team}/members/${ids[user]}`);
+    expect((await remove('member', ids.pub!, 'guest')).statusCode).toBe(403);
+    expect((await remove('member', ids.prv!, 'insider')).statusCode).toBe(404);
+    expect((await remove('member', ids.prv!, 'member')).statusCode).toBe(404);
+    expect((await remove('member', ids.pub!, 'member')).statusCode).toBe(200);
+    expect((await c.member.post(`${ws}/teams/${ids.pub}/members`, {})).statusCode).toBe(200);
+    const teams = ((await c.owner.get(`${ws}/bootstrap`)).data as Bootstrap).teams;
+    const members = (id: string) => teams.find((t) => t.id === id)!.members.map((m) => m.userId);
+    expect(members(ids.prv!)).toContain(ids.insider);
+    expect(members(ids.pub!)).toEqual(expect.arrayContaining([ids.guest, ids.member]));
   });
 
   it('keeps guests to issue work', async () => {
@@ -535,6 +553,37 @@ describe('insights', () => {
   });
 });
 
+describe('project documents', () => {
+  it('stay with the projects people can see', async () => {
+    const doc = (
+      await c.owner.post(`${ws}/projects/${ids.secretProject}/documents`, { title: 'Pricing' })
+    ).data.id;
+    for (const who of DENIED) {
+      expect((await c[who].get(`${ws}/projects/${ids.secretProject}/documents`)).statusCode).toBe(
+        404,
+      );
+      expect(
+        (await c[who].post(`${ws}/projects/${ids.secretProject}/documents`, { title: 'x' }))
+          .statusCode,
+        who,
+      ).toBe(404);
+      expect((await c[who].get(`${ws}/documents/${doc}`)).statusCode, who).toBe(404);
+      expect(
+        (await c[who].patch(`${ws}/documents/${doc}`, { title: 'Leaked' })).statusCode,
+        who,
+      ).toBe(404);
+      expect((await c[who].del(`${ws}/documents/${doc}`)).statusCode, who).toBe(404);
+    }
+    for (const who of ALLOWED)
+      expect((await c[who].get(`${ws}/documents/${doc}`)).statusCode, who).toBe(200);
+    expect(
+      (await c.insider.patch(`${ws}/documents/${doc}`, { title: 'Pricing v2' })).statusCode,
+    ).toBe(200);
+    expect((await c.owner.get(`${ws}/documents/${doc}`)).data.title).toBe('Pricing v2');
+    expect((await c.insider.del(`${ws}/documents/${doc}`)).statusCode).toBe(200);
+  });
+});
+
 /**
  * Every workspace route must be accounted for: exercised by this matrix, or listed with the reason
  * it needs no team check. A new route that is in neither list fails the build.
@@ -565,6 +614,7 @@ describe('route inventory', () => {
     'PATCH /teams/:teamId',
     'POST /teams/:teamId/members',
     'PATCH /teams/:teamId/members/:userId',
+    'DELETE /teams/:teamId/members/:userId',
     'POST /teams/:teamId/states',
     'POST /teams/:teamId/cycles',
     'GET /insights/timeline',
@@ -576,6 +626,11 @@ describe('route inventory', () => {
     'DELETE /members/:userId',
     'POST /invites',
     'POST /mcp',
+    'GET /projects/:id/documents',
+    'POST /projects/:id/documents',
+    'GET /documents/:id',
+    'PATCH /documents/:id',
+    'DELETE /documents/:id',
   ]);
   // Routes that go through the same service as a covered route, or have no team-scoped data.
   const ALLOWLISTED: Record<string, string> = {
@@ -597,13 +652,6 @@ describe('route inventory', () => {
     'POST /teams/:teamId/triage-rules': 'loadTeam(admin), like workflow states (triage.test.ts)',
     'PATCH /triage-rules/:id': "loadTeam(admin) of the rule's team (triage.test.ts)",
     'DELETE /triage-rules/:id': "loadTeam(admin) of the rule's team (triage.test.ts)",
-    'GET /projects/:id/documents': 'the project must be visible (documents.test.ts)',
-    'POST /projects/:id/documents': 'the project must be visible; not guests (documents.test.ts)',
-    'GET /documents/:id': "the document's project must be visible (documents.test.ts)",
-    'PATCH /documents/:id':
-      "the document's project must be visible; not guests (documents.test.ts)",
-    'DELETE /documents/:id':
-      "the document's project must be visible; not guests (documents.test.ts)",
     'GET /customers': 'workspace-level; guests get none (customers.test.ts)',
     'POST /customers': 'non-guests (customers.test.ts)',
     'PATCH /customers/:id': 'loadCustomer: workspace-scoped, non-guests (customers.test.ts)',
@@ -626,12 +674,13 @@ describe('route inventory', () => {
     'DELETE /comments/:id': 'loadComment checks the issue team',
     'GET /teams': 'listTeams, same as bootstrap',
     'DELETE /teams/:teamId': 'workspace admins only',
-    'DELETE /teams/:teamId/members/:userId': 'loadTeam(read|admin)',
     'PATCH /states/:stateId': 'loadState requires team admin',
     'DELETE /states/:stateId': 'loadState requires team admin',
     'GET /cycles': 'listCycles, same as bootstrap',
     'PATCH /cycles/:id': 'loadCycle checks team access',
     'DELETE /cycles/:id': 'loadCycle checks team access',
+    'GET /cycles/:id/workload': 'readableCycle checks team access (workload.test.ts)',
+    'PUT /cycles/:id/capacity/:userId': 'loadCycle checks team access (workload.test.ts)',
     'GET /projects': 'listProjects, same as bootstrap',
     'GET /projects/:id': 'listProjects',
     'PATCH /projects/:id': 'loadProject',
@@ -724,7 +773,7 @@ describe('route inventory', () => {
     'GET /placeholders': 'workspace admins only (placeholders.test.ts)',
     'GET /exports': 'workspace admins only (exports.test.ts)',
     'POST /exports': 'workspace admins only (exports.test.ts)',
-    'DELETE /exports/:id': 'workspace admins only',
+    'DELETE /exports/:id': 'workspace admins only; scoped to the workspace (exports.test.ts)',
     'POST /placeholders/:id/merge': 'workspace admins only (placeholders.test.ts)',
     'GET /mcp': 'always 405',
     'POST /graphql': "resolvers call the REST services with the caller's access (graphql.test.ts)",
@@ -754,8 +803,10 @@ describe('route inventory', () => {
     'GET /agent/me': "the calling agent's own teams (agents.test.ts)",
     'POST /agent/claim':
       "the calling agent's runs; the issue is loaded with its access, else the run is cancelled (agents.test.ts)",
-    'POST /agent/runs/:id/heartbeat': "the calling agent's own runs (agents.test.ts)",
-    'PATCH /agent/runs/:id': "the calling agent's own runs (agents.test.ts)",
+    'POST /agent/runs/:id/heartbeat':
+      "ownRun: the calling agent's own runs only (agents.test.ts, another agent's run)",
+    'PATCH /agent/runs/:id':
+      "ownRun: the calling agent's own runs only (agents.test.ts, another agent's run)",
     'GET /repositories': 'names and URLs, workspace-wide like the bootstrap (agents.test.ts)',
     'POST /repositories': 'workspace admins only (agents.test.ts)',
     'PATCH /repositories/:id': 'workspace admins only',
@@ -769,5 +820,9 @@ describe('route inventory', () => {
       .map((r) => `${r.method} ${r.url.slice(prefix.length) || '/'}`);
     const unknown = routes.filter((r) => !COVERED.has(r) && !(r in ALLOWLISTED));
     expect(unknown).toEqual([]);
+    // Entries for routes that are gone (or renamed) would claim coverage nobody has.
+    const stale = [...COVERED, ...Object.keys(ALLOWLISTED)].filter((r) => !routes.includes(r));
+    expect(stale).toEqual([]);
+    expect([...COVERED].filter((r) => r in ALLOWLISTED)).toEqual([]);
   });
 });

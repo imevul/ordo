@@ -125,5 +125,31 @@ describe('project milestones', () => {
     expect((await member.patch(`${ws}/milestones/${hidden}`, { name: 'Mine' })).statusCode).toBe(
       404,
     );
+    expect((await member.del(`${ws}/milestones/${hidden}`)).statusCode).toBe(404);
+    const after = (await owner.get(`${ws}/projects/${ids.secret}`)).data as Project;
+    expect(after.milestones.map((m) => m.name)).toEqual(['Hidden']);
+    expect((await guest.patch(`${ws}/milestones/${ids.beta}`, { name: 'Mine' })).statusCode).toBe(
+      403,
+    );
+    expect((await guest.del(`${ws}/milestones/${ids.beta}`)).statusCode).toBe(403);
+  });
+
+  it('can be planned by agents, which are guests of their teams', async () => {
+    const agentId = (await owner.post(`${ws}/agents`, { name: 'Planner', teamIds: [ids.pub] })).data
+      .id;
+    const key = (await owner.post(`${ws}/agents/${agentId}/keys`, { name: 'k' })).data.token;
+    const as = (method: 'POST' | 'PATCH', url: string, body: object) =>
+      app.inject({ method, url, payload: body, headers: { authorization: `Bearer ${key}` } });
+    const made = await as('POST', `${ws}/projects/${project.id}/milestones`, { name: 'Agent' });
+    expect(made.statusCode, made.body).toBe(200);
+    const id = (made.json() as Project).milestones.find((m) => m.name === 'Agent')!.id;
+    expect((await as('PATCH', `${ws}/milestones/${id}`, { name: 'Agent 2' })).statusCode).toBe(200);
+    // Only milestones: the project itself stays out of an agent's hands, like a guest's.
+    expect((await as('PATCH', `${ws}/projects/${project.id}`, { name: 'Mine' })).statusCode).toBe(
+      403,
+    );
+    expect(
+      (await as('POST', `${ws}/projects/${ids.secret}/milestones`, { name: 'x' })).statusCode,
+    ).toBe(404);
   });
 });

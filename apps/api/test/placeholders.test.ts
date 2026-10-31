@@ -5,12 +5,13 @@ import type {
   IssueDetail,
   PlaceholderSummary,
 } from '@ordo/shared';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { getTableConfig, PgTable } from 'drizzle-orm/pg-core';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as schema from '../src/db/schema.ts';
 import { auditLog, issueSubscribers, notifications, users } from '../src/db/schema.ts';
+import { hashPassword } from '../src/lib/crypto.ts';
 import { MERGED_COLUMNS, UNMERGED_COLUMNS } from '../src/services/placeholders.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
@@ -148,14 +149,19 @@ describe('placeholders', () => {
       .where(eq(notifications.userId, carol.id));
     expect(theirs).toHaveLength(0);
 
-    // No password, not human: signing in by their (fake) address doesn't work.
+    // Not human: even with a password hash set, the right password doesn't sign them in.
+    await app.db
+      .update(users)
+      .set({ passwordHash: await hashPassword('placeholder-password') })
+      .where(eq(users.id, carol.id));
     const [row] = await app.db.select().from(users).where(eq(users.id, carol.id));
     const login = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { email: row!.email, password: '' },
+      payload: { email: row!.email, password: 'placeholder-password' },
     });
-    expect(login.statusCode).toBeGreaterThanOrEqual(400);
+    expect(login.statusCode, login.body).toBe(401);
+    await app.db.update(users).set({ passwordHash: null }).where(eq(users.id, carol.id));
   });
 
   it('are reused by later imports of the same people', async () => {
@@ -214,7 +220,9 @@ describe('placeholders', () => {
     const audit = await app.db
       .select()
       .from(auditLog)
-      .where(eq(auditLog.action, 'placeholder.merged'));
+      .where(
+        and(eq(auditLog.workspaceId, boot.workspace.id), eq(auditLog.action, 'placeholder.merged')),
+      );
     expect(audit[0]!.data).toMatchObject({
       placeholder: 'carol@example.com',
       member: 'Carol Real',

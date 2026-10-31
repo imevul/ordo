@@ -313,6 +313,24 @@ describe("a workspace's own model", () => {
       expect((call.body as { model: string }).model).toBe('own-model');
       expect((await admin.post(`${ws}/ai/provider/test`)).data.reply).toBe('From our own model.');
 
+      // Members can neither change, remove nor try out the workspace's model.
+      const mem = as(app, member);
+      const calls = mock.calls('POST', '/v1/chat/completions').length;
+      const swap = await mem.put(`${ws}/ai/provider`, {
+        provider: 'openai',
+        model: 'members-model',
+        baseUrl: `${mock.url}/v1/`,
+        apiKey: 'sk-member-0000000000',
+      });
+      expect(swap.statusCode).toBe(403);
+      expect((await mem.del(`${ws}/ai/provider`)).statusCode).toBe(403);
+      expect((await mem.post(`${ws}/ai/provider/test`)).statusCode).toBe(403);
+      expect(mock.calls('POST', '/v1/chat/completions')).toHaveLength(calls);
+      expect((await admin.get(`${ws}/ai/settings`)).data).toMatchObject({
+        source: 'workspace',
+        own: { model: 'own-model' },
+      });
+
       // Even with the instance's own model set up, the workspace's wins.
       const claude = as(claudeApp, owner);
       expect((await claude.get(`${ws}/bootstrap`)).data.ai.model).toBe('own-model');

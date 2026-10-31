@@ -107,10 +107,11 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     autoArchiveMonths: t.autoArchiveMonths,
     slaHours: t.slaHours,
     triageRules: rules.filter((r) => r.teamId === t.id).map(toTriageRule),
+    defaultCapacity: t.defaultCapacity,
     memberIds: members.filter((m) => m.teamId === t.id).map((m) => m.userId),
     members: members
       .filter((m) => m.teamId === t.id)
-      .map((m) => ({ userId: m.userId, role: m.role })),
+      .map((m) => ({ userId: m.userId, role: m.role, capacity: m.capacity })),
     managedBy: groups.filter((g) => g.teamId === t.id).map((g) => g.name),
     states: states
       .filter((s) => s.teamId === t.id)

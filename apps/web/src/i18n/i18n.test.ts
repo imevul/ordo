@@ -1,7 +1,9 @@
 import { catalogueProblems, missingMessages } from '@ordo/shared';
+import { createElement } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import en from './en/index.ts';
-import { type Catalog, setLocale, t, tx } from './index.ts';
+import { type Catalog, type MessageKey, setLocale, t, tx } from './index.ts';
 import nb from './nb/index.ts';
 import sv from './sv/index.ts';
 
@@ -24,8 +26,20 @@ describe('t', () => {
   });
 
   it('places markup and React nodes where the translation puts them', () => {
-    const node = tx('common.issueCount' as never, { count: 2 });
-    expect(node).toBeTruthy();
+    const html = renderToStaticMarkup(
+      tx('issue.activity.title', {
+        actor: createElement('em', null, 'Ada'),
+        title: 'Fix <login>',
+        b: (chunk) => createElement('strong', null, chunk),
+      }),
+    );
+    // Values are text, not markup: the angle brackets in the title come out escaped.
+    expect(html).toBe(
+      '<em>Ada</em> changed the title to <strong>&quot;Fix &lt;login&gt;&quot;</strong>',
+    );
+    expect(renderToStaticMarkup(tx('issues.view.selected', { count: 1200 }))).toBe(
+      '1,200 selected',
+    );
   });
 });
 
@@ -37,15 +51,17 @@ describe('catalogues', () => {
     expect(catalogueProblems(en, cat)).toEqual([]);
   });
 
-  it('reports what is not translated yet', () => {
-    // Not a failure: missing messages show in English. This keeps the gap visible in test output.
-    for (const [name, cat] of [
-      ['sv', sv],
-      ['nb', nb],
-    ] as const) {
-      const missing = missingMessages(en, cat);
-      if (missing.length) console.info(`${name}: ${missing.length} messages fall back to English`);
-    }
+  it.each([
+    ['sv', sv],
+    ['nb', nb],
+  ] as const)('%s shows every message it lacks in English', async (locale, cat) => {
+    const missing = missingMessages(en, cat) as MessageKey[];
+    await setLocale('en');
+    const english = missing.map((key) => t(key, { count: 2 }));
+    await setLocale(locale);
+    expect(missing.map((key) => t(key, { count: 2 }))).toEqual(english);
+    // English has them all, so none falls through to showing its key.
+    expect(missing.filter((key, i) => english[i] === key)).toEqual([]);
   });
 });
 

@@ -280,6 +280,11 @@ describe('links mode', () => {
     one.status = 'Done';
     touch(one);
     expect((await hook(links, updated(one))).statusCode).toBe(401);
+    expect((await hook(links, updated(one), 'not-the-secret')).statusCode).toBe(401);
+    await settle();
+    expect((await detail(issue.id)).links.find((l) => l.kind === 'external_issue')?.state).toBe(
+      'To Do',
+    );
     expect((await hook(links, updated(one), 'shh')).statusCode).toBe(202);
     await settle();
     expect((await detail(issue.id)).links.find((l) => l.kind === 'external_issue')?.state).toBe(
@@ -377,7 +382,13 @@ describe('mirror and sync', () => {
     const refs = await app.db
       .select()
       .from(integrationRefs)
-      .where(eq(integrationRefs.externalId, j.id));
+      .where(
+        and(
+          eq(integrationRefs.integrationId, jira.id),
+          eq(integrationRefs.kind, 'issue'),
+          eq(integrationRefs.externalId, j.id),
+        ),
+      );
     expect(refs.map((r) => r.localId)).toEqual([imported.id]);
   });
 

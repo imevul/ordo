@@ -193,11 +193,15 @@ describe('triage', () => {
     const team = (await owner.patch(`${ws}/teams/${ops.id}`, { triageEnabled: true })).data as Team;
     const waiting = await make(team, 'Needs a look', { stateId: state(team, 'triage') });
     const trashed = await make(team, 'Trashed in triage', { stateId: state(team, 'triage') });
-    await owner.del(`${ws}/issues/${trashed.id}`);
+    expect((await owner.del(`${ws}/issues/${trashed.id}`)).statusCode).toBe(200);
     const off = (await owner.patch(`${ws}/teams/${team.id}`, { triageEnabled: false }))
       .data as Team;
     const expected = off.defaultStateId ?? state(off, 'backlog');
     expect((await get(waiting.id)).stateId).toBe(expected);
+    // Issues in the trash are left alone, so restoring one doesn't skip triage silently.
+    const [row] = await app.db.select().from(issues).where(eq(issues.id, trashed.id));
+    expect(row!.deletedAt).not.toBeNull();
+    expect(row!.stateId).toBe(state(team, 'triage'));
   });
 });
 

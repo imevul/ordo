@@ -120,6 +120,45 @@ describe('web push', () => {
     ).toHaveLength(0);
   });
 
+  it("doesn't let one person unsubscribe another's device", async () => {
+    const keys = {
+      p256dh: ua.getPublicKey().toString('base64url'),
+      auth: auth.toString('base64url'),
+    };
+    const endpoint = 'https://push.example.com/device-mine';
+    await member.post('/api/me/push-subscriptions', { endpoint, keys });
+    const res = await owner.req('DELETE', '/api/me/push-subscriptions', { endpoint });
+    expect(res.statusCode).toBe(200);
+    const [row] = await app.db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, endpoint));
+    expect(row!.userId).toBe(ids.member);
+    await app.db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  });
+
+  it("moves an endpoint to whoever subscribes it last, as when a device's user changes", async () => {
+    // Deliberate: an endpoint belongs to one browser profile, so when someone else signs in there
+    // and subscribes, the push should follow the new person and the old one stop getting it.
+    // Endpoints are unguessable capability URLs from the push service, so this isn't a takeover.
+    const keys = {
+      p256dh: ua.getPublicKey().toString('base64url'),
+      auth: auth.toString('base64url'),
+    };
+    const endpoint = 'https://push.example.com/shared-laptop';
+    await member.post('/api/me/push-subscriptions', { endpoint, keys });
+    expect((await owner.post('/api/me/push-subscriptions', { endpoint, keys })).statusCode).toBe(
+      200,
+    );
+    const rows = await app.db
+      .select()
+      .from(pushSubscriptions)
+      .where(eq(pushSubscriptions.endpoint, endpoint));
+    const ownerId = (await owner.get('/api/auth/me')).data.id;
+    expect(rows.map((r) => r.userId)).toEqual([ownerId]);
+    await app.db.delete(pushSubscriptions).where(eq(pushSubscriptions.endpoint, endpoint));
+  });
+
   it('pushes notifications, encrypted for the device, and drops gone ones', async () => {
     // The receiver here is plain HTTP on localhost, which the API wouldn't accept from a browser.
     const keys = {

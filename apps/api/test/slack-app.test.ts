@@ -2,7 +2,8 @@ import { createHmac } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { integrations, users } from '../src/db/schema.ts';
+import { integrations, users, workspaces } from '../src/db/schema.ts';
+import { joinWorkspace } from '../src/services/workspaces.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 import { startMockForge } from './mock-forge.ts';
 
@@ -22,8 +23,14 @@ async function settle() {
   }
 }
 
-const signed = (body: string, secret = signingSecret, contentType = 'application/json') => {
-  const ts = Math.floor(Date.now() / 1000);
+/** `skew` moves the timestamp, in seconds. */
+const signed = (
+  body: string,
+  secret = signingSecret,
+  contentType = 'application/json',
+  skew = 0,
+) => {
+  const ts = Math.floor(Date.now() / 1000) + skew;
   return app.inject({
     method: 'POST',
     url: '/api/hooks/slack/app',
@@ -126,6 +133,14 @@ describe('one-click Slack', () => {
     expect((await signed(body, 'wrong')).statusCode).toBe(401);
   });
 
+  it('refuses requests signed more than five minutes from now', async () => {
+    const body = JSON.stringify({ type: 'url_verification', challenge: 'old' });
+    for (const skew of [-290, 290])
+      expect((await signed(body, signingSecret, 'application/json', skew)).statusCode).toBe(200);
+    for (const skew of [-310, 310])
+      expect((await signed(body, signingSecret, 'application/json', skew)).statusCode).toBe(401);
+  });
+
   it('connects a Slack workspace with OAuth', async () => {
     const back = await addToSlack(owner, ws);
     expect(back.statusCode).toBe(302);
@@ -152,8 +167,48 @@ describe('one-click Slack', () => {
     // A state is good once, and only for the person who started.
     const { url } = (await owner.post(`${ws}/integrations/slack/install`)).data;
     const state = new URL(url).searchParams.get('state');
+    const exchanges = mock.calls('POST', '/oauth.v2.access').length;
     const stolen = await other.get(`/api/integrations/slack/callback?code=c&state=${state}`);
     expect(stolen.headers.location).toContain('error=');
+    const [otherWsRow] = await app.db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.slug, `${slug}-b`));
+    expect(
+      await app.db.select().from(integrations).where(eq(integrations.workspaceId, otherWsRow!.id)),
+    ).toEqual([]);
+    expect(mock.calls('POST', '/oauth.v2.access')).toHaveLength(exchanges);
+  });
+
+  it("won't take a state twice", async () => {
+    const { url } = (await owner.post(`${ws}/integrations/slack/install`)).data;
+    const state = new URL(url).searchParams.get('state');
+    const first = await owner.get(`/api/integrations/slack/callback?code=c1&state=${state}`);
+    expect(first.headers.location).toBe(`/${slug}/settings/integrations`);
+    const exchanges = mock.calls('POST', '/oauth.v2.access').length;
+    const again = await owner.get(`/api/integrations/slack/callback?code=c2&state=${state}`);
+    expect(again.headers.location).toContain('error=');
+    expect(mock.calls('POST', '/oauth.v2.access')).toHaveLength(exchanges);
+  });
+
+  it('finishes only if the person is still an admin when Slack sends them back', async () => {
+    const { client: ada, email } = await signup(app, 'Ada Admin');
+    const [{ id: userId }] = await app.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email));
+    const [{ id: wsId }] = await app.db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.slug, slug));
+    await joinWorkspace(app.db, wsId, userId, 'admin');
+    const { url } = (await ada.post(`${ws}/integrations/slack/install`)).data;
+    const state = new URL(url).searchParams.get('state');
+    expect((await owner.patch(`${ws}/members/${userId}`, { role: 'member' })).statusCode).toBe(200);
+    const exchanges = mock.calls('POST', '/oauth.v2.access').length;
+    const back = await ada.get(`/api/integrations/slack/callback?code=c&state=${state}`);
+    expect(decodeURIComponent(back.headers.location as string)).toContain('Only workspace admins');
+    expect(mock.calls('POST', '/oauth.v2.access')).toHaveLength(exchanges);
   });
 
   it('routes events to the workspace connected to their Slack team', async () => {

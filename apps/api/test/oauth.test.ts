@@ -1,13 +1,24 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { Secret, TOTP } from 'otpauth';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { apiKeys, auditLog, oauthGrants, oauthTokens } from '../src/db/schema.ts';
+import {
+  apiKeys,
+  auditLog,
+  oauthClients,
+  oauthCodes,
+  oauthGrants,
+  oauthTokens,
+  users,
+  workspaces,
+} from '../src/db/schema.ts';
+import { sha256 } from '../src/lib/crypto.ts';
 import { pruneOAuth } from '../src/services/oauth.ts';
 import { createToken } from '../src/services/tokens.ts';
+import { joinWorkspace } from '../src/services/workspaces.ts';
 import { Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -96,6 +107,24 @@ async function connect(who = ada, to = resource) {
   });
   expect(res.statusCode, res.body).toBe(200);
   return { clientId: client.client_id as string, ...res.data };
+}
+
+/** The grant a token belongs to. */
+async function grantOf(token: string) {
+  const [row] = await app.db
+    .select({ grantId: oauthTokens.grantId })
+    .from(oauthTokens)
+    .where(eq(oauthTokens.tokenHash, sha256(token)));
+  return row!.grantId;
+}
+
+async function revoke(params: Record<string, string>) {
+  return app.inject({
+    method: 'POST',
+    url: '/api/oauth/revoke',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    payload: new URLSearchParams(params).toString(),
+  });
 }
 
 async function mcp(bearer: string, url = '/api/w/oa/mcp') {
@@ -266,6 +295,45 @@ describe('tokens', () => {
     expect(ok.data).toMatchObject({ token_type: 'Bearer', expires_in: 3600, scope: 'mcp' });
   });
 
+  it('refuses a used, expired or redirect-mismatched code', async () => {
+    const { data: client } = await register({
+      redirect_uris: [REDIRECT, 'http://localhost:4567/other'],
+    });
+    const { verifier, challenge } = pkce();
+    const exchange = (code: string, extra: Record<string, string> = {}) =>
+      token({
+        grant_type: 'authorization_code',
+        code,
+        code_verifier: verifier,
+        client_id: client.client_id,
+        redirect_uri: REDIRECT,
+        ...extra,
+      });
+
+    const used = await consent(client.client_id, challenge);
+    expect((await exchange(used)).statusCode).toBe(200);
+    expect((await exchange(used)).data.error).toBe('invalid_grant');
+
+    const expired = await consent(client.client_id, challenge);
+    await app.db
+      .update(oauthCodes)
+      .set({ expiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(eq(oauthCodes.codeHash, sha256(expired)));
+    expect((await exchange(expired)).data.error).toBe('invalid_grant');
+
+    // Registered too, but not the one the code was issued for.
+    const elsewhere = await consent(client.client_id, challenge);
+    const mismatch = await exchange(elsewhere, { redirect_uri: 'http://localhost:4567/other' });
+    expect(mismatch.data.error).toBe('invalid_grant');
+    // The loopback port is part of the match at exchange time.
+    const port = await consent(client.client_id, challenge);
+    expect(
+      (await exchange(port, { redirect_uri: 'http://localhost:9999/callback' })).data.error,
+    ).toBe('invalid_grant');
+    // A refused exchange used the code up.
+    expect((await exchange(elsewhere)).data.error).toBe('invalid_grant');
+  });
+
   it("won't hand one app's code to another", async () => {
     const { data: a } = await register();
     const { data: b } = await register();
@@ -345,7 +413,7 @@ describe('using tokens', () => {
     await app.db
       .update(oauthTokens)
       .set({ usedAt: new Date(Date.now() - 60_000).toISOString() })
-      .where(eq(oauthTokens.kind, 'refresh'));
+      .where(eq(oauthTokens.tokenHash, sha256(refresh_token)));
     const replay = await token({ grant_type: 'refresh_token', refresh_token, client_id: clientId });
     expect(replay.data.error).toBe('invalid_grant');
     expect((await mcp(refreshed.data.access_token)).statusCode).toBe(401);
@@ -353,18 +421,13 @@ describe('using tokens', () => {
 
   it('revokes through the revocation endpoint', async () => {
     const { clientId, access_token, refresh_token } = await connect();
-    const res = await app.inject({
-      method: 'POST',
-      url: '/api/oauth/revoke',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      payload: new URLSearchParams({ token: refresh_token, client_id: clientId }).toString(),
-    });
+    const res = await revoke({ token: refresh_token, client_id: clientId });
     expect(res.statusCode).toBe(200);
     expect((await mcp(access_token)).statusCode).toBe(401);
   });
 
   it('lists connected apps, and disconnecting one ends its tokens', async () => {
-    const { access_token } = await connect();
+    const { access_token, clientId } = await connect();
     const list = (await ada.get('/api/me/oauth-grants')).data;
     expect(list[0]).toMatchObject({ client: { name: 'Test agent' }, workspace: { slug: 'oa' } });
     expect((await bob.get('/api/me/oauth-grants')).data).toEqual([]);
@@ -374,27 +437,121 @@ describe('using tokens', () => {
 
     await ada.del(`/api/me/oauth-grants/${list[0].id}`);
     expect((await mcp(access_token)).statusCode).toBe(401);
-    const actions = (await app.db.select({ action: auditLog.action }).from(auditLog)).map(
-      (r) => r.action,
-    );
+    const [client] = await app.db
+      .select({ id: oauthClients.id })
+      .from(oauthClients)
+      .where(eq(oauthClients.clientId, clientId));
+    const actions = (
+      await app.db
+        .select({ action: auditLog.action })
+        .from(auditLog)
+        .where(and(eq(auditLog.targetType, 'oauth_client'), eq(auditLog.targetId, client!.id)))
+    ).map((r) => r.action);
     expect(actions).toContain('oauth.authorized');
     expect(actions).toContain('oauth.revoked');
   });
 
   it('prunes grants whose tokens all expired', async () => {
+    const stale = await grantOf((await connect()).access_token);
     const { access_token } = await connect();
-    const before = (await app.db.select().from(oauthGrants)).length;
-    const [row] = await app.db
-      .select({ grantId: oauthTokens.grantId })
-      .from(oauthTokens)
-      .orderBy(oauthTokens.createdAt)
-      .limit(1);
+    const live = await grantOf(access_token);
     await app.db
       .update(oauthTokens)
       .set({ expiresAt: new Date(Date.now() - 1000).toISOString() })
-      .where(eq(oauthTokens.grantId, row!.grantId));
+      .where(eq(oauthTokens.grantId, stale));
     await pruneOAuth(app.db);
-    expect((await app.db.select().from(oauthGrants)).length).toBe(before - 1);
+    const left = async (id: string) =>
+      (await app.db.select().from(oauthGrants).where(eq(oauthGrants.id, id))).length;
+    expect(await left(stale)).toBe(0);
+    expect(await left(live)).toBe(1);
+    expect((await mcp(access_token)).statusCode).toBe(200);
+  });
+
+  it('refuses an expired access token', async () => {
+    const { access_token } = await connect();
+    await app.db
+      .update(oauthTokens)
+      .set({ expiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(eq(oauthTokens.tokenHash, sha256(access_token)));
+    expect((await mcp(access_token)).statusCode).toBe(401);
+  });
+
+  it('stops working once the person leaves the workspace', async () => {
+    const { client: carl } = await signup(app, 'Carl Leaver');
+    const carlId = (await carl.get('/api/auth/me')).data.id as string;
+    const [ws] = await app.db
+      .select({ id: workspaces.id })
+      .from(workspaces)
+      .where(eq(workspaces.slug, 'oa'));
+    await joinWorkspace(app.db, ws!.id, carlId, 'member');
+    const { access_token, refresh_token, clientId } = await connect(carl);
+    expect((await mcp(access_token)).statusCode).toBe(200);
+    expect((await ada.del(`/api/w/oa/members/${carlId}`)).statusCode).toBe(200);
+    expect((await mcp(access_token)).statusCode).toBe(404);
+    // A refreshed token is no better.
+    const refreshed = await token({
+      grant_type: 'refresh_token',
+      refresh_token,
+      client_id: clientId,
+    });
+    expect(refreshed.statusCode).toBe(200);
+    expect((await mcp(refreshed.data.access_token)).statusCode).toBe(404);
+  });
+
+  it("won't refresh another app's token, and doesn't use it up trying", async () => {
+    const { clientId, refresh_token } = await connect();
+    const { data: other } = await register();
+    const stolen = await token({
+      grant_type: 'refresh_token',
+      refresh_token,
+      client_id: other.client_id,
+    });
+    expect(stolen.data.error).toBe('invalid_grant');
+    const own = await token({ grant_type: 'refresh_token', refresh_token, client_id: clientId });
+    expect(own.statusCode, own.body).toBe(200);
+  });
+
+  it('refuses to refresh for a disabled account or an ended SSO session', async () => {
+    const { client: dora } = await signup(app, 'Dora Disabled');
+    await dora.post('/api/workspaces', {
+      name: 'oa-dis',
+      slug: 'oa-dis',
+      teamName: 'Eng',
+      teamKey: 'ENG',
+    });
+    const disabled = await connect(dora, `${base}/api/w/oa-dis/mcp`);
+    const doraId = (await dora.get('/api/auth/me')).data.id as string;
+    await app.db
+      .update(users)
+      .set({ disabledAt: new Date().toISOString() })
+      .where(eq(users.id, doraId));
+    const refused = await token({
+      grant_type: 'refresh_token',
+      refresh_token: disabled.refresh_token,
+      client_id: disabled.clientId,
+    });
+    expect(refused.data.error).toBe('invalid_grant');
+    expect((await mcp(disabled.access_token, '/api/w/oa-dis/mcp')).statusCode).toBe(401);
+
+    const sso = await connect();
+    await app.db
+      .update(oauthGrants)
+      .set({ ssoExpiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(eq(oauthGrants.id, await grantOf(sso.access_token)));
+    const ended = await token({
+      grant_type: 'refresh_token',
+      refresh_token: sso.refresh_token,
+      client_id: sso.clientId,
+    });
+    expect(ended.data.error).toBe('invalid_grant');
+    expect((await mcp(sso.access_token)).statusCode).toBe(401);
+  });
+
+  it("ignores a revocation sent with another app's client_id", async () => {
+    const { access_token, refresh_token } = await connect();
+    const { data: other } = await register();
+    for (const t of [refresh_token, access_token])
+      expect((await revoke({ token: t, client_id: other.client_id })).statusCode).toBe(200);
     expect((await mcp(access_token)).statusCode).toBe(200);
   });
 });

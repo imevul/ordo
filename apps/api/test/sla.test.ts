@@ -1,8 +1,8 @@
 import type { Bootstrap, Issue, Notification, Team } from '@ordo/shared';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { issues } from '../src/db/schema.ts';
+import { issues, notifications } from '../src/db/schema.ts';
 import { announceSlaBreaches } from '../src/services/sla.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
@@ -33,6 +33,13 @@ beforeAll(async () => {
     })
   ).client;
   ids.member = (await member.get('/api/auth/me')).data.id;
+  ids.owner = (await owner.get('/api/auth/me')).data.id;
+  const bystander = (
+    await signup(app, 'Bea Bystander', {
+      inviteToken: (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token,
+    })
+  ).client;
+  ids.bystander = (await bystander.get('/api/auth/me')).data.id;
   team = ((await owner.get(`${ws}/bootstrap`)).data as Bootstrap).teams[0]!;
   ids.other = (await owner.post(`${ws}/teams`, { name: 'Other', key: 'OTH' })).data.id;
 });
@@ -70,7 +77,7 @@ describe('SLAs', () => {
     expect(moved.slaBreachesAt).toBeNull();
   });
 
-  it('announce a breach once, to the assignee, for open issues only', async () => {
+  it('announce a breach once, to the assignee and subscribers, for open issues only', async () => {
     const make = async (title: string, stateType?: string) => {
       const stateId = stateType ? team.states.find((s) => s.type === stateType)!.id : undefined;
       const issue = (
@@ -96,5 +103,12 @@ describe('SLAs', () => {
       (n) => n.type === 'issue_sla_breached',
     );
     expect(notes.map((n) => n.issueId)).toEqual([late]);
+    // The assignee and the issue's subscribers (its creator); not the rest of the workspace.
+    const everyone = await app.db
+      .select({ userId: notifications.userId })
+      .from(notifications)
+      .where(and(eq(notifications.issueId, late), eq(notifications.type, 'issue_sla_breached')));
+    expect(everyone.map((n) => n.userId).sort()).toEqual([ids.member, ids.owner].sort());
+    expect(everyone.map((n) => n.userId)).not.toContain(ids.bystander);
   });
 });

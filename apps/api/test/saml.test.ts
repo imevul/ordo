@@ -259,6 +259,28 @@ describe('sign-in', () => {
     expect(await roleOf(p.email)).toBe('admin');
   });
 
+  it('demotes on a later sign-in, but never an owner', async () => {
+    const patched = await owner.patch(`${ws}/auth-providers/${providerId}`, {
+      groupRoles: { 'ordo-admins': 'admin', contractors: 'guest' },
+    });
+    expect(patched.statusCode, patched.body).toBe(200);
+    const p = person('demoted');
+    await saml({ ...p, groups: ['ordo-admins'] });
+    expect(await roleOf(p.email)).toBe('admin');
+    await saml({ ...p, groups: ['contractors'] });
+    expect(await roleOf(p.email)).toBe('guest');
+
+    const o = person('chief');
+    await saml({ ...o, groups: ['ordo-admins'] });
+    const [{ id }] = await app.db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, o.email));
+    expect((await owner.patch(`${ws}/members/${id}`, { role: 'owner' })).statusCode).toBe(200);
+    await saml({ ...o, groups: ['contractors'] });
+    expect(await roleOf(o.email)).toBe('owner');
+  });
+
   it('shows admins the received attributes in test mode without signing anyone in', async () => {
     const r = await saml(
       { nameId: 'tester', email: `tester@${domain}` },

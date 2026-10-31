@@ -6,6 +6,7 @@ import { escapeMarkdownText, markdownConverter, richTextExtensions } from './ric
 const md = markdownConverter();
 const schema = getSchema(richTextExtensions());
 const roundTrip = (s: string) => md.serialize(md.parse(s));
+const paragraph = (text: string) => ({ type: 'paragraph', content: [{ type: 'text', text }] });
 
 describe('markdown round trip', () => {
   test.each([
@@ -32,6 +33,51 @@ describe('markdown round trip', () => {
     const once = roundTrip(source);
     expect(roundTrip(once)).toBe(once);
     expect(md.parse(once)).toEqual(md.parse(source));
+  });
+
+  // The round trip above compares the converter with itself; these pin what it actually builds.
+  test('parses task lists into checked and unchecked task items', () => {
+    expect(md.parse('- [ ] todo\n- [x] done')).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'taskList',
+          content: [
+            { type: 'taskItem', attrs: { checked: false }, content: [paragraph('todo')] },
+            { type: 'taskItem', attrs: { checked: true }, content: [paragraph('done')] },
+          ],
+        },
+      ],
+    });
+  });
+
+  test('parses tables into a header row and body cells', () => {
+    const cell = (type: string, text: string) => ({ type, content: [paragraph(text)] });
+    expect(md.parse('| a | b |\n| --- | --- |\n| 1 | 2 |')).toEqual({
+      type: 'doc',
+      content: [
+        {
+          type: 'table',
+          content: [
+            { type: 'tableRow', content: [cell('tableHeader', 'a'), cell('tableHeader', 'b')] },
+            { type: 'tableRow', content: [cell('tableCell', '1'), cell('tableCell', '2')] },
+          ],
+        },
+      ],
+    });
+  });
+
+  test('parses images as inline image nodes with their source and alt text', () => {
+    expect(md.parse('Text with ![inline.png](/api/attachments/x) image').content).toEqual([
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'text', text: 'Text with ' },
+          { type: 'image', attrs: { src: '/api/attachments/x', alt: 'inline.png', title: null } },
+          { type: 'text', text: ' image' },
+        ],
+      },
+    ]);
   });
 
   test('keeps plain text free of needless escapes', () => {

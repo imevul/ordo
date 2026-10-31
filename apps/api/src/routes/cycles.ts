@@ -1,4 +1,4 @@
-import { createCycleSchema, updateCycleSchema } from '@ordo/shared';
+import { createCycleSchema, setCycleCapacitySchema, updateCycleSchema } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { cycles, issues } from '../db/schema.ts';
@@ -9,6 +9,7 @@ import { emit, record } from '../services/context.ts';
 import { createCycle, listCycles, loadCycle, updateCycle } from '../services/cycles.ts';
 import { bulkUpdateIssues } from '../services/issues.ts';
 import { toCycle } from '../services/serialize.ts';
+import { cycleWorkload, setCycleCapacity } from '../services/workload.ts';
 
 export async function cycleRoutes(app: FastifyInstance) {
   app.get('/cycles', async (req) => listCycles(app.db, requireAccess(req)));
@@ -23,6 +24,17 @@ export async function cycleRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const input = parse(updateCycleSchema, req.body);
     return mutate(app, req, (ctx) => updateCycle(ctx, id, input));
+  });
+
+  app.get('/cycles/:id/workload', async (req) => {
+    const { id } = req.params as { id: string };
+    return cycleWorkload(app.db, requireAccess(req), id);
+  });
+
+  app.put('/cycles/:id/capacity/:userId', async (req) => {
+    const { id, userId } = req.params as { id: string; userId: string };
+    const { capacity } = parse(setCycleCapacitySchema, req.body);
+    return mutate(app, req, (ctx) => setCycleCapacity(ctx, id, userId, capacity));
   });
 
   app.delete('/cycles/:id', async (req) => {
