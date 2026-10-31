@@ -11,6 +11,9 @@ export type Op =
   | { kind: 'issue.create'; issue: CreateIssueInput & { id: string } }
   | { kind: 'issue.update'; ids: string[]; patch: UpdateIssueInput }
   | { kind: 'issue.trash'; ids: string[] }
+  | { kind: 'issue.restore'; ids: string[] }
+  /** To another team: the server renumbers it and maps its status onto the team's workflow. */
+  | { kind: 'issue.move'; ids: string[]; teamId: string }
   | {
       kind: 'comment.create';
       comment: { id: string; issueId: string; body: string; parentId: string | null };
@@ -51,6 +54,8 @@ export function needs(op: Op): string[] {
       return op.issue.parentId ? [op.issue.parentId] : [];
     case 'issue.update':
     case 'issue.trash':
+    case 'issue.restore':
+    case 'issue.move':
       return op.ids;
     case 'comment.create':
       return [op.comment.issueId, ...(op.comment.parentId ? [op.comment.parentId] : [])];
@@ -114,6 +119,49 @@ function draftIssue(
   };
 }
 
+/** An issue in another team, as the server will move it (the number comes from the server). */
+function moveIssue(issue: Issue, teamId: string, bootstrap: Bootstrap | null, now: string): Issue {
+  if (issue.teamId === teamId) return issue;
+  const team = bootstrap?.teams.find((t) => t.id === teamId);
+  const type = bootstrap?.teams
+    .find((t) => t.id === issue.teamId)
+    ?.states?.find((s) => s.id === issue.stateId)?.type;
+  const states = [...(team?.states ?? [])].sort((a, b) => a.position - b.position);
+  const labelTeam = new Map(bootstrap?.labels.map((l) => [l.id, l.teamId]));
+  return {
+    ...issue,
+    teamId,
+    stateId:
+      states.find((s) => s.type === type)?.id ??
+      team?.defaultStateId ??
+      states[0]?.id ??
+      issue.stateId,
+    cycleId: null,
+    // Team-scoped labels from the old team no longer apply.
+    labelIds: issue.labelIds.filter((id) => {
+      const owner = labelTeam.get(id);
+      return !owner || owner === teamId;
+    }),
+    updatedAt: now,
+  };
+}
+
+type IssueOp = Extract<Op, { ids: string[] }>;
+
+/** One pending operation on one of its issues; trashing marks the issue deleted. */
+function applyOp(issue: Issue, op: IssueOp, queuedAt: string, bootstrap: Bootstrap | null): Issue {
+  switch (op.kind) {
+    case 'issue.update':
+      return patchIssue(issue, op.patch, queuedAt);
+    case 'issue.move':
+      return moveIssue(issue, op.teamId, bootstrap, queuedAt);
+    case 'issue.trash':
+      return { ...issue, deletedAt: issue.deletedAt ?? queuedAt };
+    case 'issue.restore':
+      return { ...issue, deletedAt: null };
+  }
+}
+
 /** The server's issues with pending operations applied on top. */
 export function overlayIssues(
   base: ReadonlyMap<string, Issue>,
@@ -122,18 +170,44 @@ export function overlayIssues(
   userId: string,
 ): Map<string, Issue> {
   const out = new Map(base);
+  // Trashed here, so restoring them (Undo while offline) brings them back.
+  const trashed = new Map<string, Issue>();
   for (const { op, queuedAt, error } of pending) {
     if (error) continue;
     if (op.kind === 'issue.create') {
       if (!out.has(op.issue.id))
         out.set(op.issue.id, { ...draftIssue(op.issue, bootstrap, queuedAt), creatorId: userId });
-    } else if (op.kind === 'issue.update') {
+    } else if ('ids' in op) {
       for (const id of op.ids) {
-        const issue = out.get(id);
-        if (issue) out.set(id, patchIssue(issue, op.patch, queuedAt));
+        const issue = out.get(id) ?? (op.kind === 'issue.restore' ? trashed.get(id) : undefined);
+        if (!issue) continue;
+        const next = applyOp(issue, op, queuedAt, bootstrap);
+        if (next.deletedAt && !issue.deletedAt) {
+          out.delete(id);
+          trashed.set(id, next);
+        } else {
+          out.set(id, next);
+          trashed.delete(id);
+        }
       }
-    } else if (op.kind === 'issue.trash') for (const id of op.ids) out.delete(id);
+    }
   }
+  return out;
+}
+
+/**
+ * One issue from the server (its page, say) with pending operations applied on top. Trashed
+ * here, it shows as in the trash rather than going away.
+ */
+export function overlayIssue<T extends Issue>(
+  issue: T,
+  pending: readonly PendingOp[],
+  bootstrap: Bootstrap | null,
+): T {
+  let out: T = issue;
+  for (const { op, queuedAt, error } of pending)
+    if (!error && 'ids' in op && op.ids.includes(issue.id))
+      out = { ...out, ...applyOp(out, op, queuedAt, bootstrap) };
   return out;
 }
 

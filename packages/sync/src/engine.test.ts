@@ -259,6 +259,48 @@ describe('outbox', () => {
     expect(engine.issue('a')).toMatchObject({ title: 'Renamed elsewhere', priority: 3 });
   });
 
+  it("shows what's waiting on top of an issue's page fetched from the server", async () => {
+    const { server, engine } = await ready();
+    server.offline = true;
+    await engine.mutate({ kind: 'issue.update', ids: ['a'], patch: { priority: 2 } });
+    // A refetch that lands before the change is sent still shows it.
+    const page = { ...server.issues.get('a')!, subIssues: [] };
+    expect(engine.overlayIssue(page)).toMatchObject({ id: 'a', priority: 2, subIssues: [] });
+    await engine.mutate({ kind: 'issue.trash', ids: ['a'] });
+    expect(engine.overlayIssue(page).deletedAt).not.toBeNull();
+    await engine.mutate({ kind: 'issue.restore', ids: ['a'] });
+    expect(engine.overlayIssue(page).deletedAt).toBeNull();
+    const other = issue('b');
+    expect(engine.overlayIssue(other)).toBe(other);
+  });
+
+  it('undoes a trash made offline: the restore is sent after it', async () => {
+    const { server, engine } = await ready();
+    server.offline = true;
+    await engine.mutate({ kind: 'issue.trash', ids: ['a'] });
+    expect(engine.issue('a')).toBeUndefined();
+    await engine.mutate({ kind: 'issue.restore', ids: ['a'] });
+    expect(engine.issue('a')).toMatchObject({ id: 'a', deletedAt: null });
+
+    server.offline = false;
+    await engine.sync();
+    expect(server.sent.map((o) => o.kind)).toEqual(['issue.trash', 'issue.restore']);
+    expect(server.issues.has('a')).toBe(true);
+    expect(engine.issue('a')).toBeDefined();
+  });
+
+  it('moves issues to another team, showing it before the server renumbers them', async () => {
+    const { server, engine } = await ready();
+    server.offline = true;
+    expect(await engine.mutate({ kind: 'issue.move', ids: ['a'], teamId: 'team-2' })).toBe(
+      undefined,
+    );
+    expect(engine.issue('a')).toMatchObject({ teamId: 'team-2', identifier: 'T-a' });
+    server.offline = false;
+    await engine.sync();
+    expect(engine.issue('a')).toMatchObject({ teamId: 'team-2', identifier: 'TEAM-2-2' });
+  });
+
   it('drops a refused change, and what depends on it, and keeps them to show', async () => {
     const { server, engine } = await ready();
     server.refuse = (op) => op.kind === 'issue.create';

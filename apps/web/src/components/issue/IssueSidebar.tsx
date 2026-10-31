@@ -1,11 +1,9 @@
 import type { IssueDetail, Team, UpdateIssueInput } from '@ordo/shared';
-import { useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
-import { api, wsPath } from '../../api/client.ts';
-import { invalidateIssues } from '../../api/queries.ts';
+import { useMoveIssues } from '../../api/queries.ts';
 import { t, tx } from '../../i18n/index.ts';
 import { longDate, relativeTime, slaState } from '../../lib/format.ts';
 import { isDone } from '../../lib/issues.ts';
@@ -56,24 +54,33 @@ export function IssueProperties({
   onPatch: (p: UpdateIssueInput) => void;
 }) {
   const ws = useWorkspace();
-  const qc = useQueryClient();
   const navigate = useNavigate();
   const sla = slaState(issue, isDone(ws, issue));
 
+  const move = useMoveIssues(ws.slug);
   const moveToTeam = (teamId: string) => {
     if (teamId === issue.teamId) return;
-    api
-      .patch<{ identifier: string }>(wsPath(ws.slug, `/issues/${issue.id}`), { teamId })
-      .then((moved) => {
-        invalidateIssues(qc, ws.slug);
-        toast.success(t('issue.detail.movedTo', { identifier: moved.identifier }));
-        if (!compact)
-          navigate({
-            to: '/$slug/issue/$identifier',
-            params: { slug: ws.slug, identifier: moved.identifier },
-            replace: true,
-          });
-      });
+    move.mutate(
+      { ids: [issue.id], teamId },
+      {
+        onSuccess: (result) => {
+          const moved = result?.[0];
+          // Queued (offline): the page shows the move now, the new number once it's sent.
+          if (!moved) {
+            const team = ws.teamById.get(teamId)?.name ?? '';
+            toast.success(t('issue.detail.movedToTeam', { team }));
+            return;
+          }
+          toast.success(t('issue.detail.movedTo', { identifier: moved.identifier }));
+          if (!compact)
+            navigate({
+              to: '/$slug/issue/$identifier',
+              params: { slug: ws.slug, identifier: moved.identifier },
+              replace: true,
+            });
+        },
+      },
+    );
   };
 
   return (

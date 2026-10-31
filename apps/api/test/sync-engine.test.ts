@@ -59,6 +59,18 @@ function device(client: Client) {
             : call('POST', '/issues/batch', { ids: op.ids, patch: op.patch });
         case 'issue.trash':
           return call('POST', '/issues/batch-delete', { ids: op.ids });
+        case 'issue.restore':
+          return (async () => {
+            for (const id of op.ids) await call('POST', `/issues/${id}/restore`);
+            return { ok: true };
+          })();
+        case 'issue.move':
+          return (async () => {
+            const moved = [];
+            for (const id of op.ids)
+              moved.push(await call('PATCH', `/issues/${id}`, { teamId: op.teamId }));
+            return moved;
+          })();
         case 'comment.create':
           return call('POST', `/issues/${op.comment.issueId}/comments`, op.comment);
         case 'comment.update':
@@ -147,5 +159,34 @@ describe('two devices', () => {
     expect(a.getState().failed[0]!.op).toMatchObject({ body: 'too late' });
     const comments = (await owner.get(`${ws}/issues/${draftId}/comments`)).data;
     expect(comments.map((c: { body: string }) => c.body)).toEqual(['on the new one']);
+  });
+
+  it('send trash, Undo and team moves made offline in order', async () => {
+    const me = (await owner.get('/api/auth/me')).data.id;
+    const other = (await owner.post(`${ws}/teams`, { name: 'Ops', key: 'OPS' })).data as {
+      id: string;
+    };
+    const kept = (await owner.post(`${ws}/issues`, { teamId, title: 'Kept' })).data as Issue;
+    const moving = (await owner.post(`${ws}/issues`, { teamId, title: 'Moving' })).data as Issue;
+    const laptop = device(owner);
+    const a = new Engine({ userId: me, transport: laptop.transport, store: new MemoryStore() });
+    await a.sync();
+
+    laptop.link.offline = true;
+    await a.mutate({ kind: 'issue.trash', ids: [kept.id] });
+    expect(a.issue(kept.id)).toBeUndefined();
+    await a.mutate({ kind: 'issue.restore', ids: [kept.id] });
+    expect(a.issue(kept.id)).toBeDefined();
+    await a.mutate({ kind: 'issue.move', ids: [moving.id], teamId: other.id });
+    expect(a.issue(moving.id)).toMatchObject({ teamId: other.id });
+
+    laptop.link.offline = false;
+    await a.sync();
+    expect(a.getState()).toMatchObject({ waiting: 0, failed: [] });
+    const keptNow = (await owner.get(`${ws}/issues/${kept.id}`)).data as Issue;
+    expect(keptNow.deletedAt).toBeNull();
+    const movedNow = (await owner.get(`${ws}/issues/${moving.id}`)).data as Issue;
+    expect(movedNow).toMatchObject({ teamId: other.id, identifier: 'OPS-1' });
+    expect(a.issue(moving.id)).toMatchObject({ teamId: other.id, identifier: 'OPS-1' });
   });
 });

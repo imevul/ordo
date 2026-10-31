@@ -30,6 +30,7 @@ export default {
     teamUnavailable: 'Team unavailable',
     teamUnavailableTitle: "You can't see this issue's team, or it hasn't loaded yet",
     movedTo: 'Moved to {identifier}',
+    movedToTeam: 'Moved to {team}',
     setParent: 'Set parent',
     removeParent: 'Remove parent',
     created: '<k>> created</k> {time}',

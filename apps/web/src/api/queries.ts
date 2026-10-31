@@ -214,7 +214,18 @@ export function useIssue(slug: string, id: string | undefined) {
         : undefined,
     [remote.data, id, sync, state],
   );
-  const data = remote.data ?? copy;
+  // The server's page with what's still queued on top, as lists show it: a refetch that lands
+  // before a queued change is sent doesn't undo it on screen. The copy hears first what the
+  // server made of a sent change, so where its issue is newer, its fields win until the refetch.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `state` marks a changed copy
+  const fetched = useMemo(() => {
+    if (!remote.data || sync.status !== 'on') return remote.data;
+    const local = sync.engine.getState().issues.get(remote.data.id);
+    const base =
+      local && local.updatedAt > remote.data.updatedAt ? { ...remote.data, ...local } : remote.data;
+    return sync.engine.overlayIssue(base);
+  }, [remote.data, sync, state]);
+  const data = fetched ?? copy;
   return { data, isLoading: remote.isLoading && !data, error: data ? null : remote.error };
 }
 
@@ -342,6 +353,13 @@ function patchCaches(qc: QueryClient, slug: string, ids: string[], patch: Update
   );
 }
 
+/** Stops list and issue-page fetches in flight, so they don't overwrite an optimistic change. */
+const cancelIssueQueries = (qc: QueryClient, slug: string) =>
+  Promise.all([
+    qc.cancelQueries({ queryKey: ['ws', slug, 'issues'] }),
+    qc.cancelQueries({ queryKey: keys.issue(slug) }),
+  ]);
+
 export function invalidateIssues(qc: QueryClient, slug: string) {
   qc.invalidateQueries({ queryKey: ['ws', slug, 'issues'] });
   qc.invalidateQueries({ queryKey: keys.issue(slug) });
@@ -361,7 +379,7 @@ export function useUpdateIssue(slug: string) {
         ? engine.mutate({ kind: 'issue.update', ids: [id], patch })
         : api.patch<Issue>(wsPath(slug, `/issues/${id}`), patch),
     onMutate: async ({ id, patch }) => {
-      await qc.cancelQueries({ queryKey: ['ws', slug, 'issues'] });
+      await cancelIssueQueries(qc, slug);
       patchCaches(qc, slug, [id], patch);
     },
     onError: (err) => {
@@ -381,7 +399,7 @@ export function useBatchUpdateIssues(slug: string) {
         ? engine.mutate({ kind: 'issue.update', ids, patch })
         : api.post<Issue[]>(wsPath(slug, '/issues/batch'), { ids, patch }),
     onMutate: async ({ ids, patch }) => {
-      await qc.cancelQueries({ queryKey: ['ws', slug, 'issues'] });
+      await cancelIssueQueries(qc, slug);
       patchCaches(qc, slug, ids, patch);
     },
     onError,
@@ -424,7 +442,42 @@ export function useTrashIssues(slug: string) {
   });
 }
 
-/** Generic mutation that refreshes the workspace afterwards. */
+/** Takes issues out of the trash (Undo): queued after the trash, so offline it still wins. */
+export function useRestoreIssues(slug: string) {
+  const qc = useQueryClient();
+  const engine = useSyncEngine();
+  return useMutation({
+    mutationFn: async (ids: string[]) => {
+      if (engine) return engine.mutate({ kind: 'issue.restore', ids });
+      for (const id of ids) await api.post(wsPath(slug, `/issues/${id}/restore`));
+    },
+    onError,
+    onSettled: () => invalidateIssues(qc, slug),
+  });
+}
+
+/**
+ * Moves issues to another team. Resolves with the moved issues (renumbered), or with undefined
+ * when the move is queued to be sent later.
+ */
+export function useMoveIssues(slug: string) {
+  const qc = useQueryClient();
+  const engine = useSyncEngine();
+  return useMutation({
+    mutationFn: async ({ ids, teamId }: { ids: string[]; teamId: string }) => {
+      if (engine)
+        return (await engine.mutate({ kind: 'issue.move', ids, teamId })) as Issue[] | undefined;
+      const moved: Issue[] = [];
+      for (const id of ids)
+        moved.push(await api.patch<Issue>(wsPath(slug, `/issues/${id}`), { teamId }));
+      return moved;
+    },
+    onMutate: () => cancelIssueQueries(qc, slug),
+    onError,
+    onSettled: () => invalidateIssues(qc, slug),
+  });
+}
+
 /** Adds or removes the signed-in user's reaction, showing it at once. */
 export function useToggleReaction(slug: string, issueId: string, userId: string) {
   const qc = useQueryClient();
@@ -460,6 +513,7 @@ export function useToggleReaction(slug: string, issueId: string, userId: string)
   });
 }
 
+/** Generic mutation that refreshes the workspace afterwards. */
 export function useWsMutation<TVars, TResult = unknown>(
   slug: string,
   fn: (vars: TVars) => Promise<TResult>,

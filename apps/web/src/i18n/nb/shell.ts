@@ -216,6 +216,14 @@ export default {
         one: 'Flytting av {id} til papirkurven',
         other: 'Flytting av {count} saker til papirkurven',
       },
+      issueRestore: {
+        one: 'Gjenoppretting av {id} fra papirkurven',
+        other: 'Gjenoppretting av {count} saker fra papirkurven',
+      },
+      issueMove: {
+        one: 'Flytting av {id} til {team}',
+        other: 'Flytting av {count} saker til {team}',
+      },
       commentCreate: 'Kommentar på {id}',
       commentUpdate: 'Redigering av en kommentar på {id}',
       commentDelete: 'Sletting av en kommentar på {id}',

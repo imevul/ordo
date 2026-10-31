@@ -42,6 +42,20 @@ function sendOp(slug: string, op: Op): Promise<unknown> {
         : api.post(path('/issues/batch'), { ids: op.ids, patch: op.patch });
     case 'issue.trash':
       return api.post(path('/issues/batch-delete'), { ids: op.ids });
+    // No batch endpoints for these; one at a time, so a refusal stops before the rest. Each is
+    // safe to send again (restoring a restored issue, moving it to the team it's in).
+    case 'issue.restore':
+      return (async () => {
+        for (const id of op.ids) await api.post(path(`/issues/${id}/restore`));
+        return { ok: true };
+      })();
+    case 'issue.move':
+      return (async () => {
+        const moved: unknown[] = [];
+        for (const id of op.ids)
+          moved.push(await api.patch(path(`/issues/${id}`), { teamId: op.teamId }));
+        return moved;
+      })();
     case 'comment.create':
       return api.post(path(`/issues/${op.comment.issueId}/comments`), {
         id: op.comment.id,

@@ -23,8 +23,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { api } from '../api/client.ts';
-import { useBatchUpdateIssues, useSearch, useTrashIssues } from '../api/queries.ts';
+import { useBatchUpdateIssues, useMoveIssues, useSearch, useTrashIssues } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
 import { useHotkeyScope } from '../lib/hotkeys.ts';
 import { signOut } from '../lib/signOut.ts';
@@ -73,6 +72,7 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const batch = useBatchUpdateIssues(ws.slug);
   const trash = useTrashIssues(ws.slug);
+  const move = useMoveIssues(ws.slug);
   const [query, setQuery] = useState('');
   useHotkeyScope('palette', page !== null);
   const search = useSearch(ws.slug, page === 'root' && query.trim().length >= 2 ? query : '');
@@ -215,9 +215,7 @@ export function CommandPalette() {
                         targetIssues.every((i) => i.labelIds.includes(o.value));
                       apply(has ? { removeLabelIds: [o.value] } : { addLabelIds: [o.value] }, true);
                     } else if (page === 'team') {
-                      for (const id of targets)
-                        api.patch(`/w/${ws.slug}/issues/${id}`, { teamId: o.value });
-                      setTimeout(() => qc.invalidateQueries({ queryKey: ['ws', ws.slug] }), 300);
+                      if (targets.length) move.mutate({ ids: targets, teamId: o.value });
                       close();
                     } else apply(patchFor(page, o.value));
                   }}
