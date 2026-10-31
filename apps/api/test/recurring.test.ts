@@ -216,6 +216,14 @@ describe('recurring issues', () => {
     const hidden = ((await owner.get(`${ws}/recurring`)).data as RecurringIssue[]).find(
       (r) => r.teamId === ids.prv,
     )!;
+    expect(
+      (await member.patch(`${ws}/recurring/${hidden.id}`, { every: 2, paused: true })).statusCode,
+    ).toBe(404);
+    const [untouched] = await app.db
+      .select()
+      .from(recurringIssues)
+      .where(eq(recurringIssues.id, hidden.id));
+    expect(untouched!.every).toBe(hidden.every);
     expect((await member.del(`${ws}/recurring/${hidden.id}`)).statusCode).toBe(404);
     expect((await member.del(`${ws}/recurring/${ids.schedule}`)).statusCode).toBe(200);
   });

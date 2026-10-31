@@ -1,7 +1,9 @@
-import type { Bootstrap } from '@ordo/shared';
+import type { Bootstrap, HistoryEntry } from '@ordo/shared';
+import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { parse } from 'graphql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { domainEvents } from '../src/db/schema.ts';
 import { type AuthUser, authorizeWorkspace } from '../src/lib/auth.ts';
 import { buildGraphqlSchema, queryDepth, runGraphql } from '../src/services/graphql/index.ts';
 import { type Client, signup, testApp } from './helpers.ts';
@@ -9,7 +11,10 @@ import { type Client, signup, testApp } from './helpers.ts';
 let app: FastifyInstance;
 let owner: Client;
 let member: Client;
+let guest: Client;
+let outsider: Client;
 let key: string;
+let ownerId: string;
 let boot: Bootstrap;
 const ws = '/api/w/gql';
 
@@ -44,6 +49,10 @@ beforeAll(async () => {
   });
   const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token;
   member = (await signup(app, 'Mel Member', { inviteToken: invite })).client;
+  const guestInvite = (await owner.post(`${ws}/invites`, { role: 'guest' })).data[0].token;
+  guest = (await signup(app, 'Gus Guest', { inviteToken: guestInvite })).client;
+  outsider = (await signup(app, 'Olga Outsider')).client;
+  ownerId = (await owner.get('/api/auth/me')).data.id;
   // A private team the member isn't in.
   await owner.post(`${ws}/teams`, { name: 'Secret', key: 'SEC', private: true });
   await owner.post(`${ws}/labels`, { name: 'Bug', color: '#ef4444' });
@@ -170,8 +179,21 @@ describe('mutations', () => {
     expect(updated.data.data.commentCreate.author.username).toBe('gql-grace');
 
     // Changes made with an API key are attributed to the API, like REST.
-    const history = (await owner.get(`${ws}/issues/${id}/history`)).data;
+    const history = (await owner.get(`${ws}/issues/${id}/history`)).data as HistoryEntry[];
     expect(history.length).toBeGreaterThan(0);
+    const events = await app.db
+      .select()
+      .from(domainEvents)
+      .where(
+        and(
+          eq(domainEvents.workspaceId, boot.workspace.id),
+          sql`${domainEvents.data}->>'identifier' = ${id}`,
+        ),
+      );
+    expect(events.map((e) => e.type)).toEqual(
+      expect.arrayContaining(['issue.created', 'issue.updated']),
+    );
+    for (const e of events) expect(e).toMatchObject({ source: 'api', actorId: ownerId });
 
     const archived = await gql(`mutation { issueArchive(id: "${id}") { archivedAt } }`);
     expect(archived.data.data.issueArchive.archivedAt).toBeTruthy();
@@ -248,6 +270,68 @@ describe('protocol', () => {
       headers: { authorization: `Bearer ${key}` },
     });
     expect(res.statusCode).toBe(405);
+  });
+});
+
+describe('authorization', () => {
+  const create = `mutation($input: IssueCreateInput!) { issueCreate(input: $input) { identifier } }`;
+  const team = (k: string) => boot.teams.find((t) => t.key === k)!;
+  const issueCount = async () =>
+    (await gql('{ issues(first: 250) { nodes { id } } }')).data.data.issues.nodes.length;
+
+  it("keeps members out of private teams they aren't in", async () => {
+    const before = await issueCount();
+    const created = await gql(
+      create,
+      { input: { teamId: team('SEC').id, title: 'Sneaky' } },
+      { who: member },
+    );
+    expect(created.data.errors?.[0]?.extensions.code).toBe('NOT_FOUND');
+    expect(created.data.data?.issueCreate ?? null).toBeNull();
+    const updated = await gql(
+      `mutation { issueUpdate(id: "SEC-1", input: { title: "Mine now" }) { id } }`,
+      undefined,
+      { who: member },
+    );
+    expect(updated.data.errors?.[0]?.extensions.code).toBe('NOT_FOUND');
+    const commented = await gql(
+      `mutation { commentCreate(issueId: "SEC-1", body: "Hi") { id } }`,
+      undefined,
+      { who: member },
+    );
+    expect(commented.data.errors?.[0]?.extensions.code).toBe('NOT_FOUND');
+
+    expect(await issueCount()).toBe(before);
+    const secret = (await gql(`{ issue(id: "SEC-1") { title comments { body } } }`)).data.data
+      .issue;
+    expect(secret).toEqual({ title: 'Secret issue', comments: [] });
+  });
+
+  it("lets guests change nothing outside the teams they're in", async () => {
+    const before = await issueCount();
+    const created = await gql(
+      create,
+      { input: { teamId: team('COR').id, title: 'Guest issue' } },
+      { who: guest },
+    );
+    expect(created.data.errors?.[0]?.extensions.code).toBe('NOT_FOUND');
+    const updated = await gql(
+      `mutation { issueUpdate(id: "COR-1", input: { title: "Guest was here" }) { id } }`,
+      undefined,
+      { who: guest },
+    );
+    expect(updated.data.errors?.[0]?.extensions.code).toBe('NOT_FOUND');
+    expect(await issueCount()).toBe(before);
+    expect((await gql(`{ issue(id: "COR-1") { title } }`)).data.data.issue.title).toBe(
+      'Parent issue',
+    );
+  });
+
+  it("refuses an API key whose owner isn't in the workspace", async () => {
+    const token = (await outsider.post('/api/me/api-keys', { name: 'elsewhere' })).data.token;
+    const res = await gql('{ viewer { id } issues { nodes { id } } }', undefined, { token });
+    expect(res.statusCode).toBe(404);
+    expect(res.data.data?.issues).toBeUndefined();
   });
 });
 

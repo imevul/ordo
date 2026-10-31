@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import * as sdk from '@matrix-org/matrix-sdk-crypto-wasm';
 import type { Integration } from '@ordo/shared';
 import { eq, sql } from 'drizzle-orm';
@@ -5,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { matrixCryptoStores } from '../src/db/schema.ts';
 import { forgetMatrixCrypto } from '../src/integrations/matrix-crypto.ts';
+import { matrixCryptoStoreAad } from '../src/services/secretKey.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 import { startMockMatrix } from './mock-matrix.ts';
 
@@ -176,8 +178,10 @@ describe('Matrix end-to-end encryption', () => {
       .from(matrixCryptoStores)
       .where(eq(matrixCryptoStores.integrationId, matrix.id));
     expect(store!.version).toBeGreaterThan(0);
-    // Sealed with the instance key: no key material in the clear.
-    expect(store!.data).not.toContain('curve25519');
+    // Sealed with the instance key and bound to this integration: it opens with its own AAD only.
+    const plain = app.keyring.decrypt(store!.data, matrixCryptoStoreAad(matrix.id));
+    expect(Buffer.from(plain, 'base64').length).toBeGreaterThan(0);
+    expect(() => app.keyring.decrypt(store!.data, matrixCryptoStoreAad(randomUUID()))).toThrow();
   });
 
   it('reads encrypted commands and answers encrypted', async () => {

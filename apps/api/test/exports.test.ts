@@ -7,9 +7,11 @@ import {
 } from '@ordo/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { auditLog, files, workspaceExports } from '../src/db/schema.ts';
+import { Keyring } from '../src/lib/secrets.ts';
 import { purgeOldExports, runExport } from '../src/services/exports.ts';
+import { signedFileUrl } from '../src/services/files.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -389,5 +391,60 @@ describe('workspace export', () => {
       await app.db.select().from(workspaceExports).where(eq(workspaceExports.id, old.id)),
     ).toHaveLength(0);
     expect(await app.db.select().from(files).where(eq(files.id, row!.fileId!))).toHaveLength(0);
+  });
+
+  it("can't be deleted while it's being made, by members, or from another workspace", async () => {
+    const running = await owner.post(`${ws}/exports`, { format: 'json' });
+    const busy = await owner.del(`${ws}/exports/${running.data.id}`);
+    expect(busy.statusCode).toBe(409);
+    expect(busy.data.messageKey).toBe('export_not_ready');
+    await settle();
+    expect((await member.del(`${ws}/exports/${running.data.id}`)).statusCode).toBe(403);
+
+    const other = `${slug}-other`;
+    await owner.post('/api/workspaces', {
+      name: 'Other',
+      slug: other,
+      teamName: 'O',
+      teamKey: 'OTH',
+    });
+    const theirs = (await owner.post(`/api/w/${other}/exports`, { format: 'json' })).data.id;
+    await settle();
+    expect((await owner.del(`${ws}/exports/${theirs}`)).statusCode).toBe(404);
+    const [row] = await app.db
+      .select()
+      .from(workspaceExports)
+      .where(eq(workspaceExports.id, theirs));
+    expect(row!.status).toBe('ready');
+  });
+
+  it('needs the secret key, which signs its download links', async () => {
+    const keyring = app.keyring;
+    (app as { keyring: Keyring }).keyring = new Keyring(null);
+    try {
+      const res = await owner.post(`${ws}/exports`, { format: 'json' });
+      expect(res.statusCode).toBe(400);
+      expect(res.data.message).toContain('ORDO_SECRET_KEY');
+    } finally {
+      (app as { keyring: Keyring }).keyring = keyring;
+    }
+  });
+
+  it('serves its file only until the signed link expires', async () => {
+    const { done } = await exportAs('json');
+    const [row] = await app.db
+      .select()
+      .from(workspaceExports)
+      .where(eq(workspaceExports.id, done.id));
+    // A link signed three days ago, when it was valid for two.
+    const now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(now - 3 * 86_400_000);
+    const old = signedFileUrl(app, row!.fileId)!;
+    clock.mockRestore();
+    expect((await app.inject({ method: 'GET', url: old })).statusCode).toBe(404);
+    // The same signature with a later expiry doesn't verify either.
+    const later = old.replace(/exp=\d+/, `exp=${Math.floor(now / 1000) + 86_400}`);
+    expect((await app.inject({ method: 'GET', url: later })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: done.url! })).statusCode).toBe(200);
   });
 });

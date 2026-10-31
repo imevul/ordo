@@ -24,6 +24,7 @@ let ownerEmail: string;
 let memberEmail: string;
 let memberId: string;
 let ownerId: string;
+let workspaceId: string;
 const slug = `imp-${Date.now()}`;
 const ws = `/api/w/${slug}`;
 
@@ -74,8 +75,10 @@ const issueCount = async () =>
       .select({ n: sql<number>`count(*)::int` })
       .from(issues)
       .innerJoin(teams, eq(teams.id, issues.teamId))
-      .where(eq(teams.key, 'WEB'))
+      .where(webTeam())
   )[0]!.n;
+// Other test files share the database and make WEB teams of their own.
+const webTeam = () => and(eq(teams.workspaceId, workspaceId), eq(teams.key, 'WEB'));
 
 beforeAll(async () => {
   app = await testApp();
@@ -89,6 +92,8 @@ beforeAll(async () => {
   memberEmail = m.email;
   memberId = (await member.get('/api/auth/me')).data.id;
   ownerId = (await owner.get('/api/auth/me')).data.id;
+  const [w] = await app.db.select().from(workspaces).where(eq(workspaces.slug, slug));
+  workspaceId = w!.id;
 });
 afterAll(async () => {
   await app.close();
@@ -133,7 +138,8 @@ describe('CSV import', () => {
   });
 
   it('dry-runs without touching the workspace', async () => {
-    const labelsBefore = await app.db.select().from(labels);
+    const wsLabels = () => app.db.select().from(labels).where(eq(labels.workspaceId, workspaceId));
+    const labelsBefore = await wsLabels();
     imp = await run(imp.id, 'dry-run');
     expect(imp.status).toBe('ready');
     expect(imp.report).toMatchObject({
@@ -148,9 +154,9 @@ describe('CSV import', () => {
         'Couldn\'t read the created date "not a date"',
       ]),
     );
-    const [web] = await app.db.select().from(teams).where(eq(teams.key, 'WEB'));
+    const [web] = await app.db.select().from(teams).where(webTeam());
     expect(web).toBeUndefined();
-    expect(await app.db.select().from(labels)).toHaveLength(labelsBefore.length);
+    expect(await wsLabels()).toHaveLength(labelsBefore.length);
   });
 
   it('imports issues with their numbers, people, dates, labels, project and parents', async () => {
@@ -214,7 +220,7 @@ describe('CSV import', () => {
       .from(issues)
       .innerJoin(teams, eq(teams.id, issues.teamId))
       // The one made by hand afterwards is logged like any other.
-      .where(and(eq(teams.key, 'WEB'), ne(issues.title, 'After the import')));
+      .where(and(webTeam(), ne(issues.title, 'After the import')));
     const logged = await app.db
       .select()
       .from(syncChanges)
@@ -462,6 +468,23 @@ describe('large and cancelled imports', () => {
     expect(imp.status).toBe('completed');
     expect(imp.report!.created.issues).toBe(300);
     expect((await issue('BIG-300')).parent?.identifier).toBe('BIG-1');
+  });
+
+  it("refuses members on an existing import's every action", async () => {
+    const imp = await analyzed('members.csv', 'Title\nNot for members');
+    expect((await member.get(`${ws}/imports/${imp.id}`)).statusCode).toBe(403);
+    expect(
+      (await member.patch(`${ws}/imports/${imp.id}`, { mapping: imp.mapping })).statusCode,
+    ).toBe(403);
+    for (const action of ['dry-run', 'run', 'cancel']) {
+      expect((await member.post(`${ws}/imports/${imp.id}/${action}`)).statusCode, action).toBe(403);
+    }
+    expect((await member.del(`${ws}/imports/${imp.id}`)).statusCode).toBe(403);
+    await settle();
+    expect((await owner.get(`${ws}/imports/${imp.id}`)).data.status).toBe('ready');
+    const [row] = await app.db.select().from(issues).where(eq(issues.title, 'Not for members'));
+    expect(row).toBeUndefined();
+    expect((await owner.del(`${ws}/imports/${imp.id}`)).statusCode).toBe(200);
   });
 
   it('stops when cancelled', async () => {

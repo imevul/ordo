@@ -135,7 +135,27 @@ describe('attachments', () => {
 
     const admins = (await member.upload(`${ws}/attachments?issueId=${ids.open}`, 'x.png', PNG))
       .data as Attachment;
+    const [adminsRow] = await app.db
+      .select()
+      .from(attachments)
+      .where(eq(attachments.id, admins.id));
     expect((await owner.del(`${ws}/attachments/${admins.id}`)).statusCode).toBe(200);
+    expect(await app.db.select().from(attachments).where(eq(attachments.id, admins.id))).toEqual(
+      [],
+    );
+    expect(await app.db.select().from(files).where(eq(files.id, adminsRow!.fileId))).toEqual([]);
+    expect((await member.get(admins.url)).statusCode).toBe(404);
+  });
+
+  it("can't be removed by someone outside the issue's private team", async () => {
+    const att = (await insider.upload(`${ws}/attachments?issueId=${ids.secret}`, 's.png', PNG))
+      .data as Attachment;
+    // Not found rather than forbidden: the attachment's existence stays private too.
+    expect((await member.del(`${ws}/attachments/${att.id}`)).statusCode).toBe(404);
+    expect(await app.db.select().from(attachments).where(eq(attachments.id, att.id))).toHaveLength(
+      1,
+    );
+    expect((await insider.get(att.url)).statusCode).toBe(200);
   });
 
   it('sweeps unclaimed uploads after a day and files whose attachment is gone', async () => {
@@ -146,6 +166,33 @@ describe('attachments', () => {
     await app.db.update(files).set({ createdAt: old }).where(eq(files.id, row!.fileId));
     await sweepAttachments(app);
     expect(await app.db.select().from(attachments).where(eq(attachments.id, att.id))).toEqual([]);
+    expect(await app.db.select().from(files).where(eq(files.id, row!.fileId))).toEqual([]);
+  });
+
+  it('leaves orphaned files alone for an hour, in case their attachment row is still coming', async () => {
+    const att = (await member.upload(`${ws}/attachments?issueId=${ids.open}`, 'new.png', PNG))
+      .data as Attachment;
+    const [row] = await app.db.select().from(attachments).where(eq(attachments.id, att.id));
+    await app.db.delete(attachments).where(eq(attachments.id, att.id));
+    await sweepAttachments(app);
+    expect(await app.db.select().from(files).where(eq(files.id, row!.fileId))).toHaveLength(1);
+    const old = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    await app.db.update(files).set({ createdAt: old }).where(eq(files.id, row!.fileId));
+    await sweepAttachments(app);
+    expect(await app.db.select().from(files).where(eq(files.id, row!.fileId))).toEqual([]);
+  });
+
+  it('removes the files of an issue deleted for good', async () => {
+    const issue = (await owner.post(`${ws}/issues`, { teamId: ids.pub, title: 'Doomed' })).data;
+    const att = (await member.upload(`${ws}/attachments?issueId=${issue.id}`, 'd.png', PNG))
+      .data as Attachment;
+    const [row] = await app.db.select().from(attachments).where(eq(attachments.id, att.id));
+    expect((await owner.del(`${ws}/issues/${issue.id}`)).statusCode).toBe(200);
+    expect((await owner.del(`${ws}/issues/${issue.id}/purge`)).statusCode).toBe(200);
+    expect(await app.db.select().from(attachments).where(eq(attachments.id, att.id))).toEqual([]);
+    const old = new Date(Date.now() - 2 * 3_600_000).toISOString();
+    await app.db.update(files).set({ createdAt: old }).where(eq(files.id, row!.fileId));
+    await sweepAttachments(app);
     expect(await app.db.select().from(files).where(eq(files.id, row!.fileId))).toEqual([]);
   });
 

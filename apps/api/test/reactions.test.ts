@@ -1,9 +1,9 @@
 import type { Comment, CommentReaction, Notification } from '@ordo/shared';
 import { MAX_REACTION_KINDS } from '@ordo/shared';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { domainEvents } from '../src/db/schema.ts';
+import { commentReactions, domainEvents } from '../src/db/schema.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -42,6 +42,7 @@ beforeAll(async () => {
     .data;
   await owner.post(`${ws}/teams/${prv.id}/members`, { userId: ids.insider });
   const boot = (await owner.get(`${ws}/bootstrap`)).data;
+  ids.ws = boot.workspace.id;
   const pub = boot.teams.find((t: { key: string }) => t.key === 'PUB').id;
   ids.open = (await owner.post(`${ws}/issues`, { teamId: pub, title: 'Open' })).data.id;
   ids.secret = (await owner.post(`${ws}/issues`, { teamId: prv.id, title: 'Secret' })).data.id;
@@ -77,7 +78,7 @@ describe('comment reactions', () => {
     const events = await app.db
       .select()
       .from(domainEvents)
-      .where(eq(domainEvents.type, 'reaction.created'));
+      .where(and(eq(domainEvents.workspaceId, ids.ws!), eq(domainEvents.type, 'reaction.created')));
     expect(events.some((e) => (e.data.reaction as { emoji: string }).emoji === '🎉')).toBe(true);
   });
 
@@ -89,7 +90,12 @@ describe('comment reactions', () => {
     const notes = await reactionNotes(owner);
     expect(notes.map((n) => n.data.emoji)).toEqual(['👍', '👍']);
     expect(
-      await app.db.select().from(domainEvents).where(eq(domainEvents.type, 'reaction.deleted')),
+      await app.db
+        .select()
+        .from(domainEvents)
+        .where(
+          and(eq(domainEvents.workspaceId, ids.ws!), eq(domainEvents.type, 'reaction.deleted')),
+        ),
     ).toHaveLength(1);
   });
 
@@ -124,7 +130,14 @@ describe('comment reactions', () => {
   });
 
   it('goes away with its comment', async () => {
-    await owner.del(`${ws}/comments/${ids.secretComment}`);
+    const onComment = () =>
+      app.db
+        .select()
+        .from(commentReactions)
+        .where(eq(commentReactions.commentId, ids.secretComment!));
+    expect(await onComment()).toHaveLength(1);
+    expect((await owner.del(`${ws}/comments/${ids.secretComment}`)).statusCode).toBe(200);
+    expect(await onComment()).toEqual([]);
     expect((await react(insider, ids.secretComment!, '👀')).statusCode).toBe(404);
   });
 });

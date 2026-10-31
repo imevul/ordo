@@ -109,7 +109,9 @@ describe('issue templates', () => {
       expect((await c.patch(`${ws}/templates/${res.data.id}`, { name: 'Mine' })).statusCode).toBe(
         404,
       );
+      expect((await c.del(`${ws}/templates/${res.data.id}`)).statusCode).toBe(404);
     }
+    expect((await templates(insider)).find((t) => t.id === res.data.id)?.name).toBe('Secret');
     expect((await member.post(`${ws}/templates`, { name: 'x', teamId: ids.prv })).statusCode).toBe(
       400,
     );

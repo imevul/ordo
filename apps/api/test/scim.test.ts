@@ -2,7 +2,7 @@ import type { Bootstrap } from '@ordo/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { auditLog, teamMembers, users, workspaceMembers } from '../src/db/schema.ts';
+import { auditLog, scimGroups, teamMembers, users, workspaceMembers } from '../src/db/schema.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -106,9 +106,43 @@ describe('tokens', () => {
     expect(json(await scim('GET', '/Users', undefined, rivalToken)).totalResults).toBe(0);
     const rivalMember = await scim('POST', '/Users', oktaUser('rival'), rivalToken);
     expect(rivalMember.statusCode).toBe(400);
+    const deactivate = {
+      schemas: [PATCH],
+      Operations: [{ op: 'replace', value: { active: false } }],
+    };
+    expect((await scim('PATCH', `/Users/${user.id}`, deactivate, rivalToken)).statusCode).toBe(404);
+    expect(
+      (await scim('PUT', `/Users/${user.id}`, oktaUser('x', { active: false }), rivalToken))
+        .statusCode,
+    ).toBe(404);
+    expect((await scim('DELETE', `/Users/${user.id}`, undefined, rivalToken)).statusCode).toBe(404);
+    expect(json(await scim('GET', `/Users/${user.id}`)).active).toBe(true);
+    expect(await member(user.id)).not.toBeNull();
 
     const { client: plain } = await signup(app, 'Plain Member');
     expect((await plain.post(`${ws}/scim/tokens`, { name: 'nope' })).statusCode).toBe(404);
+  });
+
+  it('are refused to workspace members who are not admins', async () => {
+    const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token;
+    const { client: mem } = await signup(app, 'Mere Member', { inviteToken: invite });
+    const [tok] = (await owner.get(`${ws}/scim/tokens`)).data.tokens;
+    expect((await mem.get(`${ws}/scim/tokens`)).statusCode).toBe(403);
+    expect((await mem.post(`${ws}/scim/tokens`, { name: 'nope' })).statusCode).toBe(403);
+    expect((await mem.del(`${ws}/scim/tokens/${tok.id}`)).statusCode).toBe(403);
+    expect((await scim('GET', '/Users')).statusCode).toBe(200);
+
+    const g = json(
+      await scim('POST', '/Groups', {
+        schemas: ['urn:ietf:params:scim:schemas:core:2.0:Group'],
+        displayName: `members-cant-${++n}`,
+      }),
+    );
+    expect((await mem.get(`${ws}/scim/groups`)).statusCode).toBe(403);
+    expect((await mem.post(`${ws}/scim/groups/${g.id}/preview`, { teamId })).statusCode).toBe(403);
+    expect((await mem.put(`${ws}/scim/groups/${g.id}/team`, { teamId })).statusCode).toBe(403);
+    const [row] = await app.db.select().from(scimGroups).where(eq(scimGroups.id, g.id));
+    expect(row!.teamId).toBeNull();
   });
 
   it("aren't API keys, and API keys aren't SCIM tokens", async () => {
@@ -603,6 +637,30 @@ describe('groups', () => {
 
     expect((await scim('DELETE', `/Groups/${g.id}`)).statusCode).toBe(204);
     expect((await scim('GET', `/Groups/${g.id}`)).statusCode).toBe(404);
+  });
+
+  it('ignore members who are real people, but of another workspace', async () => {
+    const outsider = await signup(app, 'Otto Elsewhere');
+    await outsider.client.post('/api/workspaces', {
+      name: 'Elsewhere',
+      slug: `${slug}-else`,
+      teamName: 'E',
+      teamKey: 'ELS',
+    });
+    const outsiderId = (await outsider.client.get('/api/auth/me')).data.id;
+    const a = (await provision('xa')).user.id;
+    const g = await group(`mixed-${n}`, [a, outsiderId]);
+    expect(g.members.map((m: { value: string }) => m.value)).toEqual([a]);
+    await patch(g.id, [{ op: 'Add', path: 'members', value: [{ value: outsiderId }] }]);
+    expect(
+      json(await scim('GET', `/Groups/${g.id}`)).members.map((m: { value: string }) => m.value),
+    ).toEqual([a]);
+
+    // Linking the group to a team must not pull the outsider in.
+    const teamId = await team(`Mixed ${n}`);
+    expect((await owner.put(`${ws}/scim/groups/${g.id}/team`, { teamId })).statusCode).toBe(200);
+    expect(await teamMembersOf(teamId)).toEqual([a]);
+    expect(await member(outsiderId)).toBeNull();
   });
 
   it('decide who is on a linked team, after the admin sees what changes', async () => {

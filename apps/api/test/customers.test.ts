@@ -92,6 +92,15 @@ describe('customers', () => {
     expect((await guest.get(`${ws}/customers/${ids.acme}/requests`)).statusCode).toBe(403);
     const detail = (await guest.get(`${ws}/issues/${ids.open}`)).data as IssueDetail;
     expect(detail.customerRequests).toEqual([]);
+    // Not even on an issue in their own team.
+    const posted = await guest.post(`${ws}/issues/${ids.open}/customer-requests`, {
+      customerId: ids.acme,
+      body: 'From a guest',
+    });
+    expect(posted.statusCode).toBe(403);
+    const requests = (await owner.get(`${ws}/customers/${ids.acme}/requests`))
+      .data as CustomerRequest[];
+    expect(requests.map((r) => r.body)).not.toContain('From a guest');
   });
 
   it('are found or made from an email address', async () => {
@@ -115,10 +124,12 @@ describe('customers', () => {
   it('can be updated and deleted, taking their requests along', async () => {
     const res = await member.patch(`${ws}/customers/${ids.acme}`, { notes: 'Enterprise plan' });
     expect((res.data as Customer).notes).toBe('Enterprise plan');
-    const [request] = (await owner.get(`${ws}/customers/${ids.acme}/requests`))
+    const requests = (await owner.get(`${ws}/customers/${ids.acme}/requests`))
       .data as CustomerRequest[];
-    expect((await member.del(`${ws}/customer-requests/${request!.id}`)).statusCode).toBe(404);
-    expect((await owner.del(`${ws}/customer-requests/${request!.id}`)).statusCode).toBe(200);
+    // The request on the private team's issue is out of the member's reach.
+    const secret = requests.find((r) => r.issueId === ids.secret)!;
+    expect((await member.del(`${ws}/customer-requests/${secret.id}`)).statusCode).toBe(404);
+    expect((await owner.del(`${ws}/customer-requests/${secret.id}`)).statusCode).toBe(200);
     expect((await member.del(`${ws}/customers/${ids.acme}`)).statusCode).toBe(200);
     const detail = (await owner.get(`${ws}/issues/${ids.open}`)).data as IssueDetail;
     expect(detail.customerRequests).toEqual([]);

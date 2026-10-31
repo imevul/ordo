@@ -187,6 +187,23 @@ describe('inbox filters', () => {
   });
 });
 
+describe("someone else's notifications", () => {
+  it("can't be read, snoozed or deleted by id", async () => {
+    const issue = await newIssue('Mine alone');
+    const n = (await inbox(member)).find((x) => x.issueId === issue.id)!;
+    const row = async () =>
+      (await app.db.select().from(notifications).where(eq(notifications.id, n.id)))[0];
+    for (const [path, body] of [
+      ['read', { ids: [n.id] }],
+      ['snooze', { ids: [n.id], until: new Date(Date.now() + 3_600_000).toISOString() }],
+      ['delete', { ids: [n.id] }],
+    ] as const) {
+      expect((await owner.post(`${ws}/notifications/${path}`, body)).statusCode, path).toBe(200);
+    }
+    expect(await row()).toMatchObject({ readAt: null, snoozedUntil: null, userId: ids.member });
+  });
+});
+
 describe('status and pause', () => {
   const later = (hours: number) => new Date(Date.now() + hours * 3_600_000).toISOString();
   const memberOf = async (c: Client, id: string) =>
@@ -219,6 +236,7 @@ describe('status and pause', () => {
   });
 
   it('mute: keeps everything in the inbox, sends nothing', async () => {
+    await member.put('/api/me/notify-pause', { mode: 'all', until: later(1) });
     const issue = await newIssue('While away');
     const n = await lastFor(issue.id);
     expect(n).toBeDefined();

@@ -1,6 +1,6 @@
 import { and, eq, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { attachments, files, jobs, sessions, users, workspaces } from '../src/db/schema.ts';
 import { runMaintenance } from '../src/jobs.ts';
 import { enqueue, JobQueue, Leases } from '../src/lib/jobs/index.ts';
@@ -122,8 +122,17 @@ describe('job queue', () => {
       .update(jobs)
       .set({ lockedUntil: sql`now() - interval '1 second'` })
       .where(eq(jobs.id, id));
-    await new Promise((r) => setTimeout(r, 100));
-    // …but the running worker has pushed it forward again, so the other one finds nothing.
+    // …but the running worker pushes it forward again, so the other one finds nothing.
+    await vi.waitFor(
+      async () => {
+        const [row] = await app.db
+          .select({ future: sql<boolean>`${jobs.lockedUntil} > now()` })
+          .from(jobs)
+          .where(eq(jobs.id, id));
+        expect(row!.future).toBe(true);
+      },
+      { timeout: 5_000, interval: 10 },
+    );
     await b.drain();
     release();
     await running;

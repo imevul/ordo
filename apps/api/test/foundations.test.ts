@@ -104,7 +104,10 @@ describe('safeFetch', () => {
     await expect(safeFetch(`http://127.0.0.1:${port}/ok`)).rejects.toBeInstanceOf(
       BlockedTargetError,
     );
-    await expect(safeFetch(`http://localhost:${port}/ok`)).rejects.toThrow();
+    // By hostname the check runs in the connect-time lookup, so undici wraps it as the cause.
+    await expect(safeFetch(`http://localhost:${port}/ok`)).rejects.toMatchObject({
+      cause: expect.any(BlockedTargetError),
+    });
   });
 
   it('allows private targets when permitted, follows redirects and caps size', async () => {

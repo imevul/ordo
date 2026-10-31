@@ -7,6 +7,7 @@ let app: FastifyInstance;
 let owner: Client;
 let ownerId: string;
 let bea: string;
+let beaClient: Client;
 let agentId: string;
 let eng: string;
 let prv: string;
@@ -25,8 +26,8 @@ beforeAll(async () => {
   ownerId = (await owner.get('/api/auth/me')).data.id;
   await owner.post('/api/workspaces', { name: 'DA', slug, teamName: 'Eng', teamKey: 'ENG' });
   const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token;
-  const b = (await signup(app, 'Bea Member', { inviteToken: invite })).client;
-  bea = (await b.get('/api/auth/me')).data.id;
+  beaClient = (await signup(app, 'Bea Member', { inviteToken: invite })).client;
+  bea = (await beaClient.get('/api/auth/me')).data.id;
   const boot: Bootstrap = (await owner.get(`${ws}/bootstrap`)).data;
   eng = boot.teams[0]!.id;
   prv = (await owner.post(`${ws}/teams`, { name: 'Private', key: 'PRV', private: true })).data.id;
@@ -46,6 +47,13 @@ describe('default assignee', () => {
     expect(bad.statusCode).toBe(400);
     const res = await owner.patch(`${ws}/`, { settings: { defaultAssigneeId: agentId } });
     expect(res.data.settings.defaultAssigneeId).toBe(agentId);
+  });
+
+  it('can only be set by admins', async () => {
+    const res = await beaClient.patch(`${ws}/`, { settings: { defaultAssigneeId: bea } });
+    expect(res.statusCode).toBe(403);
+    const boot: Bootstrap = (await owner.get(`${ws}/bootstrap`)).data;
+    expect(boot.workspace.settings.defaultAssigneeId).toBe(agentId);
   });
 
   it('assigns new issues that leave the assignee out, and queues the agent', async () => {
