@@ -1611,11 +1611,12 @@ export function waitForRuns(
       send: (data) => {
         const e = JSON.parse(data) as RealtimeEvent;
         // A workspace change, or one to the agent itself, may be a pause lifting; an issue
-        // change may be a blocker finishing.
+        // change may be a blocker finishing, and a repository change a run limit going up.
         if (
           e.kind === 'agentRun' ||
           e.kind === 'issue' ||
           e.kind === 'workspace' ||
+          e.kind === 'repository' ||
           (e.kind === 'member' && e.id === access.userId)
         )
           done();
