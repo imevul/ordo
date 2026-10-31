@@ -1,4 +1,5 @@
 export * from './agentFailures.ts';
+export * from './agentUsage.ts';
 export * from './constants.ts';
 export * from './customFields.ts';
 export * from './cycles.ts';

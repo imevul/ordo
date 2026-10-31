@@ -1,4 +1,4 @@
-import type { AgentPause, AgentRunWithIssue } from '@ordo/shared';
+import type { AgentPause, AgentRunWithIssue, AgentUsageTotal } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { ExternalLink, Pause, Play, RotateCcw, Square, X } from 'lucide-react';
@@ -14,18 +14,19 @@ import {
   RunBlocked,
   RunDetail,
   RunProgress,
+  RunUsage,
   runDetail,
   triggerLabel,
 } from '../components/AgentRuns.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
-import { t } from '../i18n/index.ts';
-import { longDate, relativeTime } from '../lib/format.ts';
+import { getLocale, INTL_TAG, t } from '../i18n/index.ts';
+import { compactCount, longDate, relativeTime, usd } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
 type Status = 'open' | 'finished' | 'all';
 const STATUSES: Status[] = ['open', 'finished', 'all'];
-const COLUMNS = 'grid-cols-[9.5rem_minmax(0,1fr)_10rem_10rem_6rem_4.5rem]';
+const COLUMNS = 'grid-cols-[9.5rem_minmax(0,1fr)_10rem_10rem_13rem_6rem_4.5rem]';
 
 /**
  * What agents are doing across the workspace: open runs (queued, working, waiting for an answer,
@@ -48,6 +49,11 @@ export function AgentRunsPage() {
     // Under agentRuns, so the run events that pause an agent refetch it too.
     queryKey: ['ws', ws.slug, 'agentRuns', 'pauses'],
     queryFn: () => api.get<AgentPause[]>(wsPath(ws.slug, '/agent-pauses')),
+  });
+  const { data: usage = [] } = useQuery({
+    // Under agentRuns too: a finished run's report changes the totals.
+    queryKey: ['ws', ws.slug, 'agentRuns', 'usage'],
+    queryFn: () => api.get<AgentUsageTotal[]>(wsPath(ws.slug, '/agent-usage')),
   });
   const { data: runs } = useQuery({
     queryKey: ['ws', ws.slug, 'agentRuns', 'list', status, agentId],
@@ -122,6 +128,7 @@ export function AgentRunsPage() {
       {pauses.map((p) => (
         <PauseBanner key={p.agentId} pause={p} />
       ))}
+      <UsageTotals totals={usage} />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!runs ? (
           <Spinner />
@@ -133,7 +140,7 @@ export function AgentRunsPage() {
             body={agents.length ? t('agents.runsPage.emptyBody') : t('agents.runsPage.noAgents')}
           />
         ) : (
-          <div className="min-w-[860px]">
+          <div className="min-w-[1080px]">
             <div
               className={`grid ${COLUMNS} items-center gap-3 border-b border-border-soft px-4 py-2 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase`}
             >
@@ -141,6 +148,7 @@ export function AgentRunsPage() {
               <span>{t('agents.runsPage.columns.issue')}</span>
               <span>{t('agents.runsPage.columns.agent')}</span>
               <span>{t('agents.runsPage.columns.runner')}</span>
+              <span>{t('agents.runsPage.columns.usage')}</span>
               <span>{t('agents.runsPage.columns.updated')}</span>
               <span />
             </div>
@@ -164,24 +172,95 @@ function PauseBanner({ pause }: { pause: AgentPause }) {
     () => api.post(wsPath(ws.slug, `/agents/${pause.agentId}/unpause`)),
     { invalidate: [['ws', ws.slug, 'agentRuns']] },
   );
+  const budget = pause.reason === 'budget';
   return (
-    <div className="flex items-center gap-3 border-b border-border-soft bg-warning/10 px-4 py-2 text-[13px] text-warning">
+    <div className="flex flex-wrap items-center gap-3 border-b border-border-soft bg-warning/10 px-4 py-2 text-[13px] text-warning">
       <span className="min-w-0 flex-1">
         {pause.reason === 'usage_limit'
           ? t('agents.runsPage.pausedLimit', vars)
-          : t('agents.runsPage.paused', vars)}
+          : budget
+            ? t('agents.runsPage.pausedBudget', vars)
+            : t('agents.runsPage.paused', vars)}
       </span>
+      {ws.isAdmin && budget && (
+        <Link
+          to="/$slug/settings/$section"
+          params={{ slug: ws.slug, section: 'agents' }}
+          className="btn btn-ghost btn-sm flex-none"
+        >
+          {t('agents.runsPage.raiseBudget')}
+        </Link>
+      )}
       {ws.isAdmin && (
         <button
           type="button"
           className="btn btn-ghost btn-sm flex-none"
           onClick={() => unpause.mutate(undefined)}
           disabled={unpause.isPending}
-          title={t('agents.runsPage.resumeNowHint')}
+          title={
+            budget ? t('agents.runsPage.resumeBudgetHint') : t('agents.runsPage.resumeNowHint')
+          }
         >
           <Play size={12} /> {t('agents.runsPage.resumeNow')}
         </button>
       )}
+    </div>
+  );
+}
+
+/**
+ * This month's totals per agent (on issues the reader can see): cost, tokens and runs, with a
+ * bar towards the budget when the agent has one.
+ */
+function UsageTotals({ totals }: { totals: AgentUsageTotal[] }) {
+  const ws = useWorkspace();
+  const shown = totals.filter((u) => u.runs > 0 || u.budgetUsd !== null);
+  if (!shown.length) return null;
+  const month = new Date().toLocaleDateString(INTL_TAG[getLocale()], {
+    month: 'long',
+    timeZone: 'UTC',
+  });
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-b border-border-soft px-4 py-2.5">
+      <span className="kicker">{t('agents.usage.thisMonth', { month })}</span>
+      {shown.map((u) => {
+        const agent = ws.memberById.get(u.agentId);
+        const tokens = u.inputTokens + u.outputTokens + u.cacheReadTokens + u.cacheWriteTokens;
+        const share = u.budgetUsd ? Math.min(100, (u.costUsd / u.budgetUsd) * 100) : null;
+        return (
+          <span
+            key={u.agentId}
+            className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px]"
+          >
+            {agent && <Avatar name={agent.name} color={agent.avatarColor} size={16} />}
+            <span className="truncate">{agent?.name ?? t('shell.actor.someone')}</span>
+            <span className="font-mono text-[12px] whitespace-nowrap text-text">
+              {u.budgetUsd !== null
+                ? t('agents.usage.ofBudget', { cost: usd(u.costUsd), budget: usd(u.budgetUsd) })
+                : usd(u.costUsd)}
+            </span>
+            {share !== null && (
+              <span
+                className="h-[3px] w-14 flex-none bg-border-soft"
+                role="meter"
+                aria-valuenow={Math.round(share)}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label={t('agents.usage.budget')}
+              >
+                <span
+                  className={`block h-full ${share >= 100 ? 'bg-warning' : 'bg-primary'}`}
+                  style={{ width: `${share}%` }}
+                />
+              </span>
+            )}
+            <span className="font-mono text-[11px] whitespace-nowrap text-index">
+              {t('agents.usage.tokens', { count: tokens, tokens: compactCount(tokens) })} ·{' '}
+              {t('agents.usage.runs', { count: u.runs })}
+            </span>
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -264,6 +343,9 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
         <span className="truncate font-mono text-[11.5px] text-index">
           {run.runnerName ?? '—'}
           {run.attempts > 1 && ` · ${t('agents.runs.attempt', { count: run.attempts })}`}
+        </span>
+        <span className="min-w-0 truncate">
+          <RunUsage run={run} />
         </span>
         <span className="font-mono text-[11px] text-index">
           {relativeTime(run.finishedAt ?? run.startedAt ?? run.createdAt)}

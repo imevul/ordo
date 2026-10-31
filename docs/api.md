@@ -500,28 +500,29 @@ Ordo if an admin chose to send them.
 
 Agents are members a runner works for; see [agents.md](agents.md) for the idea and the runner protocol.
 
-| Method         | Path                                                             | What                                                                                                                                        |
-| -------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET / POST     | `/agents`                                                        | _Admin._ List / create `{ name, teamIds, instructions?, concurrency?, followPullRequests?, waitForBlockers?, username? }`                   |
-| PATCH          | `/agents/:id`                                                    | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, followPullRequests?, waitForBlockers?, disabled? }`                               |
-| POST           | `/agents/:id/keys`                                               | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                                              |
-| DELETE         | `/agents/:id/keys/:keyId`                                        | _Admin._ Revoke a key                                                                                                                       |
-| POST           | `/agents/:id/unpause`                                            | _Admin._ Lift a pause ("Resume now") and restart the runs that failed on its usage limit                                                    |
-| GET            | `/agent-pauses`                                                  | Agents on hold right now: `[{ agentId, pausedUntil, reason }]`                                                                              |
-| GET / POST     | `/issues/:id/agent-runs`                                         | The issue's runs / queue a new one for its agent ("Run again")                                                                              |
-| GET            | `/agent-runs?status=open\|active\|finished\|all&agentId=&limit=` | Runs across the workspace on issues you can see, latest change first (≤ 500). `open`: active plus failed runs nobody restarted or dismissed |
-| GET            | `/agent-runs/active-count`                                       | `{ count }` of active runs (queued, claimed, running, waiting) on issues you can see                                                        |
-| POST           | `/agent-runs/:id/cancel`                                         | Cancel a run; its runner hears it on the next heartbeat                                                                                     |
-| POST           | `/agent-runs/:id/restart`                                        | A failed or cancelled run again: same agent, issue and trigger, as a new run with `retryOfId` (an open one is returned)                     |
-| POST           | `/agent-runs/:id/run-anyway`                                     | A queued run held back by its issue's blockers goes ahead (`ignoreBlockers`)                                                                |
-| POST           | `/agent-runs/:id/dismiss`                                        | Set a finished run aside (`dismissedAt`); it leaves the `open` list                                                                         |
-| GET            | `/agent/me`                                                      | _Agent key._ The agent and its teams, and `pausedUntil` / `pauseReason` while it's paused                                                   |
-| POST           | `/agent/claim?wait=30&runner=…`                                  | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)                               |
-| POST           | `/agent/runs/:id/heartbeat`                                      | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                                     |
-| PATCH          | `/agent/runs/:id`                                                | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, resume?, sessionUrl?, summary?, error?, failureReason? }`    |
-| GET            | `/repositories`                                                  | The workspace's repositories (also in the bootstrap)                                                                                        |
-| POST           | `/repositories`                                                  | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo? }`                                                                     |
-| PATCH / DELETE | `/repositories/:id`                                              | _Admin._ Update / delete                                                                                                                    |
+| Method         | Path                                                             | What                                                                                                                                                               |
+| -------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET / POST     | `/agents`                                                        | _Admin._ List (with `monthCostUsd`) / create `{ name, teamIds, instructions?, concurrency?, followPullRequests?, waitForBlockers?, monthlyBudgetUsd?, username? }` |
+| PATCH          | `/agents/:id`                                                    | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, followPullRequests?, waitForBlockers?, monthlyBudgetUsd?, disabled? }` (`null` budget: no cap)           |
+| POST           | `/agents/:id/keys`                                               | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                                                                     |
+| DELETE         | `/agents/:id/keys/:keyId`                                        | _Admin._ Revoke a key                                                                                                                                              |
+| POST           | `/agents/:id/unpause`                                            | _Admin._ Lift a pause ("Resume now") and restart the runs that failed on its usage limit; a budget pause stays lifted for the month                                |
+| GET            | `/agent-pauses`                                                  | Agents on hold right now: `[{ agentId, pausedUntil, reason }]`, `reason` `usage_limit` or `budget`                                                                 |
+| GET            | `/agent-usage?month=YYYY-MM`                                     | Per agent, a month's (UTC, default this one) `runs`, tokens, `costUsd`, `durationMs` on issues you can see, and its `budgetUsd`                                    |
+| GET / POST     | `/issues/:id/agent-runs`                                         | The issue's runs / queue a new one for its agent ("Run again")                                                                                                     |
+| GET            | `/agent-runs?status=open\|active\|finished\|all&agentId=&limit=` | Runs across the workspace on issues you can see, latest change first (≤ 500). `open`: active plus failed runs nobody restarted or dismissed                        |
+| GET            | `/agent-runs/active-count`                                       | `{ count }` of active runs (queued, claimed, running, waiting) on issues you can see                                                                               |
+| POST           | `/agent-runs/:id/cancel`                                         | Cancel a run; its runner hears it on the next heartbeat                                                                                                            |
+| POST           | `/agent-runs/:id/restart`                                        | A failed or cancelled run again: same agent, issue and trigger, as a new run with `retryOfId` (an open one is returned)                                            |
+| POST           | `/agent-runs/:id/run-anyway`                                     | A queued run held back by its issue's blockers goes ahead (`ignoreBlockers`)                                                                                       |
+| POST           | `/agent-runs/:id/dismiss`                                        | Set a finished run aside (`dismissedAt`); it leaves the `open` list                                                                                                |
+| GET            | `/agent/me`                                                      | _Agent key._ The agent and its teams, and `pausedUntil` / `pauseReason` while it's paused                                                                          |
+| POST           | `/agent/claim?wait=30&runner=…`                                  | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)                                                      |
+| POST           | `/agent/runs/:id/heartbeat`                                      | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                                                            |
+| PATCH          | `/agent/runs/:id`                                                | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, resume?, sessionUrl?, summary?, error?, failureReason?, usage? }`                   |
+| GET            | `/repositories`                                                  | The workspace's repositories (also in the bootstrap)                                                                                                               |
+| POST           | `/repositories`                                                  | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo? }`                                                                                            |
+| PATCH / DELETE | `/repositories/:id`                                              | _Admin._ Update / delete                                                                                                                                           |
 
 Projects take `repositoryIds` (in order) on create and update; teams take `defaultRepositoryId`. Admins can set a
 project's `pullRequestAgentId` (an agent in one of its teams, or `null`) and `pullRequestScope` (`"linked"` or
@@ -539,6 +540,12 @@ restart has `retryOfId`, the run it restarts; `dismissedAt` is set on dismissed 
 A queued run of an agent with `waitForBlockers` isn't handed out while an open issue (not done, cancelled or trashed)
 blocks its issue, unless `ignoreBlockers` is set (Run anyway). Listed runs carry `blockedBy`: the open blockers you
 can see, `{ id, identifier, title }`; empty when the run doesn't wait.
+
+A report's `usage` is what that pickup used: `{ inputTokens?, outputTokens?, cacheReadTokens?, cacheWriteTokens?,
+costUsd?, durationMs? }`. It's added to the run's `usage` (each field `null` until reported), so send it once per
+pickup; a cancelled run takes a report with only `usage`. Costs count in the month (UTC) they're reported in, and
+reaching an agent's `monthlyBudgetUsd` pauses it with `pauseReason: "budget"` until the next month starts. See
+[agents.md](agents.md#cost-and-budgets).
 
 `progress` is `{ step, percent, at }` (or `null`): what the agent last said it is doing, sent with the MCP tool
 `report_progress`. Only the newest is kept, and a new claim clears it. It changes the run (realtime `agentRun`

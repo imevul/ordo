@@ -1,4 +1,5 @@
 import type {
+  AgentPauseReason,
   AgentRunFailureReason,
   AgentRunStatus,
   AgentRunTrigger,
@@ -1253,7 +1254,11 @@ export interface Agent {
   waitForBlockers: boolean;
   /** Claims hand out nothing until then (e.g. its runner hit a usage limit); null when not paused. */
   pausedUntil: string | null;
-  pauseReason: AgentRunFailureReason | null;
+  pauseReason: AgentPauseReason | null;
+  /** What its runs may cost in a calendar month (UTC) before it pauses; null for no cap. */
+  monthlyBudgetUsd: number | null;
+  /** What its runs cost so far this month (UTC), in US dollars. */
+  monthCostUsd: number;
   disabled: boolean;
   keys: {
     id: string;
@@ -1304,6 +1309,8 @@ export interface AgentRun {
    * caller can see). Empty otherwise.
    */
   blockedBy: { id: string; identifier: string; title: string }[];
+  /** What it used, as its runner reported; null when it reported nothing. */
+  usage: AgentRunUsage | null;
   requestedById: string | null;
   leaseExpiresAt: string | null;
   startedAt: string | null;
@@ -1315,6 +1322,33 @@ export interface AgentRunProgress {
   step: string;
   percent: number | null;
   at: string;
+}
+
+/** A run's tokens, cost and working time, added up over its pickups. Null: not reported. */
+export interface AgentRunUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
+  costUsd: number | null;
+  durationMs: number | null;
+}
+
+/** An agent's runs in one calendar month (UTC): `GET /agent-usage`. */
+export interface AgentUsageTotal {
+  agentId: string;
+  /** YYYY-MM */
+  month: string;
+  /** Runs that reported usage. */
+  runs: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  costUsd: number;
+  durationMs: number;
+  /** The agent's monthly budget, if it has one. */
+  budgetUsd: number | null;
 }
 
 export interface AgentRunPullRequest {
@@ -1329,7 +1363,7 @@ export interface AgentRunPullRequest {
 export interface AgentPause {
   agentId: string;
   pausedUntil: string;
-  reason: AgentRunFailureReason | null;
+  reason: AgentPauseReason | null;
 }
 
 /** A run with the issue it's about, for workspace-wide run lists. */
@@ -1380,5 +1414,5 @@ export interface AgentIdentity {
   teams: { id: string; key: string; name: string }[];
   /** Claims hand out nothing until then (e.g. after a usage limit); null when not paused. */
   pausedUntil: string | null;
-  pauseReason: AgentRunFailureReason | null;
+  pauseReason: AgentPauseReason | null;
 }

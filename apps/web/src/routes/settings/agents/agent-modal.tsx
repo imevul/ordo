@@ -8,6 +8,7 @@ import { Avatar } from '../../../components/ui/Avatar.tsx';
 import { AvatarColorPicker } from '../../../components/ui/AvatarColorPicker.tsx';
 import { Modal } from '../../../components/ui/Modal.tsx';
 import { t } from '../../../i18n/index.ts';
+import { usd } from '../../../lib/format.ts';
 import { useWorkspace } from '../../../lib/workspace.tsx';
 import { FormRow } from '../ui.tsx';
 import { errMsg } from './shared.ts';
@@ -33,6 +34,8 @@ export function AgentModal({
   const [concurrency, setConcurrency] = useState(1);
   const [followPullRequests, setFollowPullRequests] = useState(true);
   const [waitForBlockers, setWaitForBlockers] = useState(true);
+  // As typed; empty is no budget.
+  const [budget, setBudget] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!agent) return;
@@ -45,12 +48,18 @@ export function AgentModal({
     setConcurrency(existing?.concurrency ?? 1);
     setFollowPullRequests(existing?.followPullRequests ?? true);
     setWaitForBlockers(existing?.waitForBlockers ?? true);
+    setBudget(existing?.monthlyBudgetUsd != null ? String(existing.monthlyBudgetUsd) : '');
   }, [agent, existing, ws.teams]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (teamIds.length === 0) {
       toast.error(t('agents.form.pickTeam'));
+      return;
+    }
+    const monthlyBudgetUsd = budget.trim() ? Number(budget) : null;
+    if (monthlyBudgetUsd !== null && !(monthlyBudgetUsd > 0)) {
+      toast.error(t('agents.form.budgetInvalid'));
       return;
     }
     setBusy(true);
@@ -62,6 +71,7 @@ export function AgentModal({
       concurrency,
       followPullRequests,
       waitForBlockers,
+      monthlyBudgetUsd,
     };
     try {
       if (existing) {
@@ -140,6 +150,28 @@ export function AgentModal({
             value={concurrency}
             onChange={(e) => setConcurrency(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
           />
+        </FormRow>
+        <FormRow
+          label={t('agents.form.budget')}
+          hint={
+            existing
+              ? t('agents.form.budgetSpent', { cost: usd(existing.monthCostUsd) })
+              : t('agents.form.budgetHint')
+          }
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[13px] text-index">$</span>
+            <input
+              className="input w-28"
+              type="number"
+              min={0.01}
+              step={0.01}
+              inputMode="decimal"
+              placeholder={t('agents.form.budgetNone')}
+              value={budget}
+              onChange={(e) => setBudget(e.target.value)}
+            />
+          </div>
         </FormRow>
         <label className="mt-4 flex items-start gap-2 text-[13px]">
           <input

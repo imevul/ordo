@@ -6,22 +6,44 @@ import {
   type Agent,
   type AgentIdentity,
   type AgentPause,
+  type AgentPauseReason,
   type AgentRun,
   type AgentRunContext,
   type AgentRunFailureReason,
   type AgentRunPullRequest,
   type AgentRunTrigger,
+  type AgentRunUsageReport,
   type AgentRunWithIssue,
+  type AgentUsageTotal,
   AVATAR_COLORS,
   branchName,
   classifyFailure,
   type createAgentSchema,
   DEFAULT_LIMIT_PAUSE_MS,
+  monthOf,
+  monthRange,
   parseLimitReset,
   type RealtimeEvent,
   type updateAgentSchema,
 } from '@ordo/shared';
-import { and, asc, count, desc, eq, gt, inArray, isNull, lt, lte, not, or, sql } from 'drizzle-orm';
+import {
+  type AnyColumn,
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  not,
+  or,
+  type SQL,
+  sql,
+} from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
 import type { DbOrTx } from '../db/client.ts';
@@ -106,6 +128,7 @@ export async function listAgents(db: DbOrTx, workspaceId: string): Promise<Agent
       waitForBlockers: agents.waitForBlockers,
       pausedUntil: agents.pausedUntil,
       pauseReason: agents.pauseReason,
+      monthlyBudgetUsd: agents.monthlyBudgetUsd,
       createdAt: agents.createdAt,
     })
     .from(agents)
@@ -114,7 +137,7 @@ export async function listAgents(db: DbOrTx, workspaceId: string): Promise<Agent
     .orderBy(asc(users.name));
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
-  const [memberships, keys] = await Promise.all([
+  const [memberships, keys, spent] = await Promise.all([
     db
       .select({ userId: teamMembers.userId, teamId: teamMembers.teamId })
       .from(teamMembers)
@@ -132,6 +155,7 @@ export async function listAgents(db: DbOrTx, workspaceId: string): Promise<Agent
       .from(apiKeys)
       .where(inArray(apiKeys.userId, ids))
       .orderBy(desc(apiKeys.createdAt)),
+    usageTotals(db, workspaceId, monthOf(new Date().toISOString())),
   ]);
   const now = new Date().toISOString();
   return rows.map(({ disabledAt, pausedUntil, pauseReason, ...r }) => ({
@@ -139,6 +163,7 @@ export async function listAgents(db: DbOrTx, workspaceId: string): Promise<Agent
     ...(pausedUntil && pausedUntil > now
       ? { pausedUntil, pauseReason }
       : { pausedUntil: null, pauseReason: null }),
+    monthCostUsd: spent.get(r.id)?.costUsd ?? 0,
     disabled: !!disabledAt,
     teamIds: memberships.filter((m) => m.userId === r.id).map((m) => m.teamId),
     keys: keys.filter((k) => k.userId === r.id).map(({ userId: _, ...k }) => k),
@@ -185,6 +210,7 @@ export async function createAgent(ctx: Ctx, input: CreateAgentInput): Promise<Ag
     concurrency: input.concurrency,
     followPullRequests: input.followPullRequests,
     waitForBlockers: input.waitForBlockers,
+    monthlyBudgetUsd: input.monthlyBudgetUsd,
     createdById: ctx.userId,
   });
   await auditCtx(ctx, {
@@ -211,11 +237,14 @@ export async function updateAgent(ctx: Ctx, agentId: string, input: UpdateAgentI
       .update(users)
       .set({ ...userPatch, updatedAt: new Date().toISOString() })
       .where(eq(users.id, agentId));
+  const budgetChanged =
+    input.monthlyBudgetUsd !== undefined && input.monthlyBudgetUsd !== current.monthlyBudgetUsd;
   if (
     input.instructions !== undefined ||
     input.concurrency !== undefined ||
     input.followPullRequests !== undefined ||
-    input.waitForBlockers !== undefined
+    input.waitForBlockers !== undefined ||
+    budgetChanged
   )
     await ctx.tx
       .update(agents)
@@ -226,9 +255,13 @@ export async function updateAgent(ctx: Ctx, agentId: string, input: UpdateAgentI
           followPullRequests: input.followPullRequests,
         }),
         ...(input.waitForBlockers !== undefined && { waitForBlockers: input.waitForBlockers }),
+        // A new budget holds from now on, whatever "Resume now" waived under the old one.
+        ...(budgetChanged && { monthlyBudgetUsd: input.monthlyBudgetUsd, budgetWaivedUntil: null }),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(agents.userId, agentId));
+  // Raising the budget above what it spent lifts a budget pause; lowering it below pauses it.
+  if (budgetChanged) await checkBudget(ctx, agentId);
   const changedTeams = new Set<string>();
   if (input.teamIds) {
     await assertTeams(ctx, input.teamIds);
@@ -356,6 +389,16 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
   ignoreBlockers: r.ignoreBlockers,
   // Filled in by withBlockers where runs are listed for people.
   blockedBy: [],
+  usage: r.usageAt
+    ? {
+        inputTokens: r.inputTokens,
+        outputTokens: r.outputTokens,
+        cacheReadTokens: r.cacheReadTokens,
+        cacheWriteTokens: r.cacheWriteTokens,
+        costUsd: r.costUsd,
+        durationMs: r.durationMs,
+      }
+    : null,
   question: r.question,
   resume: r.resume,
   trigger: r.trigger,
@@ -751,20 +794,38 @@ export async function listPauses(db: DbOrTx, workspaceId: string): Promise<Agent
 
 /**
  * "Resume now": lifts an agent's pause and restarts the runs that failed on its usage limit
- * straight away, instead of at the reset time.
+ * straight away, instead of at the reset time. A budget pause stays lifted for the rest of the
+ * month: the budget doesn't pause it again until it's changed.
  */
 export async function unpauseAgent(ctx: Ctx, agentId: string) {
-  const [agent] = await ctx.tx
-    .update(agents)
-    .set({ pausedUntil: null, pauseReason: null, updatedAt: new Date().toISOString() })
+  const now = new Date().toISOString();
+  const [current] = await ctx.tx
+    .select({ pausedUntil: agents.pausedUntil, pauseReason: agents.pauseReason })
+    .from(agents)
     .where(and(eq(agents.userId, agentId), eq(agents.workspaceId, ctx.workspaceId)))
-    .returning({ id: agents.userId });
-  if (!agent) throw notFound('Agent');
+    .for('update');
+  if (!current) throw notFound('Agent');
+  const budget =
+    current.pauseReason === 'budget' && !!current.pausedUntil && current.pausedUntil > now;
+  await ctx.tx
+    .update(agents)
+    .set({
+      pausedUntil: null,
+      pauseReason: null,
+      ...(budget && { budgetWaivedUntil: monthRange(monthOf(now)).end }),
+      updatedAt: now,
+    })
+    .where(eq(agents.userId, agentId));
   for (const run of await limitFailures(ctx.tx, eq(agentRuns.agentId, agentId)))
     await restart(ctx, run);
   // Wakes the agent's runners, which wait on member and run events.
   emit(ctx, { kind: 'member', action: 'updated', id: agentId });
-  await auditCtx(ctx, { action: 'agent.unpaused', targetType: 'user', targetId: agentId });
+  await auditCtx(ctx, {
+    action: 'agent.unpaused',
+    targetType: 'user',
+    targetId: agentId,
+    data: { reason: current.pauseReason },
+  });
   return { ok: true };
 }
 
@@ -1116,37 +1177,47 @@ export async function reportRun(
     failureReason?: AgentRunFailureReason;
     question?: string;
     resume?: string | null;
+    usage?: AgentRunUsageReport;
   },
 ): Promise<AgentRun> {
   let run = await ownRun(ctx, runId);
+  const usage = addUsage(input.usage);
+  const used = Object.keys(usage).length > 0;
   // The command usually exits after asking; whatever its runner says then changes nothing but
-  // the links it can hand on.
-  if (run.status === 'waiting') {
-    if (input.sessionUrl === undefined && input.resume === undefined) return toAgentRun(run);
+  // the links it can hand on, and what the pickup used. A cancelled run's runner can still say
+  // what it used before it stopped.
+  const onlyUsage = Object.entries(input).every(([k, v]) => k === 'usage' || v === undefined);
+  if (run.status === 'waiting' || (run.status === 'cancelled' && used && onlyUsage)) {
+    const links = run.status === 'waiting' && {
+      ...(input.sessionUrl !== undefined && { sessionUrl: input.sessionUrl }),
+      ...(input.resume !== undefined && { resume: input.resume }),
+    };
+    if (!used && !(links && Object.keys(links).length)) return toAgentRun(run);
     const [kept] = await ctx.tx
       .update(agentRuns)
-      .set({
-        ...(input.sessionUrl !== undefined && { sessionUrl: input.sessionUrl }),
-        ...(input.resume !== undefined && { resume: input.resume }),
-      })
+      .set({ ...links, ...usage })
       .where(eq(agentRuns.id, runId))
       .returning();
+    if (used) await afterUsage(ctx, kept!);
     return toAgentRun(kept!);
   }
   if (run.status !== 'claimed' && run.status !== 'running')
     throw conflict(`This run is ${run.status}`);
   if (input.status === 'waiting') {
     if (!input.question) throw badRequest('Say what you are asking (question)');
-    if (input.sessionUrl !== undefined || input.resume !== undefined)
+    if (input.sessionUrl !== undefined || input.resume !== undefined || used)
       [run] = await ctx.tx
         .update(agentRuns)
         .set({
           ...(input.sessionUrl !== undefined && { sessionUrl: input.sessionUrl }),
           ...(input.resume !== undefined && { resume: input.resume }),
+          ...usage,
         })
         .where(eq(agentRuns.id, runId))
         .returning();
-    return askQuestion(ctx, runId, input.question);
+    const asked = await askQuestion(ctx, runId, input.question);
+    if (used) await afterUsage(ctx, run, { emitted: true });
+    return asked;
   }
   const now = new Date().toISOString();
   const final = input.status === 'succeeded' || input.status === 'failed';
@@ -1162,6 +1233,7 @@ export async function reportRun(
       ...(input.status === 'running' && !run.startedAt && { startedAt: now }),
       ...(final && { finishedAt: now, leaseExpiresAt: null, startedAt: run.startedAt ?? now }),
       ...(failure && { failureReason: failure.reason, retryAt: failure.retryAt }),
+      ...usage,
       updatedAt: now,
     })
     .where(eq(agentRuns.id, runId))
@@ -1173,8 +1245,170 @@ export async function reportRun(
       ? saved!.summary?.trim()
       : failure && (await failureComment(ctx, saved!, failure));
   if (body) await createComment(ctx, run.issueId, { body: body.slice(0, 50_000) });
+  if (used) await afterUsage(ctx, saved!, { emitted: true });
   await changed(ctx, saved!);
   return toAgentRun(saved!);
+}
+
+const USAGE_COLUMNS = {
+  inputTokens: agentRuns.inputTokens,
+  outputTokens: agentRuns.outputTokens,
+  cacheReadTokens: agentRuns.cacheReadTokens,
+  cacheWriteTokens: agentRuns.cacheWriteTokens,
+  costUsd: agentRuns.costUsd,
+  durationMs: agentRuns.durationMs,
+} as const;
+
+/** The update that adds a report's usage to the run's (empty when it reported none). */
+function addUsage(usage: AgentRunUsageReport | undefined) {
+  const set: Partial<Record<keyof typeof USAGE_COLUMNS, SQL>> & { usageAt?: string } = {};
+  for (const [key, column] of Object.entries(USAGE_COLUMNS) as [
+    keyof typeof USAGE_COLUMNS,
+    (typeof USAGE_COLUMNS)[keyof typeof USAGE_COLUMNS],
+  ][]) {
+    const value = usage?.[key];
+    if (value !== undefined) set[key] = sql`coalesce(${column}, 0) + ${value}`;
+  }
+  if (Object.keys(set).length) set.usageAt = new Date().toISOString();
+  return set;
+}
+
+/**
+ * After a run's usage grew: the agent pauses if that spent its budget, and says so on the issue.
+ * Without `emitted`, the run's own change is announced here too.
+ */
+async function afterUsage(ctx: Ctx, run: RunRow, opts: { emitted?: boolean } = {}) {
+  if (!opts.emitted) {
+    const teamId = await teamOfIssue(ctx.tx, run.issueId);
+    emit(ctx, { kind: 'agentRun', action: 'updated', id: run.id, issueId: run.issueId, teamId });
+  }
+  const reached = await checkBudget(ctx, run.agentId);
+  if (!reached) return;
+  const [ws] = await ctx.tx.select().from(workspaces).where(eq(workspaces.id, ctx.workspaceId));
+  const zone = workspaceSettings(ws!).timezone ?? 'UTC';
+  await createComment(ctx, run.issueId, {
+    body: `I've spent my monthly budget ($${reached.spent.toFixed(2)} of $${reached.budget.toFixed(2)}), so I'm paused until ${formatInZone(reached.until, zone)}. An admin can raise the budget in Settings → Agents, or resume me from Agent runs.`,
+  });
+}
+
+/**
+ * Holds the agent while this month's runs cost at least its budget (unless "Resume now" waived
+ * it), and lifts a budget pause once they don't. Returns what it spent when it just paused it.
+ */
+async function checkBudget(ctx: Ctx, agentId: string) {
+  const [agent] = await ctx.tx
+    .select({
+      budget: agents.monthlyBudgetUsd,
+      waivedUntil: agents.budgetWaivedUntil,
+      pausedUntil: agents.pausedUntil,
+      pauseReason: agents.pauseReason,
+    })
+    .from(agents)
+    .where(eq(agents.userId, agentId))
+    .for('update');
+  if (!agent) return null;
+  const now = new Date().toISOString();
+  const month = monthOf(now);
+  const pausedForBudget =
+    agent.pauseReason === 'budget' && !!agent.pausedUntil && agent.pausedUntil > now;
+  if (agent.budget === null) {
+    if (pausedForBudget) await liftPause(ctx, agentId);
+    return null;
+  }
+  const spent =
+    (await usageTotals(ctx.tx, ctx.workspaceId, month, { agentId })).get(agentId)?.costUsd ?? 0;
+  const over = spent >= agent.budget && !(agent.waivedUntil && agent.waivedUntil > now);
+  if (!over) {
+    if (pausedForBudget) await liftPause(ctx, agentId);
+    return null;
+  }
+  if (pausedForBudget) return null;
+  const until = monthRange(month).end;
+  await pauseAgent(ctx, agentId, until, 'budget');
+  return { spent, budget: agent.budget, until };
+}
+
+async function liftPause(ctx: Ctx, agentId: string) {
+  await ctx.tx
+    .update(agents)
+    .set({ pausedUntil: null, pauseReason: null, updatedAt: new Date().toISOString() })
+    .where(eq(agents.userId, agentId));
+  emit(ctx, { kind: 'member', action: 'updated', id: agentId });
+}
+
+/**
+ * Usage of the workspace's runs in a calendar month (UTC), per agent: by when it was reported.
+ * With `access`, only runs on issues it can read count.
+ */
+async function usageTotals(
+  db: DbOrTx,
+  workspaceId: string,
+  month: string,
+  opts: { access?: Access; agentId?: string } = {},
+) {
+  const { start, end } = monthRange(month);
+  const total = (column: AnyColumn) => sql<number>`coalesce(sum(${column}), 0)::float8`;
+  const query = db
+    .select({
+      agentId: agentRuns.agentId,
+      runs: sql<number>`count(*)::int`,
+      inputTokens: total(agentRuns.inputTokens),
+      outputTokens: total(agentRuns.outputTokens),
+      cacheReadTokens: total(agentRuns.cacheReadTokens),
+      cacheWriteTokens: total(agentRuns.cacheWriteTokens),
+      costUsd: total(agentRuns.costUsd),
+      durationMs: total(agentRuns.durationMs),
+    })
+    .from(agentRuns);
+  const scoped = opts.access ? query.innerJoin(issues, eq(issues.id, agentRuns.issueId)) : query;
+  const rows = await scoped
+    .where(
+      and(
+        eq(agentRuns.workspaceId, workspaceId),
+        gte(agentRuns.usageAt, start),
+        lt(agentRuns.usageAt, end),
+        opts.agentId ? eq(agentRuns.agentId, opts.agentId) : undefined,
+        opts.access ? teamScope(opts.access, issues.teamId) : undefined,
+      ),
+    )
+    .groupBy(agentRuns.agentId);
+  return new Map(rows.map((r) => [r.agentId, r]));
+}
+
+/**
+ * `GET /agent-usage`: each agent's tokens, cost and working time in a month, on issues `access`
+ * can read, with its budget. Agents with neither usage nor a budget are left out.
+ */
+export async function listAgentUsage(
+  db: DbOrTx,
+  access: Access,
+  month = monthOf(new Date().toISOString()),
+): Promise<AgentUsageTotal[]> {
+  const [totals, budgets] = await Promise.all([
+    usageTotals(db, access.workspaceId, month, { access }),
+    db
+      .select({ agentId: agents.userId, budget: agents.monthlyBudgetUsd })
+      .from(agents)
+      .where(eq(agents.workspaceId, access.workspaceId)),
+  ]);
+  return budgets
+    .filter((b) => totals.has(b.agentId) || b.budget !== null)
+    .map((b) => {
+      const t = totals.get(b.agentId);
+      return {
+        agentId: b.agentId,
+        month,
+        runs: t?.runs ?? 0,
+        inputTokens: t?.inputTokens ?? 0,
+        outputTokens: t?.outputTokens ?? 0,
+        cacheReadTokens: t?.cacheReadTokens ?? 0,
+        cacheWriteTokens: t?.cacheWriteTokens ?? 0,
+        costUsd: t?.costUsd ?? 0,
+        durationMs: t?.durationMs ?? 0,
+        budgetUsd: b.budget,
+      };
+    })
+    .sort((a, b) => b.costUsd - a.costUsd);
 }
 
 /**
@@ -1196,14 +1430,21 @@ async function failureOf(
   return { reason, retryAt: restarts ? pauseUntil : null, pauseUntil };
 }
 
-/** Holds the agent's claims until `until`; a later pause already in place stays. */
-async function pauseAgent(ctx: Ctx, agentId: string, until: string | null) {
+/**
+ * Holds the agent's claims until `until`; a later pause already in place stays, with its reason.
+ */
+async function pauseAgent(
+  ctx: Ctx,
+  agentId: string,
+  until: string | null,
+  reason: AgentPauseReason = 'usage_limit',
+) {
   if (!until) return;
   await ctx.tx
     .update(agents)
     .set({
       pausedUntil: sql`greatest(coalesce(${agents.pausedUntil}, ${until}::timestamptz), ${until}::timestamptz)`,
-      pauseReason: 'usage_limit',
+      pauseReason: sql`case when ${agents.pausedUntil} is null or ${agents.pausedUntil} <= ${until}::timestamptz then ${reason} else ${agents.pauseReason} end`,
       updatedAt: new Date().toISOString(),
     })
     .where(eq(agents.userId, agentId));
