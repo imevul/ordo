@@ -1,7 +1,9 @@
 # syntax=docker/dockerfile:1
 
 # ─── build ─────────────────────────────────────────────────────────────
-FROM node:26-alpine AS build
+# Runs on the builder's own platform: its output is plain JavaScript and WebAssembly, and the runtime
+# stage only copies files, so a multi-arch build needs no emulation.
+FROM --platform=$BUILDPLATFORM node:26-alpine AS build
 WORKDIR /src
 RUN npm install -g pnpm@12.15.0
 
@@ -21,6 +23,8 @@ COPY tsconfig.base.json ./
 COPY packages ./packages
 COPY apps ./apps
 RUN pnpm build
+# The uploads directory, created here so the runtime stage runs nothing on the target platform.
+RUN mkdir -p /out/data
 
 # ─── runtime ───────────────────────────────────────────────────────────
 # The API is bundled into one file, so the runtime image needs no node_modules.
@@ -41,7 +45,7 @@ COPY --from=build /src/apps/web/dist ./public
 COPY --from=build /src/packages/cli/dist/ordo.mjs ./public/cli/ordo.mjs
 
 # Uploads (avatars, attachments) live here; mount a volume.
-RUN mkdir -p /data && chown node:node /data
+COPY --from=build --chown=node:node /out/data /data
 VOLUME /data
 
 USER node

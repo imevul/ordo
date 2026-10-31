@@ -54,6 +54,22 @@ make dev-db
 pnpm --filter @ordo/api test
 ```
 
+## CI and releases
+
+`.github/workflows/ci.yml` runs lint, typecheck, tests and `scripts/check-bundle.sh` against a Postgres service,
+and builds the Docker image without pushing it. Pull requests and branches other than `main` run it directly.
+
+`main` and version tags go through `.github/workflows/release.yml` instead: it runs the same CI, then builds the
+image for `linux/amd64` and `linux/arm64` and pushes it to `ghcr.io/<owner>/ordo` with a build provenance
+attestation.
+
+| Push         | Image tags                       |
+| ------------ | -------------------------------- |
+| `main`       | `main`, `latest`, `<commit sha>` |
+| tag `v1.2.3` | `1.2.3`, `1.2`, `<commit sha>`   |
+
+To cut a release, tag a commit on `main` and push the tag: `git tag v0.2.0 && git push origin v0.2.0`.
+
 ## Making changes
 
 ### Add a field to issues

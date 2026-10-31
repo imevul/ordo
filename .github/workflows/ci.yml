@@ -1,8 +1,11 @@
 name: CI
 
+# main and version tags run this through release.yml, which publishes the image once it passes.
 on:
   push:
+    branches-ignore: [main]
   pull_request:
+  workflow_call:
 
 # The token only needs to read the repository. The Docker layer cache (type=gha) talks to the cache
 # service with the runner's own ACTIONS_RUNTIME_TOKEN, which these scopes don't restrict.
