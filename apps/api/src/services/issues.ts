@@ -1,4 +1,5 @@
 import {
+  type AgentRunTrigger,
   type CreateIssueInput,
   defaultAssigneeFor,
   type HistoryChange,
@@ -690,12 +691,14 @@ export async function retriedCreate(
 
 /**
  * Creates an issue. Imports pass `imported` to keep the source's creator, timestamps and number;
- * the acting user (the importer) is then neither the creator nor subscribed.
+ * the acting user (the importer) is then neither the creator nor subscribed. `runTrigger` is why
+ * an agent assignee gets a run: recurring schedules pass `scheduled`.
  */
 export async function createIssue(
   ctx: Ctx,
   input: CreateIssueInput,
   imported?: ImportedIssueFields,
+  { runTrigger }: { runTrigger?: AgentRunTrigger } = {},
 ): Promise<Issue> {
   if (input.id) {
     const retried = await retriedCreate(ctx, issues, input.id, issues.creatorId);
@@ -800,7 +803,7 @@ export async function createIssue(
   );
   if (assigneeId) await notify(ctx, { userIds: [assigneeId], type: 'issue_assigned', issueId: id });
   emit(ctx, { kind: 'issue', action: 'created', id, teamId: team.id });
-  if (assigneeId && !imported) await onAssigneeChanged(ctx, id, null, assigneeId);
+  if (assigneeId && !imported) await onAssigneeChanged(ctx, id, null, assigneeId, runTrigger);
   if (input.parentId)
     emit(ctx, { kind: 'issue', action: 'updated', id: input.parentId, teamId: team.id });
   const created = await getIssue(ctx.tx, ctx.access, id);

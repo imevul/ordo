@@ -54,6 +54,10 @@ export default {
       'A run on a blocked issue waits until the issues blocking it are done or cancelled. Turn off for agents that only triage.',
     pickTeam: 'Pick at least one team.',
   },
+  schedules: {
+    /** Next to a recurring issue assigned to the agent; opens Settings → Templates. */
+    manage: 'Manage',
+  },
   token: {
     title: 'Agent key',
     body: "Copy it now: it isn't shown again. Start a runner with it:",
@@ -111,6 +115,7 @@ export default {
       mention: 'mentioned',
       rerun: 'run again',
       pull_request: 'pull request',
+      scheduled: 'scheduled',
     },
     /** For pull request runs; {ref} is like "#42". */
     pullRequest: {

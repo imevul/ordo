@@ -159,8 +159,11 @@ async function runSchedule(
     };
     // What the template sets may have gone stale (someone left the team, a label moved); the
     // issue still gets made, with what's left. Those are 400s; anything else is a real failure.
+    // An agent assignee gets a run with the description as its task; a paused agent's waits.
     const attempt = (input: CreateIssueInput) =>
-      ctx.tx.transaction((tx) => createIssue({ ...ctx, tx }, input));
+      ctx.tx.transaction((tx) =>
+        createIssue({ ...ctx, tx }, input, undefined, { runTrigger: 'scheduled' }),
+      );
     const issue = await attempt(full).catch((err) => {
       if (!(err instanceof HttpError && err.statusCode === 400)) throw err;
       return attempt({ teamId: full.teamId, title: full.title, description: full.description });

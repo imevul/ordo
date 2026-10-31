@@ -466,6 +466,7 @@ export async function onAssigneeChanged(
   issueId: string,
   prev: string | null,
   next: string | null,
+  trigger: AgentRunTrigger = 'assigned',
 ) {
   if (prev === next) return;
   if (prev)
@@ -481,7 +482,7 @@ export async function onAssigneeChanged(
       'Unassigned',
     );
   if (next && (await isActiveAgent(ctx.tx, ctx.workspaceId, next)))
-    await queueRun(ctx, issueId, next);
+    await queueRun(ctx, issueId, next, { kind: trigger });
 }
 
 /** "Run again": a new run for the issue's agent, e.g. after review feedback in a comment. */
@@ -1570,6 +1571,10 @@ export function renderPrompt(
     );
   const pr = c.trigger.kind === 'pull_request' ? c.trigger.pullRequest : null;
   if (pr) out.push(`## Why you're here\n${pullRequestReason(pr)}`);
+  if (c.trigger.kind === 'scheduled')
+    out.push(
+      "## Why you're here\nA recurring schedule created this issue and assigned it to you. Its description is your task for this occurrence: do it now. The schedule creates a new issue next time, so finish this one instead of waiting for later.",
+    );
   if (c.run.question)
     out.push(
       `## You asked\n${c.run.question}\n\nThe answer is in the comments after your question. Continue from there.`,

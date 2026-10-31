@@ -95,6 +95,7 @@ it repeat every so many days, weeks or months in a team, starting on a date you 
 creates the issue (its assignee is notified as usual); if Ordo was down for a while, it creates one issue and moves
 on rather than catching up. Pause, resume or stop a schedule from the same list. If something the template sets no
 longer fits the team (say, its assignee left), the issue is still created, without the template's properties.
+A template assigned to an agent runs that agent on a schedule; see [Scheduled runs](agents.md#scheduled-runs).
 
 Properties: **status, priority** (urgent, high, medium, low, none), **assignee, labels, project, cycle,
 estimate, due date**, and a **parent** issue. Change any of them from the issue page's sidebar, from the icons

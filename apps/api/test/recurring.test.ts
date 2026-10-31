@@ -1,4 +1,11 @@
-import type { Bootstrap, Issue, IssueTemplate, RecurringIssue } from '@ordo/shared';
+import type {
+  AgentRun,
+  AgentRunContext,
+  Bootstrap,
+  Issue,
+  IssueTemplate,
+  RecurringIssue,
+} from '@ordo/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -211,5 +218,119 @@ describe('recurring issues', () => {
     )!;
     expect((await member.del(`${ws}/recurring/${hidden.id}`)).statusCode).toBe(404);
     expect((await member.del(`${ws}/recurring/${ids.schedule}`)).statusCode).toBe(200);
+  });
+});
+
+describe('recurring issues for an agent', () => {
+  let agentId: string;
+  let token: string;
+  let scheduleId: string;
+  const claim = async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: `${ws}/agent/claim?runner=test-host`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    return { statusCode: res.statusCode, data: res.statusCode === 200 ? res.json() : null } as {
+      statusCode: number;
+      data: AgentRunContext | null;
+    };
+  };
+  const finish = (runId: string) =>
+    app.inject({
+      method: 'PATCH',
+      url: `${ws}/agent/runs/${runId}`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { status: 'succeeded', summary: 'Checked.' },
+    });
+  const occurrence = async (day: string) => {
+    await runRecurring(app, noonUtc(day));
+    const made = (await owner.post(`${ws}/issues/query`, { filter: { teamId: ids.pub } }))
+      .data as Issue[];
+    const [row] = await app.db
+      .select()
+      .from(recurringIssues)
+      .where(eq(recurringIssues.id, scheduleId));
+    const issue = made.find((i) => i.id === row!.lastIssueId)!;
+    const runs = (await owner.get(`${ws}/issues/${issue.id}/agent-runs`)).data as AgentRun[];
+    return { issue, runs };
+  };
+
+  beforeAll(async () => {
+    agentId = (await owner.post(`${ws}/agents`, { name: 'Nightly Rec', teamIds: [ids.pub] })).data
+      .id;
+    token = (await owner.post(`${ws}/agents/${agentId}/keys`, { name: 'k' })).data.token;
+    const template = (
+      await owner.post(`${ws}/templates`, {
+        name: 'Dependency check',
+        title: 'Nightly dependency check',
+        description: 'Look for outdated dependencies and open a pull request.',
+        assigneeId: agentId,
+      })
+    ).data as IssueTemplate;
+    scheduleId = (
+      (
+        await owner.post(`${ws}/recurring`, {
+          templateId: template.id,
+          teamId: ids.pub,
+          every: 1,
+          unit: 'day',
+          nextOn: '2026-11-10',
+        })
+      ).data as RecurringIssue
+    ).id;
+  });
+
+  it('queue a scheduled run with the description as the task', async () => {
+    const { issue, runs } = await occurrence('2026-11-10');
+    expect(issue).toMatchObject({ title: 'Nightly dependency check', assigneeId: agentId });
+    expect(runs).toHaveLength(1);
+    expect(runs[0]).toMatchObject({ status: 'queued', trigger: 'scheduled', agentId });
+    const { data } = await claim();
+    expect(data!.issue.id).toBe(issue.id);
+    expect(data!.trigger.kind).toBe('scheduled');
+    expect(data!.prompt).toContain('Look for outdated dependencies and open a pull request.');
+    expect(data!.prompt).toContain('A recurring schedule created this issue');
+    expect((await finish(data!.run.id)).statusCode).toBe(200);
+
+    // The next occurrence is a new issue with its own run.
+    const next = await occurrence('2026-11-11');
+    expect(next.issue.id).not.toBe(issue.id);
+    expect(next.runs).toMatchObject([{ status: 'queued', trigger: 'scheduled' }]);
+    const again = await claim();
+    expect(again.data!.issue.id).toBe(next.issue.id);
+    await finish(again.data!.run.id);
+  });
+
+  it('hold the run while the agent is paused, then hand it out', async () => {
+    const setPause = (until: string | null) =>
+      app.db.execute(sql`update agents set paused_until = ${until} where user_id = ${agentId}`);
+    await setPause(new Date(Date.now() + 3_600_000).toISOString());
+    const { issue, runs } = await occurrence('2026-11-12');
+    expect(runs).toMatchObject([{ status: 'queued', trigger: 'scheduled' }]);
+    expect((await claim()).statusCode).toBe(204);
+    await setPause(null);
+    const { data } = await claim();
+    expect(data!.issue.id).toBe(issue.id);
+    await finish(data!.run.id);
+  });
+
+  it('hold the run while agent runs are paused in the workspace', async () => {
+    await owner.patch(ws, { settings: { agentRunsPaused: true } });
+    const { issue, runs } = await occurrence('2026-11-13');
+    expect(runs).toMatchObject([{ status: 'queued', trigger: 'scheduled' }]);
+    expect((await claim()).statusCode).toBe(204);
+    await owner.patch(ws, { settings: { agentRunsPaused: false } });
+    const { data } = await claim();
+    expect(data!.issue.id).toBe(issue.id);
+    await finish(data!.run.id);
+  });
+
+  it("make the issue without a run when the agent can't take it", async () => {
+    await owner.patch(`${ws}/agents/${agentId}`, { disabled: true });
+    const { issue, runs } = await occurrence('2026-11-14');
+    expect(issue.title).toBe('Nightly dependency check');
+    expect(runs).toEqual([]);
+    await owner.del(`${ws}/recurring/${scheduleId}`);
   });
 });
