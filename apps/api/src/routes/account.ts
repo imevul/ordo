@@ -35,6 +35,7 @@ import { audit } from '../services/audit.ts';
 import { revokeCredentials } from '../services/credentials.ts';
 import { resolvePreferences } from '../services/digest.ts';
 import { deleteFile, saveFile, signedFileUrl } from '../services/files.ts';
+import { assertNotLockedOut, authLimit, recordFailedCheck } from '../services/lockout.ts';
 import { securityEmail, verifyEmailEmail } from '../services/mail-templates.ts';
 import { queueEmail } from '../services/mailer.ts';
 import {
@@ -71,10 +72,19 @@ export async function accountRoutes(app: FastifyInstance) {
     return user;
   };
 
-  /** Sensitive changes need the current password, unless the account has none (SSO-only). */
-  const confirmPassword = async (user: typeof users.$inferSelect, password: string | undefined) => {
+  /**
+   * Sensitive changes need the current password, unless the account has none (SSO-only). Wrong
+   * ones count towards the same lockout as sign-in, so a stolen session can't guess it.
+   */
+  const confirmPassword = async (
+    req: FastifyRequest,
+    user: typeof users.$inferSelect,
+    password: string | undefined,
+  ) => {
     if (!user.passwordHash) return;
+    await assertNotLockedOut(db, user.id);
     if (!password || !(await verifyPassword(password, user.passwordHash))) {
+      await recordFailedCheck(db, req, user.id, 'password');
       throw badRequest('Current password is wrong').as('current_password_wrong');
     }
   };
@@ -90,12 +100,25 @@ export async function accountRoutes(app: FastifyInstance) {
     opts: { sessionOnly?: boolean } = {},
   ) => {
     if (opts.sessionOnly && !req.sessionId) throw forbidden('Use a browser session for this');
-    if (user.passwordHash) return confirmPassword(user, password);
+    if (user.passwordHash) return confirmPassword(req, user, password);
     const [session] = req.sessionId
       ? await db.select().from(sessions).where(eq(sessions.id, req.sessionId))
       : [];
     if (!session || Date.now() - new Date(session.createdAt).getTime() > 15 * 60_000)
       throw forbidden('Sign in again to make this change').as('reauth_needed');
+  };
+
+  /** A replay-safe TOTP or recovery code, under the same lockout. */
+  const confirmSecondFactor = async (
+    req: FastifyRequest,
+    user: typeof users.$inferSelect,
+    code: string | undefined,
+  ) => {
+    await assertNotLockedOut(db, user.id);
+    if (!code || !(await verifySecondFactor(db, app.keyring, user, code))) {
+      await recordFailedCheck(db, req, user.id, 'totp');
+      throw badRequest('That code is not valid').as('invalid_code');
+    }
   };
 
   app.get('/me/account', async (req): Promise<Account> => {
@@ -267,7 +290,7 @@ export async function accountRoutes(app: FastifyInstance) {
    * With email set up, the new address is confirmed by a link sent to it and only then
    * replaces the old one. Without email, the change applies directly but stays unverified.
    */
-  app.post('/me/email', async (req) => {
+  app.post('/me/email', authLimit, async (req) => {
     const user = await loadUser(req);
     const input = parse(changeEmailSchema, req.body);
     // Password resets go to this address: whoever changes it can take the account over.
@@ -381,7 +404,7 @@ export async function accountRoutes(app: FastifyInstance) {
     return (await listPasskeys(db, user.id)).map(toPasskey);
   });
 
-  app.post('/me/passkeys/options', async (req) => {
+  app.post('/me/passkeys/options', authLimit, async (req) => {
     const user = await loadUser(req);
     if (!relyingParty(app).usable)
       throw badRequest('Passkeys need Ordo on an https address').as('passkey_failed');
@@ -430,7 +453,7 @@ export async function accountRoutes(app: FastifyInstance) {
     return toPasskey(row);
   });
 
-  app.delete('/me/passkeys/:id', async (req) => {
+  app.delete('/me/passkeys/:id', authLimit, async (req) => {
     const user = await loadUser(req);
     const { id } = req.params as { id: string };
     const { password } = parse(removePasskeySchema, req.body ?? {});
@@ -463,7 +486,7 @@ export async function accountRoutes(app: FastifyInstance) {
 
   // ─── two-factor authentication ───────────────────────────────────────
 
-  app.post('/me/2fa/setup', async (req) => {
+  app.post('/me/2fa/setup', authLimit, async (req) => {
     const user = await loadUser(req);
     if (user.totpEnabledAt)
       throw badRequest('Two-factor authentication is already on').as('two_factor_already_on');
@@ -472,7 +495,9 @@ export async function accountRoutes(app: FastifyInstance) {
     return beginTotp(db, app.keyring, user);
   });
 
-  app.post('/me/2fa/enable', async (req) => {
+  // Checks a code for the secret just set up, not one that guards the account: rate-limited, but
+  // wrong codes here don't count towards the lockout.
+  app.post('/me/2fa/enable', authLimit, async (req) => {
     const user = await loadUser(req);
     const { code, revokeCredentials: revoke } = parse(enableTwoFactorSchema, req.body);
     if (user.totpEnabledAt)
@@ -498,13 +523,12 @@ export async function accountRoutes(app: FastifyInstance) {
     return { recoveryCodes };
   });
 
-  app.post('/me/2fa/disable', async (req) => {
+  app.post('/me/2fa/disable', authLimit, async (req) => {
     const user = await loadUser(req);
     const input = parse(disableTwoFactorSchema, req.body);
     if (!user.totpEnabledAt) return { ok: true };
-    await confirmPassword(user, input.password);
-    if (!(await verifySecondFactor(db, app.keyring, user, input.code)))
-      throw badRequest('That code is not valid').as('invalid_code');
+    await confirmPassword(req, user, input.password);
+    await confirmSecondFactor(req, user, input.code);
     await db.transaction(async (tx) => {
       await tx
         .update(users)
@@ -523,13 +547,12 @@ export async function accountRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
-  app.post('/me/2fa/recovery-codes', async (req) => {
+  app.post('/me/2fa/recovery-codes', authLimit, async (req) => {
     const user = await loadUser(req);
     const { code, password } = parse(recoveryCodesSchema, req.body);
-    if (user.totpEnabledAt) {
-      if (!code || !verifyTotp(app.keyring, user, code))
-        throw badRequest('That code is not valid').as('invalid_code');
-    } else if (await hasSecondFactor(db, user)) {
+    // A code that already signed someone in (seen over a shoulder, phished) can't mint new ones.
+    if (user.totpEnabledAt) await confirmSecondFactor(req, user, code);
+    else if (await hasSecondFactor(db, user)) {
       await reauthenticate(req, user, password);
     } else throw badRequest('That code is not valid').as('invalid_code');
     return { recoveryCodes: await regenerateRecoveryCodes(db, user.id) };

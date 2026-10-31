@@ -323,6 +323,71 @@ describe('two-factor authentication', () => {
     expect(again.data.messageKey).toBe('too_many_attempts');
   });
 
+  it('counts wrong passwords in account settings towards the sign-in lockout', async () => {
+    const { client, email } = await signup(app, 'Stolen Session');
+    const wrong = { password: 'not the password' };
+    const tries = [
+      () => client.post('/api/me/email', { email: 'thief@example.test', ...wrong }),
+      () => client.post('/api/me/2fa/setup', wrong),
+      () => client.req('DELETE', '/api/me/passkeys/00000000-0000-0000-0000-000000000000', wrong),
+      () =>
+        client.post('/api/me/password', {
+          currentPassword: 'not the password',
+          newPassword: 'whatever it is now',
+        }),
+    ];
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) statuses.push((await tries[i % tries.length]!()).statusCode);
+    expect(statuses.slice(0, 10).every((s) => s === 400)).toBe(true);
+    expect(statuses[10]).toBe(429);
+    // Locked everywhere: the right password changes nothing, and sign-in waits too.
+    const right = await client.post('/api/me/2fa/setup', { password: PASSWORD });
+    expect(right.statusCode).toBe(429);
+    expect(right.data.messageKey).toBe('too_many_attempts');
+    expect(
+      (await new Client(app).post('/api/auth/login', { email, password: PASSWORD })).statusCode,
+    ).toBe(429);
+  });
+
+  it('wants an unspent code for new recovery codes', async () => {
+    const { client, email } = await signup(app, 'Rhea Replay');
+    const setup = (await client.post('/api/me/2fa/setup', { password: PASSWORD })).data;
+    await client.post('/api/me/2fa/enable', { code: codeFor(setup.secret) });
+    // A code that signed someone in...
+    const used = codeFor(setup.secret);
+    const login = await new Client(app).post('/api/auth/login', { email, password: PASSWORD });
+    expect(
+      (await new Client(app).post('/api/auth/mfa', { mfaToken: login.data.mfaToken, code: used }))
+        .statusCode,
+    ).toBe(200);
+    // ...can't mint recovery codes afterwards.
+    const replay = await client.post('/api/me/2fa/recovery-codes', { code: used });
+    expect(replay.statusCode).toBe(400);
+    expect(replay.data.messageKey).toBe('invalid_code');
+    const next = codeFor(setup.secret, 1);
+    const fresh = await client.post('/api/me/2fa/recovery-codes', { code: next });
+    expect(fresh.data.recoveryCodes).toHaveLength(10);
+    expect((await client.post('/api/me/2fa/recovery-codes', { code: next })).statusCode).toBe(400);
+    // A recovery code works too, once.
+    const recovery = fresh.data.recoveryCodes[0];
+    expect((await client.post('/api/me/2fa/recovery-codes', { code: recovery })).statusCode).toBe(
+      200,
+    );
+    expect((await client.post('/api/me/2fa/recovery-codes', { code: recovery })).statusCode).toBe(
+      400,
+    );
+  });
+
+  it('rate-limits code checks per address', async () => {
+    const { client } = await signup(app, 'Rapid Fire');
+    await client.post('/api/me/2fa/setup', { password: PASSWORD });
+    const statuses: number[] = [];
+    for (let i = 0; i < 21; i++)
+      statuses.push((await client.post('/api/me/2fa/enable', { code: '000000' })).statusCode);
+    expect(statuses.slice(0, 20).every((s) => s === 400)).toBe(true);
+    expect(statuses[20]).toBe(429);
+  });
+
   it('stores the secret encrypted', async () => {
     const { client, email } = await signup(app, 'Enc Rypted');
     const setup = (await client.post('/api/me/2fa/setup', { password: PASSWORD })).data;
