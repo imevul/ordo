@@ -411,24 +411,27 @@ export async function timeReportCsv(db: DbOrTx, report: TimeReport) {
     'Note',
     'Started at',
   ];
-  return toCsv([
-    header,
-    ...report.entries.map((e) => {
-      const person = e.userId ? people.get(e.userId) : undefined;
-      const cycle = e.issue.cycleId ? cycleRows.get(e.issue.cycleId) : undefined;
-      return [
-        e.date,
-        person?.name ?? '',
-        person?.email ?? '',
-        e.issue.identifier,
-        e.issue.title,
-        (e.issue.projectId && projectRows.get(e.issue.projectId)?.name) || '',
-        cycle ? cycle.name || `Cycle ${cycle.number}` : '',
-        (e.durationSeconds / 3600).toFixed(2),
-        Math.round(e.durationSeconds / 60),
-        e.note,
-        e.startedAt,
-      ];
-    }),
-  ]);
+  return toCsv(
+    [
+      header,
+      ...report.entries.map((e) => {
+        const person = e.userId ? people.get(e.userId) : undefined;
+        const cycle = e.issue.cycleId ? cycleRows.get(e.issue.cycleId) : undefined;
+        return [
+          e.date,
+          person?.name ?? '',
+          person?.email ?? '',
+          e.issue.identifier,
+          e.issue.title,
+          (e.issue.projectId && projectRows.get(e.issue.projectId)?.name) || '',
+          cycle ? cycle.name || `Cycle ${cycle.number}` : '',
+          (e.durationSeconds / 3600).toFixed(2),
+          Math.round(e.durationSeconds / 60),
+          e.note,
+          e.startedAt,
+        ];
+      }),
+    ],
+    { formulaSafe: true },
+  );
 }

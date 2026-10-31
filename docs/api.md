@@ -442,7 +442,7 @@ and the total counts only those). Starting a timer while another start for you i
 `from` and `to` (days, inclusive, in the workspace's time zone), `userId`, `teamId`, `projectId` (or `none`) and
 `cycleId`. With `format=csv` it downloads one row per entry: day, person, email, issue, title, project, cycle, hours
 (decimal), minutes, note and start time. Text that starts with `=`, `+`, `-` or `@` gets a leading `'` so spreadsheets
-don't run it as a formula; this applies to the workspace CSV export too.
+don't run it as a formula. The workspace CSV export doesn't do this, so it imports back unchanged.
 
 ### Notifications & search
 

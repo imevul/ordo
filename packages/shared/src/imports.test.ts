@@ -83,10 +83,15 @@ describe('toCsv', () => {
     ]);
   });
 
-  it('keeps typed text from running as a formula', () => {
-    const csv = toCsv([['=HYPERLINK("http://x")', '+1', '-2', '@SUM(A1)', 'a=b', -3]]);
-    expect(parseCsv(csv)).toEqual([
+  it('keeps typed text from running as a formula when asked', () => {
+    const row = ['=HYPERLINK("http://x")', '+1', '-2', '@SUM(A1)', 'a=b', -3];
+    expect(parseCsv(toCsv([row], { formulaSafe: true }))).toEqual([
       ['\'=HYPERLINK("http://x")', "'+1", "'-2", "'@SUM(A1)", 'a=b', '-3'],
     ]);
+  });
+
+  it('leaves leading - and = alone by default, so exports import back as they are', () => {
+    const row = ['- [ ] step one', '=x', '@alice'];
+    expect(parseCsv(toCsv([row]))).toEqual([row]);
   });
 });
