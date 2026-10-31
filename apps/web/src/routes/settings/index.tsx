@@ -9,20 +9,20 @@ import { ApiKeysSection, CliCard } from './account/api-keys.tsx';
 import { NotificationsSection, PushCard } from './account/notifications.tsx';
 import { AccountSection } from './account/profile.tsx';
 import { SecuritySection } from './account/security.tsx';
-import { AgentsSection, RepositoriesSection } from './agents.tsx';
+import { AgentsSection, RepositoriesSection } from './agents/index.tsx';
 import { AiSection } from './ai.tsx';
 import { AuditSection } from './audit.tsx';
-import { ChatAccountsCard } from './chat.tsx';
+import { ChatAccountsCard } from './chat/index.tsx';
 import { ExportsCard, PlaceholdersCard } from './exports.tsx';
 import { ImportsSection } from './imports.tsx';
-import { GitAccountsCard, IntegrationsSection } from './integrations.tsx';
+import { GitAccountsCard, IntegrationsSection } from './integrations/index.tsx';
 import { LabelsSection } from './labels.tsx';
 import { McpSection } from './mcp.tsx';
-import { AuthenticationSection, ConnectedAccountsCard } from './sso.tsx';
-import { TeamSettings, TeamsSection } from './teams.tsx';
+import { AuthenticationSection, ConnectedAccountsCard } from './sso/index.tsx';
+import { TeamSettings, TeamsSection } from './teams/index.tsx';
 import { TemplatesSection } from './templates.tsx';
 import { WebhooksSection } from './webhooks.tsx';
-import { MembersSection, OrgSecuritySection, WorkspaceSection } from './workspace.tsx';
+import { MembersSection, OrgSecuritySection, WorkspaceSection } from './workspace/index.tsx';
 
 /** The sections in nav order. `label` is read when used, so it is in the current language. */
 const SECTIONS: {
