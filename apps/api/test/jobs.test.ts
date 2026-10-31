@@ -175,6 +175,32 @@ describe('job queue', () => {
     await app.db.delete(jobs).where(eq(jobs.name, 'test.crash'));
   });
 
+  it('drops a scheduled tick cut off by a restart instead of burying it', async () => {
+    const q = queue();
+    const dead: unknown[] = [];
+    q.define<{ n: number }>('test.tick', async () => {}, {
+      onDead: async (p) => void dead.push(p),
+    });
+    // A tick from the scheduler and a one-off job, both claimed by a worker that then went away.
+    await enqueue(
+      app.db,
+      'test.tick',
+      { n: 1 },
+      { dedupeKey: 'schedule:test.tick:x', maxAttempts: 1 },
+    );
+    await enqueue(app.db, 'test.tick', { n: 2 }, { maxAttempts: 1 });
+    await app.db
+      .update(jobs)
+      .set({ status: 'running', attempts: 1, lockedUntil: sql`now() - interval '1 second'` })
+      .where(eq(jobs.name, 'test.tick'));
+    await q.drain();
+    const rows = await app.db.select().from(jobs).where(eq(jobs.name, 'test.tick'));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: 'dead', dedupeKey: null, payload: { n: 2 } });
+    expect(dead).toEqual([{ n: 2 }]);
+    await app.db.delete(jobs).where(eq(jobs.name, 'test.tick'));
+  });
+
   it('tells the handler when a job dies after failing', async () => {
     const q = queue();
     const dead: string[] = [];
