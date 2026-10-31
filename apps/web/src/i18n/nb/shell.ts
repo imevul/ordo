@@ -16,6 +16,7 @@ export default {
     main: 'Hovednavigasjon',
     workspaceMenu: 'Meny for arbeidsområdet',
     createWorkspace: 'Opprett arbeidsområde',
+    workspaceSettings: 'Innstillinger for arbeidsområdet',
     inviteMembers: 'Inviter medlemmer',
     instanceAdmin: 'Instansadmin',
     newIssue: 'Ny sak',

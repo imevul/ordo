@@ -15,6 +15,7 @@ import {
   Plus,
   RefreshCcw,
   Search,
+  Settings,
   Shield,
   SquarePen,
   Star,
@@ -129,7 +130,14 @@ export function Sidebar({
           }
         >
           {(close) => (
-            <div className="py-1" onClick={close}>
+            <div
+              className="py-1"
+              onClick={(e) => {
+                close();
+                // The popover stops clicks from reaching <nav>, so close the mobile drawer here.
+                if ((e.target as HTMLElement).closest('a, button')) onNavigate?.();
+              }}
+            >
               <div className="px-3 pt-2 pb-1 font-mono text-[10.5px] tracking-[0.14em] text-index uppercase">
                 {ws.me.email}
               </div>
@@ -153,7 +161,15 @@ export function Sidebar({
               >
                 <Plus size={14} /> {t('shell.sidebar.createWorkspace')}
               </button>
-              {(isAdmin || ws.me.isInstanceAdmin) && <div className="my-1 h-px bg-border-soft" />}
+              <div className="my-1 h-px bg-border-soft" />
+              {/* General is admin-only; Members is the first workspace section everyone can open. */}
+              <Link
+                to="/$slug/settings/$section"
+                params={{ ...p, section: isAdmin ? 'workspace' : 'members' }}
+                className="menu-item"
+              >
+                <Settings size={14} /> {t('shell.sidebar.workspaceSettings')}
+              </Link>
               {isAdmin && (
                 <Link
                   to="/$slug/settings/$section"
