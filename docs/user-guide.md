@@ -236,6 +236,17 @@ Cycles are a team's time-boxed iterations (usually 1–2 weeks). Turn them on pe
 or `Shift C`. A cycle page shows scope, started, completed and remaining counts, with points when you use
 estimates.
 
+**Workload** (the _Workload_ button on a cycle page) lists each team member, agents included, with what they have in
+the cycle against their capacity. Load is the sum of estimates once any issue in the cycle has one, otherwise the
+number of issues; canceled issues don't count, and the darker part of the bar is what's done. Someone over capacity
+shows in the warning colour. Assignees outside the team and unassigned issues come last. Drag an issue onto someone to
+assign it to them.
+
+Capacity comes from three places, most specific first: the cycle (click someone's numbers in the panel, for a
+vacation or a short week; clear it to go back), the person (team settings → _Members_), and the team (team settings
+→ _Capacity per cycle_). It's in the same unit as the load: points, or issues when nothing is estimated. Team admins
+set the person and team defaults; anyone but guests can set a cycle's.
+
 **Cycle automation** (team settings → _Cycle automation_) lets cycles run themselves. Pick a length (1–8 weeks), an
 optional cooldown, the weekday they start on and how many to plan ahead; Ordo then keeps that many cycles on the
 calendar. When a cycle ends, its unfinished issues move to the next one (_Roll over unfinished issues_), and with

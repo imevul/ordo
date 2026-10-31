@@ -428,6 +428,13 @@
       "when": 1793467566191,
       "tag": "0060_repository_run_limit",
       "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1793469040772,
+      "tag": "0061_cycle_capacity",
+      "breakpoints": true
     }
   ]
 }

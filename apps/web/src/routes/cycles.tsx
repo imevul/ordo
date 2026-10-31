@@ -1,6 +1,6 @@
 import { type Cycle, dayInZone, isCycleCurrent } from '@ordo/shared';
 import { Link, useParams } from '@tanstack/react-router';
-import { Plus } from 'lucide-react';
+import { Plus, Users } from 'lucide-react';
 import { type FormEvent, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useVelocity, useWsMutation } from '../api/queries.ts';
@@ -10,8 +10,10 @@ import { EmptyState, PageHeader, Sep } from '../components/PageHeader.tsx';
 import { ProgressBar, ProgressStats } from '../components/Progress.tsx';
 import { MeasureSelect, useMeasure, VelocityChart } from '../components/TimelineCharts.tsx';
 import { Modal } from '../components/ui/Modal.tsx';
+import { WorkloadPanel } from '../components/WorkloadPanel.tsx';
 import { t } from '../i18n/index.ts';
 import { addDays, shortDate } from '../lib/format.ts';
+import { readPref, writePref } from '../lib/store.ts';
 import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 
 function CycleModal({
@@ -230,6 +232,11 @@ export function CycleDetailPage() {
   const team = ws.teamByKey.get(key);
   const cycle = ws.cycles.find((c) => c.teamId === team?.id && c.number === Number(number));
   const [edit, setEdit] = useState(false);
+  const [workload, setWorkload] = useState(() => readPref('cycleWorkload', false));
+  const toggleWorkload = (open: boolean) => {
+    setWorkload(open);
+    writePref('cycleWorkload', open);
+  };
   if (!team || !cycle) return <EmptyState title={t('cycles.cycleNotFound')} />;
   return (
     <>
@@ -251,10 +258,23 @@ export function CycleDetailPage() {
         createDefaults={{ teamId: team.id, cycleId: cycle.id }}
         burn={{ from: cycle.startsAt, to: cycle.endsAt, cycleId: cycle.id }}
         insightsOpen
+        aside={workload && <WorkloadPanel cycle={cycle} onClose={() => toggleWorkload(false)} />}
         actions={
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEdit(true)}>
-            {t('common.edit')}
-          </button>
+          <>
+            <button
+              type="button"
+              className={`btn btn-ghost btn-sm ${workload ? 'text-primary' : ''}`}
+              aria-pressed={workload}
+              onClick={() => toggleWorkload(!workload)}
+              title={t('cycles.workload.open')}
+            >
+              <Users size={13} />
+              <span className="hidden lg:inline">{t('cycles.workload.open')}</span>
+            </button>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEdit(true)}>
+              {t('common.edit')}
+            </button>
+          </>
         }
         tabs={
           <div className="px-4 pb-3">

@@ -233,6 +233,8 @@ export const teams = pgTable(
     /** Private teams are visible only to their members and workspace admins. */
     private: boolean('private').notNull().default(false),
     cyclesEnabled: boolean('cycles_enabled').notNull().default(true),
+    /** What a member can take in a cycle (points, or issues without estimates); null for no default. */
+    defaultCapacity: integer('default_capacity'),
     defaultStateId: uuid('default_state_id'),
     /** Where agents work on the team's issues that aren't in a project with repositories. */
     defaultRepositoryId: uuid('default_repository_id').references(
@@ -299,6 +301,8 @@ export const teamMembers = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     /** Team admins manage the team's settings, workflow and membership. */
     role: text('role').$type<TeamRole>().notNull().default('member'),
+    /** This member's capacity per cycle; null uses the team's default. */
+    capacity: integer('capacity'),
   },
   (t) => [
     primaryKey({ columns: [t.teamId, t.userId] }),
@@ -625,6 +629,21 @@ export const cycles = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex('cycles_team_number_idx').on(t.teamId, t.number)],
+);
+
+/** Someone's capacity in one cycle (a vacation, a part-time week), instead of their default. */
+export const cycleCapacities = pgTable(
+  'cycle_capacities',
+  {
+    cycleId: uuid('cycle_id')
+      .notNull()
+      .references(() => cycles.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    capacity: integer('capacity').notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.cycleId, t.userId] })],
 );
 
 export const issues = pgTable(

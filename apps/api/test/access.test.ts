@@ -679,6 +679,8 @@ describe('route inventory', () => {
     'GET /cycles': 'listCycles, same as bootstrap',
     'PATCH /cycles/:id': 'loadCycle checks team access',
     'DELETE /cycles/:id': 'loadCycle checks team access',
+    'GET /cycles/:id/workload': 'readableCycle checks team access (workload.test.ts)',
+    'PUT /cycles/:id/capacity/:userId': 'loadCycle checks team access (workload.test.ts)',
     'GET /projects': 'listProjects, same as bootstrap',
     'GET /projects/:id': 'listProjects',
     'PATCH /projects/:id': 'loadProject',
