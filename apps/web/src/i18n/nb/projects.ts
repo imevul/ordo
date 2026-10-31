@@ -88,6 +88,8 @@ export default {
     edited: 'redigert {time}',
     editedBy: 'redigert {time} av {name}',
     conflict: 'Noen andre lagret en nyere versjon mens du redigerte.',
+    closedConflict:
+      'De siste endringene dine i «{title}» ble ikke lagret: noen andre lagret en nyere versjon.',
     loadTheirs: 'Hent deres',
     keepMine: 'Behold min',
     titleLabel: 'Dokumenttittel',

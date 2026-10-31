@@ -102,8 +102,10 @@ export function ProjectDocs({ project, docId }: { project: Project; docId?: stri
 type SaveState = 'saved' | 'dirty' | 'saving' | 'conflict';
 
 /**
- * Edits one document in place and saves a second after typing stops. A save based on an older
- * version than the server's is refused (409); then the person chooses whose version to keep.
+ * Edits one document in place and saves a second after typing stops, and right away when the
+ * editor closes. Saves go out one at a time, each based on the version the previous one returned.
+ * A save based on an older version than the server's is refused (409); then the person chooses
+ * whose version to keep.
  */
 function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }) {
   const ws = useWorkspace();
@@ -115,40 +117,70 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
   });
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [state, setState] = useState<SaveState>('saved');
+  // Change it only through setSaveState, which keeps latest.current.state in step.
+  const [state, setStateValue] = useState<SaveState>('saved');
   const base = useRef<string | null>(null);
   const edits = useRef(0);
+  // Refs, so saves chained after a request and the flush on close see the latest values.
+  const latest = useRef({ title: '', content: '', state: 'saved' as SaveState });
+  const inFlight = useRef(false);
+  const queued = useRef<{ force: boolean } | null>(null);
+  const mounted = useRef(true);
   const readOnly = ws.isGuest;
+
+  const setSaveState = (s: SaveState) => {
+    latest.current.state = s;
+    setStateValue(s);
+  };
 
   // Take the server's version when there's nothing unsaved here.
   useEffect(() => {
     if (!doc || state !== 'saved') return;
     setTitle(doc.title);
     setContent(doc.content ?? '');
+    latest.current.title = doc.title;
+    latest.current.content = doc.content ?? '';
     base.current = doc.updatedAt;
   }, [doc, state]);
 
   const save = async (force = false) => {
+    if (inFlight.current) {
+      // Wait for the one in flight: sending now would use its base and conflict with it.
+      queued.current = { force: force || (queued.current?.force ?? false) };
+      return;
+    }
+    inFlight.current = true;
     const sent = edits.current;
-    setState('saving');
+    setSaveState('saving');
+    let ok = false;
     try {
       const saved = await api.patch<ProjectDocument>(wsPath(ws.slug, `/documents/${id}`), {
-        title: title.trim() || t('projects.docs.untitled'),
-        content,
+        title: latest.current.title.trim() || t('projects.docs.untitled'),
+        content: latest.current.content,
         ...(force ? {} : { baseUpdatedAt: base.current }),
       });
       base.current = saved.updatedAt;
       qc.setQueryData(key, saved);
       qc.invalidateQueries({ queryKey: ['ws', ws.slug, 'documents'] });
       // More typing while this was in flight: the next save picks it up.
-      setState(edits.current === sent ? 'saved' : 'dirty');
+      setSaveState(edits.current === sent ? 'saved' : 'dirty');
+      ok = true;
     } catch (err) {
-      if ((err as { status?: number }).status === 409) setState('conflict');
-      else {
-        setState('dirty');
+      if ((err as { status?: number }).status === 409) {
+        setSaveState('conflict');
+        if (!mounted.current)
+          toast.error(t('projects.docs.closedConflict', { title: latest.current.title }));
+      } else {
+        setSaveState('dirty');
         toast.error(err instanceof Error ? err.message : t('projects.docs.saveFailed'));
       }
     }
+    inFlight.current = false;
+    const next = queued.current;
+    queued.current = null;
+    // A closed editor has no timer left, so it saves what's left straight away.
+    if (ok && (next || (!mounted.current && latest.current.state === 'dirty')))
+      void save(next?.force);
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: save after each pause in typing
@@ -158,11 +190,39 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
     return () => clearTimeout(timer);
   }, [state, title, content]);
 
+  // Flush unsaved edits when the editor closes (another doc, another page). A doc in conflict is
+  // left alone: saving it would need the person to choose.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only on mount and unmount; save reads refs
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (latest.current.state === 'dirty') void save();
+    };
+  }, []);
+
+  // Warn before leaving the page while edits aren't on the server yet.
+  useEffect(() => {
+    if (state === 'saved') return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [state]);
+
   const change = (patch: { title?: string; content?: string }) => {
     edits.current++;
-    if (patch.title !== undefined) setTitle(patch.title);
-    if (patch.content !== undefined) setContent(patch.content);
-    if (state !== 'conflict') setState('dirty');
+    if (patch.title !== undefined) {
+      latest.current.title = patch.title;
+      setTitle(patch.title);
+    }
+    if (patch.content !== undefined) {
+      latest.current.content = patch.content;
+      setContent(patch.content);
+    }
+    if (latest.current.state !== 'conflict') setSaveState('dirty');
   };
 
   const remove = useWsMutation(ws.slug, () => api.del(wsPath(ws.slug, `/documents/${id}`)), {
@@ -189,7 +249,7 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
             type="button"
             className="btn btn-ghost btn-sm"
             onClick={() => {
-              setState('saved');
+              setSaveState('saved');
               qc.invalidateQueries({ queryKey: key });
             }}
           >

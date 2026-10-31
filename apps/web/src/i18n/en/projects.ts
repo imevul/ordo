@@ -95,6 +95,9 @@ export default {
     edited: 'edited {time}',
     editedBy: 'edited {time} by {name}',
     conflict: 'Someone else saved a newer version while you were editing.',
+    /** Toast after leaving a document whose last save was refused because of a newer version. */
+    closedConflict:
+      'Your last edits to “{title}” were not saved: someone else saved a newer version.',
     loadTheirs: 'Load theirs',
     keepMine: 'Keep mine',
     titleLabel: 'Document title',

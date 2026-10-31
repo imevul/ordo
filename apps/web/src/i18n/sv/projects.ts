@@ -87,6 +87,8 @@ export default {
     edited: 'redigerat {time}',
     editedBy: 'redigerat {time} av {name}',
     conflict: 'Någon annan sparade en nyare version medan du redigerade.',
+    closedConflict:
+      'Dina senaste ändringar i ”{title}” sparades inte: någon annan sparade en nyare version.',
     loadTheirs: 'Hämta deras',
     keepMine: 'Behåll min',
     titleLabel: 'Dokumentets titel',
