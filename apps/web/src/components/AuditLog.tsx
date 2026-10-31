@@ -487,6 +487,8 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
       return a('signup');
     case 'auth.login_failed':
       return a('loginFailed');
+    case 'auth.confirm_failed':
+      return a('confirmFailed');
     case 'auth.logout':
       return a('logout');
     case 'auth.password_changed':

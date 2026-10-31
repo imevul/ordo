@@ -38,7 +38,10 @@ with a key Ordo doesn't have (it says how many). For symptoms of a wrong key and
 
 **Locked out after failed attempts:** ten wrong passwords or second-factor codes within 15 minutes lock password
 sign-in for that account, from every address, until the 15 minutes have passed since the last failures. Passkeys and
-single sign-on still work. The failures are in the audit log, with the addresses they came from.
+single sign-on still work, and so do sessions that are already signed in: the owner can still change their password
+or 2FA. Wrong passwords or codes entered in account settings by a signed-in person are counted separately: ten of them
+block confirming changes for 15 minutes, but not signing in, so the owner can sign in and sign out the other sessions.
+The failures are in the audit log, with the addresses they came from.
 
 ## Rotating the secret key
 

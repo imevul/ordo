@@ -276,6 +276,7 @@ export default {
       identityLinkedUnnamed: 'kopplade en identitet',
       signup: 'registrerade sig',
       loginFailed: 'misslyckades med att logga in',
+      confirmFailed: 'angav fel lösenord eller kod i kontoinställningarna',
       logout: 'loggade ut',
       passwordChanged: 'bytte lösenord',
       emailChanged: 'bytte e-postadress',
