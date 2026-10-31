@@ -794,6 +794,24 @@ export async function createIssue(
   return created;
 }
 
+/**
+ * Issue columns the bootstrap depends on: progress (status, project, milestone, cycle, estimate,
+ * team scope), customer counts (status) and former members (assignee).
+ */
+const BOOTSTRAP_COLUMNS = [
+  'teamId',
+  'stateId',
+  'projectId',
+  'milestoneId',
+  'cycleId',
+  'estimate',
+  'assigneeId',
+] as const;
+
+/** The `bootstrapUnchanged` hint for an issue update that wrote `set`. */
+const unchangedBootstrap = (set: object): { bootstrapUnchanged?: true } =>
+  BOOTSTRAP_COLUMNS.some((c) => c in set) ? {} : { bootstrapUnchanged: true };
+
 export async function updateIssue(
   ctx: Ctx,
   issueId: string,
@@ -990,9 +1008,24 @@ export async function updateIssue(
 
   if (touched) {
     const prevTeamId = current.teamId !== teamId ? current.teamId : undefined;
-    emit(ctx, { kind: 'issue', action: 'updated', id: issueId, teamId, prevTeamId });
+    emit(ctx, {
+      kind: 'issue',
+      action: 'updated',
+      id: issueId,
+      teamId,
+      prevTeamId,
+      ...unchangedBootstrap(set),
+    });
+    // A parent only recounts its sub-issues, which the bootstrap doesn't hold.
     for (const parent of new Set([current.parentId, set.parentId])) {
-      if (parent) emit(ctx, { kind: 'issue', action: 'updated', id: parent, teamId });
+      if (parent)
+        emit(ctx, {
+          kind: 'issue',
+          action: 'updated',
+          id: parent,
+          teamId,
+          bootstrapUnchanged: true,
+        });
     }
   }
   const issue = await getIssue(ctx.tx, ctx.access, issueId);
@@ -1135,7 +1168,14 @@ export async function touchIssues(
     .set(set)
     .where(and(inArray(issues.id, ids), eq(issues.workspaceId, ctx.workspaceId)))
     .returning({ id: issues.id, teamId: issues.teamId });
-  for (const r of rows) emit(ctx, { kind: 'issue', action: 'updated', id: r.id, teamId: r.teamId });
+  for (const r of rows)
+    emit(ctx, {
+      kind: 'issue',
+      action: 'updated',
+      id: r.id,
+      teamId: r.teamId,
+      bootstrapUnchanged: true,
+    });
 }
 
 /**

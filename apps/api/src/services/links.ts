@@ -107,7 +107,13 @@ export async function upsertIssueLink(ctx: Ctx, input: LinkInput): Promise<Issue
       set: values,
     })
     .returning();
-  emit(ctx, { kind: 'issue', action: 'updated', id: input.issueId, teamId: issue.teamId });
+  emit(ctx, {
+    kind: 'issue',
+    action: 'updated',
+    id: input.issueId,
+    teamId: issue.teamId,
+    bootstrapUnchanged: true,
+  });
   return toLink(row!);
 }
 
@@ -119,5 +125,11 @@ export async function deleteIssueLink(ctx: Ctx, id: string, teamIds: (teamId: st
     .where(and(eq(issueLinks.id, id), eq(issueLinks.workspaceId, ctx.workspaceId)));
   if (!row || !teamIds(row.teamId)) throw notFound('Link');
   await ctx.tx.delete(issueLinks).where(eq(issueLinks.id, id));
-  emit(ctx, { kind: 'issue', action: 'updated', id: row.link.issueId, teamId: row.teamId });
+  emit(ctx, {
+    kind: 'issue',
+    action: 'updated',
+    id: row.link.issueId,
+    teamId: row.teamId,
+    bootstrapUnchanged: true,
+  });
 }

@@ -89,6 +89,36 @@ describe('change log', () => {
     expect(seen.find((e) => e.kind === 'issue')).toMatchObject({ seq, epoch });
   });
 
+  it('says which issue changes leave the bootstrap as it was', async () => {
+    const issue = await newIssue('Hinted');
+    const boot = (await owner.get(`${ws}/bootstrap`)).data as Bootstrap;
+    const done = boot.teams[0]!.states!.find((s) => s.type === 'completed')!.id;
+    const seen: RealtimeEvent[] = [];
+    const publish = app.realtime.publish.bind(app.realtime);
+    app.realtime.publish = (events) => {
+      seen.push(...events);
+      publish(events);
+    };
+    const hintOf = async (send: () => Promise<unknown>) => {
+      seen.length = 0;
+      await send();
+      return seen.find((e) => e.kind === 'issue' && e.id === issue.id)?.bootstrapUnchanged;
+    };
+    const patch = (body: object) => () => owner.patch(`${ws}/issues/${issue.id}`, body);
+    try {
+      expect(await hintOf(patch({ title: 'Renamed' }))).toBe(true);
+      expect(await hintOf(patch({ priority: 2 }))).toBe(true);
+      expect(
+        await hintOf(() => owner.post(`${ws}/issues/${issue.id}/comments`, { body: 'hi' })),
+      ).toBe(true);
+      // These move progress counts.
+      expect(await hintOf(patch({ stateId: done }))).toBeUndefined();
+      expect(await hintOf(patch({ estimate: 3 }))).toBeUndefined();
+    } finally {
+      app.realtime.publish = publish;
+    }
+  });
+
   it('logs changes made outside a workspace request too', async () => {
     const me = (await owner.get('/api/auth/me')).data;
     await owner.patch('/api/me', { name: 'Renamed Owner' });

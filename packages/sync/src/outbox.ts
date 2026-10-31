@@ -1,11 +1,5 @@
-import type {
-  Bootstrap,
-  Comment,
-  CommentReaction,
-  CreateIssueInput,
-  Issue,
-  UpdateIssueInput,
-} from '@ordo/shared';
+import type { Bootstrap, Comment, CreateIssueInput, Issue, UpdateIssueInput } from '@ordo/shared';
+import { patchIssue, toggleReaction } from './optimistic.ts';
 
 /**
  * Changes made through the local copy, waiting to reach the server. Each is a small typed
@@ -73,19 +67,6 @@ export function needs(op: Op): string[] {
 }
 
 // ─── issues ──────────────────────────────────────────────────────────────
-
-function patchIssue(issue: Issue, patch: UpdateIssueInput, now: string): Issue {
-  const next = { ...issue } as Issue & Record<string, unknown>;
-  for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined || k === 'addLabelIds' || k === 'removeLabelIds') continue;
-    next[k] = v;
-  }
-  if (patch.addLabelIds) next.labelIds = [...new Set([...next.labelIds, ...patch.addLabelIds])];
-  if (patch.removeLabelIds)
-    next.labelIds = next.labelIds.filter((l) => !patch.removeLabelIds!.includes(l));
-  next.updatedAt = now;
-  return next;
-}
 
 /** What a new issue looks like until the server numbers it. */
 function draftIssue(
@@ -158,18 +139,6 @@ export function overlayIssues(
 
 // ─── comments ────────────────────────────────────────────────────────────
 
-function toggle(reactions: CommentReaction[], emoji: string, userId: string, on: boolean) {
-  const rest = reactions.map((r) =>
-    r.emoji === emoji ? { ...r, userIds: r.userIds.filter((u) => u !== userId) } : r,
-  );
-  const next = on
-    ? rest.some((r) => r.emoji === emoji)
-      ? rest.map((r) => (r.emoji === emoji ? { ...r, userIds: [...r.userIds, userId] } : r))
-      : [...rest, { emoji, userIds: [userId] }]
-    : rest;
-  return next.filter((r) => r.userIds.length > 0);
-}
-
 /** An issue's comments with pending operations applied on top, oldest first. */
 export function overlayComments(
   issueId: string,
@@ -195,7 +164,8 @@ export function overlayComments(
     } else if (op.kind === 'comment.delete' && op.issueId === issueId) out.delete(op.id);
     else if (op.kind === 'reaction' && op.issueId === issueId) {
       const c = out.get(op.commentId);
-      if (c) out.set(c.id, { ...c, reactions: toggle(c.reactions, op.emoji, userId, op.on) });
+      if (c)
+        out.set(c.id, { ...c, reactions: toggleReaction(c.reactions, op.emoji, userId, op.on) });
     }
   }
   return [...out.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
