@@ -31,6 +31,7 @@ import { attachmentDownloadRoutes, attachmentRoutes } from './routes/attachments
 import { authRoutes } from './routes/auth.ts';
 import { authProviderRoutes } from './routes/authProviders.ts';
 import { customerRoutes } from './routes/customers.ts';
+import { customFieldRoutes } from './routes/customFields.ts';
 import { cycleRoutes } from './routes/cycles.ts';
 import { documentRoutes } from './routes/documents.ts';
 import { exportRoutes } from './routes/exports.ts';
@@ -254,6 +255,7 @@ export async function buildApp(
       await w.register(attachmentRoutes);
       await w.register(projectRoutes);
       await w.register(labelRoutes);
+      await w.register(customFieldRoutes);
       await w.register(templateRoutes);
       await w.register(initiativeRoutes);
       await w.register(customerRoutes);

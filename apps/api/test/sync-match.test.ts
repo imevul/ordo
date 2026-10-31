@@ -1,4 +1,10 @@
-import type { Bootstrap, IssueFilter, StateType } from '@ordo/shared';
+import type {
+  Bootstrap,
+  CustomField,
+  CustomFieldValue,
+  IssueFilter,
+  StateType,
+} from '@ordo/shared';
 import { matchIssue } from '@ordo/sync/match';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -58,6 +64,16 @@ beforeAll(async () => {
     await owner.post(`${ws}/projects`, { name: 'P', teamIds: boot.teams.map((t) => t.id) })
   ).data;
   await owner.post(`${ws}/projects/${project.id}/milestones`, { name: 'M1' });
+  const options = [{ name: 'Gold' }, { name: 'Silver' }, { name: 'Bronze' }];
+  await owner.post(`${ws}/custom-fields`, { name: 'Tier', type: 'select', options });
+  await owner.post(`${ws}/custom-fields`, { name: 'Areas', type: 'multi_select', options });
+  await owner.post(`${ws}/custom-fields`, { name: 'Reviewer', type: 'person' });
+  await owner.post(`${ws}/custom-fields`, { name: 'Points', type: 'number' });
+  await owner.post(`${ws}/custom-fields`, {
+    name: 'Two only',
+    type: 'date',
+    teamId: boot.teams[1]!.id,
+  });
   boot = (await owner.get(`${ws}/bootstrap`)).data;
 
   const members = boot.members.map((m) => m.id);
@@ -77,6 +93,11 @@ beforeAll(async () => {
       projectId: withProject ? project.id : null,
       milestoneId: withProject && rand() < 0.5 ? pick(milestones) : null,
       cycleId: rand() < 0.5 && cycles.length ? pick(cycles) : null,
+      customFields: Object.fromEntries(
+        boot.customFields
+          .filter((f) => (!f.teamId || f.teamId === team.id) && rand() < 0.6)
+          .map((f) => [f.id, randomValue(f, members)]),
+      ),
     });
     expect(res.statusCode, res.body).toBe(200);
     const fate = rand();
@@ -85,6 +106,43 @@ beforeAll(async () => {
   }
 });
 afterAll(() => app.close());
+
+const DATES = ['2026-03-01', '2026-03-02'];
+
+function randomValue(f: CustomField, people: string[]): CustomFieldValue {
+  const options = f.options.map((o) => o.id);
+  switch (f.type) {
+    case 'select':
+      return pick(options);
+    case 'multi_select':
+      return some(options, 2);
+    case 'person':
+      return pick(people);
+    case 'number':
+      return pick([1, 2.5, 3]);
+    case 'date':
+      return pick(DATES);
+    default:
+      return 'x';
+  }
+}
+
+/** Values to filter a field on: what issues can have, numbers and dates written out, and none. */
+function filterValues(f: CustomField): string[] {
+  switch (f.type) {
+    case 'select':
+    case 'multi_select':
+      return f.options.map((o) => o.id);
+    case 'person':
+      return [...boot.members.map((m) => m.id), 'me'];
+    case 'number':
+      return ['1', '2.5', '3'];
+    case 'date':
+      return DATES;
+    default:
+      return ['x'];
+  }
+}
 
 function randomFilter(): IssueFilter {
   const f: IssueFilter = {};
@@ -110,6 +168,11 @@ function randomFilter(): IssueFilter {
   if (rand() < 0.3) f.projectIds = some([...projects, 'none']);
   if (rand() < 0.2) f.milestoneIds = some([...milestones, 'none']);
   if (rand() < 0.3) f.cycleIds = some([...boot.cycles.map((c) => c.id), 'none']);
+  for (const field of boot.customFields) {
+    if (rand() < 0.15) {
+      f.customFields = { ...f.customFields, [field.id]: some([...filterValues(field), 'none']) };
+    }
+  }
   const r = rand();
   if (r < 0.1) f.trashed = true;
   else if (r < 0.2) f.archived = 'include';

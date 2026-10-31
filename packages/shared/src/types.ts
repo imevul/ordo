@@ -23,6 +23,7 @@ import type {
   UserStatusKind,
 } from './constants.ts';
 import { DEFAULT_LOCALE, NOTIFICATION_TYPES } from './constants.ts';
+import type { CustomField, CustomFieldValue } from './customFields.ts';
 import {
   DEFAULT_BRANCH_FORMAT,
   type GitAutomation,
@@ -425,6 +426,8 @@ export interface Issue {
   dueDate: string | null;
   sortOrder: number;
   labelIds: string[];
+  /** Custom field values by field id; fields without a value are left out. */
+  customFields: Record<string, CustomFieldValue>;
   subIssueCount: number;
   completedSubIssueCount: number;
   startedAt: string | null;
@@ -637,6 +640,8 @@ export interface Bootstrap {
   repositories: Repository[];
   teams: Team[];
   labels: Label[];
+  /** The workspace's custom fields and those of teams the requester can read. */
+  customFields: CustomField[];
   templates: IssueTemplate[];
   recurring: RecurringIssue[];
   /** Empty for guests. */

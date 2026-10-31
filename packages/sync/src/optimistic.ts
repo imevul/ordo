@@ -12,9 +12,24 @@ import type { CommentReaction, Issue, UpdateIssueInput } from '@ordo/shared';
 export function patchIssue(issue: Issue, patch: UpdateIssueInput, now: string): Issue {
   const next = { ...issue } as Issue & Record<string, unknown>;
   for (const [k, v] of Object.entries(patch)) {
-    if (v === undefined || k === 'addLabelIds' || k === 'removeLabelIds' || k === 'teamId')
+    if (
+      v === undefined ||
+      k === 'addLabelIds' ||
+      k === 'removeLabelIds' ||
+      k === 'teamId' ||
+      k === 'customFields'
+    )
       continue;
     next[k] = v;
+  }
+  // Custom fields are set one by one; null clears a value.
+  if (patch.customFields) {
+    const fields = { ...next.customFields };
+    for (const [id, v] of Object.entries(patch.customFields)) {
+      if (v === null || v === '' || (Array.isArray(v) && v.length === 0)) delete fields[id];
+      else fields[id] = v;
+    }
+    next.customFields = fields;
   }
   if (patch.addLabelIds) next.labelIds = [...new Set([...next.labelIds, ...patch.addLabelIds])];
   if (patch.removeLabelIds)

@@ -1,4 +1,11 @@
-import type { Bootstrap, Comment, CreateIssueInput, Issue, UpdateIssueInput } from '@ordo/shared';
+import type {
+  Bootstrap,
+  Comment,
+  CreateIssueInput,
+  CustomFieldValue,
+  Issue,
+  UpdateIssueInput,
+} from '@ordo/shared';
 import { patchIssue, toggleReaction } from './optimistic.ts';
 
 /**
@@ -106,6 +113,11 @@ function draftIssue(
     // New issues go to the top of their column, as the server puts them.
     sortOrder: input.sortOrder ?? Number.MIN_SAFE_INTEGER,
     labelIds: input.labelIds ?? [],
+    customFields: Object.fromEntries(
+      Object.entries(input.customFields ?? {}).filter(
+        (e): e is [string, CustomFieldValue] => e[1] !== null,
+      ),
+    ),
     subIssueCount: 0,
     completedSubIssueCount: 0,
     startedAt: null,
@@ -128,6 +140,7 @@ function moveIssue(issue: Issue, teamId: string, bootstrap: Bootstrap | null, no
     ?.states?.find((s) => s.id === issue.stateId)?.type;
   const states = [...(team?.states ?? [])].sort((a, b) => a.position - b.position);
   const labelTeam = new Map(bootstrap?.labels.map((l) => [l.id, l.teamId]));
+  const fieldTeam = new Map(bootstrap?.customFields?.map((f) => [f.id, f.teamId]));
   return {
     ...issue,
     teamId,
@@ -137,11 +150,17 @@ function moveIssue(issue: Issue, teamId: string, bootstrap: Bootstrap | null, no
       states[0]?.id ??
       issue.stateId,
     cycleId: null,
-    // Team-scoped labels from the old team no longer apply.
+    // Team-scoped labels and fields from the old team no longer apply.
     labelIds: issue.labelIds.filter((id) => {
       const owner = labelTeam.get(id);
       return !owner || owner === teamId;
     }),
+    customFields: Object.fromEntries(
+      Object.entries(issue.customFields ?? {}).filter(([id]) => {
+        const owner = fieldTeam.get(id);
+        return !owner || owner === teamId;
+      }),
+    ),
     updatedAt: now,
   };
 }

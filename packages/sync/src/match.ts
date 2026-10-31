@@ -1,4 +1,4 @@
-import type { Issue, IssueFilter, StateType } from '@ordo/shared';
+import { type Issue, type IssueFilter, matchesFieldFilter, type StateType } from '@ordo/shared';
 
 /**
  * The server's issue filter (`filterConditions` in the API), on the client: sync clients answer
@@ -47,6 +47,9 @@ export function matchIssue(issue: Issue, f: IssueFilter, ctx: MatchContext): boo
     if (!issue.creatorId || !creators.includes(issue.creatorId)) return false;
   }
   if (f.labelIds?.length && !issue.labelIds.some((l) => f.labelIds!.includes(l))) return false;
+  for (const [fieldId, wanted] of Object.entries(f.customFields ?? {})) {
+    if (!matchesFieldFilter(issue.customFields?.[fieldId], wanted, ctx.userId)) return false;
+  }
   if (f.parentId && issue.parentId !== f.parentId) return false;
   return true;
 }

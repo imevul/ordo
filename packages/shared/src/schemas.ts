@@ -23,6 +23,7 @@ import {
   USER_STATUSES,
   USERNAME_PATTERN,
 } from './constants.ts';
+import { CUSTOM_FIELD_TYPES } from './customFields.ts';
 import { isTimeZone } from './dates.ts';
 import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
 import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
@@ -337,6 +338,41 @@ export const createLabelSchema = z.object({
 
 export type CreateLabelInput = z.infer<typeof createLabelSchema>;
 
+const customFieldOption = z.object({
+  /** Leave out for a new option; keep it to rename one without losing the issues that have it. */
+  id: z.string().trim().min(1).max(40).optional(),
+  name: z.string().trim().min(1).max(60),
+  color: color.optional(),
+});
+
+const customFieldFields = {
+  name: z.string().trim().min(1).max(60),
+  description: z.string().trim().max(500).nullish(),
+  options: z.array(customFieldOption).max(200),
+  position: z.number(),
+};
+
+export const createCustomFieldSchema = z.object({
+  ...customFieldFields,
+  type: z.enum(CUSTOM_FIELD_TYPES),
+  teamId: id.nullish(),
+  options: customFieldFields.options.default([]),
+  position: customFieldFields.position.optional(),
+});
+export type CreateCustomFieldInput = z.infer<typeof createCustomFieldSchema>;
+
+/** The type and team can't change: values only make sense for the field they were given in. */
+export const updateCustomFieldSchema = z.object(customFieldFields).partial();
+export type UpdateCustomFieldInput = z.infer<typeof updateCustomFieldSchema>;
+
+/** A value to set (see `CustomFieldValue`); null clears it. */
+export const customFieldValueSchema = z
+  .union([z.string().max(10_000), z.number().finite(), z.array(z.string().max(40)).max(200)])
+  .nullable();
+
+/** Custom field values to set, by field id; fields left out keep their value. */
+const customFieldValues = z.record(id, customFieldValueSchema);
+
 const templateFields = {
   name: z.string().trim().min(1).max(80),
   // Not trimmed: "Bug: " is a prefix to type after.
@@ -430,6 +466,7 @@ export const createIssueSchema = z.object({
   estimate: z.number().int().min(0).max(100).nullish(),
   dueDate: isoDate.nullish(),
   labelIds: z.array(id).max(50).optional(),
+  customFields: customFieldValues.optional(),
   sortOrder: z.number().optional(),
 });
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;
@@ -450,6 +487,7 @@ export const updateIssueSchema = z.object({
   labelIds: z.array(id).max(50).optional(),
   addLabelIds: z.array(id).max(50).optional(),
   removeLabelIds: z.array(id).max(50).optional(),
+  customFields: customFieldValues.optional(),
   sortOrder: z.number().optional(),
 });
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>;
@@ -478,6 +516,11 @@ export const issueFilterSchema = z.object({
   milestoneIds: z.array(idOrNone).optional(),
   cycleIds: z.array(idOrNone).optional(),
   parentId: id.optional(),
+  /**
+   * Custom field id → wanted values: option ids, user ids or `me`, a number or date written out,
+   * or `none` for no value. A multi-select matches when it has any of the options.
+   */
+  customFields: z.record(id, z.array(z.string().max(100)).min(1).max(100)).optional(),
   subscribedBy: z.literal('me').optional(),
   q: z.string().max(200).optional(),
   trashed: z.boolean().optional(),
@@ -496,7 +539,18 @@ export const GROUP_BY_OPTIONS = [
   'label',
   'none',
 ] as const;
-export type GroupBy = (typeof GROUP_BY_OPTIONS)[number];
+/** A built-in grouping, or `field:<id>` for a select, multi-select or person custom field. */
+export type GroupBy = (typeof GROUP_BY_OPTIONS)[number] | `field:${string}`;
+const groupBySchema = z.union([
+  z.enum(GROUP_BY_OPTIONS),
+  z.custom<`field:${string}`>(
+    (v) => typeof v === 'string' && /^field:[0-9a-f-]{36}$/i.test(v),
+    'Expected a grouping or field:<id>',
+  ),
+]);
+/** The custom field a grouping is by, or null for the built-in ones. */
+export const groupByField = (g: GroupBy): string | null =>
+  g.startsWith('field:') ? g.slice('field:'.length) : null;
 export const ORDER_BY_OPTIONS = [
   'manual',
   'priority',
@@ -509,7 +563,7 @@ export type OrderBy = (typeof ORDER_BY_OPTIONS)[number];
 
 export const issueDisplaySchema = z.object({
   layout: z.enum(['list', 'board']).default('list'),
-  groupBy: z.enum(GROUP_BY_OPTIONS).default('state'),
+  groupBy: groupBySchema.default('state'),
   orderBy: z.enum(ORDER_BY_OPTIONS).default('manual'),
   showCompleted: z.boolean().default(true),
   showSubIssues: z.boolean().default(true),
