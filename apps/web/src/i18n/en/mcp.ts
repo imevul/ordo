@@ -143,6 +143,7 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       report_run: 'Report on a run: a session link, started, or finished with a summary.',
       report_progress: 'Say what the agent is doing now; the latest one shows on the run.',
       ask_question: 'Ask a person something and pause; a reply on the issue resumes the run.',
+      propose_plan: 'Post a plan and pause; approving it or replying with changes resumes the run.',
     },
     /** Tag on tools only an agent's key sees. */
     agentsOnly: 'agents only',

@@ -36,6 +36,7 @@ export function AgentModal({
   const [waitForBlockers, setWaitForBlockers] = useState(true);
   // As typed; empty is no budget.
   const [budget, setBudget] = useState('');
+  const [requirePlanApproval, setRequirePlanApproval] = useState(false);
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (!agent) return;
@@ -49,6 +50,7 @@ export function AgentModal({
     setFollowPullRequests(existing?.followPullRequests ?? true);
     setWaitForBlockers(existing?.waitForBlockers ?? true);
     setBudget(existing?.monthlyBudgetUsd != null ? String(existing.monthlyBudgetUsd) : '');
+    setRequirePlanApproval(existing?.requirePlanApproval ?? false);
   }, [agent, existing, ws.teams]);
 
   const submit = async (e: FormEvent) => {
@@ -72,6 +74,7 @@ export function AgentModal({
       followPullRequests,
       waitForBlockers,
       monthlyBudgetUsd,
+      requirePlanApproval,
     };
     try {
       if (existing) {
@@ -198,6 +201,20 @@ export function AgentModal({
             {t('agents.form.waitForBlockers')}
             <span className="block text-[11.5px] text-index">
               {t('agents.form.waitForBlockersHint')}
+            </span>
+          </span>
+        </label>
+        <label className="mt-3 flex items-start gap-2 text-[13px]">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-primary"
+            checked={requirePlanApproval}
+            onChange={(e) => setRequirePlanApproval(e.target.checked)}
+          />
+          <span>
+            {t('agents.form.requirePlanApproval')}
+            <span className="block text-[11.5px] text-index">
+              {t('agents.form.requirePlanApprovalHint')}
             </span>
           </span>
         </label>

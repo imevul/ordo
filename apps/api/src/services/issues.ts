@@ -55,10 +55,11 @@ import {
   releases,
   teamKeyAliases,
   teams,
+  users,
   workflowStates,
   workspaces,
 } from '../db/schema.ts';
-import { badRequest, conflict, notFound, one } from '../lib/errors.ts';
+import { badRequest, conflict, forbidden, notFound, one } from '../lib/errors.ts';
 import {
   type Access,
   assertTeamAccess,
@@ -137,6 +138,7 @@ export function toIssue(r: IssueRow): Issue {
     deletedAt: r.deletedAt,
     slaBreachesAt: r.slaBreachesAt,
     archivedAt: r.archivedAt,
+    planApproval: r.planApproval,
   };
 }
 
@@ -915,6 +917,8 @@ export async function createIssue(
     sortOrder = min == null ? 0 : min - SORT_GAP;
   }
 
+  if (input.planApproval != null)
+    await assertPerson(ctx, 'Only people can change whether a plan needs approval');
   const { id } = one(
     await ctx.tx
       .insert(issues)
@@ -936,6 +940,7 @@ export async function createIssue(
         parentId: input.parentId ?? null,
         estimate: input.estimate ?? null,
         dueDate: input.dueDate ?? null,
+        planApproval: input.planApproval ?? null,
         sortOrder,
         // Imported issues keep their history; an SLA would only mark them breached on arrival.
         slaBreachesAt: imported
@@ -995,6 +1000,19 @@ const BOOTSTRAP_COLUMNS = [
 /** The `bootstrapUnchanged` hint for an issue update that wrote `set`. */
 const unchangedBootstrap = (set: object): { bootstrapUnchanged?: true } =>
   BOOTSTRAP_COLUMNS.some((c) => c in set) ? {} : { bootstrapUnchanged: true };
+
+/**
+ * For what an agent mustn't decide about its own work (plan approval): the actor is a person, or
+ * the system. Bots and agents get a 403.
+ */
+async function assertPerson(ctx: Ctx, message: string) {
+  if (ctx.access.system) return;
+  const [actor] = await ctx.tx
+    .select({ kind: users.kind })
+    .from(users)
+    .where(eq(users.id, ctx.userId));
+  if (actor?.kind !== 'human') throw forbidden(message);
+}
 
 export async function updateIssue(
   ctx: Ctx,
@@ -1156,6 +1174,10 @@ export async function updateIssue(
   }
   if (patch.estimate !== undefined) change('estimate', 'estimate', patch.estimate);
   if (patch.dueDate !== undefined) change('dueDate', 'dueDate', patch.dueDate);
+  if (patch.planApproval !== undefined && patch.planApproval !== current.planApproval) {
+    await assertPerson(ctx, 'Only people can change whether a plan needs approval');
+    change('planApproval', 'planApproval', patch.planApproval);
+  }
   if (patch.sortOrder !== undefined) change('sortOrder', null, patch.sortOrder);
 
   // Labels: full replacement, or incremental add/remove (used by bulk edits).

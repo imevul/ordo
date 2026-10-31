@@ -15,11 +15,15 @@ import {
   agentRunKey,
   FailureTags,
   isOpenRun,
+  isPlanPending,
   isRestartable,
+  PendingPlan,
+  PlanApprovedTag,
   RUN_STATUS_COLOR,
   RunBlocked,
   RunProgress,
   RunWaitingForSlot,
+  runStatusLabel,
   triggerLabel,
 } from '../components/AgentRuns.tsx';
 import { Markdown } from '../components/Markdown.tsx';
@@ -70,9 +74,10 @@ export function AgentRunPage() {
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-y-1">
               <span className="chip" style={{ ['--chip' as string]: RUN_STATUS_COLOR[run.status] }}>
-                {t(`agents.runs.status.${run.status}`)}
+                {runStatusLabel(run)}
               </span>
               <FailureTags run={run} />
+              <PlanApprovedTag run={run} />
             </div>
             <Link
               to="/$slug/issue/$identifier"
@@ -89,6 +94,11 @@ export function AgentRunPage() {
             <RunBlocked run={run} className="mt-3 text-[12px] whitespace-normal" />
             <RunWaitingForSlot run={run} className="mt-3 text-[12px] whitespace-normal" />
             <Restarts run={run} />
+            {isPlanPending(run) && (
+              <div className="panel mt-6 p-3 text-[13.5px]">
+                <PendingPlan run={run} />
+              </div>
+            )}
             {run.progress && (run.status === 'running' || run.status === 'claimed') && (
               <>
                 <div className="section-label mt-6 mb-2">{t('agents.runPage.progress')}</div>
@@ -151,7 +161,8 @@ function RunActions({ run }: { run: AgentRunDetail }) {
           <FastForward size={12} /> {t('agents.runs.runAnyway')}
         </button>
       )}
-      {run.status === 'waiting' && (
+      {/* A pending plan has Approve on the page instead. */}
+      {run.status === 'waiting' && !isPlanPending(run) && (
         <button
           type="button"
           className="btn btn-ghost btn-sm"
@@ -446,7 +457,10 @@ function eventColor(e: AgentRunEvent) {
     case 'lapsed':
       return RUN_STATUS_COLOR.failed;
     case 'asked':
+    case 'planned':
       return RUN_STATUS_COLOR.waiting;
+    case 'plan_approved':
+      return RUN_STATUS_COLOR.succeeded;
     case 'cancelled':
     case 'dismissed':
       return RUN_STATUS_COLOR.cancelled;
@@ -455,7 +469,7 @@ function eventColor(e: AgentRunEvent) {
   }
 }
 
-/** What a step says beyond its label: the progress note, the question, why it stopped. */
+/** What a step says beyond its label: the progress note, the question or plan, why it stopped. */
 function EventBody({ event: e }: { event: AgentRunEvent }) {
   if (e.kind === 'progress') {
     const percent = typeof e.data.percent === 'number' ? e.data.percent : null;
@@ -466,10 +480,12 @@ function EventBody({ event: e }: { event: AgentRunEvent }) {
       </div>
     );
   }
-  if (e.kind === 'asked' && str(e.data.question))
+  const asked =
+    e.kind === 'asked' ? str(e.data.question) : e.kind === 'planned' && str(e.data.plan);
+  if (asked)
     return (
       <div className="mt-1 border-l-2 border-warning pl-3 text-[13px]">
-        <Markdown source={str(e.data.question)!} />
+        <Markdown source={asked} />
       </div>
     );
   if (e.kind === 'failed' && str(e.data.reason))

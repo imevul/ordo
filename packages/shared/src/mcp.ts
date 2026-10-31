@@ -59,6 +59,13 @@ const issueFields = {
   estimate: z.number().int().min(0).max(100).nullable().optional(),
   dueDate: isoDate.nullable().optional(),
   customFields: customFieldValues.optional(),
+  planApproval: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe(
+      "Whether the assigned agent posts its plan for approval before changing code; null uses the agent's default. People only.",
+    ),
 };
 
 /** A finished run, by issue (and agent) since runs have no identifier people type, or by id. */
@@ -286,6 +293,17 @@ export const mcpToolSchemas = {
       .min(1)
       .max(10_000)
       .describe('Markdown; posted on the issue, mentioning whoever asked for the work'),
+    run: z.uuid().optional().describe('The run (default: your only open run)'),
+  }),
+  propose_plan: z.object({
+    plan: z
+      .string()
+      .trim()
+      .min(1)
+      .max(50_000)
+      .describe(
+        'Markdown: what you will change and how, and the risks. Posted on the issue for approval.',
+      ),
     run: z.uuid().optional().describe('The run (default: your only open run)'),
   }),
 };
@@ -540,6 +558,14 @@ export const MCP_TOOLS: {
     title: 'Ask a question',
     description:
       'For agents: ask a person something you need before you can continue, then stop. The question is posted on the issue, the run pauses, and it resumes when someone replies.',
+    readOnly: false,
+    audience: 'agent',
+  },
+  {
+    name: 'propose_plan',
+    title: 'Propose a plan',
+    description:
+      'For agents: post your plan before changing code, then stop. The plan is posted on the issue and the run pauses until a person approves it or replies with changes; it then resumes with the outcome.',
     readOnly: false,
     audience: 'agent',
   },

@@ -521,6 +521,8 @@ export const createIssueSchema = z.object({
   parentId: id.nullish(),
   estimate: z.number().int().min(0).max(100).nullish(),
   dueDate: isoDate.nullish(),
+  /** Null: the assigned agent's default. */
+  planApproval: z.boolean().nullish(),
   labelIds: z.array(id).max(50).optional(),
   customFields: customFieldValues.optional(),
   sortOrder: z.number().optional(),
@@ -541,6 +543,7 @@ export const updateIssueSchema = z.object({
   parentId: id.nullish(),
   estimate: z.number().int().min(0).max(100).nullish(),
   dueDate: isoDate.nullish(),
+  planApproval: z.boolean().nullish(),
   labelIds: z.array(id).max(50).optional(),
   addLabelIds: z.array(id).max(50).optional(),
   removeLabelIds: z.array(id).max(50).optional(),
@@ -1399,6 +1402,7 @@ const agentFields = {
   waitForBlockers: z.boolean(),
   /** What its runs may cost in a calendar month (UTC) before it pauses; null for no cap. */
   monthlyBudgetUsd: z.number().positive().max(1_000_000).nullable(),
+  requirePlanApproval: z.boolean(),
 };
 export const createAgentSchema = z.object({
   ...agentFields,
@@ -1409,6 +1413,7 @@ export const createAgentSchema = z.object({
   followPullRequests: agentFields.followPullRequests.default(true),
   waitForBlockers: agentFields.waitForBlockers.default(true),
   monthlyBudgetUsd: agentFields.monthlyBudgetUsd.default(null),
+  requirePlanApproval: agentFields.requirePlanApproval.default(false),
 });
 // No defaults here: in Zod 4 `.partial()` keeps them, and a PATCH would reset what it didn't send.
 export const updateAgentSchema = z
@@ -1442,14 +1447,20 @@ export const reportAgentRunSchema = z
     failureReason: z.enum(AGENT_RUN_FAILURE_REASONS).optional(),
     /** With `waiting`: what the agent asks. Posted on the issue; a person's reply resumes the run. */
     question: z.string().trim().min(1).max(10_000).optional(),
+    /** With `waiting`, instead of a question: the plan, for a person to approve or answer. */
+    plan: z.string().trim().min(1).max(50_000).optional(),
     /** Opaque: handed back on the next pickup so the runner can continue the agent's session. */
     resume: z.string().max(2000).nullish(),
     /** What this pickup used (tokens, cost, duration); added to the run's totals. */
     usage: agentRunUsageSchema.optional(),
   })
-  .refine((r) => r.status !== 'waiting' || !!r.question, {
-    message: 'Say what you are asking (question)',
+  .refine((r) => r.status !== 'waiting' || !!r.question || !!r.plan, {
+    message: 'Say what you are asking (question) or proposing (plan)',
     path: ['question'],
+  })
+  .refine((r) => !(r.question && r.plan), {
+    message: 'Ask a question or propose a plan, not both',
+    path: ['plan'],
   });
 
 /**

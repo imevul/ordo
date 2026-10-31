@@ -57,6 +57,9 @@ export default {
     waitForBlockers: 'Wait for blocking issues',
     waitForBlockersHint:
       'A run on a blocked issue waits until the issues blocking it are done or cancelled. Turn off for agents that only triage.',
+    requirePlanApproval: 'Approve the plan first',
+    requirePlanApprovalHint:
+      'Its runs post a plan and wait for someone to approve it before changing code. Each issue can turn this on or off.',
     pickTeam: 'Pick at least one team.',
     budget: 'Monthly budget (USD)',
     budgetHint:
@@ -97,6 +100,16 @@ export default {
     resume: 'Resume',
     /** Above the agent's question on a waiting run. Replying on the issue resumes it. */
     asked: 'Asked · reply on the issue to continue',
+    /** Above the plan an agent posted (propose_plan) while it waits for approval. */
+    planForApproval: 'Plan for approval',
+    approvePlan: 'Approve',
+    replyWithChanges: 'Or reply on the issue with changes.',
+    /** Status chip of a run waiting on its plan. */
+    waitingForApproval: 'waiting for approval',
+    /** Tag on a run whose plan was approved. */
+    planApproved: 'plan approved',
+    /** {time} is like "Oct 31 · 01:00". */
+    planApprovedBy: 'Approved by {name}, {time}',
     cancel: 'Cancel',
     /** On a failed or cancelled run: the same agent, issue and reason, as a new run. */
     restart: 'Restart',
@@ -256,6 +269,8 @@ export default {
       started: 'Started',
       progress: 'Progress',
       asked: 'Asked a question',
+      planned: 'Proposed a plan for approval',
+      plan_approved: 'Approved the plan',
       resumed: 'Resumed after a reply',
       resumedNoAnswer: 'Resumed without an answer',
       /** {runner} like jonas-laptop/claude */

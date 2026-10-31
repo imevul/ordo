@@ -95,6 +95,7 @@ Agents (docs/agents.md)
   agent run --file <yaml>  The agents and commands in a runner file (repeatable; --only a,b)
   agent check --file <yaml>  Validate a runner file and its keys without claiming anything
   agent ask <question>     Inside a run: ask a person and pause it (- reads stdin)
+  agent plan <plan>        Inside a run: post a plan for approval and pause it (- reads stdin)
 
 Anything else
   api <method> <path>      Call the REST API (path relative to /api); --data <json|@file|->
@@ -220,6 +221,7 @@ Call the REST API; the path is relative to /api. Prints the JSON answer.`,
   run --file <yaml>        The agents and commands in a runner file
   check --file <yaml>      Validate a runner file and its keys without claiming anything
   ask <question>           Inside a run: ask a person and pause it
+  plan <plan>              Inside a run: post a plan for approval and pause it
 
 Run "ordo agent <command> --help" for its options. Docs: docs/agents.md.`,
   'agent run': `Usage: ordo agent run [options] -- <command…>
@@ -244,6 +246,10 @@ Validate a runner file and its keys without claiming anything.`,
   'agent ask': `Usage: ordo agent ask <question|-> [--run <id>]
 
 Inside a run: ask a person and pause the run until they reply on the issue. - reads stdin.`,
+  'agent plan': `Usage: ordo agent plan <plan|-> [--run <id>]
+
+Inside a run: post your plan (Markdown) on the issue and pause the run until a person approves it
+or replies with changes. - reads stdin.`,
 };
 
 const ISSUE_ALIASES: Record<string, string> = {
@@ -396,6 +402,7 @@ async function dispatch(argv: string[], io: Io, s: Style) {
       if (sub === 'run') return agentRun(ctx, args);
       if (sub === 'check') return agentRun(ctx, args, { check: true });
       if (sub === 'ask') return agentAsk(ctx, args);
+      if (sub === 'plan') return agentPlan(ctx, args);
       throw new UsageError(
         sub ? `unknown agent command "${sub}"` : 'which agent command? run or check',
       );
@@ -1135,4 +1142,20 @@ async function agentAsk(ctx: Context, args: string[]) {
   const run = await ws.agent.ask(runId, question);
   if (values.json) return ctx.json(run);
   ctx.io.stdout('Asked. Stop working now: the run resumes when someone replies on the issue.\n');
+}
+
+/** Inside a run: posts the agent's plan and pauses the run until it's approved or answered. */
+async function agentPlan(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, { run: { type: 'string' } });
+  const runId = (values.run as string | undefined) ?? ctx.io.env.ORDO_RUN_ID;
+  if (!runId) throw new UsageError('no run: use it inside a run (ORDO_RUN_ID) or pass --run <id>');
+  const text = positionals.join(' ');
+  const plan = (text === '-' ? await ctx.io.readStdin() : text).trim();
+  if (!plan) throw new UsageError('what is the plan? "ordo agent plan <plan>"');
+  const ws = await ctx.workspace(values.workspace as string | undefined);
+  const run = await ws.agent.plan(runId, plan);
+  if (values.json) return ctx.json(run);
+  ctx.io.stdout(
+    "Plan posted. Stop working now and don't change code: the run resumes when someone approves it or replies.\n",
+  );
 }

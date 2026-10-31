@@ -1,5 +1,5 @@
 import { fieldsForTeam, type IssueDetail, type Team, type UpdateIssueInput } from '@ordo/shared';
-import { X } from 'lucide-react';
+import { ClipboardCheck, X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
 import { useMoveIssues } from '../../api/queries.ts';
@@ -140,6 +140,12 @@ export function IssueProperties({
           <CustomFieldProp field={field} issue={issue} onPatch={onPatch} />
         </Field>
       ))}
+      {(issue.planApproval !== null ||
+        (issue.assigneeId && ws.memberById.get(issue.assigneeId)?.kind === 'agent')) && (
+        <Field label={t('issue.detail.planApproval')}>
+          <PlanApprovalProp issue={issue} onPatch={onPatch} />
+        </Field>
+      )}
       <Field label={t('common.team')}>
         <Picker
           placeholder={t('issue.detail.moveToTeam')}
@@ -194,6 +200,45 @@ export function IssueProperties({
         </div>
       </Field>
     </>
+  );
+}
+
+/**
+ * "Approve the plan first" for the issue's agent: on, off, or (null) whatever the agent's setting
+ * says. Shown while an agent has the issue, or once someone set it.
+ */
+function PlanApprovalProp({
+  issue,
+  onPatch,
+}: {
+  issue: IssueDetail;
+  onPatch: (p: UpdateIssueInput) => void;
+}) {
+  const value = issue.planApproval === null ? 'default' : issue.planApproval ? 'on' : 'off';
+  const label = {
+    default: t('issue.detail.planApprovalDefault'),
+    on: t('issue.detail.planApprovalOn'),
+    off: t('issue.detail.planApprovalOff'),
+  };
+  return (
+    <Picker
+      placeholder={t('issue.detail.planApprovalTitle')}
+      options={(['default', 'on', 'off'] as const).map((v) => ({ value: v, label: label[v] }))}
+      selected={[value]}
+      onSelect={(v) => onPatch({ planApproval: v === 'default' ? null : v === 'on' })}
+      width={220}
+      trigger={
+        <button
+          type="button"
+          className="prop w-full justify-start bg-transparent shadow-none hover:bg-text/[0.03]"
+          title={t('issue.detail.planApprovalHint')}
+          aria-label={t('issue.detail.planApprovalTitle')}
+        >
+          <ClipboardCheck size={13} className={value === 'on' ? 'text-primary' : 'text-index'} />
+          <span className={value === 'default' ? 'text-muted' : ''}>{label[value]}</span>
+        </button>
+      }
+    />
   );
 }
 

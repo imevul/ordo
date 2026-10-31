@@ -42,6 +42,7 @@ import {
   gt,
   gte,
   inArray,
+  isNotNull,
   isNull,
   lt,
   lte,
@@ -73,7 +74,7 @@ import {
 } from '../db/schema.ts';
 import { API_KEY_PREFIX } from '../lib/auth.ts';
 import { randomToken, sha256 } from '../lib/crypto.ts';
-import { badRequest, conflict, notFound, one } from '../lib/errors.ts';
+import { badRequest, conflict, forbidden, notFound, one } from '../lib/errors.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import { type Access, teamScope } from './access.ts';
 import { auditCtx } from './audit.ts';
@@ -132,6 +133,7 @@ export async function listAgents(db: DbOrTx, workspaceId: string): Promise<Agent
       concurrency: agents.concurrency,
       followPullRequests: agents.followPullRequests,
       waitForBlockers: agents.waitForBlockers,
+      requirePlanApproval: agents.requirePlanApproval,
       pausedUntil: agents.pausedUntil,
       pauseReason: agents.pauseReason,
       monthlyBudgetUsd: agents.monthlyBudgetUsd,
@@ -217,6 +219,7 @@ export async function createAgent(ctx: Ctx, input: CreateAgentInput): Promise<Ag
     followPullRequests: input.followPullRequests,
     waitForBlockers: input.waitForBlockers,
     monthlyBudgetUsd: input.monthlyBudgetUsd,
+    requirePlanApproval: input.requirePlanApproval,
     createdById: ctx.userId,
   });
   await auditCtx(ctx, {
@@ -250,6 +253,7 @@ export async function updateAgent(ctx: Ctx, agentId: string, input: UpdateAgentI
     input.concurrency !== undefined ||
     input.followPullRequests !== undefined ||
     input.waitForBlockers !== undefined ||
+    input.requirePlanApproval !== undefined ||
     budgetChanged
   )
     await ctx.tx
@@ -263,6 +267,9 @@ export async function updateAgent(ctx: Ctx, agentId: string, input: UpdateAgentI
         ...(input.waitForBlockers !== undefined && { waitForBlockers: input.waitForBlockers }),
         // A new budget holds from now on, whatever "Resume now" waived under the old one.
         ...(budgetChanged && { monthlyBudgetUsd: input.monthlyBudgetUsd, budgetWaivedUntil: null }),
+        ...(input.requirePlanApproval !== undefined && {
+          requirePlanApproval: input.requirePlanApproval,
+        }),
         updatedAt: new Date().toISOString(),
       })
       .where(eq(agents.userId, agentId));
@@ -406,6 +413,9 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
       }
     : null,
   question: r.question,
+  plan: r.plan,
+  planApprovedAt: r.planApprovedAt,
+  planApprovedById: r.planApprovedById,
   resume: r.resume,
   trigger: r.trigger,
   triggerCommentId: r.triggerCommentId,
@@ -621,14 +631,41 @@ export async function onComment(
  * no concurrency, until a person comments.
  */
 export async function askQuestion(ctx: Ctx, runId: string, question: string): Promise<AgentRun> {
+  const saved = await pause(ctx, runId, { question }, question);
+  await logRun(ctx, runId, 'asked', { question });
+  return saved;
+}
+
+/**
+ * The agent proposes a plan and pauses, like a question: the plan is posted on the issue and the
+ * run waits until a person approves it (`approvePlan`) or replies with changes (`onComment`). A
+ * new plan needs a new approval.
+ */
+export async function proposePlan(ctx: Ctx, runId: string, plan: string): Promise<AgentRun> {
+  const saved = await pause(
+    ctx,
+    runId,
+    { plan, question: null, planApprovedAt: null, planApprovedById: null },
+    `**Plan for approval**\n\n${plan}\n\n_Approve it on the agent run of this issue, or reply with changes._`,
+  );
+  await logRun(ctx, runId, 'planned', { plan });
+  return saved;
+}
+
+async function pause(
+  ctx: Ctx,
+  runId: string,
+  set: Partial<typeof agentRuns.$inferInsert>,
+  body: string,
+): Promise<AgentRun> {
   const run = await ownRun(ctx, runId);
   if (run.status !== 'claimed' && run.status !== 'running')
     throw conflict(`This run is ${run.status}`);
   const [saved] = await ctx.tx
     .update(agentRuns)
     .set({
+      ...set,
       status: 'waiting',
-      question,
       leaseExpiresAt: null,
       startedAt: run.startedAt ?? new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -641,9 +678,54 @@ export async function askQuestion(ctx: Ctx, runId: string, question: string): Pr
     .where(eq(issues.id, run.issueId));
   const asker = await humanUsername(ctx, run.requestedById, issue?.creatorId ?? null);
   await createComment(ctx, run.issueId, {
-    body: `${asker ? `@${asker} ` : ''}${question}`.slice(0, 50_000),
+    body: `${asker ? `@${asker} ` : ''}${body}`.slice(0, 50_000),
   });
-  await logRun(ctx, runId, 'asked', { question });
+  await changed(ctx, saved!);
+  return toAgentRun(saved!);
+}
+
+/**
+ * A person approves the plan a run is waiting on, and the run goes back in the queue to carry it
+ * out. Also takes a run a reply already requeued, as long as no runner picked it up yet.
+ */
+export async function approvePlan(ctx: Ctx, runId: string): Promise<AgentRun> {
+  const run = await loadRun(ctx, runId);
+  const [actor] = await ctx.tx
+    .select({ kind: users.kind })
+    .from(users)
+    .where(eq(users.id, ctx.userId));
+  if (actor?.kind !== 'human') throw forbidden('Only people can approve a plan');
+  // Proposing clears the question, so one set means the latest pause asked something instead.
+  if (
+    !run.plan ||
+    run.planApprovedAt ||
+    run.question ||
+    (run.status !== 'waiting' && run.status !== 'queued')
+  )
+    throw conflict('This run has no plan waiting for approval');
+  const now = new Date().toISOString();
+  const [saved] = await ctx.tx
+    .update(agentRuns)
+    .set({
+      planApprovedAt: now,
+      planApprovedById: ctx.userId,
+      ...(run.status === 'waiting' && { status: 'queued' as const, attempts: 0 }),
+      updatedAt: now,
+    })
+    .where(eq(agentRuns.id, run.id))
+    .returning();
+  const [issue] = await ctx.tx
+    .select({ identifier: sql<string>`${teams.key} || '-' || ${issues.number}` })
+    .from(issues)
+    .innerJoin(teams, eq(teams.id, issues.teamId))
+    .where(eq(issues.id, run.issueId));
+  await auditCtx(ctx, {
+    action: 'agent.plan_approved',
+    targetType: 'user',
+    targetId: run.agentId,
+    data: { runId: run.id, issueId: run.issueId, issue: issue?.identifier },
+  });
+  await logRun(ctx, run.id, 'plan_approved', { requeued: run.status === 'waiting' });
   await changed(ctx, saved!);
   return toAgentRun(saved!);
 }
@@ -1378,6 +1460,7 @@ export async function reportRun(
     error?: string | null;
     failureReason?: AgentRunFailureReason;
     question?: string;
+    plan?: string;
     resume?: string | null;
     usage?: AgentRunUsageReport;
   },
@@ -1406,7 +1489,8 @@ export async function reportRun(
   if (run.status !== 'claimed' && run.status !== 'running')
     throw conflict(`This run is ${run.status}`);
   if (input.status === 'waiting') {
-    if (!input.question) throw badRequest('Say what you are asking (question)');
+    if (!input.question && !input.plan)
+      throw badRequest('Say what you are asking (question) or proposing (plan)');
     if (input.sessionUrl !== undefined || input.resume !== undefined || used)
       [run] = await ctx.tx
         .update(agentRuns)
@@ -1417,9 +1501,11 @@ export async function reportRun(
         })
         .where(eq(agentRuns.id, runId))
         .returning();
-    const asked = await askQuestion(ctx, runId, input.question);
+    const paused = input.plan
+      ? await proposePlan(ctx, runId, input.plan)
+      : await askQuestion(ctx, runId, input.question!);
     if (used) await afterUsage(ctx, run, { emitted: true });
-    return asked;
+    return paused;
   }
   const now = new Date().toISOString();
   const final = input.status === 'succeeded' || input.status === 'failed';
@@ -1825,6 +1911,7 @@ async function runContext(
         name: users.name,
         username: users.username,
         instructions: agents.instructions,
+        requirePlanApproval: agents.requirePlanApproval,
       })
       .from(agents)
       .innerJoin(users, eq(users.id, agents.userId))
@@ -1903,12 +1990,32 @@ async function runContext(
     suggestedBranch: prBranch(r.externalRepo) ?? pushedBranch(r.externalRepo) ?? branch,
   }));
   const url = `${app.env.publicUrl}/${ws!.slug}/issue/${detail.identifier}`;
+  const assigned = detail.assigneeId === run.agentId;
+  // Once a plan for the issue is approved, later runs (review fixes, failing checks) go ahead.
+  const approvalOn = assigned && (detail.planApproval ?? agent!.requirePlanApproval);
+  const approvedBefore =
+    approvalOn &&
+    (
+      await ctx.tx
+        .select({ id: agentRuns.id })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.issueId, run.issueId),
+            eq(agentRuns.agentId, run.agentId),
+            not(eq(agentRuns.id, run.id)),
+            isNotNull(agentRuns.planApprovedAt),
+          ),
+        )
+        .limit(1)
+    ).length > 0;
+  const { requirePlanApproval: _, ...agentInfo } = agent!;
   const context: Omit<AgentRunContext, 'prompt'> = {
     protocolVersion: AGENT_PROTOCOL_VERSION,
     run: toAgentRun(run),
     workspace: ws!,
     agent: {
-      ...agent!,
+      ...agentInfo,
       instructions: [runnerInstructions, agent!.instructions]
         .map((x) => x.trim())
         .filter(Boolean)
@@ -1930,7 +2037,8 @@ async function runContext(
         return c ? { id: c.id, author: c.author, body: c.body } : null;
       })(),
     },
-    assigned: detail.assigneeId === run.agentId,
+    assigned,
+    planApproval: approvalOn && !approvedBefore,
   };
   const extra = {
     state: states.find((s) => s.id === detail.stateId)?.name ?? '',
@@ -2043,6 +2151,18 @@ export function renderPrompt(
   if (c.trigger.kind === 'scheduled')
     out.push(
       "## Why you're here\nA recurring schedule created this issue and assigned it to you. Its description is your task for this occurrence: do it now. The schedule creates a new issue next time, so finish this one instead of waiting for later.",
+    );
+  if (c.run.plan && c.run.planApprovedAt)
+    out.push(
+      `## Your plan\n${c.run.plan}\n\nThis plan was approved. Carry it out, and continue from where you stopped.`,
+    );
+  else if (c.run.plan)
+    out.push(
+      `## Your plan\n${c.run.plan}\n\nThis plan is not approved yet. The feedback is in the comments after it. Don't change code yet: revise the plan as it asks and propose it again with \`propose_plan\`, then stop.`,
+    );
+  else if (c.planApproval)
+    out.push(
+      `## Plan approval\nThis issue needs your plan approved before you change anything. Look into it first, then post your plan with the \`propose_plan\` tool of the Ordo MCP server or \`ordo agent plan "<plan>"\`: what you will change and how, and the risks. Then stop: the run pauses, and it resumes when someone approves the plan or replies with changes. Don't edit files, commit or push before the plan is approved.`,
     );
   if (c.run.question)
     out.push(

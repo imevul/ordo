@@ -42,6 +42,7 @@ import {
   heldRuns,
   listRuns,
   listWorkspaceRuns,
+  proposePlan,
   reportProgress,
   reportRun,
   requestRun,
@@ -503,6 +504,7 @@ function handlers(c: McpCaller): Handlers {
     if (args.dueDate !== undefined) out.dueDate = args.dueDate;
     if (args.customFields && Object.keys(args.customFields).length)
       out.customFields = await dir.fieldValues(args.customFields, team);
+    if (args.planApproval !== undefined) out.planApproval = args.planApproval;
     return out;
   }
 
@@ -749,6 +751,7 @@ function handlers(c: McpCaller): Handlers {
         trigger: r.trigger,
         runner: r.runnerName,
         question: r.status === 'waiting' ? r.question : undefined,
+        planPending: (r.status === 'waiting' && !!r.plan && !r.planApprovedAt) || undefined,
         failureReason: r.failureReason ?? undefined,
         error: r.status === 'failed' ? r.error?.slice(-500) : undefined,
         retryAt: r.retryAt ?? undefined,
@@ -937,6 +940,17 @@ function handlers(c: McpCaller): Handlers {
       };
     },
 
+    propose_plan: async ({ plan, run }) => {
+      requireAgent(c);
+      const runId = run ?? (await onlyHeldRun(c));
+      const saved = await c.run((ctx) => proposePlan(ctx, runId, plan));
+      return {
+        run: saved.id,
+        status: saved.status,
+        next: "Stop working now, and don't change code yet. The run resumes when someone approves the plan or replies with changes.",
+      };
+    },
+
     add_comment: async ({ issue, body, replyTo }) => {
       const input = parse(createCommentSchema, { body, parentId: replyTo });
       const target = await getIssue(c.app.db, c.access, issue);
@@ -1062,6 +1076,8 @@ async function agentRunsResult(c: McpReader, dir: Directory, ref: string) {
       sessionUrl: r.sessionUrl,
       trigger: r.trigger,
       question: r.question,
+      plan: r.plan ?? undefined,
+      planApproved: r.plan ? !!r.planApprovedAt : undefined,
       summary: r.summary,
       error: r.error,
       failureReason: r.failureReason,

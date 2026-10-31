@@ -176,6 +176,7 @@ export const UNMERGED_COLUMNS: Record<string, string> = {
   'agents.created_by_id': 'made by admins',
   'agent_runs.requested_by_id': 'requested by members',
   'agent_run_events.actor_id': 'run timelines stay as they happened',
+  'agent_runs.plan_approved_by_id': 'approved by people',
   'invites.created_by': 'made by members',
   'issue_templates.created_by_id': 'made by members',
   'initiatives.owner_id': 'owned by members',

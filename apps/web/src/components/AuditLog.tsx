@@ -569,6 +569,8 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
       return a('agentDisabled');
     case 'agent.unpaused':
       return a('agentUnpaused');
+    case 'agent.plan_approved':
+      return a('agentPlanApproved', { identifier: str(d.issue) });
     case 'agent.key_created':
       return a('agentKeyCreated', { name: str(d.name) });
     case 'repository.created':

@@ -333,6 +333,7 @@ export class WorkspaceClient {
         /** With `failed`, when the runner knows why; otherwise Ordo reads the error. */
         failureReason?: AgentRunFailureReason;
         question?: string;
+        plan?: string;
         resume?: string | null;
         /** What this pickup used; added to the run's totals, so send it once per pickup. */
         usage?: AgentRunUsageReport;
@@ -344,6 +345,13 @@ export class WorkspaceClient {
       this.request<AgentRun>('PATCH', `/agent/runs/${encodeURIComponent(runId)}`, {
         status: 'waiting',
         question,
+      }),
+
+    /** Posts a plan and pauses the run until a person approves it or replies with changes. */
+    plan: (runId: string, plan: string) =>
+      this.request<AgentRun>('PATCH', `/agent/runs/${encodeURIComponent(runId)}`, {
+        status: 'waiting',
+        plan,
       }),
   };
 }

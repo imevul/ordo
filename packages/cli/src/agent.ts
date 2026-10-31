@@ -946,7 +946,7 @@ async function work(
   const id = context.issue.identifier;
   const runId = context.run.id;
   opts.log(
-    `${id} ${context.run.question ? 'resumed after a reply' : 'claimed'} (attempt ${context.run.attempts}): ${context.issue.title}`,
+    `${id} ${context.run.planApprovedAt ? 'resumed with the plan approved' : context.run.question || context.run.plan ? 'resumed after a reply' : 'claimed'} (attempt ${context.run.attempts}): ${context.issue.title}`,
   );
   let cancel = () => {};
   const cancelled = new Promise<void>((r) => {
@@ -1042,7 +1042,10 @@ async function work(
     if (!saved && (refused as string | null)?.includes('cancelled'))
       await ws.agent.report(runId, { usage: result.usage }).catch(() => {});
     // The agent asked a question: the run waits for a reply, whatever the command's exit said.
-    if (saved?.status === 'waiting') opts.log(`${id} is waiting for an answer`);
+    if (saved?.status === 'waiting')
+      opts.log(
+        `${id} is waiting for ${saved.plan && !saved.planApprovedAt ? 'approval' : 'an answer'}`,
+      );
     else if (!saved)
       opts.log(
         `${id} finished (${result.status}), but Ordo didn't take the report: ${refused ?? 'unknown error'}`,
