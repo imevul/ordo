@@ -181,23 +181,24 @@ describe('runner files', () => {
     expect(b!.instructions).toBe('Keep pull requests small.\n\nOnly touch docs/.\n');
   });
 
-  it('leave unknown ${VAR} and the launch contract in command and instructions for the run', async () => {
+  it('leave the launch contract in command and instructions for the run', async () => {
     const file = write(
       'later.yaml',
       [
         'url: https://ordo.example.com',
         'workspace: acme',
         'env_file: later.env',
-        'instructions: Top ${NOPE} ${NOPE:-x}, by ${WHO}.',
+        'instructions: Top ${TEAM:-ENG}, by ${WHO}.',
         'defaults:',
-        '  command: claude --model ${MODEL} --mcp-config "${ORDO_MCP_CONFIG}" ${EXTRA:-}',
+        '  command: claude --model ${MODEL} --mcp-config "${ORDO_MCP_CONFIG}" ${EXTRA:-} ${LEVEL}',
+        '  env: { LEVEL: high }',
         'agents:',
         '  a:',
         '    key: ${A_KEY}',
         '    instructions: Read ${ORDO_RUN_FILE}.',
         '  b:',
         '    key: ${A_KEY}',
-        '    command: [run, "${ORDO_ISSUE}", "${MODEL}"]',
+        '    command: [run, "${ORDO_ISSUE}", "${MODEL}", "${EXTRA:-none}"]',
       ].join('\n'),
     );
     write('later.env', 'MODEL=opus\nWHO=ops\n');
@@ -207,12 +208,43 @@ describe('runner files', () => {
     } = await loadRunnerFile(file, { A_KEY: 'k', ORDO_MCP_CONFIG: '/outer/mcp.json' });
     expect(a).toMatchObject({
       key: 'k',
-      command: 'claude --model opus --mcp-config "${ORDO_MCP_CONFIG}" ${EXTRA:-}',
-      instructions: 'Top ${NOPE} ${NOPE:-x}, by ops.\n\nRead ${ORDO_RUN_FILE}.',
+      // `env:` sets LEVEL in the command's process, so the shell expands it.
+      command: 'claude --model opus --mcp-config "${ORDO_MCP_CONFIG}"  ${LEVEL}',
+      instructions: 'Top ENG, by ops.\n\nRead ${ORDO_RUN_FILE}.',
     });
-    expect(b!.command).toEqual(['run', '${ORDO_ISSUE}', 'opus']);
+    expect(b!.command).toEqual(['run', '${ORDO_ISSUE}', 'opus', 'none']);
     // Everything else still expands when the file loads.
     await expect(loadRunnerFile(file, {})).rejects.toThrow('agents.a.key: ${A_KEY} is not set');
+  });
+
+  it('fail on a variable that is set nowhere in instructions or command', async () => {
+    const base = 'url: https://ordo.example.com\nworkspace: acme\nkey: k\n';
+    const typoInstructions = write(
+      'typo-instructions.yaml',
+      `${base}command: claude -p\ninstructions: Use \${CLAUDE_KYE}.\n`,
+    );
+    await expect(loadRunnerFile(typoInstructions, {})).rejects.toThrow(
+      'instructions: ${CLAUDE_KYE} is not set',
+    );
+    const typoShell = write(
+      'typo-shell.yaml',
+      `${base}command: claude --model \${MODLE} --mcp-config "\${ORDO_MCP_CONFIG}"\n`,
+    );
+    await expect(loadRunnerFile(typoShell, {})).rejects.toThrow('command: ${MODLE} is not set');
+    const typoList = write(
+      'typo-list.yaml',
+      'url: https://ordo.example.com\nworkspace: acme\nagents:\n  x:\n    key: k\n    command: [run, "${MODLE}"]\n',
+    );
+    await expect(loadRunnerFile(typoList, {})).rejects.toThrow(
+      'agents.x.command[1]: ${MODLE} is not set',
+    );
+    // A top-level env: counts for a single agent's command.
+    const withEnv = write(
+      'with-env.yaml',
+      `${base}command: claude --model \${MODEL}\nenv: { MODEL: opus }\n`,
+    );
+    const { agents } = await loadRunnerFile(withEnv, {});
+    expect(agents[0]).toMatchObject({ command: 'claude --model ${MODEL}', env: { MODEL: 'opus' } });
   });
 
   it('name the field that is wrong', async () => {
