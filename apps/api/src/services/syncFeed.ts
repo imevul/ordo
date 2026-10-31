@@ -22,6 +22,7 @@ const BOOTSTRAP_KINDS = new Set([
   'member',
   'workspace',
   'label',
+  'customField',
   'template',
   'project',
   'projectUpdate',

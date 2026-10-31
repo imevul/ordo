@@ -32,6 +32,7 @@ export const issue = (id: string, extra: Partial<Issue> = {}): Issue => ({
   dueDate: null,
   sortOrder: 0,
   labelIds: [],
+  customFields: {},
   subIssueCount: 0,
   completedSubIssueCount: 0,
   startedAt: null,

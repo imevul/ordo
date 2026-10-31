@@ -296,8 +296,10 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [x] ✅ Scheduled agent tasks (nightly dependency check, weekly review) on top of recurring issues
   - [ ] ⬜ Concurrency per repository, so two runs don't work in one repo at once
 - [ ] ⬜ Everyday tracking
-  - [ ] ⬜ Custom fields per workspace or team (select, multi-select, number, date, text, person) in filters,
-    grouping, the API, GraphQL, CSV and the Jira importer
+  - [ ] 🟡 Custom fields per workspace or team (select, multi-select, number, date, text, person) in filters,
+    grouping, the API, GraphQL, CSV and the Jira importer. Done: definitions and typed values, REST API and
+    filters, sync, CSV export and import (a column per field, by name), the JSON workspace export, and the Jira
+    importer (custom fields with values become Ordo fields)
   - [ ] ⬜ Richer filters: due, created, updated and completed dates with relative ranges (overdue, this week),
     estimate, blocked, has a pull request; AND/OR groups
   - [ ] ⬜ Automation rules: "when … then …" (label added → assign; all sub-issues done → close the parent; pull

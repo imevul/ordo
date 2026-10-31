@@ -1,4 +1,5 @@
 import type { ProjectStatus, StateType } from './constants.ts';
+import type { CustomFieldType } from './customFields.ts';
 
 /**
  * Imports from other trackers and files. An import runs in steps: the source is analyzed (what
@@ -76,6 +77,17 @@ export interface ImportSourceCycle {
   endsAt: string;
 }
 
+/**
+ * A custom field of the source (a Jira custom field, a CSV column named like an Ordo field). Its
+ * values go into the Ordo custom field of the same name.
+ */
+export interface ImportSourceField extends ImportSourceNamed {
+  /** The type a field made for it gets. Absent when the source can't tell (CSV): it then only feeds an existing field. */
+  type?: CustomFieldType;
+  /** Option names seen on the issues, for select fields. */
+  options?: string[];
+}
+
 /** What analysis found. */
 export interface ImportSummary {
   teams: ImportSourceTeam[];
@@ -83,6 +95,8 @@ export interface ImportSummary {
   labels: ImportSourceNamed[];
   projects: ImportSourceProject[];
   cycles?: ImportSourceCycle[];
+  /** Custom fields that have values on the issues. */
+  fields?: ImportSourceField[];
   counts: { issues: number; comments: number };
   warnings: string[];
   /** CSV: the file's columns, which Ordo field each one feeds, and the first rows. */
@@ -112,6 +126,11 @@ export interface ImportMapping {
   labels: Record<string, string>;
   /** Source project → an existing project id, 'create' or 'skip'. */
   projects: Record<string, string>;
+  /**
+   * Source custom field → an existing custom field id, 'create' (a workspace field) or 'skip'.
+   * Issues of a team the chosen field isn't for use that team's field of the same name, if any.
+   */
+  fields?: Record<string, string>;
   /** Keep the source's issue numbers (ENG-42 stays ENG-42). Only for teams without issues. */
   keepNumbers: boolean;
 }
@@ -133,6 +152,8 @@ export interface ImportReport {
     issues: number;
     comments: number;
     relations: number;
+    /** Custom fields. */
+    fields?: number;
   };
   /** Items already imported by an earlier attempt of this import. */
   existing: number;

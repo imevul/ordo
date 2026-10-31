@@ -27,6 +27,7 @@ import { assertAiChangeAllowed, resolveWorkspaceAi } from '../services/ai/assist
 import { audit, auditCtx, auditFilters } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
 import { listCustomers } from '../services/customers.ts';
+import { listCustomFields } from '../services/customFields.ts';
 import { listCycles } from '../services/cycles.ts';
 import { deleteFile, saveFile, signedFileUrl } from '../services/files.ts';
 import { listInitiatives } from '../services/initiatives.ts';
@@ -128,6 +129,7 @@ export async function loadBootstrap(app: FastifyInstance, req: FastifyRequest): 
     repositories,
     teams: teamList,
     labels: labelRows,
+    customFields: await listCustomFields(db, access),
     templates,
     recurring: await listRecurring(db, access),
     customers: await listCustomers(db, access),

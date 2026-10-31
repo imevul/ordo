@@ -62,6 +62,7 @@ runner file sets the key, repositories directory, concurrency and timeout, and t
 **Filters for `ordo issues`:** `--team ENG`, `--status <name or type>` (`started`, `"In Review"`; repeatable),
 `--assignee <me | username | email | none>` (repeatable), `--mine`, `--label <name>` (repeatable), `--project <name |
 none>`, `--cycle <current | next | number | none>`, `--priority <urgent | high | medium | low | none>` (repeatable),
+`--field "<name>=<value,…>"` (a custom field with any of the values, or `none`; repeatable),
 `-q <words or identifier>`, `--all` (closed ones too) and `-n, --limit` (default 50).
 
 **Fields for `create` and `edit`:** `--title`, `-d, --description <text>` or `--description-file <path | ->`,
@@ -69,9 +70,15 @@ none>`, `--cycle <current | next | number | none>`, `--priority <urgent | high |
 `--due <YYYY-MM-DD>` (`none` clears any of the last five). `create` also takes `--team` (else the workspace's default
 team) and `--label` (repeatable); `edit` takes `--add-label`, `--remove-label` and `--unassign`.
 
+**Custom fields:** `--field "<name>=<value>"` (repeatable) sets one on `create` and `edit`. The field is found by name
+among the fields of the issue's team (any case); the value is an option name (select), option names separated by
+commas (multi-select: `--field "Areas=API,Web"`), a number, a date as `YYYY-MM-DD`, text, or a person like
+`--assignee` takes. `none` or an empty value clears it. `ordo issue view` lists the fields an issue has a value for.
+
 ```bash
 ordo issues --mine --status started
 ordo issue create "Login button misaligned on Safari" --team WEB --priority high --label Bug
+ordo issue edit WEB-42 --field "Customer tier=Gold" --field "Reviewer=@sam"
 ordo issue start WEB-42 && git switch -c "$(ordo issue branch WEB-42)"
 git log -1 --format=%B | ordo issue comment WEB-42 -
 ordo issue comment WEB-42 "Fixed on Safari too" --attach before.png --attach after.png
@@ -127,13 +134,16 @@ for await (const i of acme.issues.all({ assigneeIds: ['me'], stateTypes: ['start
 ```
 
 - `Ordo`: `me()`, `health()`, `workspace(slug)`, and `request(method, path, body?)` for anything else.
-- `WorkspaceClient`: `bootstrap()`, `teams()`, `projects()`, `cycles()`, `labels()`, `search(q)`, `notifications()`,
+- `WorkspaceClient`: `bootstrap()`, `teams()`, `projects()`, `cycles()`, `labels()`, `customFields()`, `search(q)`,
+  `notifications()`,
   `graphql(query, variables)` ([GraphQL API](graphql.md)), `request(…)`, and `issues.list | all | get | create | update | trash | archive | unarchive | history | comments |
   comment | link`. Issue ids can be identifiers (`ENG-42`) everywhere.
 - Failed calls throw `OrdoError` with `status`, `code` (the API's `error`, e.g. `not_found`, `sso_required`),
   `message` and `details`.
-- `Names` resolves team keys, status names or types, labels, people (`me`, usernames, emails), projects and cycles,
-  throwing `NameError` with the valid choices; `parsePriority` reads priority words.
+- `Names` resolves team keys, status names or types, labels, people (`me`, usernames, emails), projects, cycles and
+  custom fields (`field(name, team)`, `option(field, name)`, `fieldValue(field, "Gold")` for the value to send as
+  `customFields[field.id]`, `fieldText(field, value)` to show one), throwing `NameError` with the valid choices;
+  `parsePriority` reads priority words.
 
 The SDK isn't published to npm yet. Use it from a checkout of the repository (it's a pnpm workspace package, imported
 as TypeScript source like `@ordo/shared`), or copy `packages/sdk/src` next to `packages/shared/src`.

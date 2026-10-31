@@ -23,7 +23,7 @@ import { GitBranch, Plus } from 'lucide-react';
 import { memo, useEffect, useState } from 'react';
 import { t } from '../i18n/index.ts';
 import { dueState, shortDate } from '../lib/format.ts';
-import { type IssueGroup, isDone, patchForGroup } from '../lib/issues.ts';
+import { canDropOnGroups, type IssueGroup, isDone, patchForGroup } from '../lib/issues.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { PriorityIcon, ProjectIcon, StatusIcon } from './icons.tsx';
 import { AssigneeProp, PriorityProp } from './properties.tsx';
@@ -177,10 +177,10 @@ function Column({
           <StatusIcon type={group.stateType} color={group.color ?? 'var(--color-muted)'} />
         )}
         {groupBy === 'priority' && <PriorityIcon priority={group.value as number} />}
-        {groupBy === 'assignee' && group.value && (
+        {group.person && group.value && (
           <Avatar name={group.label} color={group.color ?? 'var(--color-primary)'} size={16} />
         )}
-        {groupBy !== 'state' && groupBy !== 'priority' && groupBy !== 'assignee' && group.color && (
+        {groupBy !== 'state' && groupBy !== 'priority' && !group.person && group.color && (
           <span className="tag-dot" style={{ background: group.color }} />
         )}
         <span className="truncate text-[13px] font-medium">{group.label}</span>
@@ -235,7 +235,7 @@ export function IssueBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-  const draggable = groupBy !== 'label' && groupBy !== 'none';
+  const draggable = canDropOnGroups(ws, groupBy);
 
   const findGroup = (id: string) =>
     id.startsWith('col:')

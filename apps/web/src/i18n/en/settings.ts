@@ -38,6 +38,7 @@ export default {
     members: 'Members',
     teams: 'Teams',
     labels: 'Labels',
+    customFields: 'Custom fields',
     templates: 'Templates',
     /** Invitations, domains and joining: who gets in. */
     access: 'Access',

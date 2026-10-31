@@ -1,4 +1,5 @@
 import {
+  type CustomField,
   type ExportFormat,
   type Issue,
   priorityLabel,
@@ -13,7 +14,9 @@ import {
   commentReactions,
   comments,
   customerRequests,
+  customFields,
   files,
+  issueFieldValues,
   issueHistory,
   issueLinks,
   issueRelations,
@@ -34,6 +37,7 @@ import { systemAccess } from './access.ts';
 import { audit } from './audit.ts';
 import type { RequestMeta } from './context.ts';
 import { listCustomers } from './customers.ts';
+import { listCustomFields } from './customFields.ts';
 import { listCycles } from './cycles.ts';
 import { deleteFile, saveFile, signedFileUrl } from './files.ts';
 import { listInitiatives } from './initiatives.ts';
@@ -47,9 +51,9 @@ import { workspaceSettings } from './workspaces.ts';
 
 /**
  * Workspace exports, written by a job and kept for a week. JSON holds what belongs to the
- * workspace as a whole: people, teams, labels, issue templates, projects, cycles, shared views, and issues with
- * their comments and reactions, history, relations, links and attachment metadata. CSV is the issues, in the columns Ordo's CSV
- * import reads, so it round-trips. Personal things (private views, favourites, notifications) and
+ * workspace as a whole: people, teams, labels, custom fields, issue templates, projects, cycles, shared views, and issues with
+ * their custom field values, comments and reactions, history, relations, links and attachment metadata. CSV is the issues, in the columns Ordo's CSV
+ * import reads (a column per custom field, by name), so it round-trips. Personal things (private views, favourites, notifications) and
  * anything secret (integrations, webhooks, SSO) are left out.
  */
 
@@ -277,6 +281,8 @@ async function jsonExport(
       .where(and(eq(users.kind, 'placeholder'), eq(users.botWorkspaceId, ws.id))),
     teams: await listTeams(db, access),
     labels: (await db.select().from(labels).where(eq(labels.workspaceId, ws.id))).map(toLabel),
+    // Definitions; each issue carries its values in `customFields`, by field id.
+    customFields: await listCustomFields(db, access),
     templates: await listTemplates(db, access),
     initiatives: await listInitiatives(db, access, projectList),
     customers: await listCustomers(db, access),
@@ -431,6 +437,13 @@ async function csvExport(
                   .select({ id: issues.assigneeId })
                   .from(issues)
                   .where(eq(issues.workspaceId, ws.id)),
+              )
+              .union(
+                db
+                  .select({ id: issueFieldValues.userId })
+                  .from(issueFieldValues)
+                  .innerJoin(customFields, eq(customFields.id, issueFieldValues.fieldId))
+                  .where(eq(customFields.workspaceId, ws.id)),
               ),
           ),
         )
@@ -451,6 +464,26 @@ async function csvExport(
   const cycleName = new Map(
     (await listCycles(db, access)).map((c) => [c.id, c.name || `Cycle ${c.number}`]),
   );
+  // A column per field name, headed by it, which the CSV import reads back into the field of
+  // that name. Team fields may share a name, but an issue only ever has one of them.
+  const fieldColumns = new Map<string, CustomField[]>();
+  for (const f of await listCustomFields(db, access)) {
+    const key = f.name.toLowerCase();
+    fieldColumns.set(key, [...(fieldColumns.get(key) ?? []), f]);
+  }
+  const fieldCell = (i: Issue, fields: CustomField[]) => {
+    for (const f of fields) {
+      const value = i.customFields[f.id];
+      if (value === undefined) continue;
+      const option = (id: string) => f.options.find((o) => o.id === id)?.name;
+      if (f.type === 'select') return option(value as string) ?? '';
+      if (f.type === 'multi_select')
+        return (value as string[]).map(option).filter(Boolean).join(', ');
+      if (f.type === 'person') return people.get(value as string) ?? '';
+      return value as string | number;
+    }
+    return '';
+  };
 
   const list = (await allIssues(db, ws.id)).filter((i) => !i.deletedAt);
   const identifier = new Map(list.map((i) => [i.id, i.identifier]));
@@ -479,6 +512,8 @@ async function csvExport(
       i.completedAt,
       i.canceledAt,
       `${app.env.publicUrl}/${ws.slug}/issue/${i.identifier}`,
+      ...[...fieldColumns.values()].map((fields) => fieldCell(i, fields)),
     ]);
-  return toCsv([CSV_HEADER, ...rows]);
+  const header = [...CSV_HEADER, ...[...fieldColumns.values()].map((fields) => fields[0]!.name)];
+  return toCsv([header, ...rows]);
 }

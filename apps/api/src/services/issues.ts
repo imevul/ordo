@@ -1,6 +1,7 @@
 import {
   type AgentRunTrigger,
   type CreateIssueInput,
+  type CustomFieldValue,
   defaultAssigneeFor,
   type HistoryChange,
   ISSUE_IDENTIFIER_PATTERN,
@@ -61,6 +62,7 @@ import { onAssigneeChanged } from './agents.ts';
 import { claimAttachments, listAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { requestsOnIssue } from './customers.ts';
+import { dropForeignFieldValues, setFieldValues } from './customFields.ts';
 import { cycleForStartedIssue } from './cycle-automation.ts';
 import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
@@ -79,6 +81,10 @@ const issueSelect = {
   labelIds: sql<
     string[]
   >`coalesce((select array_agg(il.label_id::text) from issue_labels il where il.issue_id = "issues"."id"), '{}')`,
+  // Only the column of the field's type is set, so the first non-null one is the value.
+  customFields: sql<
+    Record<string, CustomFieldValue>
+  >`coalesce((select jsonb_object_agg(v.field_id::text, coalesce(to_jsonb(v.option_ids), to_jsonb(v.number_value), to_jsonb(v.date_value::text), to_jsonb(v.user_id::text), to_jsonb(v.text_value))) from issue_field_values v where v.issue_id = "issues"."id"), '{}'::jsonb)`,
   subIssueCount: sql<number>`(select count(*)::int from issues c where c.parent_id = "issues"."id" and c.deleted_at is null)`,
   completedSubIssueCount: sql<number>`(select count(*)::int from issues c join workflow_states cs on cs.id = c.state_id where c.parent_id = "issues"."id" and c.deleted_at is null and cs.type in ('completed', 'canceled'))`,
 };
@@ -86,6 +92,7 @@ const issueSelect = {
 type IssueRow = typeof issues.$inferSelect & {
   teamKey: string;
   labelIds: string[];
+  customFields: Record<string, CustomFieldValue>;
   subIssueCount: number;
   completedSubIssueCount: number;
 };
@@ -110,6 +117,7 @@ export function toIssue(r: IssueRow): Issue {
     dueDate: r.dueDate,
     sortOrder: r.sortOrder,
     labelIds: r.labelIds ?? [],
+    customFields: r.customFields ?? {},
     subIssueCount: r.subIssueCount,
     completedSubIssueCount: r.completedSubIssueCount,
     startedAt: r.startedAt,
@@ -183,6 +191,9 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
       ),
     );
   }
+  for (const [fieldId, wanted] of Object.entries(f.customFields ?? {})) {
+    conds.push(customFieldCondition(fieldId, wanted.map(me)));
+  }
   if (f.parentId) conds.push(eq(issues.parentId, f.parentId));
   if (f.subscribedBy === 'me') {
     conds.push(
@@ -193,6 +204,30 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
   }
   if (f.q?.trim()) conds.push(textConditions(f.q.trim()).match);
   return conds;
+}
+
+/** Issues whose value for the field is one of `wanted`, or that have none (`none`). */
+function customFieldCondition(fieldId: string, wanted: string[]): SQL {
+  const values = wanted.filter((v) => v !== 'none');
+  const parts: SQL[] = [];
+  if (values.length) {
+    const list = sql.join(
+      values.map((v) => sql`${v}`),
+      sql`, `,
+    );
+    // A value sits in the column of its field's type; the others are null and never match.
+    parts.push(
+      exists(
+        sql`(select 1 from issue_field_values fv where fv.issue_id = "issues"."id" and fv.field_id = ${fieldId} and (fv.text_value in (${list}) or fv.user_id::text in (${list}) or fv.option_ids && array[${list}]::text[] or fv.number_value::text in (${list}) or fv.date_value::text in (${list})))`,
+      ),
+    );
+  }
+  if (wanted.includes('none')) {
+    parts.push(
+      sql`not exists (select 1 from issue_field_values fv where fv.issue_id = "issues"."id" and fv.field_id = ${fieldId})`,
+    );
+  }
+  return parts.length === 1 ? parts[0]! : or(...parts)!;
 }
 
 /**
@@ -794,6 +829,8 @@ export async function createIssue(
   await claimAttachments(ctx, id, input.description);
   if (labelIds.length)
     await ctx.tx.insert(issueLabels).values(labelIds.map((labelId) => ({ issueId: id, labelId })));
+  if (input.customFields)
+    await setFieldValues(ctx, id, team.id, input.customFields, { imported: !!imported });
   await subscribe(ctx, id, [creatorId, assigneeId]);
   await recordHistory(
     ctx,
@@ -915,6 +952,7 @@ export async function updateIssue(
     // Team-scoped labels from the old team no longer apply.
     await ctx.tx.execute(sql`delete from issue_labels il using labels l
       where il.label_id = l.id and il.issue_id = ${issueId} and l.team_id is not null and l.team_id <> ${target.id}`);
+    await dropForeignFieldValues(ctx, issueId, target.id);
   }
 
   if (stateId && stateId !== current.stateId) {
@@ -1003,6 +1041,9 @@ export async function updateIssue(
       await ctx.tx.insert(issueLabels).values(added.map((labelId) => ({ issueId, labelId })));
     if (added.length || removed.length) changes.push({ field: 'labels', from: existing, to: next });
   }
+
+  if (patch.customFields)
+    changes.push(...(await setFieldValues(ctx, issueId, teamId, patch.customFields)));
 
   const touched = Object.keys(set).length > 0 || changes.length > 0;
   if (touched) {

@@ -7,6 +7,7 @@ import {
 } from '@ordo/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  canDropOnGroups,
   groupIssues,
   isDone,
   newerIdentifier,
@@ -92,6 +93,26 @@ function workspace(): WorkspaceData {
     { id: 'ada', name: 'Ada', avatarColor: '#ada' },
     { id: 'bo', name: 'Bo', avatarColor: '#b0' },
   ];
+  const option = (id: string, color = `#${id}`) => ({ id, name: id.toUpperCase(), color });
+  const customFields = [
+    {
+      id: 'tier',
+      teamId: null,
+      name: 'Tier',
+      type: 'select',
+      options: [option('gold'), option('silver')],
+    },
+    {
+      id: 'tags',
+      teamId: null,
+      name: 'Tags',
+      type: 'multi_select',
+      options: [option('a'), option('b')],
+    },
+    { id: 'owner', teamId: null, name: 'Owner', type: 'person', options: [] },
+    { id: 'points', teamId: null, name: 'Points', type: 'number', options: [] },
+    { id: 'opsOnly', teamId: 'ops', name: 'Ops', type: 'select', options: [option('x')] },
+  ];
   const placeholders = [{ id: 'imp', name: 'Imported Ivy', avatarColor: '#1' }];
   const formerMembers = [{ id: 'cy', name: 'Cy', avatarColor: '#c' }];
   return {
@@ -120,6 +141,8 @@ function workspace(): WorkspaceData {
       { id: 'bug', name: 'Bug', color: '#f00' },
       { id: 'feat', name: 'Feature', color: '#0f0' },
     ],
+    customFields,
+    customFieldById: new Map(customFields.map((f) => [f.id, f])),
   } as unknown as WorkspaceData;
 }
 
@@ -443,6 +466,68 @@ describe('groupIssues', () => {
     expect(groups[2]).toMatchObject({ label: 'No labels', value: null });
   });
 
+  describe('by custom field', () => {
+    it('makes a group per select option, in option order, and one for no value', () => {
+      const list = [
+        issue({ id: 's', customFields: { tier: 'silver' } }),
+        issue({ id: 'g', customFields: { tier: 'gold' } }),
+        issue({ id: 'n', customFields: {} }),
+        // An option removed from the field since: counts as no value.
+        issue({ id: 'r', customFields: { tier: 'bronze' } }),
+      ];
+      const groups = group('field:tier', list);
+      expect(summary(groups)).toEqual([
+        ['gold', ['g']],
+        ['silver', ['s']],
+        ['none', ['n', 'r']],
+      ]);
+      expect(groups[0]).toMatchObject({ label: 'GOLD', value: 'gold', color: '#gold' });
+      expect(groups[2]).toMatchObject({ label: 'No Tier', value: null });
+    });
+
+    it('puts a multi-select issue in each of its options', () => {
+      const list = [
+        issue({ id: 'both', customFields: { tags: ['a', 'b'] } }),
+        issue({ id: 'b', customFields: { tags: ['b'] } }),
+        issue({ id: 'none' }),
+      ];
+      expect(summary(group('field:tags', list))).toEqual([
+        ['a', ['both']],
+        ['b', ['both', 'b']],
+        ['none', ['none']],
+      ]);
+    });
+
+    it('groups a person field like assignees, people who left included', () => {
+      const list = [
+        issue({ id: 'x', customFields: { owner: 'bo' } }),
+        issue({ id: 'y', customFields: { owner: 'cy' } }),
+        issue({ id: 'z' }),
+      ];
+      const groups = group('field:owner', list);
+      expect(groups.map((g) => [g.key, g.label, ids(g.issues)])).toEqual([
+        ['bo', 'Bo', ['x']],
+        ['cy', 'Cy (former member)', ['y']],
+        ['none', 'No Owner', ['z']],
+      ]);
+      expect(groups[0]).toMatchObject({ person: true, color: '#b0' });
+    });
+
+    it('shows every option with empty groups on', () => {
+      expect(group('field:tier', [], { showEmptyGroups: true }).map((g) => g.key)).toEqual([
+        'gold',
+        'silver',
+        'none',
+      ]);
+    });
+
+    it('falls back to one group for fields that are gone or have no choices', () => {
+      const list = [issue({ id: 'x' })];
+      expect(summary(group('field:deleted', list))).toEqual([['all', ['x']]]);
+      expect(summary(group('field:points', list))).toEqual([['all', ['x']]]);
+    });
+  });
+
   it('puts everything in one group when not grouping, even when empty', () => {
     expect(group('none', [])).toEqual([
       { key: 'all', label: 'All issues', value: null, issues: [] },
@@ -509,5 +594,41 @@ describe('patchForGroup', () => {
     expect(patchForGroup(ws, 'assignee', g('imp'), i)).toBeNull();
     expect(patchForGroup(ws, 'assignee', g('cy'), i)).toBeNull();
     expect(patchForGroup(ws, 'assignee', g('gone'), i)).toBeNull();
+  });
+
+  it('sets or clears select and person fields', () => {
+    const i = issue({ customFields: { tier: 'gold' } });
+    expect(patchForGroup(ws, 'field:tier', g('silver'), i)).toEqual({
+      customFields: { tier: 'silver' },
+    });
+    expect(patchForGroup(ws, 'field:tier', g(null), i)).toEqual({ customFields: { tier: null } });
+    expect(patchForGroup(ws, 'field:owner', g('ada'), i)).toEqual({
+      customFields: { owner: 'ada' },
+    });
+    expect(patchForGroup(ws, 'field:owner', g('cy'), i)).toBeNull();
+  });
+
+  it("can't drop onto multi-select groups, missing fields or another team's field", () => {
+    expect(patchForGroup(ws, 'field:tags', g('a'), issue())).toBeNull();
+    expect(patchForGroup(ws, 'field:deleted', g('a'), issue())).toBeNull();
+    expect(patchForGroup(ws, 'field:opsOnly', g('x'), issue({ teamId: 'eng' }))).toBeNull();
+    expect(patchForGroup(ws, 'field:opsOnly', g('x'), issue({ teamId: 'ops' }))).toEqual({
+      customFields: { opsOnly: 'x' },
+    });
+  });
+});
+
+describe('canDropOnGroups', () => {
+  it('allows dragging between groups that set one value', () => {
+    expect(canDropOnGroups(ws, 'state')).toBe(true);
+    expect(canDropOnGroups(ws, 'field:tier')).toBe(true);
+    expect(canDropOnGroups(ws, 'field:owner')).toBe(true);
+  });
+
+  it('does not for labels, multi-selects, missing fields and no grouping', () => {
+    expect(canDropOnGroups(ws, 'label')).toBe(false);
+    expect(canDropOnGroups(ws, 'none')).toBe(false);
+    expect(canDropOnGroups(ws, 'field:tags')).toBe(false);
+    expect(canDropOnGroups(ws, 'field:deleted')).toBe(false);
   });
 });

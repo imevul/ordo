@@ -1,7 +1,11 @@
 import {
   type Bootstrap,
+  type CustomField,
+  type CustomFieldOption,
+  type CustomFieldValue,
   type Cycle,
   dayInZone,
+  fieldsForTeam,
   isCycleCurrent,
   type Label,
   type Member,
@@ -25,7 +29,8 @@ const list = (names: string[]) => names.join(', ') || 'none';
 
 /**
  * Turns the names people use into ids: team keys (`ENG`), status names or types, label names,
- * `me`/usernames/emails, project names, `current`/cycle numbers and priority words. Works from a
+ * `me`/usernames/emails, project names, `current`/cycle numbers, custom fields and their options,
+ * and priority words. Works from a
  * workspace's bootstrap, so it costs one request.
  */
 export class Names {
@@ -86,6 +91,78 @@ export class Names {
         `"${ref}" matches ${list(matches.map((m) => `@${m.username}`))}; use a username`,
       );
     throw new NameError(`No member "${ref}". Use me, a username or an email address`);
+  }
+
+  /**
+   * A custom field by name or id: one of the fields `team`'s issues have, or with no team any
+   * field (names are only unique within a team, so that can be ambiguous).
+   */
+  field(ref: string, team?: Team | null): CustomField {
+    const r = norm(ref);
+    const all = this.boot.customFields ?? [];
+    const usable = team ? fieldsForTeam(all, team.id) : all;
+    const matches = usable.filter((f) => f.id === ref || norm(f.name) === r);
+    if (matches.length === 1) return matches[0]!;
+    if (matches.length > 1) throw new NameError(`Several teams have a field "${ref}"; give a team`);
+    throw new NameError(
+      `No field "${ref}"${team ? ` in ${team.key}` : ''}. Fields: ${list(usable.map((f) => f.name))}`,
+    );
+  }
+
+  option(field: CustomField, ref: string): CustomFieldOption {
+    const r = norm(ref);
+    const option = field.options.find((o) => o.id === ref || norm(o.name) === r);
+    if (!option)
+      throw new NameError(
+        `No option "${ref}" for ${field.name}. Options: ${list(field.options.map((o) => o.name))}`,
+      );
+    return option;
+  }
+
+  /**
+   * A value as typed: an option name (select), option names separated by commas (multi-select), a
+   * number, a `YYYY-MM-DD` date, text, or a person like `member()` takes. `none` or nothing clears
+   * it (null).
+   */
+  fieldValue(field: CustomField, raw: string): CustomFieldValue | null {
+    const value = raw.trim();
+    if (!value || norm(value) === 'none') return null;
+    switch (field.type) {
+      case 'select':
+        return this.option(field, value).id;
+      case 'multi_select':
+        return value
+          .split(',')
+          .map((v) => v.trim())
+          .filter(Boolean)
+          .map((v) => this.option(field, v).id);
+      case 'number': {
+        const n = Number(value);
+        if (!Number.isFinite(n)) throw new NameError(`${field.name} takes a number`);
+        return n;
+      }
+      case 'date':
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value))
+          throw new NameError(`${field.name} takes a date as YYYY-MM-DD`);
+        return value;
+      case 'person':
+        return this.member(value).id;
+      default:
+        return value;
+    }
+  }
+
+  /** A stored value written out: option names, a number, date or text, or `@username`. */
+  fieldText(field: CustomField, value: CustomFieldValue): string {
+    if (field.type === 'person') {
+      const m = this.boot.members.find((x) => x.id === value);
+      return m ? `@${m.username}` : 'someone';
+    }
+    if (field.type === 'select' || field.type === 'multi_select')
+      return (Array.isArray(value) ? value : [String(value)])
+        .map((id) => field.options.find((o) => o.id === id)?.name ?? '?')
+        .join(', ');
+    return String(value);
   }
 
   project(ref: string): Project {

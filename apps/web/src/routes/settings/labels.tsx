@@ -9,16 +9,27 @@ import { t } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { SettingsCard, TeamSelect } from './ui.tsx';
 
-function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
+export function ColorPicker({
+  value,
+  onChange,
+  label,
+  disabled,
+}: {
+  value: string;
+  onChange: (c: string) => void;
+  label?: string;
+  disabled?: boolean;
+}) {
   return (
     <Popover
       width={176}
       trigger={
         <button
           type="button"
-          className="h-5 w-5 flex-none"
+          className="h-5 w-5 flex-none disabled:cursor-default"
           style={{ background: value }}
-          aria-label={t('settings.labels.changeColor')}
+          aria-label={label ?? t('settings.labels.changeColor')}
+          disabled={disabled}
         />
       }
     >

@@ -34,6 +34,12 @@ export const IssueRow = memo(function IssueRow({
   const due = dueState(issue.dueDate, isDone(ws, issue));
   const sla = slaState(issue, isDone(ws, issue));
   const team = ws.teamById.get(issue.teamId);
+  // Single-select values read like labels; other field types would crowd the row.
+  const choices = ws.customFields.flatMap((f) => {
+    const id = f.type === 'select' ? issue.customFields?.[f.id] : undefined;
+    const option = id ? f.options.find((o) => o.id === id) : undefined;
+    return option ? [{ field: f, option }] : [];
+  });
 
   return (
     <div
@@ -87,6 +93,16 @@ export const IssueRow = memo(function IssueRow({
           </span>
         ))}
         {labels.length > 3 && <span className="tag">+{labels.length - 3}</span>}
+        {choices.slice(0, 2).map(({ field, option }) => (
+          <span
+            key={field.id}
+            className="tag max-w-32"
+            title={t('customFields.props.valueTitle', { field: field.name, value: option.name })}
+          >
+            <span className="tag-dot" style={{ background: option.color }} />
+            <span className="truncate">{option.name}</span>
+          </span>
+        ))}
         {project && (
           <span className="tag max-w-40">
             <ProjectIcon color={project.color} size={11} />

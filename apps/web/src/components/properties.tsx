@@ -1,4 +1,6 @@
 import {
+  type CustomField,
+  type CustomFieldValue,
   dayInZone,
   ESTIMATE_SCALES,
   LABEL_COLORS,
@@ -8,7 +10,7 @@ import {
 } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Hexagon, Milestone, RefreshCcw, Tag, Users } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
@@ -227,7 +229,8 @@ interface IssuePropProps {
   variant?: Variant;
 }
 
-const fieldCls = 'prop w-full justify-start bg-transparent shadow-none hover:bg-text/[0.03]';
+const fieldCls =
+  'prop w-full min-w-0 justify-start bg-transparent shadow-none hover:bg-text/[0.03]';
 const cls = (variant: Variant) =>
   variant === 'field'
     ? fieldCls
@@ -521,51 +524,272 @@ export function DueDateProp({
       }
     >
       {(close) => (
-        <div className="flex flex-col gap-1 p-2">
-          <input
-            type="date"
-            className="input"
-            autoFocus
-            defaultValue={issue.dueDate ?? ''}
-            onChange={(e) => {
-              if (e.target.value) {
-                onPatch({ dueDate: e.target.value });
-                close();
-              }
-            }}
-          />
-          {[
-            [t('issues.props.today'), today()],
-            [t('issues.props.tomorrow'), addDays(today(), 1)],
-            [t('issues.props.inAWeek'), addDays(today(), 7)],
-          ].map(([label, value]) => (
-            <button
-              type="button"
-              key={label}
-              className="menu-item"
-              onClick={() => {
-                onPatch({ dueDate: value });
-                close();
-              }}
-            >
-              {label}
-              <span className="ml-auto text-[11px] text-index">{shortDate(value!)}</span>
-            </button>
-          ))}
-          {issue.dueDate && (
-            <button
-              type="button"
-              className="menu-item text-error"
-              onClick={() => {
-                onPatch({ dueDate: null });
-                close();
-              }}
-            >
-              {t('issues.props.clearDueDate')}
-            </button>
-          )}
-        </div>
+        <DateChoices
+          value={issue.dueDate}
+          clearLabel={t('issues.props.clearDueDate')}
+          onPick={(dueDate) => {
+            onPatch({ dueDate });
+            close();
+          }}
+        />
       )}
     </Popover>
+  );
+}
+
+/** A date input with shortcuts (today, tomorrow, in a week) and a clear button. */
+function DateChoices({
+  value,
+  clearLabel,
+  onPick,
+}: {
+  value: string | null;
+  clearLabel: string;
+  onPick: (date: string | null) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1 p-2">
+      <input
+        type="date"
+        className="input"
+        autoFocus
+        defaultValue={value ?? ''}
+        onChange={(e) => {
+          if (e.target.value) onPick(e.target.value);
+        }}
+      />
+      {[
+        [t('issues.props.today'), today()],
+        [t('issues.props.tomorrow'), addDays(today(), 1)],
+        [t('issues.props.inAWeek'), addDays(today(), 7)],
+      ].map(([label, date]) => (
+        <button type="button" key={label} className="menu-item" onClick={() => onPick(date!)}>
+          {label}
+          <span className="ml-auto text-[11px] text-index">{shortDate(date!)}</span>
+        </button>
+      ))}
+      {value && (
+        <button type="button" className="menu-item text-error" onClick={() => onPick(null)}>
+          {clearLabel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── custom fields ─────────────────────────────────────────────────────
+
+export const fieldOptionChoices = (field: CustomField): Option[] =>
+  field.options.map((o) => ({
+    value: o.id,
+    label: o.name,
+    icon: <span className="tag-dot" style={{ background: o.color }} />,
+  }));
+
+/** Members to pick for a person field: like the assignee picker, without its "no assignee". */
+export const personChoices = (ws: WorkspaceData): Option[] =>
+  assigneeOptions(ws).filter((o) => o.value !== 'none');
+
+interface FieldPropProps {
+  field: CustomField;
+  issue: { teamId: string; customFields?: Record<string, CustomFieldValue> };
+  onPatch: (patch: UpdateIssueInput) => void;
+}
+
+const setField = (field: CustomField, value: CustomFieldValue | null): UpdateIssueInput => ({
+  customFields: { [field.id]: value },
+});
+
+const notSet = () => <span className="text-index">{t('customFields.props.notSet')}</span>;
+
+/** The editor for one custom field's value, as a row of the issue's properties. */
+export function CustomFieldProp({ field, issue, onPatch }: FieldPropProps) {
+  const ws = useWorkspace();
+  const value = issue.customFields?.[field.id];
+  const none = t('customFields.props.none', { field: field.name });
+  const placeholder = t('customFields.props.set', { field: field.name });
+  const title = field.description ?? undefined;
+  switch (field.type) {
+    case 'select': {
+      const option = field.options.find((o) => o.id === value);
+      return (
+        <Picker
+          placeholder={placeholder}
+          options={[
+            { value: 'none', label: none, icon: <span className="tag-dot bg-border" /> },
+            ...fieldOptionChoices(field),
+          ]}
+          selected={[option ? option.id : 'none']}
+          onSelect={(v) => onPatch(setField(field, v === 'none' ? null : v))}
+          trigger={
+            <button type="button" className={fieldCls} title={title} aria-label={field.name}>
+              {option ? (
+                <>
+                  <span className="tag-dot" style={{ background: option.color }} />
+                  <span className="truncate">{option.name}</span>
+                </>
+              ) : (
+                notSet()
+              )}
+            </button>
+          }
+        />
+      );
+    }
+    case 'multi_select': {
+      const ids = Array.isArray(value) ? value : [];
+      const chosen = field.options.filter((o) => ids.includes(o.id));
+      return (
+        <Picker
+          multi
+          placeholder={placeholder}
+          options={fieldOptionChoices(field)}
+          selected={ids}
+          onSelect={(v) => {
+            const next = ids.includes(v) ? ids.filter((x) => x !== v) : [...ids, v];
+            onPatch(setField(field, next.length ? next : null));
+          }}
+          trigger={
+            <button
+              type="button"
+              className={`${fieldCls} h-auto min-h-[1.625rem] flex-wrap gap-1 py-1`}
+              title={title}
+              aria-label={field.name}
+            >
+              {chosen.length === 0 && notSet()}
+              {chosen.map((o) => (
+                <span key={o.id} className="tag">
+                  <span className="tag-dot" style={{ background: o.color }} />
+                  {o.name}
+                </span>
+              ))}
+            </button>
+          }
+        />
+      );
+    }
+    case 'person': {
+      const person = typeof value === 'string' ? ws.memberById.get(value) : undefined;
+      return (
+        <Picker
+          placeholder={placeholder}
+          options={[
+            { value: 'none', label: none, icon: <EmptyAvatar size={16} /> },
+            ...personChoices(ws),
+          ]}
+          selected={[typeof value === 'string' ? value : 'none']}
+          onSelect={(v) => onPatch(setField(field, v === 'none' ? null : v))}
+          trigger={
+            <button type="button" className={fieldCls} title={title} aria-label={field.name}>
+              {typeof value === 'string' ? (
+                <>
+                  <Avatar
+                    name={person?.name ?? '?'}
+                    color={person?.avatarColor ?? 'var(--color-border)'}
+                    src={person?.avatarUrl}
+                    size={16}
+                    status={person?.status}
+                  />
+                  <span className="truncate">
+                    {person?.name ?? t('customFields.props.someone')}
+                  </span>
+                </>
+              ) : (
+                notSet()
+              )}
+            </button>
+          }
+        />
+      );
+    }
+    case 'date': {
+      const date = typeof value === 'string' ? value : null;
+      return (
+        <Popover
+          width={240}
+          trigger={
+            <button type="button" className={fieldCls} title={title} aria-label={field.name}>
+              <CalendarDays size={14} />
+              {date ? <span>{shortDate(date)}</span> : notSet()}
+            </button>
+          }
+        >
+          {(close) => (
+            <DateChoices
+              value={date}
+              clearLabel={t('customFields.props.clear', { field: field.name })}
+              onPick={(d) => {
+                onPatch(setField(field, d));
+                close();
+              }}
+            />
+          )}
+        </Popover>
+      );
+    }
+    case 'number':
+    case 'text':
+      return (
+        <InlineValue
+          // Remount when the value changes elsewhere, so the draft starts from it.
+          key={String(value ?? '')}
+          field={field}
+          value={value === undefined ? '' : String(value)}
+          onCommit={(v) => onPatch(setField(field, v))}
+        />
+      );
+  }
+}
+
+/** A number or text value, edited in place: saved on Enter or leaving the box, Escape undoes. */
+function InlineValue({
+  field,
+  value,
+  onCommit,
+}: {
+  field: CustomField;
+  value: string;
+  onCommit: (v: CustomFieldValue | null) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const numeric = field.type === 'number';
+  // Escape blurs too; this keeps that blur from saving the draft.
+  const cancelled = useRef(false);
+  const commit = () => {
+    if (cancelled.current) {
+      cancelled.current = false;
+      return;
+    }
+    const text = draft.trim();
+    if (text === value.trim()) return;
+    if (!text) return onCommit(null);
+    if (!numeric) return onCommit(text);
+    const n = Number(text);
+    if (Number.isFinite(n)) onCommit(n);
+    else setDraft(value);
+  };
+  return (
+    <input
+      type={numeric ? 'number' : 'text'}
+      inputMode={numeric ? 'decimal' : undefined}
+      step="any"
+      className="h-[1.625rem] w-full min-w-0 bg-transparent px-2 text-[12px] text-muted outline-none focus:text-text placeholder:text-index hover:bg-text/[0.03] focus:shadow-[inset_0_-1px_0_var(--color-primary)]"
+      value={draft}
+      placeholder={t(
+        numeric ? 'customFields.props.numberPlaceholder' : 'customFields.props.textPlaceholder',
+      )}
+      title={field.description ?? (numeric ? undefined : value)}
+      aria-label={field.name}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') e.currentTarget.blur();
+        if (e.key === 'Escape') {
+          cancelled.current = true;
+          setDraft(value);
+          e.currentTarget.blur();
+        }
+      }}
+    />
   );
 }

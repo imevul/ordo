@@ -643,6 +643,128 @@ describe('agents', () => {
   });
 });
 
+describe('custom fields', () => {
+  beforeAll(async () => {
+    const eng = boot.teams.find((t) => t.key === 'ENG')!.id;
+    const add = (body: Record<string, unknown>) => ada.post(`${ws}/custom-fields`, body);
+    await add({
+      name: 'Customer tier',
+      type: 'select',
+      options: [{ name: 'Gold' }, { name: 'Silver' }],
+    });
+    await add({
+      name: 'Areas',
+      type: 'multi_select',
+      options: [{ name: 'API' }, { name: 'Web' }, { name: 'CLI' }],
+      teamId: eng,
+    });
+    await add({ name: 'Story points', type: 'number' });
+    await add({ name: 'Release date', type: 'date' });
+    await add({ name: 'Notes', type: 'text' });
+    await add({ name: 'Reviewer', type: 'person' });
+  });
+
+  it('lists the fields with their options', async () => {
+    const fields = await tool('list_custom_fields', { team: 'ENG' });
+    expect(fields.map((f: { name: string }) => f.name)).toEqual([
+      'Customer tier',
+      'Areas',
+      'Story points',
+      'Release date',
+      'Notes',
+      'Reviewer',
+    ]);
+    expect(fields[0]).toEqual({
+      name: 'Customer tier',
+      type: 'select',
+      team: null,
+      options: ['Gold', 'Silver'],
+    });
+    expect(fields[1]).toMatchObject({ team: 'ENG', options: ['API', 'Web', 'CLI'] });
+    expect(fields[2].options).toBeUndefined();
+  });
+
+  it('sets and shows fields by name, with readable values', async () => {
+    const created = await tool('create_issue', {
+      team: 'ENG',
+      title: 'Has fields',
+      customFields: {
+        'customer tier': 'gold',
+        Areas: ['web', 'API'],
+        'Story points': 5,
+        'Release date': '2030-04-01',
+        Notes: 'Ask support',
+        Reviewer: 'me',
+      },
+    });
+    expect(created.customFields).toEqual({
+      'Customer tier': 'Gold',
+      Areas: ['API', 'Web'],
+      'Story points': 5,
+      'Release date': '2030-04-01',
+      Notes: 'Ask support',
+      Reviewer: 'ada',
+    });
+    const rest: IssueDetail = (await ada.get(`${ws}/issues/${created.identifier}`)).data;
+    expect(Object.keys(rest.customFields)).toHaveLength(6);
+
+    // Null clears; fields left out keep their value. Ids work too.
+    const tier = (await ada.get(`${ws}/custom-fields`)).data.find(
+      (f: { name: string }) => f.name === 'Customer tier',
+    );
+    const updated = await tool('update_issue', {
+      issue: created.identifier,
+      customFields: { Notes: null, [tier.id]: tier.options[1].id, 'Story points': '8' },
+    });
+    expect(updated.customFields).toMatchObject({ 'Customer tier': 'Silver', 'Story points': 8 });
+    expect(updated.customFields.Notes).toBeUndefined();
+    expect(updated.customFields.Reviewer).toBe('ada');
+
+    // Issues without values leave customFields out.
+    const plain = await tool('create_issue', { team: 'ENG', title: 'No fields' });
+    expect(plain.customFields).toBeUndefined();
+
+    const found = await tool('search_issues', {
+      customFields: { 'Customer tier': ['silver'], Areas: ['web'] },
+    });
+    expect(found.issues.map((i: { title: string }) => i.title)).toEqual(['Has fields']);
+    const none = await tool('search_issues', {
+      team: 'ENG',
+      customFields: { 'Customer tier': ['none'] },
+    });
+    expect(none.issues.map((i: { title: string }) => i.title)).toContain('No fields');
+    expect(none.issues.map((i: { title: string }) => i.title)).not.toContain('Has fields');
+  });
+
+  it('names the valid fields and options when one is unknown', async () => {
+    const field = await tool('create_issue', {
+      team: 'ENG',
+      title: 'x',
+      customFields: { Severity: 'High' },
+    });
+    expect(field.error).toContain('Unknown custom field "Severity" in ENG');
+    expect(field.error).toContain('Customer tier, Areas');
+    const option = await tool('create_issue', {
+      team: 'ENG',
+      title: 'x',
+      customFields: { 'Customer tier': 'Bronze' },
+    });
+    expect(option.error).toBe('Unknown option "Bronze" for Customer tier. Options: Gold, Silver');
+    const typed = await tool('create_issue', {
+      team: 'ENG',
+      title: 'x',
+      customFields: { 'Story points': 'many' },
+    });
+    expect(typed.error).toBe('Story points: expected a number');
+    const person = await tool('create_issue', {
+      team: 'ENG',
+      title: 'x',
+      customFields: { Reviewer: 'nobody' },
+    });
+    expect(person.error).toContain('Unknown person');
+  });
+});
+
 describe('planning', () => {
   it('creates and changes cycles by team and number', async () => {
     const created = await tool('create_cycle', {

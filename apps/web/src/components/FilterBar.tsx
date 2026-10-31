@@ -1,11 +1,12 @@
-import { type IssueFilter, STATE_TYPES, type StateType } from '@ordo/shared';
+import { type CustomField, type IssueFilter, STATE_TYPES, type StateType } from '@ordo/shared';
 import { ChevronRight, Filter, X } from 'lucide-react';
 import { useState } from 'react';
 import { type MessageKey, t } from '../i18n/index.ts';
 import { priorityLabel, priorityOptions, stateTypeLabel } from '../i18n/labels.ts';
+import { fieldLabel, fieldsInScope, hasChoices, optionName } from '../lib/customFields.ts';
 import { cycleName, useWorkspace, type WorkspaceData } from '../lib/workspace.tsx';
 import { PriorityIcon, ProjectIcon, StatusIcon } from './icons.tsx';
-import { labelOptions, statusOptions } from './properties.tsx';
+import { fieldOptionChoices, labelOptions, statusOptions } from './properties.tsx';
 import { Avatar, EmptyAvatar } from './ui/Avatar.tsx';
 import { type Option, OptionList } from './ui/OptionList.tsx';
 import { Popover } from './ui/Popover.tsx';
@@ -20,23 +21,24 @@ type FilterKey =
   | 'projectIds'
   | 'cycleIds';
 
+/** One filter: a built-in property or a custom field. */
 interface FilterDef {
-  key: FilterKey;
-  /** A message key: labels are looked up at render time, after the catalogue has loaded. */
-  label: MessageKey;
+  id: string;
+  /** Read at render time, after the catalogue has loaded. */
+  label: () => string;
   options: (ws: WorkspaceData, teamId?: string) => Option[];
-  numeric?: boolean;
+  get: (filter: IssueFilter) => string[];
+  set: (filter: IssueFilter, values: string[]) => IssueFilter;
+  valueLabel: (ws: WorkspaceData, value: string) => string;
 }
 
-const memberOptions = (ws: WorkspaceData, withNone: boolean): Option[] => [
+const memberOptions = (ws: WorkspaceData, none: string | null): Option[] => [
   {
     value: 'me',
     label: t('issues.filter.me'),
     icon: <Avatar name={ws.me.name} color={ws.me.avatarColor} src={ws.me.avatarUrl} size={16} />,
   },
-  ...(withNone
-    ? [{ value: 'none', label: t('issues.none.assignee'), icon: <EmptyAvatar size={16} /> }]
-    : []),
+  ...(none ? [{ value: 'none', label: none, icon: <EmptyAvatar size={16} /> }] : []),
   ...ws.members
     .filter((m) => m.id !== ws.me.id)
     .map((m) => ({
@@ -46,44 +48,84 @@ const memberOptions = (ws: WorkspaceData, withNone: boolean): Option[] => [
     })),
 ];
 
-const DEFS: FilterDef[] = [
-  {
-    key: 'stateIds',
-    label: 'common.status',
-    options: (ws, teamId) => (teamId ? statusOptions(ws, teamId) : []),
-  },
-  {
-    key: 'stateTypes',
-    label: 'issues.filter.statusType',
-    options: () =>
+const personLabel = (ws: WorkspaceData, v: string, none: string) =>
+  v === 'me' ? t('issues.filter.me') : v === 'none' ? none : (ws.memberById.get(v)?.name ?? '?');
+
+/** A filter on one of IssueFilter's own lists. */
+function builtin(
+  key: FilterKey,
+  label: MessageKey,
+  options: FilterDef['options'],
+  valueLabel: FilterDef['valueLabel'],
+  numeric = false,
+): FilterDef {
+  return {
+    id: key,
+    label: () => t(label),
+    options,
+    valueLabel,
+    get: (f) => ((f[key] as (string | number)[] | undefined) ?? []).map(String),
+    set: (f, values) => {
+      const next = { ...f } as Record<string, unknown>;
+      if (values.length === 0) delete next[key];
+      else next[key] = numeric ? values.map(Number) : values;
+      return next as IssueFilter;
+    },
+  };
+}
+
+const BUILTIN: FilterDef[] = [
+  builtin(
+    'stateIds',
+    'common.status',
+    (ws, teamId) => (teamId ? statusOptions(ws, teamId) : []),
+    (ws, v) => ws.stateById.get(v)?.name ?? '?',
+  ),
+  builtin(
+    'stateTypes',
+    'issues.filter.statusType',
+    () =>
       STATE_TYPES.map((type) => ({
         value: type,
         label: stateTypeLabel(type),
         icon: <StatusIcon type={type} color="var(--color-muted)" />,
       })),
-  },
-  {
-    key: 'priorities',
-    label: 'common.priority',
-    numeric: true,
-    options: () =>
+    (_, v) => (STATE_TYPES.includes(v as StateType) ? stateTypeLabel(v as StateType) : v),
+  ),
+  builtin(
+    'priorities',
+    'common.priority',
+    () =>
       priorityOptions().map((p) => ({
         value: String(p.value),
         label: p.label,
         icon: <PriorityIcon priority={p.value} />,
       })),
-  },
-  {
-    key: 'assigneeIds',
-    label: 'common.assignee',
-    options: (ws) => memberOptions(ws, true),
-  },
-  { key: 'creatorIds', label: 'common.creator', options: (ws) => memberOptions(ws, false) },
-  { key: 'labelIds', label: 'common.labels', options: (ws, teamId) => labelOptions(ws, teamId) },
-  {
-    key: 'projectIds',
-    label: 'common.project',
-    options: (ws) => [
+    (_, v) => priorityLabel(Number(v)),
+    true,
+  ),
+  builtin(
+    'assigneeIds',
+    'common.assignee',
+    (ws) => memberOptions(ws, t('issues.none.assignee')),
+    (ws, v) => personLabel(ws, v, t('issues.filter.nobody')),
+  ),
+  builtin(
+    'creatorIds',
+    'common.creator',
+    (ws) => memberOptions(ws, null),
+    (ws, v) => personLabel(ws, v, t('issues.filter.nobody')),
+  ),
+  builtin(
+    'labelIds',
+    'common.labels',
+    (ws, teamId) => labelOptions(ws, teamId),
+    (ws, v) => ws.labelById.get(v)?.name ?? '?',
+  ),
+  builtin(
+    'projectIds',
+    'common.project',
+    (ws) => [
       { value: 'none', label: t('issues.none.project') },
       ...ws.projects.map((p) => ({
         value: p.id,
@@ -91,11 +133,12 @@ const DEFS: FilterDef[] = [
         icon: <ProjectIcon color={p.color} />,
       })),
     ],
-  },
-  {
-    key: 'cycleIds',
-    label: 'common.cycle',
-    options: (ws, teamId) => [
+    (ws, v) => (v === 'none' ? t('issues.none.project') : (ws.projectById.get(v)?.name ?? '?')),
+  ),
+  builtin(
+    'cycleIds',
+    'common.cycle',
+    (ws, teamId) => [
       { value: 'none', label: t('issues.none.cycle') },
       ...ws.cycles
         .filter((c) => !teamId || c.teamId === teamId)
@@ -104,50 +147,79 @@ const DEFS: FilterDef[] = [
           label: `${teamId ? '' : `${ws.teamById.get(c.teamId)?.key} · `}${cycleName(c)}`,
         })),
     ],
-  },
-];
-
-function valueLabel(ws: WorkspaceData, key: FilterKey, v: string): string {
-  switch (key) {
-    case 'stateIds':
-      return ws.stateById.get(v)?.name ?? '?';
-    case 'stateTypes':
-      return STATE_TYPES.includes(v as StateType) ? stateTypeLabel(v as StateType) : v;
-    case 'priorities':
-      return priorityLabel(Number(v));
-    case 'assigneeIds':
-    case 'creatorIds':
-      return v === 'me'
-        ? t('issues.filter.me')
-        : v === 'none'
-          ? t('issues.filter.nobody')
-          : (ws.memberById.get(v)?.name ?? '?');
-    case 'labelIds':
-      return ws.labelById.get(v)?.name ?? '?';
-    case 'projectIds':
-      return v === 'none' ? t('issues.none.project') : (ws.projectById.get(v)?.name ?? '?');
-    case 'cycleIds': {
+    (ws, v) => {
       if (v === 'none') return t('issues.none.cycle');
       const c = ws.cycleById.get(v);
       return c ? cycleName(c) : '?';
-    }
-  }
+    },
+  ),
+];
+
+/**
+ * A filter on a custom field, kept in `filter.customFields`. `field` is missing when the filter
+ * names a field that was deleted: it still shows, so it can be removed.
+ */
+function fieldDef(ws: WorkspaceData, id: string, field?: CustomField, teamId?: string): FilterDef {
+  const name = field?.name ?? t('customFields.activity.deletedField');
+  const none = t('customFields.props.none', { field: name });
+  return {
+    id: `field:${id}`,
+    label: () => (field ? fieldLabel(ws, field, teamId) : name),
+    options: (w) =>
+      !field
+        ? []
+        : field.type === 'person'
+          ? memberOptions(w, none)
+          : [
+              { value: 'none', label: none, icon: <span className="tag-dot bg-border" /> },
+              ...fieldOptionChoices(field),
+            ],
+    valueLabel: (w, v) =>
+      v === 'none'
+        ? none
+        : field?.type === 'person'
+          ? personLabel(w, v, none)
+          : optionName(field, v),
+    get: (f) => f.customFields?.[id] ?? [],
+    set: (f, values) => {
+      const fields = { ...f.customFields };
+      if (values.length) fields[id] = values;
+      else delete fields[id];
+      const { customFields: _, ...rest } = f;
+      return Object.keys(fields).length ? { ...rest, customFields: fields } : rest;
+    },
+  };
 }
 
-function getValues(filter: IssueFilter, key: FilterKey): string[] {
-  return ((filter[key] as (string | number)[] | undefined) ?? []).map(String);
+/** Built-in filters, then the custom fields with choices (select, multi-select, person). */
+function filterDefs(ws: WorkspaceData, teamId?: string): FilterDef[] {
+  return [
+    ...BUILTIN.filter((d) => (teamId ? d.id !== 'stateTypes' : d.id !== 'stateIds')),
+    ...fieldsInScope(ws.customFields, teamId)
+      .filter(hasChoices)
+      .map((f) => fieldDef(ws, f.id, f, teamId)),
+  ];
 }
 
-function setValues(filter: IssueFilter, def: FilterDef, values: string[]): IssueFilter {
-  const next = { ...filter } as Record<string, unknown>;
-  if (values.length === 0) delete next[def.key];
-  else next[def.key] = def.numeric ? values.map(Number) : values;
-  return next as IssueFilter;
+/** The filters set in `filter`, including ones on fields since deleted or out of scope. */
+function activeDefs(ws: WorkspaceData, filter: IssueFilter, teamId?: string): FilterDef[] {
+  return [
+    ...BUILTIN.filter((d) => d.get(filter).length > 0),
+    ...Object.keys(filter.customFields ?? {})
+      .filter((id) => filter.customFields![id]!.length > 0)
+      .map((id) => fieldDef(ws, id, ws.customFieldById.get(id), teamId)),
+  ];
 }
 
 export function hasUserFilters(f: IssueFilter) {
-  return DEFS.some((d) => getValues(f, d.key).length > 0);
+  return (
+    BUILTIN.some((d) => d.get(f).length > 0) ||
+    Object.values(f.customFields ?? {}).some((v) => v.length > 0)
+  );
 }
+
+const toggle = (values: string[], v: string) =>
+  values.includes(v) ? values.filter((x) => x !== v) : [...values, v];
 
 /** "Filter" button plus removable chips for each active filter. */
 export function FilterButton({
@@ -160,12 +232,13 @@ export function FilterButton({
   teamId?: string;
 }) {
   const ws = useWorkspace();
-  const [kind, setKind] = useState<FilterDef | null>(null);
-  const defs = DEFS.filter((d) => (teamId ? d.key !== 'stateTypes' : d.key !== 'stateIds'));
+  const [kindId, setKindId] = useState<string | null>(null);
+  const defs = filterDefs(ws, teamId);
+  const kind = defs.find((d) => d.id === kindId) ?? null;
   return (
     <Popover
       width={260}
-      onOpenChange={(o) => !o && setKind(null)}
+      onOpenChange={(o) => !o && setKindId(null)}
       trigger={
         <button
           type="button"
@@ -181,26 +254,21 @@ export function FilterButton({
         kind ? (
           <OptionList
             multi
-            placeholder={t('issues.filter.search', { filter: t(kind.label) })}
+            placeholder={t('issues.filter.search', { filter: kind.label() })}
             options={kind.options(ws, teamId)}
-            selected={getValues(filter, kind.key)}
-            onSelect={(v) => {
-              const cur = getValues(filter, kind.key);
-              onChange(
-                setValues(filter, kind, cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v]),
-              );
-            }}
+            selected={kind.get(filter)}
+            onSelect={(v) => onChange(kind.set(filter, toggle(kind.get(filter), v)))}
             onClose={close}
           />
         ) : (
           <OptionList
             placeholder={t('issues.filter.filterBy')}
             options={defs.map((d) => ({
-              value: d.key,
-              label: t(d.label),
+              value: d.id,
+              label: d.label(),
               hint: <ChevronRight size={12} />,
             }))}
-            onSelect={(v) => setKind(defs.find((d) => d.key === v) ?? null)}
+            onSelect={setKindId}
           />
         )
       }
@@ -218,19 +286,22 @@ export function FilterChips({
   teamId?: string;
 }) {
   const ws = useWorkspace();
-  const active = DEFS.filter((d) => getValues(filter, d.key).length > 0);
+  const active = activeDefs(ws, filter, teamId);
   if (active.length === 0) return null;
   return (
     <div className="flex flex-wrap items-center gap-1.5 border-b border-border-soft px-4 py-2">
       {active.map((d) => {
-        const values = getValues(filter, d.key);
+        const values = d.get(filter);
+        const label = d.label();
         return (
           <span
-            key={d.key}
-            className="flex h-6 items-stretch text-[12px] shadow-[inset_0_0_0_1px_var(--color-border)]"
+            key={d.id}
+            className="flex h-6 max-w-full items-stretch text-[12px] shadow-[inset_0_0_0_1px_var(--color-border)]"
           >
-            <span className="flex items-center px-2 text-muted">{t(d.label)}</span>
-            <span className="flex items-center border-l border-border px-2 text-index">
+            <span className="flex min-w-0 items-center px-2 text-muted">
+              <span className="truncate">{label}</span>
+            </span>
+            <span className="flex flex-none items-center border-l border-border px-2 text-index">
               {values.length > 1 ? t('issues.filter.isAnyOf') : t('issues.filter.is')}
             </span>
             <Popover
@@ -238,10 +309,10 @@ export function FilterChips({
               trigger={
                 <button
                   type="button"
-                  className="flex max-w-56 items-center border-l border-border px-2 hover:bg-text/5"
+                  className="flex min-w-0 max-w-56 items-center border-l border-border px-2 hover:bg-text/5"
                 >
                   <span className="truncate">
-                    {values.map((v) => valueLabel(ws, d.key, v)).join(', ')}
+                    {values.map((v) => d.valueLabel(ws, v)).join(', ')}
                   </span>
                 </button>
               }
@@ -251,24 +322,16 @@ export function FilterChips({
                   multi
                   options={d.options(ws, teamId)}
                   selected={values}
-                  onSelect={(v) =>
-                    onChange(
-                      setValues(
-                        filter,
-                        d,
-                        values.includes(v) ? values.filter((x) => x !== v) : [...values, v],
-                      ),
-                    )
-                  }
+                  onSelect={(v) => onChange(d.set(filter, toggle(values, v)))}
                   onClose={close}
                 />
               )}
             </Popover>
             <button
               type="button"
-              className="flex items-center border-l border-border px-1.5 text-index hover:text-text"
-              onClick={() => onChange(setValues(filter, d, []))}
-              aria-label={t('issues.filter.remove', { filter: t(d.label) })}
+              className="flex flex-none items-center border-l border-border px-1.5 text-index hover:text-text"
+              onClick={() => onChange(d.set(filter, []))}
+              aria-label={t('issues.filter.remove', { filter: label })}
             >
               <X size={12} />
             </button>

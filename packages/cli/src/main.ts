@@ -7,6 +7,7 @@ import {
   attachmentMarkdown,
   type Bootstrap,
   branchName,
+  fieldsForTeam,
   type Issue,
   type IssueFilter,
   type Me,
@@ -73,11 +74,11 @@ Setup
 Issues
   issues                   Open issues (same as: issue list)
   issue list               --team --status --assignee --mine --label --project --cycle
-                           --priority -q <words> --all --limit <n>
+                           --priority --field <name=value> -q <words> --all --limit <n>
   issue view <id>          The issue in full; --comments, --web to open it in the browser
   issue create [title]     --team --title -d <text> | --description-file <path|->
                            --status --priority --assignee --label --project --cycle
-                           --parent --estimate --due <YYYY-MM-DD>
+                           --parent --estimate --due <YYYY-MM-DD> --field <name=value>
   issue edit <id>          The same fields, plus --add-label --remove-label --unassign
   issue comment <id> [text]  Text, --body-file <path>, or - to read stdin; --attach <file> adds
                            a file below the text (repeatable; images show inline)
@@ -115,7 +116,9 @@ const ISSUE_FIELDS_HELP = `  --title <text>                 The title
   --cycle <which>                current, next, a number, or none
   --parent <id>                  Make it a sub-issue of another issue, or none
   --estimate <n>                 A number, or none
-  --due <YYYY-MM-DD>             The due date, or none`;
+  --due <YYYY-MM-DD>             The due date, or none
+  --field <name=value>           A custom field: an option, options as a,b, a number, a date,
+                                 text or a person; none clears it. Repeatable`;
 
 /** `ordo <command> --help`, keyed by the command's canonical name. */
 const USAGE: Record<string, string> = {
@@ -162,6 +165,7 @@ Open issues, most urgent first.
   -p, --project <name>           A project, or none
   --cycle <which>                current, next, a number, or none
   --priority <name>              urgent, high, medium, low or none; repeatable
+  --field <name=value>           A custom field with one of the values (a,b), or none; repeatable
   -q, --query <words>            Words or an identifier
   --all                          Closed issues too
   -n, --limit <n>                At most this many (default 50)`,
@@ -590,6 +594,7 @@ async function issueList(ctx: Context, args: string[]) {
     project: { type: 'string', short: 'p' },
     cycle: { type: 'string' },
     priority: { type: 'string', multiple: true },
+    field: { type: 'string', multiple: true },
     query: { type: 'string', short: 'q' },
     all: { type: 'boolean' },
     limit: { type: 'string', short: 'n' },
@@ -638,6 +643,20 @@ async function issueList(ctx: Context, args: string[]) {
           });
   if (values.cycle && !filter.cycleIds?.length) throw new NameError(`No ${values.cycle} cycle`);
   if (values.priority?.length) filter.priorities = values.priority.map(parsePriority);
+  if (values.field?.length) {
+    filter.customFields = {};
+    for (const flag of values.field) {
+      const [ref, raw] = splitField(flag);
+      const field = names.field(ref, team);
+      filter.customFields[field.id] = raw.split(',').flatMap((v) => {
+        if (v.trim().toLowerCase() === 'none') return ['none'];
+        const value = names.fieldValue(field, v);
+        return value === null ? [] : Array.isArray(value) ? value : [String(value)];
+      });
+      if (!filter.customFields[field.id]!.length)
+        throw new UsageError(`--field ${ref}= needs a value, or none`);
+    }
+  }
   if (values.query) filter.q = values.query;
 
   const limit = values.limit ? Number(values.limit) : 50;
@@ -685,6 +704,10 @@ async function issueView(ctx: Context, args: string[]) {
     .filter(Boolean);
   const project = names.boot.projects.find((p) => p.id === issue.projectId);
   const cycle = names.boot.cycles.find((c) => c.id === issue.cycleId);
+  // Custom fields with a value, in field order, after the built-in properties.
+  const fields = fieldsForTeam(names.boot.customFields ?? [], issue.teamId)
+    .filter((f) => issue.customFields?.[f.id] !== undefined)
+    .map((f) => [f.name, names.fieldText(f, issue.customFields[f.id]!)]);
   const facts = [
     ['Status', state?.name ?? '?'],
     ['Priority', PRIORITIES.find((p) => p.value === issue.priority)?.label ?? '—'],
@@ -694,6 +717,7 @@ async function issueView(ctx: Context, args: string[]) {
     ['Cycle', cycle ? (cycle.name ?? `Cycle ${cycle.number}`) : undefined],
     ['Estimate', issue.estimate?.toString()],
     ['Due', issue.dueDate],
+    ...fields,
     ['Parent', issue.parent ? `${issue.parent.identifier} ${issue.parent.title}` : undefined],
     ['Created', `${relative(issue.createdAt)} by ${who(issue.creatorId)}`],
     ['Updated', relative(issue.updatedAt)],
@@ -734,7 +758,14 @@ const issueFields = {
   due: { type: 'string' },
 } as const;
 
-type FieldValues = { [K in keyof typeof issueFields]?: string };
+type FieldValues = { [K in keyof typeof issueFields]?: string } & { field?: string[] };
+
+/** `--field "Customer tier=Gold"` as the field and the value. */
+function splitField(flag: string): [string, string] {
+  const at = flag.indexOf('=');
+  if (at < 1) throw new UsageError(`--field takes name=value, like --field "Customer tier=Gold"`);
+  return [flag.slice(0, at).trim(), flag.slice(at + 1)];
+}
 
 /** The fields shared by create and edit, from names to ids. `none` clears where that makes sense. */
 async function fieldsToInput(
@@ -765,12 +796,21 @@ async function fieldsToInput(
       throw new UsageError('--due takes a date as YYYY-MM-DD');
     input.dueDate = v.due === 'none' ? null : v.due;
   }
+  if (v.field?.length) {
+    input.customFields = {};
+    for (const flag of v.field) {
+      const [ref, raw] = splitField(flag);
+      const field = names.field(ref, team);
+      input.customFields[field.id] = names.fieldValue(field, raw);
+    }
+  }
   return input;
 }
 
 async function issueCreate(ctx: Context, args: string[]) {
   const { values, positionals } = parse(args, {
     ...issueFields,
+    field: { type: 'string', multiple: true },
     team: { type: 'string', short: 't' },
     label: { type: 'string', short: 'l', multiple: true },
   });
@@ -800,6 +840,7 @@ async function issueCreate(ctx: Context, args: string[]) {
 async function issueEdit(ctx: Context, args: string[]) {
   const { values, positionals } = parse(args, {
     ...issueFields,
+    field: { type: 'string', multiple: true },
     'add-label': { type: 'string', multiple: true },
     'remove-label': { type: 'string', multiple: true },
     unassign: { type: 'boolean' },

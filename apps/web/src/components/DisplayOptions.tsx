@@ -1,6 +1,8 @@
 import { GROUP_BY_OPTIONS, type IssueDisplay, ORDER_BY_OPTIONS } from '@ordo/shared';
 import { Kanban, List, SlidersHorizontal } from 'lucide-react';
 import { t } from '../i18n/index.ts';
+import { fieldLabel, fieldsInScope, groupingField, hasChoices } from '../lib/customFields.ts';
+import { useWorkspace } from '../lib/workspace.tsx';
 import { Popover } from './ui/Popover.tsx';
 
 // Labels are looked up at render time: the catalogue loads after this module.
@@ -69,7 +71,7 @@ function Select({
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-7 border border-border bg-bg px-2 text-[12.5px] text-text outline-none focus:border-primary"
+        className="h-7 max-w-40 border border-border bg-bg px-2 text-[12.5px] text-text outline-none focus:border-primary"
       >
         {options.map((o) => (
           <option key={o} value={o}>
@@ -109,10 +111,24 @@ export function LayoutToggle({
 export function DisplayOptions({
   display,
   onChange,
+  teamId,
 }: {
   display: IssueDisplay;
   onChange: (d: IssueDisplay) => void;
+  /** The team of the screen, if one: offers its custom fields (and the workspace's) to group by. */
+  teamId?: string;
 }) {
+  const ws = useWorkspace();
+  const fields = fieldsInScope(ws.customFields, teamId).filter(hasChoices);
+  const groupings: string[] = [...GROUP_BY_OPTIONS, ...fields.map((f) => `field:${f.id}`)];
+  const labels = groupLabels();
+  for (const f of fields) labels[`field:${f.id}`] = fieldLabel(ws, f, teamId);
+  // A grouping by a field that's gone (or out of scope) still shows, until changed.
+  if (!groupings.includes(display.groupBy)) {
+    groupings.push(display.groupBy);
+    const field = groupingField(ws, display.groupBy);
+    labels[display.groupBy] = field ? fieldLabel(ws, field) : t('issues.display.noGrouping');
+  }
   return (
     <Popover
       width={280}
@@ -133,8 +149,8 @@ export function DisplayOptions({
         <Select
           label={t('issues.display.grouping')}
           value={display.groupBy}
-          options={GROUP_BY_OPTIONS}
-          labels={groupLabels()}
+          options={groupings}
+          labels={labels}
           onChange={(v) => onChange({ ...display, groupBy: v as IssueDisplay['groupBy'] })}
         />
         <Select

@@ -19,6 +19,8 @@ type Query {
   "People in the workspace (guests don't see other people's email)."
   members: [User!]!
   labels: [Label!]!
+  "Workspace fields and those of teams you can see; with teamKey, the fields that team's issues have."
+  customFields(teamKey: String): [CustomField!]!
   projects: [Project!]!
   project(id: ID!): Project
   "Cycles of the teams you can see, or of one team."
@@ -75,6 +77,8 @@ type Team {
   "In workflow order."
   states: [WorkflowState!]!
   members: [User!]!
+  "The custom fields its issues have: the workspace's and its own, in order."
+  customFields: [CustomField!]!
   issues(filter: IssueFilter, first: Int = 50, after: String): IssueConnection!
 }
 
@@ -102,6 +106,62 @@ type Label {
   color: String!
   "Null for workspace labels."
   team: Team
+}
+
+enum CustomFieldType {
+  select
+  multi_select
+  number
+  date
+  text
+  person
+}
+
+type CustomFieldOption {
+  "Stable within the field: renaming an option keeps the issues that have it."
+  id: ID!
+  name: String!
+  color: String!
+}
+
+type CustomField {
+  id: ID!
+  name: String!
+  description: String
+  type: CustomFieldType!
+  "Null for fields every team's issues have."
+  team: Team
+  "The choices of select and multi_select fields; empty for the other types."
+  options: [CustomFieldOption!]!
+  position: Float!
+}
+
+"An issue's value for one custom field. Only the part for the field's type is set."
+type CustomFieldValue {
+  field: CustomField!
+  "select: the chosen option; multi_select: the chosen options."
+  options: [CustomFieldOption!]!
+  number: Float
+  "YYYY-MM-DD"
+  date: String
+  text: String
+  user: User
+  "The value written out: option names (comma-separated), the number, date or text, or the person's username."
+  display: String!
+}
+
+"""
+A custom field value to set. Give the part for the field's type: optionId (select), optionIds
+(multi_select), number, date (YYYY-MM-DD), text, or userId (person). Leave them all out to clear it.
+"""
+input CustomFieldValueInput {
+  fieldId: ID!
+  optionId: ID
+  optionIds: [ID!]
+  number: Float
+  date: String
+  text: String
+  userId: ID
 }
 
 type Progress {
@@ -171,6 +231,8 @@ type Issue {
   "Null when the creator's account was deleted."
   creator: User
   labels: [Label!]!
+  "The custom fields it has a value for, in field order."
+  customFieldValues: [CustomFieldValue!]!
   project: Project
   milestone: Milestone
   cycle: Cycle
@@ -248,10 +310,18 @@ input IssueFilter {
   cycleIds: [String!]
   "Sub-issues of."
   parentId: ID
+  "Has one of the values, for every field given."
+  customFields: [CustomFieldFilter!]
   "Words (as prefixes), or an identifier."
   query: String
   subscribedByMe: Boolean
   archived: ArchivedFilter
+}
+
+input CustomFieldFilter {
+  fieldId: ID!
+  "Option ids, user ids or me, a number or date written out, the text, or none for no value."
+  values: [String!]!
 }
 
 input IssueCreateInput {
@@ -270,6 +340,7 @@ input IssueCreateInput {
   estimate: Int
   "YYYY-MM-DD"
   dueDate: String
+  customFields: [CustomFieldValueInput!]
 }
 
 input IssueUpdateInput {
@@ -290,5 +361,7 @@ input IssueUpdateInput {
   parentId: ID
   estimate: Int
   dueDate: String
+  "Sets the fields given; the others keep their value."
+  customFields: [CustomFieldValueInput!]
 }
 `;

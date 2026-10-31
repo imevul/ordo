@@ -102,6 +102,7 @@ Ordo-verktøyene handler som meg, med mine tillatelser. Spør meg før du oppret
       list_statuses: 'Et teams statuser i rekkefølge, med type.',
       list_members: 'Personer i arbeidsområdet: navn, brukernavn og rolle.',
       list_labels: 'Etiketter for arbeidsområdet og for teamene.',
+      list_custom_fields: 'De egendefinerte feltene saker kan ha, med typer og alternativer.',
       list_projects: 'Prosjekter med status, ansvarlig, team, datoer og fremdrift.',
       list_cycles: 'Nåværende og kommende sykluser (sprinter) per team.',
       search_issues:

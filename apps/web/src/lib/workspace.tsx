@@ -1,4 +1,14 @@
-import type { Bootstrap, Cycle, Label, Me, Project, Team, View, WorkflowState } from '@ordo/shared';
+import type {
+  Bootstrap,
+  CustomField,
+  Cycle,
+  Label,
+  Me,
+  Project,
+  Team,
+  View,
+  WorkflowState,
+} from '@ordo/shared';
 import {
   accentVariables,
   defaultAssigneeFor,
@@ -25,6 +35,7 @@ export interface WorkspaceData extends Bootstrap {
    */
   memberById: Map<string, Person>;
   labelById: Map<string, Label>;
+  customFieldById: Map<string, CustomField>;
   projectById: Map<string, Project>;
   cycleById: Map<string, Cycle>;
   viewById: Map<string, View>;
@@ -56,8 +67,12 @@ export function WorkspaceProvider({
   const value = useMemo<WorkspaceData>(() => {
     const states = data.teams.flatMap((t) => t.states);
     const mine = data.teams.filter((t) => t.memberIds.includes(me.id));
+    // A local copy saved before custom fields existed has none.
+    const customFields = data.customFields ?? [];
     return {
       ...data,
+      customFields,
+      customFieldById: byId(customFields),
       slug,
       me,
       teamById: byId(data.teams),

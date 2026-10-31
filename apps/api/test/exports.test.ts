@@ -1,4 +1,10 @@
-import { type Bootstrap, type Import, parseCsv, type WorkspaceExport } from '@ordo/shared';
+import {
+  type Bootstrap,
+  type CustomField,
+  type Import,
+  parseCsv,
+  type WorkspaceExport,
+} from '@ordo/shared';
 import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -10,7 +16,23 @@ let app: FastifyInstance;
 let owner: Client;
 let member: Client;
 let boot: Bootstrap;
+let ownerEmail: string;
+let ownerId: string;
 const slug = `exp-${Date.now()}`;
+
+/** Custom fields of every type; select options by name. */
+const FIELDS = [
+  { name: 'Severity', type: 'select', options: [{ name: 'Low' }, { name: 'High' }] },
+  { name: 'Areas', type: 'multi_select', options: [{ name: 'Web' }, { name: 'API' }] },
+  { name: 'Points', type: 'number' },
+  { name: 'Release', type: 'date' },
+  { name: 'Notes', type: 'text' },
+  { name: 'Owner', type: 'person' },
+];
+const fieldIds = async (c: Client, path: string) => {
+  const list = (await c.get(`${path}/custom-fields`)).data as CustomField[];
+  return Object.fromEntries(list.map((f) => [f.name, f]));
+};
 const ws = `/api/w/${slug}`;
 
 async function settle(rounds = 4) {
@@ -37,8 +59,18 @@ async function exportAs(format: 'json' | 'csv') {
 
 beforeAll(async () => {
   app = await testApp();
-  owner = (await signup(app, 'Olive Owner')).client;
+  const o = await signup(app, 'Olive Owner');
+  owner = o.client;
+  ownerEmail = o.email;
+  ownerId = (await owner.get('/api/auth/me')).data.id;
   await owner.post('/api/workspaces', { name: 'Export', slug, teamName: 'Alpha', teamKey: 'ALP' });
+  for (const f of FIELDS) {
+    const res = await owner.post(`${ws}/custom-fields`, f);
+    expect(res.statusCode, res.body).toBe(200);
+  }
+  const fields = await fieldIds(owner, ws);
+  const opt = (field: string, name: string) =>
+    fields[field]!.options.find((x) => x.name === name)!.id;
   const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0];
   member = (await signup(app, 'Bob Member', { inviteToken: invite.token })).client;
   await owner.post(`${ws}/teams`, { name: 'Secret', key: 'SEC', private: true });
@@ -57,8 +89,17 @@ beforeAll(async () => {
       labelIds: [label.id],
       projectId: project.id,
       estimate: 3,
+      customFields: {
+        [fields.Severity!.id]: opt('Severity', 'High'),
+        [fields.Areas!.id]: [opt('Areas', 'Web'), opt('Areas', 'API')],
+        [fields.Points!.id]: 2.5,
+        [fields.Release!.id]: '2026-12-01',
+        [fields.Notes!.id]: 'Ship it, soon',
+        [fields.Owner!.id]: ownerId,
+      },
     })
   ).data;
+  expect(Object.keys(parent.customFields)).toHaveLength(6);
   const child = (
     await owner.post(`${ws}/issues`, { teamId: alpha.id, title: 'Child', parentId: parent.id })
   ).data;
@@ -121,6 +162,13 @@ describe('workspace export', () => {
     expect(data.relations).toHaveLength(1);
     expect(data.history.length).toBeGreaterThanOrEqual(5);
     expect(data.projects.map((p: { name: string }) => p.name)).toEqual(['Launch']);
+    // Custom field definitions, and the values on the issues.
+    expect(data.customFields.map((f: CustomField) => f.name)).toEqual(FIELDS.map((f) => f.name));
+    const exported = data.issues.find(
+      (i: { title: string }) => i.title === 'Parent, with "quotes"',
+    );
+    const points = data.customFields.find((f: CustomField) => f.name === 'Points').id;
+    expect(exported.customFields[points]).toBe(2.5);
     // Personal things stay personal; secrets stay secret.
     expect(data.views.map((v: { name: string }) => v.name)).toEqual(['Shared view']);
     expect(body).not.toMatch(/"(passwordHash|secrets|tokenHash|totpSecret|inboundToken)"/);
@@ -146,8 +194,20 @@ describe('workspace export', () => {
     expect(parent[5]).toBe('Urgent');
     expect(parent[8]).toBe('bug');
     expect(rows.find((r) => r[2] === 'Child')![11]).toBe(parent[0]);
+    // A column per custom field, written as people read it.
+    expect(header!.slice(19)).toEqual(FIELDS.map((f) => f.name));
+    expect(parent.slice(19)).toEqual([
+      'High',
+      'Web, API',
+      '2.5',
+      '2026-12-01',
+      'Ship it, soon',
+      ownerEmail,
+    ]);
+    expect(rows.find((r) => r[2] === 'Child')!.slice(19)).toEqual(['', '', '', '', '', '']);
 
-    // Into a fresh workspace, through the CSV import.
+    // Into a fresh workspace, through the CSV import. It has the same fields, by name, except
+    // that Severity lacks the High option and there's no Release field.
     const slug2 = `${slug}-copy`;
     await owner.post('/api/workspaces', {
       name: 'Copy',
@@ -156,6 +216,15 @@ describe('workspace export', () => {
       teamKey: 'BET',
     });
     const ws2 = `/api/w/${slug2}`;
+    for (const f of FIELDS.filter((f) => f.name !== 'Release')) {
+      const res = await owner.post(`${ws2}/custom-fields`, {
+        ...f,
+        name: f.name.toLowerCase(),
+        ...(f.name === 'Severity' && { options: [{ name: 'Low' }] }),
+        ...(f.name === 'Areas' && { options: [{ name: 'api' }] }),
+      });
+      expect(res.statusCode, res.body).toBe(200);
+    }
     const boundary = '----ordo-roundtrip';
     const up = await app.inject({
       method: 'POST',
@@ -192,6 +261,16 @@ describe('workspace export', () => {
     const copy = (await owner.get(`${ws2}/issues/${parent[0]}`)).data;
     expect(copy).toMatchObject({ title: 'Parent, with "quotes"', priority: 1, estimate: 3 });
     expect(copy.description).toBe('Line one\nLine two');
+    const fields2 = await fieldIds(owner, ws2);
+    const optionNames = (field: string, ids: string[]) =>
+      ids.map((id) => fields2[field]!.options.find((o) => o.id === id)!.name);
+    // The missing High option was added; "API" matched the existing "api".
+    expect(optionNames('severity', [copy.customFields[fields2.severity!.id]])).toEqual(['High']);
+    expect(optionNames('areas', copy.customFields[fields2.areas!.id])).toEqual(['api', 'Web']);
+    expect(copy.customFields[fields2.points!.id]).toBe(2.5);
+    expect(copy.customFields[fields2.notes!.id]).toBe('Ship it, soon');
+    expect(copy.customFields[fields2.owner!.id]).toBe(ownerId);
+    expect(Object.keys(copy.customFields)).toHaveLength(5);
     expect(copy.subIssues.map((s: { title: string }) => s.title)).toEqual(['Child']);
     const boot2 = (await owner.get(`${ws2}/bootstrap`)).data as Bootstrap;
     expect(copy.labelIds.map((id: string) => boot2.labels.find((l) => l.id === id)!.name)).toEqual([

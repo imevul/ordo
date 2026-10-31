@@ -34,9 +34,16 @@ export interface SourceIssue {
   url?: string;
   /** Other links on it (attachments, pull requests), kept as links. */
   links?: { url: string; title: string }[];
+  /**
+   * Custom field values by source field id (see `ImportSummary.fields`): option names, numbers,
+   * dates, text, or for person fields a source person's id. Read as the Ordo field's type needs.
+   */
+  customFields?: Record<string, SourceFieldValue>;
   /** Problems reading it, reported as warnings. */
   warnings?: string[];
 }
+
+export type SourceFieldValue = string | number | string[];
 
 /** A comment as a source describes it, oldest first so replies follow what they answer. */
 export interface SourceComment {

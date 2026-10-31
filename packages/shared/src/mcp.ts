@@ -26,6 +26,22 @@ const limit = (max: number, fallback: number) =>
 const cycle = ref('"current", a cycle number of the team, a cycle name or id');
 const project = ref('Project name or id');
 const milestone = ref('Milestone name within the project, or id');
+const fieldName = ref('Custom field name (see list_custom_fields) or id');
+
+/** Custom field values by field name, in the terms people use; resolved against the issue's team. */
+const customFieldValues = z
+  .record(
+    fieldName,
+    z.union([
+      z.string().max(10_000),
+      z.number().finite(),
+      z.array(z.string().trim().min(1).max(200)).max(200),
+      z.null(),
+    ]),
+  )
+  .describe(
+    'Custom fields by name (see list_custom_fields): an option name (select), a list of option names (multi-select), a number, a date like 2026-01-31, text, or a person given like assignee; null clears. Fields left out keep their value.',
+  );
 
 const issueFields = {
   description: z.string().max(100_000).describe('Markdown').optional(),
@@ -42,6 +58,7 @@ const issueFields = {
   parent: issue.nullable().optional().describe('Parent issue identifier, makes this a sub-issue'),
   estimate: z.number().int().min(0).max(100).nullable().optional(),
   dueDate: isoDate.nullable().optional(),
+  customFields: customFieldValues.optional(),
 };
 
 /** A finished run, by issue (and agent) since runs have no identifier people type, or by id. */
@@ -58,6 +75,9 @@ export const mcpToolSchemas = {
     query: z.string().max(200).optional().describe('Filter by name, username or email'),
   }),
   list_labels: z.object({ team: team.optional().describe('Only labels usable in this team') }),
+  list_custom_fields: z.object({
+    team: team.optional().describe("Only the fields this team's issues have"),
+  }),
   list_projects: z.object({ team: team.optional() }),
   list_cycles: z.object({
     team: team.optional(),
@@ -108,6 +128,20 @@ export const mcpToolSchemas = {
     project: ref('Project name or id, or "none"').optional(),
     cycle: z.union([cycle, z.literal('none')]).optional(),
     priority: z.array(priority).optional(),
+    customFields: z
+      .record(
+        fieldName,
+        z
+          .array(
+            ref(
+              'An option name, a person, a number or date written out, the text, or "none" for no value',
+            ),
+          )
+          .min(1)
+          .max(100),
+      )
+      .optional()
+      .describe('Custom field name → values; issues with any of them (all fields must match)'),
     subscribed: z.boolean().optional().describe('Only issues I am subscribed to'),
     includeClosed: z
       .boolean()
@@ -267,6 +301,13 @@ export const MCP_TOOLS: {
     readOnly: true,
   },
   {
+    name: 'list_custom_fields',
+    title: 'List custom fields',
+    description:
+      "Custom fields issues can have (workspace-wide or a team's), with their type and options. Set them with customFields on create_issue and update_issue.",
+    readOnly: true,
+  },
+  {
     name: 'list_projects',
     title: 'List projects',
     description: 'Projects with status, lead, teams, dates, progress and milestones.',
@@ -308,7 +349,7 @@ export const MCP_TOOLS: {
     name: 'search_issues',
     title: 'Search issues',
     description:
-      'Find issues by text and filters (team, status, assignee, labels, project, cycle, priority). Open issues only unless includeClosed, status or statusType is set.',
+      'Find issues by text and filters (team, status, assignee, labels, project, cycle, priority, custom fields). Open issues only unless includeClosed, status or statusType is set.',
     readOnly: true,
   },
   {
@@ -326,14 +367,15 @@ export const MCP_TOOLS: {
   {
     name: 'create_issue',
     title: 'Create issue',
-    description: 'Create an issue in a team. Statuses, labels and people are given by name.',
+    description:
+      'Create an issue in a team. Statuses, labels, people and custom fields are given by name.',
     readOnly: false,
   },
   {
     name: 'update_issue',
     title: 'Update issue',
     description:
-      'Change an issue: title, description, status, priority, assignee, labels, project, milestone, cycle, parent, estimate or due date.',
+      'Change an issue: title, description, status, priority, assignee, labels, project, milestone, cycle, parent, estimate, due date or custom fields.',
     readOnly: false,
   },
   {

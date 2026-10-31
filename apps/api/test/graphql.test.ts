@@ -250,3 +250,121 @@ describe('protocol', () => {
     expect(res.statusCode).toBe(405);
   });
 });
+
+// Last: it adds issues, which the counts above don't expect.
+describe('custom fields', () => {
+  it('lists fields, sets values through the mutations and reads them back', async () => {
+    const core = boot.teams.find((t) => t.key === 'COR')!;
+    const sec = boot.teams.find((t) => t.key === 'SEC')!;
+    const add = async (body: Record<string, unknown>) =>
+      (await owner.post(`${ws}/custom-fields`, body)).data;
+    const tier = await add({
+      name: 'Tier',
+      type: 'select',
+      options: [{ name: 'Gold' }, { name: 'Silver' }],
+    });
+    const areas = await add({
+      name: 'Areas',
+      type: 'multi_select',
+      options: [{ name: 'API' }, { name: 'Web' }],
+      teamId: core.id,
+    });
+    const points = await add({ name: 'Points', type: 'number' });
+    const reviewer = await add({ name: 'Reviewer', type: 'person' });
+    await add({ name: 'Codename', type: 'text', teamId: sec.id });
+
+    const listed = await gql(`{
+      customFields { name type team { key } options { name } }
+      cor: customFields(teamKey: "cor") { name }
+      team(key: "SEC") { customFields { name } }
+    }`);
+    expect(listed.data.errors).toBeUndefined();
+    expect(listed.data.data.customFields).toHaveLength(5);
+    expect(listed.data.data.customFields[1]).toEqual({
+      name: 'Areas',
+      type: 'multi_select',
+      team: { key: 'COR' },
+      options: [{ name: 'API' }, { name: 'Web' }],
+    });
+    expect(listed.data.data.cor.map((f: { name: string }) => f.name)).toEqual([
+      'Tier',
+      'Areas',
+      'Points',
+      'Reviewer',
+    ]);
+    expect(listed.data.data.team.customFields.map((f: { name: string }) => f.name)).toContain(
+      'Codename',
+    );
+    // A private team's fields stay hidden from people outside it.
+    const asMember = await gql('{ customFields { name } }', undefined, { who: member });
+    expect(asMember.data.data.customFields.map((f: { name: string }) => f.name)).not.toContain(
+      'Codename',
+    );
+
+    const me = (await owner.get('/api/auth/me')).data;
+    const values = `customFieldValues { field { name } options { name } number user { username } display }`;
+    const created = await gql(
+      `mutation($input: IssueCreateInput!) { issueCreate(input: $input) { identifier ${values} } }`,
+      {
+        input: {
+          teamId: core.id,
+          title: 'Fielded',
+          customFields: [
+            { fieldId: tier.id, optionId: tier.options[0].id },
+            { fieldId: areas.id, optionIds: areas.options.map((o: { id: string }) => o.id) },
+            { fieldId: points.id, number: 3 },
+          ],
+        },
+      },
+    );
+    expect(created.data.errors, created.body).toBeUndefined();
+    const issue = created.data.data.issueCreate;
+    expect(issue.customFieldValues).toEqual([
+      {
+        field: { name: 'Tier' },
+        options: [{ name: 'Gold' }],
+        number: null,
+        user: null,
+        display: 'Gold',
+      },
+      {
+        field: { name: 'Areas' },
+        options: [{ name: 'API' }, { name: 'Web' }],
+        number: null,
+        user: null,
+        display: 'API, Web',
+      },
+      { field: { name: 'Points' }, options: [], number: 3, user: null, display: '3' },
+    ]);
+
+    // Fields given are set (an empty value clears); the others stay.
+    const updated = await gql(
+      `mutation($id: ID!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { ${values} } }`,
+      {
+        id: issue.identifier,
+        input: {
+          customFields: [{ fieldId: points.id }, { fieldId: reviewer.id, userId: me.id }],
+        },
+      },
+    );
+    expect(updated.data.errors, updated.body).toBeUndefined();
+    expect(
+      updated.data.data.issueUpdate.customFieldValues.map((v: { display: string }) => v.display),
+    ).toEqual(['Gold', 'API, Web', 'gql-grace']);
+    expect(updated.data.data.issueUpdate.customFieldValues[2].user.username).toBe('gql-grace');
+
+    const filtered = await gql(
+      `query($f: [CustomFieldFilter!]) { issues(filter: { customFields: $f }) { nodes { identifier } } }`,
+      { f: [{ fieldId: tier.id, values: [tier.options[0].id] }] },
+    );
+    expect(filtered.data.errors).toBeUndefined();
+    expect(filtered.data.data.issues.nodes).toEqual([{ identifier: issue.identifier }]);
+
+    const wrong = await gql(
+      `mutation($id: ID!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { id } }`,
+      { id: issue.identifier, input: { customFields: [{ fieldId: tier.id, optionId: 'nope' }] } },
+    );
+    expect(wrong.data.errors[0].extensions.code).toBe('BAD_USER_INPUT');
+    expect(wrong.data.errors[0].message).toContain('Tier: unknown option');
+  });
+});

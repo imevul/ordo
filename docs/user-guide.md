@@ -98,7 +98,7 @@ longer fits the team (say, its assignee left), the issue is still created, witho
 A template assigned to an agent runs that agent on a schedule; see [Scheduled runs](agents.md#scheduled-runs).
 
 Properties: **status, priority** (urgent, high, medium, low, none), **assignee, labels, project, cycle,
-estimate, due date**, and a **parent** issue. Change any of them from the issue page's sidebar, from the icons
+estimate, due date**, a **parent** issue, and any [custom fields](#custom-fields) of the workspace or team. Change any of them from the issue page's sidebar, from the icons
 in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L`, …).
 
 - **Sub-issues** — _Add_ under _Sub-issues_ on an issue. The parent shows `done/total`.
@@ -167,7 +167,8 @@ Git automation**. Details: [integrations](integrations/README.md).
 
 Every issue screen (team issues, my issues, project and cycle issues, views) works the same way:
 
-- **Filter** narrows by status, priority, assignee, creator, labels, project or cycle. Filters combine with AND;
+- **Filter** narrows by status, priority, assignee, creator, labels, project, cycle or a
+  [custom field](#custom-fields). Filters combine with AND;
   values within one filter combine with OR.
 - **Display** sets grouping, ordering and whether to show completed issues, sub-issues and empty groups.
 - The **list / board** toggle (or `V`) switches layouts. On the board, drag cards between columns to change the
@@ -281,6 +282,30 @@ you can see who's waiting on what. Guests don't see customers.
 Labels are workspace-wide or limited to one team (**Settings → Labels**, or create one on the fly from the label
 picker). Teams choose an estimate scale: linear (1–5), Fibonacci (1–13), exponential (1–16), t-shirt (XS–XL) or
 none.
+
+## Custom fields
+
+Custom fields are properties of your own on issues: "Customer tier", "Severity", "Release date". Make them under
+**Settings → Custom fields**. A field is for every team's issues (workspace admins make those) or for one team's
+(its team admins can make those too). Each field has a type:
+
+| Type             | Holds                                                  |
+| ---------------- | ------------------------------------------------------ |
+| **Select**       | One option from a list you define (each with a colour) |
+| **Multi-select** | Any number of those options                            |
+| **Number**       | A number, decimals allowed                             |
+| **Date**         | A calendar day                                         |
+| **Text**         | A line of text                                         |
+| **Person**       | Someone who can see the issue's team                   |
+
+A field's type and team can't change once it's made; its name, description and options can. Renaming an option
+keeps it on the issues that have it; removing one takes it off them. Names are unique among the fields an issue can
+have, because the CLI, MCP tools, CSV columns and imports find fields by name.
+
+Set a field from the issue page's sidebar, where the issue's fields are listed under its other properties; fields
+without a value can be left empty. Lists and boards can **filter** by a field (any of the chosen values, or _none_
+for issues without one). Custom fields are part of the [API](api.md#custom-fields),
+[CSV export and import](import-export.md#csv-files), the JSON export, and the [Jira import](import-export.md#jira).
 
 ## Insights
 

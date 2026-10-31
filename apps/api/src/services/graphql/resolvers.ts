@@ -1,9 +1,12 @@
 import {
   branchName,
   type Comment,
+  type CustomField,
+  type CustomFieldValue,
   type Cycle,
   createCommentSchema,
   createIssueSchema,
+  fieldsForTeam,
   type Issue,
   type IssueFilter,
   issueFilterSchema,
@@ -23,6 +26,7 @@ import { HttpError, parse } from '../../lib/errors.ts';
 import { mutate } from '../../lib/mutate.ts';
 import type { Access } from '../access.ts';
 import { createComment, listComments } from '../comments.ts';
+import { listCustomFields } from '../customFields.ts';
 import { listCycles } from '../cycles.ts';
 import { signedFileUrl } from '../files.ts';
 import {
@@ -86,6 +90,8 @@ function charge(ctx: GqlContext, n: number) {
 
 const teams = (ctx: GqlContext) => once(ctx, 'teams', () => listTeams(ctx.app.db, ctx.access));
 const labels = (ctx: GqlContext) => once(ctx, 'labels', () => listLabels(ctx.app.db, ctx.access));
+const customFields = (ctx: GqlContext) =>
+  once(ctx, 'customFields', () => listCustomFields(ctx.app.db, ctx.access));
 const projects = (ctx: GqlContext) =>
   once(ctx, 'projects', () => listProjects(ctx.app.db, ctx.access));
 const cycles = (ctx: GqlContext) => once(ctx, 'cycles', () => listCycles(ctx.app.db, ctx.access));
@@ -145,14 +151,56 @@ interface FilterInput {
 
 /** The GraphQL filter as the REST IssueFilter, validated the same way. */
 function toFilter(input: FilterInput | null | undefined, extra: IssueFilter = {}): IssueFilter {
-  const { query, subscribedByMe, ...rest } = input ?? {};
+  const { query, subscribedByMe, customFields: fieldFilters, ...rest } = input ?? {};
   const raw = Object.fromEntries(Object.entries(rest).filter(([, v]) => v != null));
+  const list = (fieldFilters ?? []) as { fieldId: string; values: string[] }[];
   return parse(issueFilterSchema, {
     ...raw,
     ...(query ? { q: query } : {}),
     ...(subscribedByMe ? { subscribedBy: 'me' } : {}),
+    ...(list.length
+      ? { customFields: Object.fromEntries(list.map((f) => [f.fieldId, f.values])) }
+      : {}),
     ...extra,
   });
+}
+
+interface FieldValueInput {
+  fieldId: string;
+  optionId?: string | null;
+  optionIds?: string[] | null;
+  number?: number | null;
+  date?: string | null;
+  text?: string | null;
+  userId?: string | null;
+}
+
+/**
+ * Issue inputs as the REST schemas expect them: fields GraphQL left out are absent, not null, and
+ * custom fields a record by field id (a value with no part set clears the field).
+ */
+function issueInput(input: unknown) {
+  const { customFields: list, ...rest } = defined(input) as Args & {
+    customFields?: FieldValueInput[] | null;
+  };
+  if (!list) return rest;
+  const values = Object.fromEntries(
+    list.map((v) => [
+      v.fieldId,
+      v.optionId ?? v.optionIds ?? v.number ?? v.date ?? v.text ?? v.userId ?? null,
+    ]),
+  );
+  return { ...rest, customFields: values };
+}
+
+/** The display form of a value: option names, the number, date or text, or a username. */
+function displayValue(field: CustomField, value: CustomFieldValue, user: GqlUser | null): string {
+  if (field.type === 'person') return user?.username ?? String(value);
+  if (field.type === 'select' || field.type === 'multi_select') {
+    const ids = Array.isArray(value) ? value : [String(value)];
+    return ids.map((id) => field.options.find((o) => o.id === id)?.name ?? id).join(', ');
+  }
+  return String(value);
 }
 
 async function issueConnection(ctx: GqlContext, args: Args, extra: IssueFilter = {}) {
@@ -195,6 +243,13 @@ export const resolvers: Record<string, Record<string, Resolver<never>>> = {
     },
     members: async (_s, _a, ctx) => members(ctx),
     labels: (_s, _a, ctx) => labels(ctx),
+    customFields: async (_s, { teamKey }, ctx) => {
+      const all = await customFields(ctx);
+      if (!teamKey) return all;
+      const k = String(teamKey).toLowerCase();
+      const team = (await teams(ctx)).find((t) => t.key.toLowerCase() === k || t.id === teamKey);
+      return team ? fieldsForTeam(all, team.id) : [];
+    },
     projects: (_s, _a, ctx) => projects(ctx),
     project: async (_s, { id }, ctx) => (await projects(ctx)).find((p) => p.id === id) ?? null,
     cycles: async (_s, { teamKey }, ctx) => {
@@ -224,12 +279,12 @@ export const resolvers: Record<string, Record<string, Resolver<never>>> = {
 
   Mutation: {
     issueCreate: (_s, { input }, ctx) => {
-      const data = parse(createIssueSchema, defined(input));
+      const data = parse(createIssueSchema, issueInput(input));
       return run(ctx, (c) => createIssue(c, data));
     },
     issueUpdate: async (_s, { id, input }, ctx) => {
       const issue = await getIssue(ctx.app.db, ctx.access, String(id));
-      const patch = parse(updateIssueSchema, defined(input));
+      const patch = parse(updateIssueSchema, issueInput(input));
       return run(ctx, (c) => updateIssue(c, issue.id, patch));
     },
     issueArchive: (_s, { id }, ctx) => run(ctx, (c) => setArchived(c, String(id), true)),
@@ -251,11 +306,16 @@ export const resolvers: Record<string, Record<string, Resolver<never>>> = {
       const ids = new Set(t.memberIds);
       return (await members(ctx)).filter((m) => ids.has(m.id));
     },
+    customFields: async (t: Team, _a, ctx) => fieldsForTeam(await customFields(ctx), t.id),
     issues: (t: Team, args, ctx) => issueConnection(ctx, args, { teamId: t.id }),
   },
 
   Label: {
     team: (l: Label, _a, ctx) => teamById(ctx, l.teamId),
+  },
+
+  CustomField: {
+    team: (f: CustomField, _a, ctx) => teamById(ctx, f.teamId),
   },
 
   Project: {
@@ -280,6 +340,31 @@ export const resolvers: Record<string, Record<string, Resolver<never>>> = {
     labels: async (i: Issue, _a, ctx) => {
       const ids = new Set(i.labelIds);
       return (await labels(ctx)).filter((l) => ids.has(l.id));
+    },
+    customFieldValues: async (i: Issue, _a, ctx) => {
+      if (!Object.keys(i.customFields).length) return [];
+      const fields = fieldsForTeam(await customFields(ctx), i.teamId);
+      return Promise.all(
+        fields
+          .filter((f) => i.customFields[f.id] !== undefined)
+          .map(async (field) => {
+            const value = i.customFields[field.id]!;
+            const ids = Array.isArray(value) ? value : [String(value)];
+            const user = field.type === 'person' ? await userById(ctx, String(value)) : null;
+            return {
+              field,
+              options:
+                field.type === 'select' || field.type === 'multi_select'
+                  ? field.options.filter((o) => ids.includes(o.id))
+                  : [],
+              number: typeof value === 'number' ? value : null,
+              date: field.type === 'date' ? value : null,
+              text: field.type === 'text' ? value : null,
+              user,
+              display: displayValue(field, value, user),
+            };
+          }),
+      );
     },
     project: async (i: Issue, _a, ctx) =>
       (await projects(ctx)).find((p) => p.id === i.projectId) ?? null,

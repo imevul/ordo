@@ -4,6 +4,8 @@ import type {
   AgentRunStatus,
   AgentRunTrigger,
   AuditAction,
+  CustomFieldOption,
+  CustomFieldType,
   CycleAutomation,
   DomainEventType,
   EstimateScale,
@@ -333,6 +335,50 @@ export const labels = pgTable(
     createdAt: createdAt(),
   },
   (t) => [index('labels_workspace_idx').on(t.workspaceId)],
+);
+
+/** Properties a workspace (or one team) adds to its issues; values live in `issue_field_values`. */
+export const customFields = pgTable(
+  'custom_fields',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    type: text('type').$type<CustomFieldType>().notNull(),
+    options: jsonb('options').$type<CustomFieldOption[]>().notNull().default([]),
+    position: doublePrecision('position').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('custom_fields_workspace_idx').on(t.workspaceId)],
+);
+
+/**
+ * One custom field's value on one issue, in the column for its type: an option id or text in
+ * `text_value` (select, text), option ids (multi-select), a number, a date or a user (person).
+ */
+export const issueFieldValues = pgTable(
+  'issue_field_values',
+  {
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    fieldId: uuid('field_id')
+      .notNull()
+      .references(() => customFields.id, { onDelete: 'cascade' }),
+    textValue: text('text_value'),
+    optionIds: text('option_ids').array(),
+    numberValue: doublePrecision('number_value'),
+    dateValue: date('date_value', { mode: 'string' }),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.issueId, t.fieldId] }),
+    index('issue_field_values_field_idx').on(t.fieldId),
+  ],
 );
 
 /**

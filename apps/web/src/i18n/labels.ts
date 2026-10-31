@@ -1,4 +1,5 @@
 import type {
+  CustomFieldType,
   EstimateScale,
   InitiativeStatus,
   ProjectHealth,
@@ -23,6 +24,7 @@ export const stateTypeLabel = (type: StateType) => t(`enums.stateType.${type}`);
 export const projectStatusLabel = (s: ProjectStatus) => t(`enums.projectStatus.${s}`);
 export const initiativeStatusLabel = (s: InitiativeStatus) => t(`enums.initiativeStatus.${s}`);
 export const healthLabel = (h: ProjectHealth) => t(`enums.health.${h}`);
+export const fieldTypeLabel = (type: CustomFieldType) => t(`enums.customFieldType.${type}`);
 export const roleLabel = (r: 'owner' | 'admin' | 'member' | 'guest') => t(`enums.role.${r}`);
 
 const TSHIRT: Record<number, string> = { 1: 'XS', 2: 'S', 3: 'M', 5: 'L', 8: 'XL' };

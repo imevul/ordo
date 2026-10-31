@@ -3,6 +3,7 @@ import agents from './agents.ts';
 import auth from './auth.ts';
 import common from './common.ts';
 import customers from './customers.ts';
+import customFields from './customFields.ts';
 import cycles from './cycles.ts';
 import enums from './enums.ts';
 import errors from './errors.ts';
@@ -38,6 +39,7 @@ export default {
   shell,
   issues,
   issue,
+  customFields,
   auth,
   admin,
   workspaceSettings,

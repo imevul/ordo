@@ -1,5 +1,6 @@
 import {
   type CreateIssueInput,
+  type CustomFieldValue,
   IMPORT_BUSY,
   type Import,
   type ImportMapping,
@@ -16,6 +17,7 @@ import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../../db/client.ts';
 import {
+  customFields,
   externalAccounts,
   importItems,
   imports,
@@ -34,6 +36,7 @@ import { usersWithTeamAccess } from '../access.ts';
 import { audit } from '../audit.ts';
 import { createComment } from '../comments.ts';
 import { type Ctx, emit, type RequestMeta } from '../context.ts';
+import { createCustomField, updateCustomField } from '../customFields.ts';
 import { createCycle } from '../cycles.ts';
 import { createIssue, type ImportedIssueFields, setImportedParent } from '../issues.ts';
 import { createLabel } from '../labels.ts';
@@ -43,7 +46,7 @@ import { createProject } from '../projects.ts';
 import { createRelation } from '../relations.ts';
 import { bumpEpoch, publishChanges } from '../sync.ts';
 import { createTeam } from '../teams.ts';
-import { csvSource } from './csv.ts';
+import { calendarDate, csvSource } from './csv.ts';
 import { gitlabSource } from './gitlab.ts';
 import { jiraSource } from './jira.ts';
 import { linearSource } from './linear.ts';
@@ -55,6 +58,7 @@ import {
   type ImportRow,
   type SourceComment,
   type SourceContext,
+  type SourceFieldValue,
   type SourceIssue,
   type SourceRelation,
 } from './types.ts';
@@ -132,6 +136,7 @@ const emptyReport = (dryRun: boolean): ImportReport => ({
     issues: 0,
     comments: 0,
     relations: 0,
+    fields: 0,
   },
   existing: 0,
   skipped: [],
@@ -151,6 +156,10 @@ function warn(report: ImportReport, item: string | undefined, message: string) {
 }
 
 const lower = (s: string) => s.trim().toLowerCase();
+/** Custom field and option names, as long as Ordo takes them. */
+const fieldName = (s: string) => s.trim().slice(0, 60).trim() || 'Imported field';
+const optionName = (s: string) => s.trim().slice(0, 60).trim();
+const MAX_OPTIONS = 200;
 const isStateType = (v: string): v is StateType => (STATE_TYPES as readonly string[]).includes(v);
 
 // ─── the workspace, as mapping needs it ───────────────────────────────────
@@ -217,6 +226,11 @@ async function workspaceData(db: DbOrTx, workspaceId: string) {
     .select({ id: users.id, name: users.name, importedEmail: users.importedEmail })
     .from(users)
     .where(and(eq(users.kind, 'placeholder'), eq(users.botWorkspaceId, workspaceId)));
+  const fieldRows = await db
+    .select()
+    .from(customFields)
+    .where(eq(customFields.workspaceId, workspaceId))
+    .orderBy(asc(customFields.position));
   return {
     teams: teamRows,
     states,
@@ -225,6 +239,7 @@ async function workspaceData(db: DbOrTx, workspaceId: string) {
     placeholders: placeholderRows,
     labels: labelRows,
     projects: projectRows,
+    fields: fieldRows,
   };
 }
 type WorkspaceData = Awaited<ReturnType<typeof workspaceData>>;
@@ -342,6 +357,15 @@ export async function suggestMapping(
     const match = data.projects.find((x) => lower(x.name) === lower(p.name));
     mapping.projects[p.id] = previous?.projects[p.id] ?? match?.id ?? 'create';
   }
+  if (summary.fields?.length) {
+    mapping.fields = {};
+    for (const f of summary.fields) {
+      const named = data.fields.filter((x) => lower(x.name) === lower(f.name));
+      const match = named.find((x) => !x.teamId) ?? named[0];
+      // Without a type (CSV) there's nothing to make: such a field only feeds an existing one.
+      mapping.fields[f.id] = previous?.fields?.[f.id] ?? match?.id ?? (f.type ? 'create' : 'skip');
+    }
+  }
   return mapping;
 }
 
@@ -399,6 +423,12 @@ export async function mappingErrors(db: DbOrTx, row: ImportRow, mapping: ImportM
   };
   check('label', new Set(data.labels.map((l) => l.id)), mapping.labels);
   check('project', new Set(data.projects.map((p) => p.id)), mapping.projects);
+  check('custom field', new Set(data.fields.map((f) => f.id)), mapping.fields ?? {});
+  for (const f of summary.fields ?? []) {
+    if (mapping.fields?.[f.id] === 'create' && !f.type) {
+      errors.push(`The field ${f.name} can only go into an existing custom field`);
+    }
+  }
   return errors;
 }
 
@@ -793,6 +823,35 @@ async function setup(ctx: Ctx, st: RunState) {
     await remember(ctx, row.id, 'label', l.id, label.id);
   }
 
+  // New custom fields are workspace fields. They are found again by name (an earlier attempt's
+  // field is reused), since import items can't record them.
+  for (const f of summary.fields ?? []) {
+    if (mapping.fields?.[f.id] !== 'create' || !f.type) continue;
+    const name = fieldName(f.name);
+    if (st.data.fields.some((x) => !x.teamId && lower(x.name) === lower(name))) continue;
+    report.created.fields = (report.created.fields ?? 0) + 1;
+    if (st.dryRun) continue;
+    const options = new Map<string, string>();
+    for (const n of (f.options ?? []).map(optionName)) if (n) options.set(lower(n), n);
+    try {
+      await ctx.tx.transaction((tx) =>
+        createCustomField(
+          { ...ctx, tx },
+          {
+            name,
+            type: f.type!,
+            teamId: null,
+            options: [...options.values()].slice(0, MAX_OPTIONS).map((o) => ({ name: o })),
+          },
+        ),
+      );
+    } catch (err) {
+      if (!(err instanceof HttpError) || err.statusCode >= 500) throw err;
+      report.created.fields--;
+      warn(report, undefined, `The field ${name} wasn't made: ${err.message}`);
+    }
+  }
+
   for (const p of summary.projects) {
     if (mapping.projects[p.id] !== 'create' || st.created.project.has(p.id)) continue;
     if (!targets.size) break;
@@ -908,6 +967,114 @@ async function personFor(ctx: Ctx, st: RunState, sourceId: string | undefined) {
   return id;
 }
 
+type FieldRow = WorkspaceData['fields'][number];
+
+/**
+ * The Ordo field a source field's values go into for issues of `target`: the mapped one, or the
+ * target team's field of its name when the mapped one is another team's (or was made by setup).
+ */
+function fieldFor(st: RunState, sourceId: string, target: string): FieldRow | undefined {
+  const choice = st.mapping.fields?.[sourceId];
+  if (!choice || choice === 'skip') return undefined;
+  const fits = (f: FieldRow) => !f.teamId || f.teamId === target;
+  const chosen = choice === 'create' ? undefined : st.data.fields.find((f) => f.id === choice);
+  if (chosen && fits(chosen)) return chosen;
+  const name = chosen?.name ?? st.summary.fields?.find((f) => f.id === sourceId)?.name;
+  if (!name) return undefined;
+  return st.data.fields.find((f) => fits(f) && lower(f.name) === lower(fieldName(name)));
+}
+
+const asText = (v: SourceFieldValue) => (Array.isArray(v) ? v.join(', ') : String(v)).trim();
+const asList = (v: SourceFieldValue) =>
+  (Array.isArray(v) ? v : String(v).split(/[,;|]/)).map((s) => s.trim()).filter(Boolean);
+
+/** Option ids for option names, adding the options the field doesn't have yet. */
+async function optionIds(ctx: Ctx, st: RunState, field: FieldRow, names: string[], ref: string) {
+  const byName = () => new Map(field.options.map((o) => [lower(o.name), o.id]));
+  const missing = new Map<string, string>();
+  for (const n of names.map(optionName)) {
+    if (n && !byName().has(lower(n))) missing.set(lower(n), n);
+  }
+  if (missing.size && !st.dryRun) {
+    const room = MAX_OPTIONS - field.options.length;
+    if (missing.size > room) {
+      warn(
+        st.report,
+        ref,
+        `${field.name} can't have more than ${MAX_OPTIONS} options; some left off`,
+      );
+    }
+    const added = [...missing.values()].slice(0, Math.max(0, room));
+    if (added.length) {
+      try {
+        const updated = await ctx.tx.transaction((tx) =>
+          updateCustomField({ ...ctx, tx }, field.id, {
+            options: [...field.options, ...added.map((name) => ({ name }))],
+          }),
+        );
+        // Later issues of this step see the new options too.
+        field.options = updated.options;
+      } catch (err) {
+        if (!(err instanceof HttpError) || err.statusCode >= 500) throw err;
+        warn(st.report, ref, `Options weren't added to ${field.name}: ${err.message}`);
+      }
+    }
+  }
+  const known = byName();
+  return [
+    ...new Set(names.map((n) => known.get(lower(optionName(n)))).filter((id) => !!id)),
+  ] as string[];
+}
+
+/** The issue's custom field values, read as each Ordo field's type needs; unreadable ones are left off. */
+async function fieldValues(ctx: Ctx, st: RunState, item: SourceIssue, target: string) {
+  const out: Record<string, CustomFieldValue> = {};
+  for (const [sourceId, raw] of Object.entries(item.customFields ?? {})) {
+    const field = fieldFor(st, sourceId, target);
+    if (!field || out[field.id] !== undefined) continue;
+    const text = asText(raw);
+    if (!text) continue;
+    const unreadable = () => warn(st.report, item.ref, `Couldn't read the ${field.name} "${text}"`);
+    switch (field.type) {
+      case 'number': {
+        const n = typeof raw === 'number' ? raw : Number(text);
+        if (Number.isFinite(n)) out[field.id] = n;
+        else unreadable();
+        break;
+      }
+      case 'date': {
+        const d = calendarDate(text);
+        if (d) out[field.id] = d;
+        else unreadable();
+        break;
+      }
+      case 'text':
+        out[field.id] = text.slice(0, 10_000);
+        break;
+      case 'person': {
+        // Sources give person fields as source people, mapped like assignees.
+        const id = await personFor(ctx, st, text);
+        if (!id)
+          warn(st.report, item.ref, `${field.name}: "${text}" isn't someone the import knows`);
+        else if (!(await assignable(ctx, st, target, id))) {
+          const name = st.data.members.find((m) => m.id === id)?.name ?? 'Someone';
+          warn(st.report, item.ref, `${name} can't see its team, so ${field.name} is left empty`);
+        } else out[field.id] = id;
+        break;
+      }
+      case 'select':
+      case 'multi_select': {
+        const names = field.type === 'select' ? [Array.isArray(raw) ? raw[0]! : text] : asList(raw);
+        const ids = await optionIds(ctx, st, field, names, item.ref);
+        if (!ids.length) break;
+        out[field.id] = field.type === 'select' ? ids[0]! : ids;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 async function issueInput(ctx: Ctx, st: RunState, item: SourceIssue, target: string) {
   const { mapping, report, data } = st;
 
@@ -969,6 +1136,8 @@ async function issueInput(ctx: Ctx, st: RunState, item: SourceIssue, target: str
     labelIds,
     sortOrder: sort.base + sort.next++ * SORT_GAP,
   };
+  const values = await fieldValues(ctx, st, item, target);
+  if (Object.keys(values).length) issue.customFields = values;
   const imported: ImportedIssueFields = {
     creatorId: (await personFor(ctx, st, item.creatorId)) ?? ctx.userId,
     number,

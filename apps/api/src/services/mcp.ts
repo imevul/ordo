@@ -1,10 +1,13 @@
 import {
   type AgentRun,
+  type CustomField,
+  type CustomFieldValue,
   type Cycle,
   createCommentSchema,
   createCycleSchema,
   createIssueSchema,
   createMilestoneSchema,
+  fieldsForTeam,
   type Issue,
   type IssueFilter,
   isCycleCurrent,
@@ -41,6 +44,7 @@ import {
 } from './agents.ts';
 import { createComment, listComments } from './comments.ts';
 import type { Ctx } from './context.ts';
+import { listCustomFields } from './customFields.ts';
 import { workspaceToday } from './cycle-automation.ts';
 import { createCycle, listCycles, updateCycle } from './cycles.ts';
 import { createIssue, getIssue, getIssueDetail, queryIssues, updateIssue } from './issues.ts';
@@ -87,6 +91,7 @@ class Directory {
   }
   teams = once(() => listTeams(this.db, this.c.access));
   labels = once(() => listLabels(this.db, this.c.access));
+  customFields = once(() => listCustomFields(this.db, this.c.access));
   projects = once(() => listProjects(this.db, this.c.access));
   cycles = once(() => listCycles(this.db, this.c.access));
   members = once(() => listMembers(this.db, this.c.access));
@@ -154,6 +159,101 @@ class Directory {
     });
   }
 
+  /**
+   * The custom fields named in `refs`, among those of `team`'s issues, or among all fields the
+   * caller sees. Names are unique within a team, so only a search across teams can be ambiguous.
+   */
+  async fieldsNamed(refs: string[], team?: Team): Promise<CustomField[]> {
+    const all = await this.customFields();
+    const usable = team ? fieldsForTeam(all, team.id) : all;
+    return refs.map((ref) => {
+      const matches = usable.filter((f) => f.id === ref || same(f.name, ref));
+      if (matches.length === 1) return matches[0]!;
+      if (matches.length > 1)
+        throw badRequest(`Several teams have a field "${ref}"; say which team.`);
+      throw badRequest(
+        `Unknown custom field "${ref}"${team ? ` in ${team.key}` : ''}. Fields: ${usable.map((f) => f.name).join(', ') || 'none'}`,
+      );
+    });
+  }
+
+  option(field: CustomField, ref: string) {
+    const o = field.options.find((o) => o.id === ref || same(o.name, ref));
+    if (o) return o.id;
+    throw badRequest(
+      `Unknown option "${ref}" for ${field.name}. Options: ${field.options.map((o) => o.name).join(', ') || 'none'}`,
+    );
+  }
+
+  /** A value as written by an agent (names, a person like `assignee`) as the API stores it. */
+  async fieldValue(
+    field: CustomField,
+    raw: string | number | string[] | null,
+  ): Promise<CustomFieldValue | null> {
+    if (raw === null) return null;
+    const wrong = (what: string) => badRequest(`${field.name}: ${what}`);
+    switch (field.type) {
+      case 'select':
+        if (typeof raw !== 'string') throw wrong('expected one option name');
+        return this.option(field, raw);
+      case 'multi_select': {
+        const refs = Array.isArray(raw) ? raw : typeof raw === 'string' ? [raw] : null;
+        if (!refs) throw wrong('expected a list of option names');
+        return refs.map((r) => this.option(field, r));
+      }
+      case 'number': {
+        const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN;
+        if (!Number.isFinite(n) || (typeof raw === 'string' && !raw.trim()))
+          throw wrong('expected a number');
+        return n;
+      }
+      case 'date':
+        if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raw))
+          throw wrong('expected a date like 2026-01-31');
+        return raw;
+      case 'text':
+        if (Array.isArray(raw)) throw wrong('expected text');
+        return String(raw);
+      case 'person':
+        if (typeof raw !== 'string') throw wrong('expected a person');
+        return this.person(raw);
+    }
+  }
+
+  /** `customFields` of create_issue / update_issue, by field id, for an issue of `team`. */
+  async fieldValues(values: Record<string, string | number | string[] | null>, team: Team) {
+    const entries = Object.entries(values);
+    const fields = await this.fieldsNamed(
+      entries.map(([ref]) => ref),
+      team,
+    );
+    const out: Record<string, CustomFieldValue | null> = {};
+    for (const [i, [, raw]] of entries.entries())
+      out[fields[i]!.id] = await this.fieldValue(fields[i]!, raw);
+    return out;
+  }
+
+  /** search_issues' `customFields`: names and people to the ids `IssueFilter` matches on. */
+  async fieldFilter(filters: Record<string, string[]>, team?: Team) {
+    const entries = Object.entries(filters);
+    const fields = await this.fieldsNamed(
+      entries.map(([ref]) => ref),
+      team,
+    );
+    const out: Record<string, string[]> = {};
+    for (const [i, [, wanted]] of entries.entries()) {
+      const field = fields[i]!;
+      out[field.id] = await Promise.all(
+        wanted.map(async (w) => {
+          if (w === 'none') return 'none';
+          const v = await this.fieldValue(field, w);
+          return Array.isArray(v) ? v[0]! : String(v);
+        }),
+      );
+    }
+    return out;
+  }
+
   async project(ref: string) {
     const projects = await this.projects();
     const p = projects.find((p) => p.id === ref || same(p.name, ref));
@@ -216,13 +316,39 @@ const priorityOf = (p: string | number) =>
 
 /** Issues as an agent reads them: names instead of ids. */
 async function summarize(c: McpReader, dir: Directory, list: Issue[]) {
+  const fields = list.some((i) => Object.keys(i.customFields).length)
+    ? new Map((await dir.customFields()).map((f) => [f.id, f]))
+    : new Map<string, CustomField>();
+  const fieldPeople = list.flatMap((i) =>
+    Object.entries(i.customFields)
+      .filter(([id, v]) => fields.get(id)?.type === 'person' && typeof v === 'string')
+      .map(([, v]) => v as string),
+  );
   const [teams, labels, projects, cycles, people] = await Promise.all([
     dir.teams(),
     dir.labels(),
     dir.projects(),
     dir.cycles(),
-    dir.people(list.flatMap((i) => [i.assigneeId, i.creatorId])),
+    dir.people([...list.flatMap((i) => [i.assigneeId, i.creatorId]), ...fieldPeople]),
   ]);
+  /** Values by field name, readable: option names, usernames. */
+  const readable = (values: Issue['customFields']) => {
+    const out: Record<string, CustomFieldValue> = {};
+    for (const [id, v] of Object.entries(values)) {
+      const f = fields.get(id);
+      if (!f) continue;
+      const optionName = (o: string) => f.options.find((x) => x.id === o)?.name ?? o;
+      out[f.name] =
+        f.type === 'select' && typeof v === 'string'
+          ? optionName(v)
+          : f.type === 'multi_select' && Array.isArray(v)
+            ? v.map(optionName)
+            : f.type === 'person' && typeof v === 'string'
+              ? (people.get(v)?.username ?? v)
+              : v;
+    }
+    return Object.keys(out).length ? out : undefined;
+  };
   return list.map((i) => {
     const team = teams.find((t) => t.id === i.teamId);
     const state = team?.states.find((s) => s.id === i.stateId);
@@ -244,6 +370,7 @@ async function summarize(c: McpReader, dir: Directory, list: Issue[]) {
       cycle: cycle ? { number: cycle.number, name: cycle.name } : null,
       estimate: i.estimate,
       dueDate: i.dueDate,
+      customFields: readable(i.customFields),
       subIssues: i.subIssueCount
         ? { total: i.subIssueCount, done: i.completedSubIssueCount }
         : undefined,
@@ -367,6 +494,8 @@ function handlers(c: McpCaller): Handlers {
       out.parentId = args.parent === null ? null : await dir.issueId(args.parent);
     if (args.estimate !== undefined) out.estimate = args.estimate;
     if (args.dueDate !== undefined) out.dueDate = args.dueDate;
+    if (args.customFields && Object.keys(args.customFields).length)
+      out.customFields = await dir.fieldValues(args.customFields, team);
     return out;
   }
 
@@ -423,6 +552,22 @@ function handlers(c: McpCaller): Handlers {
           team: l.teamId ? (teams.find((t) => t.id === l.teamId)?.key ?? null) : null,
           color: l.color,
         }));
+    },
+
+    list_custom_fields: async ({ team }) => {
+      const t = team ? await dir.team(team) : undefined;
+      const teams = await dir.teams();
+      const all = await dir.customFields();
+      return (t ? fieldsForTeam(all, t.id) : all).map((f) => ({
+        name: f.name,
+        type: f.type,
+        team: f.teamId ? (teams.find((x) => x.id === f.teamId)?.key ?? null) : null,
+        description: f.description ?? undefined,
+        options:
+          f.type === 'select' || f.type === 'multi_select'
+            ? f.options.map((o) => o.name)
+            : undefined,
+      }));
     },
 
     list_projects: async ({ team }) => {
@@ -511,6 +656,8 @@ function handlers(c: McpCaller): Handlers {
       if (a.cycle)
         filter.cycleIds = a.cycle === 'none' ? ['none'] : await dir.cycleIds(a.cycle, team?.id);
       if (a.priority?.length) filter.priorities = a.priority.map(priorityOf);
+      if (a.customFields && Object.keys(a.customFields).length)
+        filter.customFields = await dir.fieldFilter(a.customFields, team);
       if (a.subscribed) filter.subscribedBy = 'me';
       return search(c, dir, filter, a.limit, a.query?.trim() ? 'relevance' : 'recent');
     },

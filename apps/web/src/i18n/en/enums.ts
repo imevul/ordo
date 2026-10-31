@@ -39,6 +39,14 @@ export default {
     member: 'Member',
     guest: 'Guest',
   },
+  customFieldType: {
+    select: 'Select',
+    multi_select: 'Multi-select',
+    number: 'Number',
+    date: 'Date',
+    text: 'Text',
+    person: 'Person',
+  },
   noEstimate: 'No estimate',
   points: { one: '{count} point', other: '{count} points' },
 };

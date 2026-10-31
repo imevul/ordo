@@ -270,7 +270,7 @@ export function IssuesView(props: Props) {
               <span className="hidden lg:inline">{t('issues.view.insights')}</span>
             </button>
             <FilterButton filter={userFilter} onChange={setUserFilter} teamId={teamId} />
-            <DisplayOptions display={display} onChange={setDisplay} />
+            <DisplayOptions display={display} onChange={setDisplay} teamId={teamId} />
             <LayoutToggle display={display} onChange={setDisplay} />
             <button
               type="button"

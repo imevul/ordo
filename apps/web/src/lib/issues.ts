@@ -1,5 +1,6 @@
 import {
   type GroupBy,
+  groupByField,
   ISSUE_IDENTIFIER_PATTERN,
   type Issue,
   type IssueDisplay,
@@ -11,6 +12,7 @@ import {
 } from '@ordo/shared';
 import { t } from '../i18n/index.ts';
 import { priorityLabel, stateTypeLabel } from '../i18n/labels.ts';
+import { groupingField } from './customFields.ts';
 import { cycleName, type WorkspaceData } from './workspace.tsx';
 
 export interface IssueGroup {
@@ -20,6 +22,8 @@ export interface IssueGroup {
   value: string | number | null;
   color?: string;
   stateType?: StateType;
+  /** A group of one person's issues (assignee or a person field): headers show an avatar. */
+  person?: boolean;
   issues: Issue[];
 }
 
@@ -78,6 +82,76 @@ export function groupIssues(
   const singleTeam =
     teamId ?? (new Set(issues.map((i) => i.teamId)).size === 1 ? issues[0]?.teamId : undefined);
 
+  /** A group per member, then per other person with issues, then one for nobody. */
+  const addPeople = (personOf: (i: Issue) => string | null, noneLabel: string) => {
+    for (const m of ws.members)
+      add(
+        { key: m.id, label: m.name, value: m.id, color: m.avatarColor, person: true },
+        (i) => personOf(i) === m.id,
+      );
+    // Placeholders and people who left aren't members, but their issues still need a group.
+    const memberIds = new Set(ws.members.map((m) => m.id));
+    const others = [
+      ...new Set(
+        issues.flatMap((i) => {
+          const id = personOf(i);
+          return id && !memberIds.has(id) ? [id] : [];
+        }),
+      ),
+    ]
+      .map((id) => ({ id, person: ws.memberById.get(id) }))
+      .sort(
+        (a, b) =>
+          Number(!a.person) - Number(!b.person) ||
+          (a.person?.name ?? '').localeCompare(b.person?.name ?? ''),
+      );
+    for (const { id, person } of others)
+      add(
+        {
+          key: id,
+          label: !person
+            ? t('issues.group.someone')
+            : person.placeholder
+              ? t('issues.group.placeholder', { name: person.name })
+              : person.former
+                ? t('issues.group.formerMember', { name: person.name })
+                : person.name,
+          value: id,
+          color: person?.avatarColor,
+          person: true,
+        },
+        (i) => personOf(i) === id,
+      );
+    add({ key: 'none', label: noneLabel, value: null }, (i) => !personOf(i));
+  };
+
+  const field = groupingField(ws, by);
+  if (field) {
+    const value = (i: Issue) => i.customFields?.[field.id];
+    const none = t('customFields.props.none', { field: field.name });
+    if (field.type === 'person') {
+      addPeople((i) => {
+        const v = value(i);
+        return typeof v === 'string' ? v : null;
+      }, none);
+    } else {
+      const known = new Set(field.options.map((o) => o.id));
+      const has = (i: Issue, id: string) => {
+        const v = value(i);
+        return Array.isArray(v) ? v.includes(id) : v === id;
+      };
+      for (const o of field.options)
+        add({ key: o.id, label: o.name, value: o.id, color: o.color }, (i) => has(i, o.id));
+      // An option removed since the issue was loaded counts as no value.
+      add({ key: 'none', label: none, value: null }, (i) => {
+        const v = value(i);
+        const ids = v === undefined ? [] : Array.isArray(v) ? v : [String(v)];
+        return !ids.some((id) => known.has(id));
+      });
+    }
+    return display.showEmptyGroups ? groups : groups.filter((g) => g.issues.length > 0);
+  }
+
   switch (by as GroupBy) {
     case 'state': {
       const team = singleTeam ? ws.teamById.get(singleTeam) : undefined;
@@ -108,46 +182,9 @@ export function groupIssues(
         add({ key: `p${p}`, label: priorityLabel(p), value: p }, (i) => i.priority === p);
       }
       break;
-    case 'assignee': {
-      for (const m of ws.members)
-        add(
-          { key: m.id, label: m.name, value: m.id, color: m.avatarColor },
-          (i) => i.assigneeId === m.id,
-        );
-      // Placeholders and people who left aren't members, but their issues still need a group.
-      const memberIds = new Set(ws.members.map((m) => m.id));
-      const others = [
-        ...new Set(
-          issues.flatMap((i) =>
-            i.assigneeId && !memberIds.has(i.assigneeId) ? [i.assigneeId] : [],
-          ),
-        ),
-      ]
-        .map((id) => ({ id, person: ws.memberById.get(id) }))
-        .sort(
-          (a, b) =>
-            Number(!a.person) - Number(!b.person) ||
-            (a.person?.name ?? '').localeCompare(b.person?.name ?? ''),
-        );
-      for (const { id, person } of others)
-        add(
-          {
-            key: id,
-            label: !person
-              ? t('issues.group.someone')
-              : person.placeholder
-                ? t('issues.group.placeholder', { name: person.name })
-                : person.former
-                  ? t('issues.group.formerMember', { name: person.name })
-                  : person.name,
-            value: id,
-            color: person?.avatarColor,
-          },
-          (i) => i.assigneeId === id,
-        );
-      add({ key: 'none', label: t('issues.none.assignee'), value: null }, (i) => !i.assigneeId);
+    case 'assignee':
+      addPeople((i) => i.assigneeId, t('issues.none.assignee'));
       break;
-    }
     case 'project':
       for (const p of ws.projects)
         add({ key: p.id, label: p.name, value: p.id, color: p.color }, (i) => i.projectId === p.id);
@@ -206,6 +243,17 @@ export function groupIssues(
     : groups.filter((g) => g.issues.length > 0);
 }
 
+/**
+ * Whether board cards can be dragged between groups. Not for labels and multi-selects (an issue
+ * can be in several of their groups) or the ungrouped board.
+ */
+export function canDropOnGroups(ws: WorkspaceData, by: GroupBy): boolean {
+  if (by === 'label' || by === 'none') return false;
+  if (!groupByField(by)) return true;
+  const field = groupingField(ws, by);
+  return !!field && field.type !== 'multi_select';
+}
+
 /** The patch that moves `issue` into `group` (used by board drag-and-drop). */
 export function patchForGroup(
   ws: WorkspaceData,
@@ -213,6 +261,20 @@ export function patchForGroup(
   group: IssueGroup,
   issue: Issue,
 ): UpdateIssueInput | null {
+  if (groupByField(by)) {
+    const field = groupingField(ws, by);
+    if (!field || !canDropOnGroups(ws, by)) return null;
+    // A team field can't be set on another team's issue.
+    if (field.teamId && field.teamId !== issue.teamId) return null;
+    if (
+      field.type === 'person' &&
+      group.value !== null &&
+      !ws.members.some((m) => m.id === group.value)
+    )
+      return null;
+    if (group.value !== null && typeof group.value !== 'string') return null;
+    return { customFields: { [field.id]: group.value } };
+  }
   switch (by) {
     case 'state': {
       if (typeof group.value !== 'string') return null;
