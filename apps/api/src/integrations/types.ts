@@ -40,6 +40,11 @@ export interface IntegrationContext {
   run<T>(fn: (ctx: Ctx) => Promise<T>): Promise<T>;
   /** Merges into the integration's persisted state (polling cursors and the like). */
   saveState(patch: Record<string, unknown>): Promise<void>;
+  /**
+   * Queues `handleIssueInbound(issueId, payload)` behind the outbound events of that Ordo issue,
+   * for inbound changes that would race a push still writing to the service.
+   */
+  queueForIssue(issueId: string, payload: unknown): Promise<void>;
 }
 
 /**
@@ -156,6 +161,8 @@ export interface IntegrationProvider extends IntegrationProviderInfo {
   ): InboundAck | null;
   /** Processes an inbound delivery, in a job. */
   handleInbound?(ictx: IntegrationContext, req: InboundRequest): Promise<void>;
+  /** Processes what `ictx.queueForIssue` queued, in a job ordered with the issue's outbound events. */
+  handleIssueInbound?(ictx: IntegrationContext, issueId: string, payload: unknown): Promise<void>;
 
   /** Every domain event of the workspace, except the ones this integration caused. */
   onDomainEvent?(ictx: IntegrationContext, event: IntegrationEvent): Promise<void>;

@@ -117,6 +117,14 @@ export function integrationContext(
         .set({ state: sql`${integrations.state} || ${JSON.stringify(patch)}::jsonb` })
         .where(eq(integrations.id, row.id));
     },
+    queueForIssue: async (issueId, payload) => {
+      await enqueue(
+        app.db,
+        'integration.issue',
+        { integrationId: row.id, issueId, payload },
+        { orderingKey: issueKey(row.id, issueId) },
+      );
+    },
   };
 }
 
@@ -237,13 +245,14 @@ function eventIssueId({ type, data }: EventRow): string | null {
 /**
  * Ordering keys. A job that keeps failing holds up everything behind it with the same key while it
  * retries, so outbound work is ordered per issue and kept apart from inbound work (webhooks and
- * polls, which share one key so they never race each other).
+ * polls, which share one key so they never race each other). Inbound work that must not overlap
+ * an issue's outbound pushes is queued under that issue's key (`ictx.queueForIssue`).
  */
+const issueKey = (integrationId: string, issueId: string) =>
+  `integration:${integrationId}/out/${issueId}`;
 const outboundKey = (integrationId: string, event: EventRow) => {
   const issueId = eventIssueId(event);
-  return issueId
-    ? `integration:${integrationId}/out/${issueId}`
-    : `integration:${integrationId}/out`;
+  return issueId ? issueKey(integrationId, issueId) : `integration:${integrationId}/out`;
 };
 const inboundKey = (integrationId: string) => `integration:${integrationId}/in`;
 
@@ -323,6 +332,18 @@ export async function runInbound(
   if (!found?.provider.handleInbound) return;
   const ictx = integrationContext(app, found.row, job.log);
   await track(app, found.row, () => found.provider.handleInbound!(ictx, req));
+}
+
+/** Inbound work a provider queued behind one issue's outbound events (`ictx.queueForIssue`). */
+export async function runIssueInbound(
+  app: FastifyInstance,
+  { integrationId, issueId, payload }: { integrationId: string; issueId: string; payload: unknown },
+  job: JobContext,
+) {
+  const found = await activeIntegration(app, integrationId);
+  if (!found?.provider.handleIssueInbound) return;
+  const ictx = integrationContext(app, found.row, job.log);
+  await track(app, found.row, () => found.provider.handleIssueInbound!(ictx, issueId, payload));
 }
 
 /** Scheduled every minute: queues a poll for each integration whose interval has passed. */

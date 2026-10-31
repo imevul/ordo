@@ -99,6 +99,8 @@ const asJson = (i: FakeIssue) => ({
 });
 /** Runs while Jira is still answering Ordo's create call. */
 let whileCreating: ((created: FakeIssue) => Promise<void>) | null = null;
+/** Runs once, after the next issue PUT is applied and before Jira answers it. */
+let whilePut: ((issue: FakeIssue) => Promise<void>) | null = null;
 
 async function jiraApi(req: ForgeRequest) {
   const url = new URL(req.path, 'http://x');
@@ -138,6 +140,9 @@ async function jiraApi(req: ForgeRequest) {
     if (f.assignee !== undefined)
       issue.assignee = f.assignee && { accountId: f.assignee.accountId, displayName: 'Bob Member' };
     touch(issue);
+    const fn = whilePut;
+    whilePut = null;
+    await fn?.(issue);
     return { status: 204, body: null };
   }
   if (sub === 'transitions' && req.method === 'GET') {
@@ -423,6 +428,28 @@ describe('mirror and sync', () => {
     await settle();
     const comments = (await owner.get(`${ws}/issues/${ref!.localId}/comments`)).data as unknown[];
     expect(comments).toHaveLength(1);
+  });
+
+  it("doesn't take its own push for a Jira change while the push is still running", async () => {
+    // Jira's webhook for Ordo's first PUT arrives before the push saved its new snapshot, and the
+    // user edits the issue again meanwhile. The newer edit must win on both sides.
+    const j = find('JRA-3')!;
+    const [ref] = await app.db
+      .select()
+      .from(integrationRefs)
+      .where(eq(integrationRefs.externalId, j.id));
+    whilePut = async (i) => {
+      await owner.patch(`${ws}/issues/${ref!.localId}`, { title: 'Third' });
+      expect((await hook(jira, updated(i))).statusCode).toBe(202);
+      await app.jobs.drain();
+    };
+    await owner.patch(`${ws}/issues/${ref!.localId}`, { title: 'Second' });
+    await settle();
+    expect(whilePut).toBeNull();
+    expect({ ordo: (await detail(ref!.localId)).title, jira: j.summary }).toEqual({
+      ordo: 'Third',
+      jira: 'Third',
+    });
   });
 
   it("doesn't mirror back a Jira issue it's still creating", async () => {

@@ -393,7 +393,18 @@ async function pullIssue(ictx: IntegrationContext, i: JiraIssue) {
       return;
     } else return;
   }
-  await applyFromJira(ictx, ref!, i);
+  // Not applied here: a push to this issue may be halfway through (its PUTs done, the new snapshot
+  // not saved yet), and comparing against the old snapshot would take Ordo's own change for Jira's
+  // and overwrite newer Ordo edits. Queued behind the issue's outbound events, it re-reads Jira then.
+  await ictx.queueForIssue(ref!.localId, { jiraId: i.id });
+}
+
+/** A synced issue's queued pull (see pullIssue). */
+async function pullQueued(ictx: IntegrationContext, ordoId: string, jiraId: string) {
+  const ref = await refBy(ictx, 'issue', 'externalId', jiraId);
+  if (!ref || ref.localId !== ordoId) return;
+  const i = await getIssue(ictx, jiraId);
+  if (i) await applyFromJira(ictx, ref, i);
 }
 
 /**
@@ -801,6 +812,11 @@ export const jiraProvider: IntegrationProvider = {
     }
     const issue = await getIssue(ictx, String(id));
     if (issue) await pullIssue(ictx, issue);
+  },
+
+  async handleIssueInbound(ictx, issueId, payload) {
+    const { jiraId } = payload as { jiraId?: string };
+    if (jiraId && cfg(ictx.integration).mode !== 'links') await pullQueued(ictx, issueId, jiraId);
   },
 
   async onDomainEvent(ictx, event) {

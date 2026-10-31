@@ -14,6 +14,7 @@ import { runUndo } from './services/imports/undo.ts';
 import {
   runInbound,
   runIntegrationEvent,
+  runIssueInbound,
   runPoll,
   schedulePolls,
 } from './services/integrations.ts';
@@ -58,6 +59,9 @@ export function registerJobs(app: FastifyInstance) {
   );
   jobs.define<Parameters<typeof runInbound>[1]>('integration.inbound', (p, job) =>
     runInbound(app, p, job),
+  );
+  jobs.define<Parameters<typeof runIssueInbound>[1]>('integration.issue', (p, job) =>
+    runIssueInbound(app, p, job),
   );
   jobs.define<{ integrationId: string }>('integration.poll', (p, job) => runPoll(app, p, job));
   jobs.define<Parameters<typeof runChatPost>[1]>('chat.post', (p, job) => runChatPost(app, p, job));
