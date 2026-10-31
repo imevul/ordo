@@ -278,6 +278,37 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [x] ✅ Inbox filters: quick chips (mentions, assigned, comments, unread) and a filter modal
 - [x] ✅ Status and pause: a profile menu at the bottom of the sidebar, statuses others see, "only mentions" / mute
 
+### Product ideas — from the 2026-10-31 review
+
+- [ ] ⬜ Agents
+  - [ ] ⬜ A page per run: trigger, instructions, timeline (queued, claimed, heartbeats, result), runner, attempts,
+    restarts (`retryOf`), output tail, cost and progress; rows on the Agent runs page and the issue link to it
+  - [ ] ⬜ Progress updates from a running agent: an MCP `report_progress` tool (a short step like "running tests", an
+    optional rough percentage), shown on the run page and the runs list, newest only, not a comment per update
+  - [ ] ⬜ Cost per run: tokens, cost and duration (Claude Code's JSON result), totals per agent and month, and a
+    budget that pauses the agent like a usage limit does
+  - [ ] ⬜ Plan approval: a run can post a plan and wait; an admin approves (or answers) before it goes on
+  - [ ] ⬜ Live output: the runner streams the output tail while a run works
+  - [ ] ⬜ Scheduled agent tasks (nightly dependency check, weekly review) on top of recurring issues
+  - [ ] ⬜ Concurrency per repository, so two runs don't work in one repo at once
+- [ ] ⬜ Everyday tracking
+  - [ ] ⬜ Custom fields per workspace or team (select, multi-select, number, date, text, person) in filters,
+    grouping, the API, GraphQL, CSV and the Jira importer
+  - [ ] ⬜ Richer filters: due, created, updated and completed dates with relative ranges (overdue, this week),
+    estimate, blocked, has a pull request; AND/OR groups
+  - [ ] ⬜ Automation rules: "when … then …" (label added → assign; all sub-issues done → close the parent; pull
+    request merged → status)
+  - [ ] ⬜ Workload and capacity per person in a cycle (points or issues against capacity)
+  - [ ] ⬜ Time tracking (optional per workspace), with CSV export
+- [ ] ⬜ Planning, charts and output
+  - [ ] ⬜ Project and workspace charts: burndown with an ideal line and a forecast completion date, velocity
+    across cycles, cumulative flow; charts from issue history (scope as it was each day, not as it is now)
+  - [ ] ⬜ Dashboards: pin charts and saved views to a team or workspace page
+  - [ ] ⬜ Releases: group done issues into a version and write its release notes (optionally AI-drafted)
+  - [ ] ⬜ Calendar feeds: an iCal URL with due dates, cycles and milestones, per person or per view
+- [ ] ⬜ Intake
+  - [ ] ⬜ Public request forms per team: no sign-in, a triage issue linked to a customer
+
 ### Phase 12 — Desktop and mobile apps
 
 - [ ] ⬜ Desktop app
