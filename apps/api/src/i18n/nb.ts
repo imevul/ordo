@@ -112,4 +112,5 @@ export default {
     unassigned: 'Ingen ansvarlig',
     priority: { '1': 'Haster', '2': 'Høy', '3': 'Middels', '4': 'Lav' },
   },
+  releases: { otherHeading: 'Andre endringer' },
 } satisfies Translation<typeof en>;

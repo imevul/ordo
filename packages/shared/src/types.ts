@@ -448,6 +448,22 @@ export interface CycleWorkload {
   entries: WorkloadEntry[];
 }
 
+/** A version that groups finished issues. Without a team it's workspace-wide. */
+export interface Release {
+  id: string;
+  teamId: string | null;
+  name: string;
+  /** Markdown; left out of lists. */
+  notes?: string;
+  targetDate: string | null;
+  /** Set once released: its issue list is frozen until it's reopened. */
+  releasedAt: string | null;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+  progress: Progress;
+}
+
 export interface Issue {
   id: string;
   identifier: string;
@@ -464,6 +480,7 @@ export interface Issue {
   /** A milestone of the issue's project. */
   milestoneId: string | null;
   cycleId: string | null;
+  releaseId: string | null;
   parentId: string | null;
   estimate: number | null;
   dueDate: string | null;
@@ -692,6 +709,8 @@ export interface Bootstrap {
   initiatives: Initiative[];
   projects: Project[];
   cycles: Cycle[];
+  /** Without their notes. */
+  releases: Release[];
   views: View[];
   favorites: Favorite[];
   unreadCount: number;

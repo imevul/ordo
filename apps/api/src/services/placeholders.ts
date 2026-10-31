@@ -182,6 +182,7 @@ export const UNMERGED_COLUMNS: Record<string, string> = {
   'project_documents.updated_by_id': 'written by members',
   'customer_requests.created_by_id': 'added by members and integrations',
   'initiatives.created_by': 'made by members',
+  'releases.created_by': 'made by members',
   'issue_templates.assignee_id': 'templates only assign members',
   'webhooks.created_by_id': 'made by admins',
   'integrations.created_by_id': 'made by admins',

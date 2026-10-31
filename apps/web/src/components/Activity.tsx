@@ -187,6 +187,15 @@ function ChangeText({
           })
         : tx('issue.activity.cycleRemoved', { actor });
     }
+    case 'release': {
+      const r = c.to ? ws.releaseById.get(c.to as string) : null;
+      return c.to
+        ? tx('issue.activity.releaseSet', {
+            actor,
+            release: strong(r?.name ?? t('issue.activity.fallback.release')),
+          })
+        : tx('issue.activity.releaseRemoved', { actor });
+    }
     case 'parent':
       if (!c.to) return tx('issue.activity.parentRemoved', { actor });
       return issue.parent

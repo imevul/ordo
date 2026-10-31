@@ -316,6 +316,11 @@ export const DOMAIN_EVENT_TYPES = [
   'cycle.created',
   'cycle.updated',
   'cycle.deleted',
+  'release.created',
+  'release.updated',
+  'release.released',
+  'release.reopened',
+  'release.deleted',
   'agent_run.updated',
 ] as const;
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
@@ -462,6 +467,11 @@ export const API_MESSAGE_KEYS = [
   'view_change',
   'guests_customers',
   'guests_cycles',
+  'guests_releases',
+  'release_frozen',
+  'release_out',
+  'release_not_out',
+  'unknown_release',
   'guests_projects',
   'guests_documents',
   'guests_own',

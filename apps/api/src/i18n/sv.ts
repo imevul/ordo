@@ -112,4 +112,5 @@ export default {
     unassigned: 'Ingen ansvarig',
     priority: { '1': 'Brådskande', '2': 'Hög', '3': 'Medel', '4': 'Låg' },
   },
+  releases: { otherHeading: 'Övriga ändringar' },
 } satisfies Translation<typeof en>;

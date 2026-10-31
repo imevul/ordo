@@ -27,6 +27,7 @@ export const issue = (id: string, extra: Partial<Issue> = {}): Issue => ({
   projectId: null,
   milestoneId: null,
   cycleId: null,
+  releaseId: null,
   parentId: null,
   estimate: null,
   dueDate: null,

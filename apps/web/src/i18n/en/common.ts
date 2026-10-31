@@ -43,6 +43,7 @@ export default {
   project: 'Project',
   projects: 'Projects',
   cycle: 'Cycle',
+  release: 'Release',
   cycles: 'Cycles',
   team: 'Team',
   teams: 'Teams',

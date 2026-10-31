@@ -646,6 +646,31 @@ export const cycleCapacities = pgTable(
   (t) => [primaryKey({ columns: [t.cycleId, t.userId] })],
 );
 
+/**
+ * A version that groups finished issues, with release notes. Workspace-wide without a team;
+ * a team's release only takes that team's issues. Released ones are frozen.
+ */
+export const releases = pgTable(
+  'releases',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Markdown. */
+    notes: text('notes').notNull().default(''),
+    /** The planned release date. */
+    targetDate: date('target_date', { mode: 'string' }),
+    releasedAt: ts('released_at'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('releases_workspace_idx').on(t.workspaceId)],
+);
+
 export const issues = pgTable(
   'issues',
   {
@@ -670,6 +695,7 @@ export const issues = pgTable(
       onDelete: 'set null',
     }),
     cycleId: uuid('cycle_id').references(() => cycles.id, { onDelete: 'set null' }),
+    releaseId: uuid('release_id').references(() => releases.id, { onDelete: 'set null' }),
     parentId: uuid('parent_id'),
     estimate: integer('estimate'),
     dueDate: date('due_date', { mode: 'string' }),
@@ -692,6 +718,7 @@ export const issues = pgTable(
     index('issues_assignee_idx').on(t.assigneeId),
     index('issues_project_idx').on(t.projectId),
     index('issues_cycle_idx').on(t.cycleId),
+    index('issues_release_idx').on(t.releaseId),
     index('issues_parent_idx').on(t.parentId),
     // Full-text search; the expression must stay identical to issueDocument in services/search.ts.
     index('issues_search_idx').using(

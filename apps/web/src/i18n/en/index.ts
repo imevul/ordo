@@ -16,6 +16,7 @@ import issue from './issue.ts';
 import issues from './issues.ts';
 import mcp from './mcp.ts';
 import projects from './projects.ts';
+import releases from './releases.ts';
 import roadmap from './roadmap.ts';
 import settings from './settings.ts';
 import shell from './shell.ts';
@@ -60,5 +61,6 @@ export default {
   cycles,
   inbox,
   insights,
+  releases,
   errors,
 };

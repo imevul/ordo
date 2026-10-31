@@ -13,6 +13,7 @@ import {
   Inbox,
   Layers,
   Lock,
+  Package,
   Plus,
   RefreshCcw,
   Search,
@@ -248,6 +249,10 @@ export function Sidebar({
           <Link to="/$slug/insights" params={p} className="nav-item">
             <ChartLine size={15} />
             {t('shell.nav.insights')}
+          </Link>
+          <Link to="/$slug/releases" params={p} className="nav-item">
+            <Package size={15} />
+            {t('shell.nav.releases')}
           </Link>
           {!ws.isGuest && (
             <Link to="/$slug/customers" params={p} className="nav-item">

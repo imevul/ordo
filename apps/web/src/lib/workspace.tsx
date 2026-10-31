@@ -5,6 +5,7 @@ import type {
   Label,
   Me,
   Project,
+  Release,
   Team,
   View,
   WorkflowState,
@@ -38,6 +39,7 @@ export interface WorkspaceData extends Bootstrap {
   customFieldById: Map<string, CustomField>;
   projectById: Map<string, Project>;
   cycleById: Map<string, Cycle>;
+  releaseById: Map<string, Release>;
   viewById: Map<string, View>;
   /** Teams the user has joined (or every visible team, if none). Drives the sidebar. */
   myTeams: Team[];
@@ -118,6 +120,7 @@ export function WorkspaceProvider({
       labelById: byId(data.labels),
       projectById: byId(data.projects),
       cycleById: byId(data.cycles),
+      releaseById: byId(data.releases),
       viewById: byId(data.views),
       myTeams: mine.length ? mine : data.teams,
       isOwner: isOwnerRole(data.role),

@@ -435,6 +435,13 @@
       "when": 1793469040772,
       "tag": "0061_cycle_capacity",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793469568550,
+      "tag": "0062_releases",
+      "breakpoints": true
     }
   ]
 }
