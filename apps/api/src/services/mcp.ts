@@ -46,6 +46,7 @@ import { createCycle, listCycles, updateCycle } from './cycles.ts';
 import { createIssue, getIssue, getIssueDetail, queryIssues, updateIssue } from './issues.ts';
 import { listLabels } from './labels.ts';
 import { createMilestone, listProjects, updateMilestone } from './projects.ts';
+import { createRelation, deleteRelation } from './relations.ts';
 import { listTeams } from './teams.ts';
 import { listMembers } from './workspaces.ts';
 
@@ -684,6 +685,22 @@ function handlers(c: McpCaller): Handlers {
       };
     },
 
+    add_relation: async ({ issue, type, other }) => {
+      const target = await getIssue(c.app.db, c.access, issue);
+      const related = await getIssue(c.app.db, c.access, other);
+      await c.run((ctx) => createRelation(ctx, target.id, { type, relatedIssueId: related.id }));
+      return relationsResult(c, target.id);
+    },
+
+    remove_relation: async ({ issue, other }) => {
+      const detail = await getIssueDetail(c.app.db, c.access, issue);
+      const related = await getIssue(c.app.db, c.access, other);
+      const rel = detail.relations.find((r) => r.issue.id === related.id);
+      if (!rel) throw badRequest(`${detail.identifier} has no relation to ${related.identifier}.`);
+      await c.run((ctx) => deleteRelation(ctx, rel.id));
+      return relationsResult(c, detail.id);
+    },
+
     add_comment: async ({ issue, body, replyTo }) => {
       const input = parse(createCommentSchema, { body, parentId: replyTo });
       const target = await getIssue(c.app.db, c.access, issue);
@@ -695,6 +712,19 @@ function handlers(c: McpCaller): Handlers {
         createdAt: comment.createdAt,
       };
     },
+  };
+}
+
+/** An issue's relations after a change, as get_issue shows them. */
+async function relationsResult(c: McpReader, issueId: string) {
+  const detail = await getIssueDetail(c.app.db, c.access, issueId);
+  return {
+    issue: detail.identifier,
+    relations: detail.relations.map((r) => ({
+      type: r.type,
+      identifier: r.issue.identifier,
+      title: r.issue.title,
+    })),
   };
 }
 

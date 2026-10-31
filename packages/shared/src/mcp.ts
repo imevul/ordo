@@ -137,6 +137,14 @@ export const mcpToolSchemas = {
     addLabels: z.array(ref('Label name or id')).max(50).optional(),
     removeLabels: z.array(ref('Label name or id')).max(50).optional(),
   }),
+  add_relation: z.object({
+    issue,
+    type: z
+      .enum(['blocks', 'blocked_by', 'related', 'duplicate_of'])
+      .describe('How issue relates to other: it blocks other, is blocked by it, …'),
+    other: issue.describe('The other issue (e.g. "ENG-7")'),
+  }),
+  remove_relation: z.object({ issue, other: issue.describe('The other issue (e.g. "ENG-7")') }),
   add_comment: z.object({
     issue,
     body: z.string().trim().min(1).max(50_000).describe('Markdown; @username mentions notify'),
@@ -326,6 +334,19 @@ export const MCP_TOOLS: {
     title: 'Update issue',
     description:
       'Change an issue: title, description, status, priority, assignee, labels, project, milestone, cycle, parent, estimate or due date.',
+    readOnly: false,
+  },
+  {
+    name: 'add_relation',
+    title: 'Add relation',
+    description:
+      'Relate two issues: issue blocks other, is blocked by it, is related to it, or is a duplicate of it (which closes issue). Replaces an earlier relation between the two. Agents wait to work on a blocked issue until its blockers are done.',
+    readOnly: false,
+  },
+  {
+    name: 'remove_relation',
+    title: 'Remove relation',
+    description: 'Remove the relation between two issues.',
     readOnly: false,
   },
   {

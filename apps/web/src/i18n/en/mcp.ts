@@ -118,6 +118,8 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       create_issue: 'Create an issue in a team. Statuses, labels and people are given by name.',
       update_issue:
         'Change an issue: title, description, status, priority, assignee, labels, project, milestone, cycle, parent, estimate or due date.',
+      add_relation: 'Relate two issues: blocks, blocked by, related or duplicate of.',
+      remove_relation: 'Remove the relation between two issues.',
       add_comment: 'Comment on an issue (Markdown, @mentions notify people).',
       list_agents: 'Agents in the workspace and the teams they work in.',
       assign_to_agent:

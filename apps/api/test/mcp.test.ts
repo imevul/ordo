@@ -347,6 +347,32 @@ describe('tools', () => {
     expect(limited).toMatchObject({ count: 1, truncated: true });
   });
 
+  it('relates issues by identifier', async () => {
+    const a = await tool('create_issue', { team: 'ENG', title: 'Lay the foundation' });
+    const b = await tool('create_issue', { team: 'ENG', title: 'Build the walls' });
+    expect(
+      await tool('add_relation', { issue: b.identifier, type: 'blocked_by', other: a.identifier }),
+    ).toEqual({
+      issue: b.identifier,
+      relations: [{ type: 'blocked_by', identifier: a.identifier, title: 'Lay the foundation' }],
+    });
+    expect((await tool('get_issue', { issue: a.identifier, comments: false })).relations).toEqual([
+      { type: 'blocks', identifier: b.identifier, title: 'Build the walls' },
+    ]);
+    // A new relation between the two replaces the old one.
+    await tool('add_relation', { issue: a.identifier, type: 'related', other: b.identifier });
+    expect((await tool('get_issue', { issue: b.identifier })).relations).toMatchObject([
+      { type: 'related', identifier: a.identifier },
+    ]);
+    expect(await tool('remove_relation', { issue: b.identifier, other: a.identifier })).toEqual({
+      issue: b.identifier,
+      relations: [],
+    });
+    expect(
+      (await tool('remove_relation', { issue: b.identifier, other: a.identifier })).error,
+    ).toContain('has no relation');
+  });
+
   it('lists what the agent can refer to', async () => {
     const [team] = await tool('list_teams');
     expect(team.statuses.map((s: { name: string }) => s.name)).toContain('In Progress');
