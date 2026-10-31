@@ -1,9 +1,13 @@
-import type {
-  Bootstrap,
-  CustomField,
-  CustomFieldValue,
-  IssueFilter,
-  StateType,
+import {
+  addDays,
+  type Bootstrap,
+  type CustomField,
+  type CustomFieldValue,
+  DATE_RANGES,
+  type DateFilter,
+  type IssueConditions,
+  type IssueFilter,
+  type StateType,
 } from '@ordo/shared';
 import { matchIssue } from '@ordo/sync/match';
 import type { FastifyInstance } from 'fastify';
@@ -23,6 +27,7 @@ let ownerId: string;
 let boot: Bootstrap;
 const slug = `match-${Date.now()}`;
 const ws = `/api/w/${slug}`;
+const today = new Date().toISOString().slice(0, 10);
 
 // A small seeded generator, so a failure can be replayed.
 let seed = 20261027;
@@ -77,6 +82,7 @@ beforeAll(async () => {
   boot = (await owner.get(`${ws}/bootstrap`)).data;
 
   const members = boot.members.map((m) => m.id);
+  const created = new Map<string, string[]>();
   for (let i = 0; i < 60; i++) {
     const team = pick(boot.teams);
     const labels = boot.labels.filter((l) => !l.teamId || l.teamId === team.id).map((l) => l.id);
@@ -98,8 +104,12 @@ beforeAll(async () => {
           .filter((f) => (!f.teamId || f.teamId === team.id) && rand() < 0.6)
           .map((f) => [f.id, randomValue(f, members)]),
       ),
+      estimate: rand() < 0.4 ? null : pick([1, 2, 3, 5, 8]),
+      dueDate: rand() < 0.4 ? null : addDays(today, Math.floor(rand() * 40) - 20),
+      parentId: rand() < 0.3 && created.get(team.id)?.length ? pick(created.get(team.id)!) : null,
     });
     expect(res.statusCode, res.body).toBe(200);
+    created.set(team.id, [...(created.get(team.id) ?? []), res.data.id]);
     const fate = rand();
     if (fate < 0.1) await owner.post(`${ws}/issues/${res.data.id}/archive`);
     else if (fate < 0.2) await owner.post(`${ws}/issues/batch-delete`, { ids: [res.data.id] });
@@ -128,7 +138,7 @@ function randomValue(f: CustomField, people: string[]): CustomFieldValue {
 }
 
 /** Values to filter a field on: what issues can have, numbers and dates written out, and none. */
-function filterValues(f: CustomField): string[] {
+function fieldValues(f: CustomField): string[] {
   switch (f.type) {
     case 'select':
     case 'multi_select':
@@ -144,8 +154,63 @@ function filterValues(f: CustomField): string[] {
   }
 }
 
+function randomFields(chance: number): IssueConditions['customFields'] {
+  let out: IssueConditions['customFields'];
+  for (const field of boot.customFields) {
+    if (rand() < chance) out = { ...out, [field.id]: some([...fieldValues(field), 'none']) };
+  }
+  return out;
+}
+
+function randomDate(): DateFilter {
+  const d: DateFilter = {};
+  if (rand() < 0.7) d.range = pick([...DATE_RANGES]);
+  if (rand() < 0.3) d.from = addDays(today, Math.floor(rand() * 30) - 20);
+  if (rand() < 0.3) d.to = addDays(today, Math.floor(rand() * 30) - 10);
+  return d;
+}
+
+function randomConditions(depth: number): IssueConditions {
+  const c: IssueConditions = {};
+  const states = boot.teams.flatMap((t) => t.states);
+  const people = [...boot.members.map((m) => m.id), 'me'];
+  if (rand() < 0.2)
+    c.stateTypes = some(['unstarted', 'started', 'completed', 'canceled'] as StateType[]);
+  if (rand() < 0.15) c.stateIds = some(states.map((s) => s.id));
+  if (rand() < 0.2) c.priorities = some([0, 1, 2, 3, 4]);
+  if (rand() < 0.2) c.assigneeIds = some([...people, 'none']);
+  if (rand() < 0.1) c.creatorIds = some(people);
+  if (rand() < 0.2) c.labelIds = some(boot.labels.map((l) => l.id));
+  if (rand() < 0.1) c.cycleIds = some([...boot.cycles.map((c) => c.id), 'none']);
+  if (rand() < 0.25) c.dueDate = randomDate();
+  if (rand() < 0.1) c.createdAt = randomDate();
+  if (rand() < 0.1) c.updatedAt = randomDate();
+  if (rand() < 0.15) c.completedAt = randomDate();
+  if (rand() < 0.2) {
+    c.estimate = {};
+    if (rand() < 0.4) c.estimate.none = rand() < 0.7;
+    if (rand() < 0.5) c.estimate.min = pick([1, 2, 3, 5]);
+    if (rand() < 0.5) c.estimate.max = pick([2, 3, 5, 8]);
+  }
+  if (rand() < 0.15) c.hasSubIssues = rand() < 0.5;
+  if (rand() < 0.15) c.isSubIssue = rand() < 0.5;
+  const fields = randomFields(0.1);
+  if (fields) c.customFields = fields;
+  if (depth < 2 && rand() < 0.25) c.exclude = randomConditions(depth + 1);
+  if (depth < 2 && rand() < 0.2)
+    c.or = Array.from({ length: 1 + Math.floor(rand() * 3) }, () => randomConditions(depth + 1));
+  return c;
+}
+
 function randomFilter(): IssueFilter {
   const f: IssueFilter = {};
+  // The newer conditions, nested in "is not" and "or" groups, on half the filters.
+  if (rand() < 0.5) {
+    Object.assign(f, randomConditions(0));
+    if (rand() < 0.5) f.tz = pick(['UTC', 'Pacific/Kiritimati', 'America/Los_Angeles']);
+    if (rand() < 0.5) f.weekStartsOn = pick([0, 1] as const);
+    return f;
+  }
   const states = boot.teams.flatMap((t) => t.states);
   const people = [...boot.members.map((m) => m.id), 'me'];
   const projects = boot.projects.map((p) => p.id);
@@ -168,11 +233,8 @@ function randomFilter(): IssueFilter {
   if (rand() < 0.3) f.projectIds = some([...projects, 'none']);
   if (rand() < 0.2) f.milestoneIds = some([...milestones, 'none']);
   if (rand() < 0.3) f.cycleIds = some([...boot.cycles.map((c) => c.id), 'none']);
-  for (const field of boot.customFields) {
-    if (rand() < 0.15) {
-      f.customFields = { ...f.customFields, [field.id]: some([...filterValues(field), 'none']) };
-    }
-  }
+  const fields = randomFields(0.15);
+  if (fields) f.customFields = fields;
   const r = rand();
   if (r < 0.1) f.trashed = true;
   else if (r < 0.2) f.archived = 'include';
@@ -181,13 +243,13 @@ function randomFilter(): IssueFilter {
 }
 
 describe('matchIssue', () => {
-  it('picks the same issues as the server for 300 random filters', async () => {
+  it('picks the same issues as the server for 500 random filters', async () => {
     const access = await computeAccess(app.db, ownerId, boot.workspace.id, 'owner');
     const all = await workspaceIssuePage(app.db, boot.workspace.id, null, 10_000);
     const types = new Map(boot.teams.flatMap((t) => t.states).map((s) => [s.id, s.type]));
     const ctx = { userId: ownerId, stateType: (id: string) => types.get(id) };
     let telling = 0;
-    for (let i = 0; i < 300; i++) {
+    for (let i = 0; i < 500; i++) {
       const filter = randomFilter();
       const server = (await queryIssues(app.db, access, filter, 10_000)).map((x) => x.id).sort();
       const local = all
@@ -198,6 +260,6 @@ describe('matchIssue', () => {
       if (server.length > 0 && server.length < all.length) telling++;
     }
     // Most filters pick some issues but not all, so agreeing means something.
-    expect(telling).toBeGreaterThan(150);
+    expect(telling).toBeGreaterThan(250);
   });
 });
