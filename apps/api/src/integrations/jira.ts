@@ -79,7 +79,7 @@ interface Snapshot {
 
 const cfg = configOf<JiraConfig>();
 const stateOf = (row: IntegrationRow) => row.state as JiraState;
-const FIELDS = 'summary,description,status,priority,assignee,issuetype,parent,updated';
+const FIELDS = 'summary,description,status,priority,assignee,creator,issuetype,parent,updated';
 const MAX_POLL = 1000;
 
 // ─── the API ──────────────────────────────────────────────────────────────
@@ -388,12 +388,21 @@ async function pullIssue(ictx: IntegrationContext, i: JiraIssue) {
     if (adopted) {
       await saveRef(ictx.app.db, ictx, 'issue', i.id, adopted, {});
       ref = await refBy(ictx, 'issue', 'externalId', i.id);
-    } else if (project.createInOrdo && !isEpic(i.fields.issuetype)) {
+    } else if (project.createInOrdo && !isEpic(i.fields.issuetype) && !createdBySelf(ictx, i)) {
       await createFromJira(ictx, i, project.teamId);
       return;
     } else return;
   }
   await applyFromJira(ictx, ref!, i);
+}
+
+/**
+ * Jira issues Ordo created itself (pushCreate). Outbound and inbound work run concurrently, so
+ * Jira's webhook for such an issue can arrive before pushCreate has saved the ref; it isn't new.
+ */
+function createdBySelf(ictx: IntegrationContext, i: JiraIssue) {
+  const self = stateOf(ictx.integration).self?.id;
+  return !!self && accountOf(i.fields.creator) === self;
 }
 
 /** An Ordo issue the Jira importer brought in from this key (its link says so). */

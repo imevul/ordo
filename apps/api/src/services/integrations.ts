@@ -242,10 +242,10 @@ function eventIssueId({ type, data }: EventRow): string | null {
 const outboundKey = (integrationId: string, event: EventRow) => {
   const issueId = eventIssueId(event);
   return issueId
-    ? `integration:${integrationId}:out:${issueId}`
-    : `integration:${integrationId}:out`;
+    ? `integration:${integrationId}/out/${issueId}`
+    : `integration:${integrationId}/out`;
 };
-const inboundKey = (integrationId: string) => `integration:${integrationId}:in`;
+const inboundKey = (integrationId: string) => `integration:${integrationId}/in`;
 
 /** Called by the event dispatcher: one ordered job per integration and event. */
 export async function dispatchToIntegrations(

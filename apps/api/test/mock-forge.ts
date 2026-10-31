@@ -8,9 +8,8 @@ export interface ForgeRequest {
   body: unknown;
 }
 
-type Handler = (
-  req: ForgeRequest,
-) => { status?: number; body?: unknown; headers?: Record<string, string> } | undefined;
+type Reply = { status?: number; body?: unknown; headers?: Record<string, string> } | undefined;
+type Handler = (req: ForgeRequest) => Reply | Promise<Reply>;
 
 /** A stand-in for forge and chat APIs: answers from registered handlers, logs every call. */
 export async function startMockForge() {
@@ -32,7 +31,7 @@ export async function startMockForge() {
       routes.get(`${req.method} ${url.pathname}`) ??
       prefixes.find(([p]) => `${req.method} ${url.pathname}`.startsWith(p))?.[1];
     const out =
-      handler?.(entry) ??
+      (await handler?.(entry)) ??
       (handler ? { status: 200, body: {} } : { status: 404, body: { message: 'Not Found' } });
     res
       .writeHead(out.status ?? 200, { 'content-type': 'application/json', ...out.headers })
