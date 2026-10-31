@@ -19,10 +19,10 @@ import { GitAccountsCard, IntegrationsSection } from './integrations/index.tsx';
 import { LabelsSection } from './labels.tsx';
 import { McpSection } from './mcp.tsx';
 import { AuthenticationSection, ConnectedAccountsCard } from './sso.tsx';
-import { TeamSettings, TeamsSection } from './teams.tsx';
+import { TeamSettings, TeamsSection } from './teams/index.tsx';
 import { TemplatesSection } from './templates.tsx';
 import { WebhooksSection } from './webhooks.tsx';
-import { MembersSection, OrgSecuritySection, WorkspaceSection } from './workspace.tsx';
+import { MembersSection, OrgSecuritySection, WorkspaceSection } from './workspace/index.tsx';
 
 /** The sections in nav order. `label` is read when used, so it is in the current language. */
 const SECTIONS: {
