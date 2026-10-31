@@ -98,6 +98,8 @@ export default {
     /** Toast after leaving a document whose last save was refused because of a newer version. */
     closedConflict:
       'Your last edits to “{title}” were not saved: someone else saved a newer version.',
+    /** Toast after leaving a document whose last edits still failed to save after retrying. */
+    closedSaveFailed: 'Your last edits to “{title}” could not be saved.',
     loadTheirs: 'Load theirs',
     keepMine: 'Keep mine',
     titleLabel: 'Document title',
