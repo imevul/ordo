@@ -265,6 +265,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [ ] ⬜ Project documents: a failed save drops the queued follow-up and never retries; deleting a doc right after
     typing PATCHes the deleted doc
   - [ ] ⬜ `make restore` empties `/data` before checking the uploads archive
+  - [ ] ⬜ Jobs: a scheduled run interrupted by a restart (deploy) is buried as dead forever (`maxAttempts: 1`);
+    drop lapsed schedule ticks instead, since the next run covers them
 - [ ] ⬜ CLI and docs
   - [ ] ⬜ Runner files: unset `${VAR}` in `instructions` reaches the prompt as written, and in a string `command`
     becomes empty instead of failing the load
