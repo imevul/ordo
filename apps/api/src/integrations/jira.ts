@@ -6,7 +6,7 @@ import {
   parsePriority,
   type StateType,
 } from '@ordo/shared';
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull } from 'drizzle-orm';
 import {
   integrationRefs,
   issueLinks,
@@ -190,7 +190,7 @@ async function refBy(
 async function saveRef(
   db: Ctx['tx'],
   ictx: IntegrationContext,
-  kind: 'issue' | 'comment',
+  kind: Ref['kind'],
   externalId: string,
   localId: string,
   data: Record<string, unknown>,
@@ -388,7 +388,11 @@ async function pullIssue(ictx: IntegrationContext, i: JiraIssue) {
     if (adopted) {
       await saveRef(ictx.app.db, ictx, 'issue', i.id, adopted, {});
       ref = await refBy(ictx, 'issue', 'externalId', i.id);
-    } else if (project.createInOrdo && !isEpic(i.fields.issuetype) && !createdBySelf(ictx, i)) {
+    } else if (
+      project.createInOrdo &&
+      !isEpic(i.fields.issuetype) &&
+      !(await beingCreated(ictx, i))
+    ) {
       await createFromJira(ictx, i, project.teamId);
       return;
     } else return;
@@ -407,13 +411,35 @@ async function pullQueued(ictx: IntegrationContext, ordoId: string, jiraId: stri
   if (i) await applyFromJira(ictx, ref, i);
 }
 
+/** Past this, a pending marker is left over from a pushCreate that crashed. */
+const PENDING_FOR_MS = 10 * 60_000;
+
 /**
- * Jira issues Ordo created itself (pushCreate). Outbound and inbound work run concurrently, so
- * Jira's webhook for such an issue can arrive before pushCreate has saved the ref; it isn't new.
+ * A Jira issue pushCreate is still creating. Outbound and inbound work run concurrently, so Jira's
+ * webhook for such an issue can arrive before pushCreate has saved the ref; it isn't new. Only
+ * issues matching a pending marker count: the connecting account is usually a person, and the
+ * issues they file by hand in Jira are new.
  */
-function createdBySelf(ictx: IntegrationContext, i: JiraIssue) {
+async function beingCreated(ictx: IntegrationContext, i: JiraIssue) {
   const self = stateOf(ictx.integration).self?.id;
-  return !!self && accountOf(i.fields.creator) === self;
+  if (!self || accountOf(i.fields.creator) !== self) return false;
+  const pending = await ictx.app.db
+    .select({ data: integrationRefs.data })
+    .from(integrationRefs)
+    .where(
+      and(
+        eq(integrationRefs.integrationId, ictx.integration.id),
+        eq(integrationRefs.kind, 'pending'),
+        gt(integrationRefs.updatedAt, new Date(Date.now() - PENDING_FOR_MS).toISOString()),
+      ),
+    );
+  return pending.some(
+    ({ data }) =>
+      data.jiraId === i.id ||
+      (data.jiraId === undefined &&
+        data.project === projectKeyOf(i.key) &&
+        data.summary === i.fields.summary),
+  );
 }
 
 /** An Ordo issue the Jira importer brought in from this key (its link says so). */
@@ -628,25 +654,42 @@ async function linkJiraMentions(ictx: IntegrationContext, ordoIssueId: string, t
 async function pushCreate(ictx: IntegrationContext, ordoId: string, project: JiraProjectMap) {
   const issue = await ordoIssue(ictx, ordoId);
   if (!issue || (await refBy(ictx, 'issue', 'localId', ordoId))) return;
-  const created = await jira<{ id: string; key: string }>(ictx, '/rest/api/2/issue', {
-    method: 'POST',
-    body: {
-      fields: {
-        project: { key: project.key },
-        summary: issue.title,
-        description: markdownToJira(issue.description ?? ''),
-        issuetype: { name: project.issueType },
+  // Tells the Jira issue's own webhook, if it comes before the ref is saved, that it isn't new.
+  const pending = (data: Record<string, unknown>) =>
+    saveRef(ictx.app.db, ictx, 'pending', ordoId, ordoId, data);
+  await pending({ project: project.key, summary: issue.title });
+  try {
+    const created = await jira<{ id: string; key: string }>(ictx, '/rest/api/2/issue', {
+      method: 'POST',
+      body: {
+        fields: {
+          project: { key: project.key },
+          summary: issue.title,
+          description: markdownToJira(issue.description ?? ''),
+          issuetype: { name: project.issueType },
+        },
       },
-    },
-  });
-  await pushFields(ictx, created.key, ordoId, ['priority', 'assignee', 'state']);
-  const fresh = await getIssue(ictx, created.id);
-  if (!fresh) return;
-  await ictx.run(async (ctx) => {
-    await linkJira(ctx, ictx, ordoId, fresh);
-    await saveRef(ctx.tx, ictx, 'issue', fresh.id, ordoId, { snapshot: snapshotOf(fresh) });
-  });
-  await backlink(ictx, fresh.key, ordoId);
+    });
+    await pending({ jiraId: created.id });
+    await pushFields(ictx, created.key, ordoId, ['priority', 'assignee', 'state']);
+    const fresh = await getIssue(ictx, created.id);
+    if (!fresh) return;
+    await ictx.run(async (ctx) => {
+      await linkJira(ctx, ictx, ordoId, fresh);
+      await saveRef(ctx.tx, ictx, 'issue', fresh.id, ordoId, { snapshot: snapshotOf(fresh) });
+    });
+    await backlink(ictx, fresh.key, ordoId);
+  } finally {
+    await ictx.app.db
+      .delete(integrationRefs)
+      .where(
+        and(
+          eq(integrationRefs.integrationId, ictx.integration.id),
+          eq(integrationRefs.kind, 'pending'),
+          eq(integrationRefs.externalId, ordoId),
+        ),
+      );
+  }
 }
 
 type PushField = 'title' | 'description' | 'priority' | 'assignee' | 'state';

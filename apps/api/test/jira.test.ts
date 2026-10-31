@@ -493,6 +493,23 @@ describe('mirror and sync', () => {
     } finally {
       whileCreating = null;
     }
+    const pending = await app.db
+      .select()
+      .from(integrationRefs)
+      .where(and(eq(integrationRefs.integrationId, jira.id), eq(integrationRefs.kind, 'pending')));
+    expect(pending).toEqual([]);
+  });
+
+  it('mirrors issues the connecting account files by hand in Jira', async () => {
+    // The connecting account is usually a person's, not a bot's.
+    const j = addJira('JRA-60', { summary: 'Filed by the admin', creator: BOT });
+    await hook(jira, { webhookEvent: 'jira:issue_created', issue: { id: j.id } });
+    await settle();
+    const [ref] = await app.db
+      .select()
+      .from(integrationRefs)
+      .where(and(eq(integrationRefs.integrationId, jira.id), eq(integrationRefs.externalId, j.id)));
+    expect((await detail(ref!.localId)).title).toBe('Filed by the admin');
   });
 
   it('creates Jira issues for new issues in mapped teams', async () => {

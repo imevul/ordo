@@ -1782,7 +1782,8 @@ export const integrationRefs = pgTable(
     integrationId: uuid('integration_id')
       .notNull()
       .references(() => integrations.id, { onDelete: 'cascade' }),
-    kind: text('kind').$type<'issue' | 'comment'>().notNull(),
+    // 'pending': an issue an integration is creating at the outside service, keyed by the Ordo id.
+    kind: text('kind').$type<'issue' | 'comment' | 'pending'>().notNull(),
     externalId: text('external_id').notNull(),
     localId: uuid('local_id').notNull(),
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
