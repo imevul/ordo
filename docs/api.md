@@ -278,29 +278,29 @@ from the bytes — are served inline; everything else downloads as `application/
 
 `POST /issues/query` takes an `IssueFilter`. All fields are optional and combine with AND; arrays are OR.
 
-| Field                                              | Type                                                                     | Notes                                             |
-| -------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------- |
-| `teamId`                                           | uuid                                                                     |                                                   |
-| `stateIds`                                         | uuid[]                                                                   |                                                   |
-| `stateTypes`                                       | (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`)[] |                                                   |
-| `priorities`                                       | (0–4)[]                                                                  | 0 none, 1 urgent, 2 high, 3 medium, 4 low         |
-| `assigneeIds`                                      | (uuid \| `"me"` \| `"none"`)[]                                           |                                                   |
-| `creatorIds`                                       | (uuid \| `"me"`)[]                                                       |                                                   |
-| `labelIds`                                         | uuid[]                                                                   | has any of                                        |
-| `customFields`                                     | { fieldId: string[] }                                                    | per field, any of the values (see below)          |
+| Field                                                  | Type                                                                     | Notes                                             |
+| ------------------------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------- |
+| `teamId`                                               | uuid                                                                     |                                                   |
+| `stateIds`                                             | uuid[]                                                                   |                                                   |
+| `stateTypes`                                           | (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`)[] |                                                   |
+| `priorities`                                           | (0–4)[]                                                                  | 0 none, 1 urgent, 2 high, 3 medium, 4 low         |
+| `assigneeIds`                                          | (uuid \| `"me"` \| `"none"`)[]                                           |                                                   |
+| `creatorIds`                                           | (uuid \| `"me"`)[]                                                       |                                                   |
+| `labelIds`                                             | uuid[]                                                                   | has any of                                        |
+| `customFields`                                         | { fieldId: string[] }                                                    | per field, any of the values (see below)          |
 | `projectIds`, `milestoneIds`, `cycleIds`, `releaseIds` | (uuid \| `"none"`)[]                                                     |                                                   |
-| `parentId`                                         | uuid                                                                     | sub-issues of                                     |
-| `subscribedBy`                                     | `"me"`                                                                   |                                                   |
-| `q`                                                | string                                                                   | words (full text, as prefixes), or an identifier  |
-| `trashed`                                          | boolean                                                                  | only trashed issues                               |
-| `archived`                                         | `"include"` \| `"only"`                                                  | archived issues are left out otherwise            |
-| `dueDate`, `createdAt`, `updatedAt`, `completedAt` | `{ range?, from?, to? }`                                                 | see below                                         |
-| `estimate`                                         | `{ none?, min?, max? }`                                                  | see below                                         |
-| `blocked`, `blocking`                              | boolean                                                                  | open, and blocked by (or blocking) an open issue  |
-| `hasPullRequest`, `hasSubIssues`, `isSubIssue`     | boolean                                                                  | `false` asks for the opposite                     |
-| `exclude`                                          | conditions                                                               | each condition in it must _not_ hold ("is not")   |
-| `or`                                               | conditions[]                                                             | at least one group must match                     |
-| `tz`, `weekStartsOn`                               | IANA zone, `0` \| `1`                                                    | where "today" is for relative dates (UTC, Monday) |
+| `parentId`                                             | uuid                                                                     | sub-issues of                                     |
+| `subscribedBy`                                         | `"me"`                                                                   |                                                   |
+| `q`                                                    | string                                                                   | words (full text, as prefixes), or an identifier  |
+| `trashed`                                              | boolean                                                                  | only trashed issues                               |
+| `archived`                                             | `"include"` \| `"only"`                                                  | archived issues are left out otherwise            |
+| `dueDate`, `createdAt`, `updatedAt`, `completedAt`     | `{ range?, from?, to? }`                                                 | see below                                         |
+| `estimate`                                             | `{ none?, min?, max? }`                                                  | see below                                         |
+| `blocked`, `blocking`                                  | boolean                                                                  | open, and blocked by (or blocking) an open issue  |
+| `hasPullRequest`, `hasSubIssues`, `isSubIssue`         | boolean                                                                  | `false` asks for the opposite                     |
+| `exclude`                                              | conditions                                                               | each condition in it must _not_ hold ("is not")   |
+| `or`                                                   | conditions[]                                                             | at least one group must match                     |
+| `tz`, `weekStartsOn`                                   | IANA zone, `0` \| `1`                                                    | where "today" is for relative dates (UTC, Monday) |
 
 **Dates.** `range` is `overdue` (before today on an open issue), `today`, `thisWeek`, `last7Days`, `last30Days`,
 `next14Days` (today and the 13 days after), `none` (not set) or `any` (set). `from` and `to` are days (`YYYY-MM-DD`),
@@ -389,14 +389,14 @@ curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
 | PATCH / DELETE       | `/cycles/:id`                   | Deleting unassigns its issues                                                                                                                                                                          |
 | GET                  | `/cycles/:id/workload`          | `{ unit: 'points' \| 'issues', entries: [{ userId, load, completed, issueCount, unestimated, capacity, capacitySource, outsideTeam, issues }] }` — team members, then other assignees, then unassigned |
 | PUT                  | `/cycles/:id/capacity/:userId`  | _Not guests._ `{ capacity }` — a team member's capacity in this cycle; `null` goes back to their default                                                                                               |
-| GET / POST           | `/releases`                     | List (without `notes`, with `progress`) / create `{ name, teamId?, notes?, targetDate? }`; without a team it's workspace-wide         |
-| GET / PATCH / DELETE | `/releases/:id`                 | `PATCH { name?, notes?, targetDate? }`; deleting takes its issues out. Not for guests. Issues join one with `releaseId`               |
-| GET                  | `/releases/:id/suggestions`     | Done issues in no release, completed after the previous release of the same scope went out                                            |
-| POST                 | `/releases/:id/issues`          | `{ ids }` (up to 1000) — adds them to a release that isn't out; returns `{ ids }` of those that changed                               |
-| POST                 | `/releases/:id/draft`           | `{ notes }` drafted from its issues, grouped by label (not saved)                                                                     |
-| POST                 | `/releases/:id/release`         | `{ draft? }` — puts it out: freezes its issue list and drafts notes if it has none (unless `draft: false`)                            |
-| POST                 | `/releases/:id/reopen`          | Unfreezes its issue list                                                                                                              |
-| GET                  | `/releases/:id/notes.md`        | The notes as a Markdown file, headed by the name and date                                                                             |
+| GET / POST           | `/releases`                     | List (without `notes`, with `progress`) / create `{ name, teamId?, notes?, targetDate? }`; without a team it's workspace-wide                                                                          |
+| GET / PATCH / DELETE | `/releases/:id`                 | `PATCH { name?, notes?, targetDate? }`; deleting takes its issues out. Not for guests. Issues join one with `releaseId`                                                                                |
+| GET                  | `/releases/:id/suggestions`     | Done issues in no release, completed after the previous release of the same scope went out                                                                                                             |
+| POST                 | `/releases/:id/issues`          | `{ ids }` (up to 1000) — adds them to a release that isn't out; returns `{ ids }` of those that changed                                                                                                |
+| POST                 | `/releases/:id/draft`           | `{ notes }` drafted from its issues, grouped by label (not saved)                                                                                                                                      |
+| POST                 | `/releases/:id/release`         | `{ draft? }` — puts it out: freezes its issue list and drafts notes if it has none (unless `draft: false`)                                                                                             |
+| POST                 | `/releases/:id/reopen`          | Unfreezes its issue list                                                                                                                                                                               |
+| GET                  | `/releases/:id/notes.md`        | The notes as a Markdown file, headed by the name and date                                                                                                                                              |
 | GET                  | `/insights/timeline`            | `?teamId=` \| `?projectId=` \| `?cycleId=` (or none: every team you see), `&from=&to=` → `{ from, to, days: [{ day, issues, points }] }` per status type, rebuilt from issue history                   |
 | GET                  | `/insights/velocity`            | `?teamId=&cycles=8` → the team's last cycles that started, each with `committed` and `completed` `{ issues, points }`, and `average`                                                                   |
 | POST                 | `/labels`                       | `{ name, color, teamId? }`                                                                                                                                                                             |
