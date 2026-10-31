@@ -6,6 +6,7 @@ export default {
     myIssues: 'Mine saker',
     initiatives: 'Initiativer',
     roadmap: 'Veikart',
+    insights: 'Innsikt',
     customers: 'Kunder',
     views: 'Visninger',
     trash: 'Papirkurv',

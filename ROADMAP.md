@@ -307,7 +307,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [ ] ⬜ Workload and capacity per person in a cycle (points or issues against capacity)
   - [ ] ⬜ Time tracking (optional per workspace), with CSV export
 - [ ] ⬜ Planning, charts and output
-  - [ ] ⬜ Project and workspace charts: burndown with an ideal line and a forecast completion date, velocity
+  - [x] ✅ Project and workspace charts: burndown with an ideal line and a forecast completion date, velocity
     across cycles, cumulative flow; charts from issue history (scope as it was each day, not as it is now)
   - [ ] ⬜ Dashboards: pin charts and saved views to a team or workspace page
   - [ ] ⬜ Releases: group done issues into a version and write its release notes (optionally AI-drafted)

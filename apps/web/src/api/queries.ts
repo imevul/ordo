@@ -8,6 +8,7 @@ import type {
   CreateIssueInput,
   HistoryEntry,
   InboxFilter,
+  InsightsTimeline,
   InstanceConfig,
   Invite,
   Issue,
@@ -21,6 +22,7 @@ import type {
   SearchResults,
   SessionInfo,
   UpdateIssueInput,
+  Velocity,
 } from '@ordo/shared';
 import { type Engine, patchIssue, toggleReaction } from '@ordo/sync';
 import {
@@ -306,6 +308,31 @@ export const useProjectUpdates = (slug: string, projectId: string) =>
   useQuery({
     queryKey: keys.projectUpdates(slug, projectId),
     queryFn: () => api.get<ProjectUpdate[]>(wsPath(slug, `/projects/${projectId}/updates`)),
+  });
+
+/** A team, project or cycle (or, with none, the workspace) day by day, rebuilt from history. */
+export const useInsightsTimeline = (
+  slug: string,
+  scope: { teamId?: string; projectId?: string; cycleId?: string; from?: string; to?: string },
+  enabled = true,
+) =>
+  useQuery({
+    queryKey: ['ws', slug, 'insights', 'timeline', scope],
+    queryFn: () => {
+      const q = new URLSearchParams(
+        Object.entries(scope).filter((e): e is [string, string] => !!e[1]),
+      ).toString();
+      return api.get<InsightsTimeline>(wsPath(slug, `/insights/timeline${q ? `?${q}` : ''}`));
+    },
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+
+export const useVelocity = (slug: string, teamId: string | undefined) =>
+  useQuery({
+    queryKey: ['ws', slug, 'insights', 'velocity', teamId],
+    queryFn: () => api.get<Velocity>(wsPath(slug, `/insights/velocity?teamId=${teamId}`)),
+    enabled: !!teamId,
   });
 
 export const useInvites = (slug: string, enabled: boolean) =>

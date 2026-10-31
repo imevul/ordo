@@ -1,6 +1,7 @@
 import type { Issue } from '@ordo/shared';
 import { X } from 'lucide-react';
 import { useMemo, useState } from 'react';
+import { useInsightsTimeline } from '../api/queries.ts';
 import { t } from '../i18n/index.ts';
 import {
   breakdown,
@@ -10,6 +11,7 @@ import {
   type Measure,
   SLICES,
   type Slice,
+  timelineBurnUp,
   weeklyFlow,
 } from '../lib/insights.ts';
 import { readPref, writePref } from '../lib/store.ts';
@@ -25,11 +27,14 @@ const QUARTER = 90 * 86_400_000;
 export function InsightsPanel({
   issues,
   burn,
+  filtered = false,
   onClose,
 }: {
   issues: Issue[];
   /** Plot scope and completed work across these days instead of weekly flow. */
-  burn?: { from: string; to: string };
+  burn?: { from: string; to: string; cycleId?: string };
+  /** The person narrowed the view: a burn-up can only count the issues it shows, as they are. */
+  filtered?: boolean;
   onClose: () => void;
 }) {
   const ws = useWorkspace();
@@ -38,12 +43,16 @@ export function InsightsPanel({
   const hasEstimates = issues.some((i) => i.estimate != null);
   const m: Measure = hasEstimates ? measure : 'count';
 
+  // A whole cycle's burn-up comes from history, so work added late or moved out counts right.
+  const fromHistory = !!burn?.cycleId && !filtered;
+  const timeline = useInsightsTimeline(ws.slug, { cycleId: burn?.cycleId }, fromHistory);
   const bars = useMemo(() => breakdown(ws, issues, slice, m), [ws, issues, slice, m]);
   const flow = useMemo(() => (burn ? null : weeklyFlow(issues, m)), [issues, m, burn]);
-  const burned = useMemo(
-    () => (burn ? burnUp(issues, m, burn.from, burn.to) : null),
-    [issues, m, burn],
-  );
+  const burned = useMemo(() => {
+    if (!burn) return null;
+    if (fromHistory) return timeline.data ? timelineBurnUp(timeline.data.days, m) : [];
+    return burnUp(issues, m, burn.from, burn.to);
+  }, [issues, m, burn, fromHistory, timeline.data]);
   const times = useMemo(() => durations(issues, Date.now() - QUARTER), [issues]);
 
   const select = 'input h-7 w-auto py-0 font-mono text-[11px]';
@@ -107,9 +116,14 @@ export function InsightsPanel({
                   },
                 ]}
               />
-            ) : (
+            ) : fromHistory && timeline.isLoading ? null : (
               <p className="font-mono text-[12px] text-index">
                 {t('insights.burnUp.starts', { date: burn!.from })}
+              </p>
+            )}
+            {burn?.cycleId && filtered && burned.length > 0 && (
+              <p className="mt-1 font-mono text-[10.5px] text-index">
+                {t('insights.burnUpFiltered')}
               </p>
             )}
           </section>

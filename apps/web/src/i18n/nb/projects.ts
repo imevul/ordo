@@ -36,9 +36,6 @@ export default {
   },
   chart: {
     title: 'Fremdrift over tid',
-    label: '{name}: omfang og fullførte saker per dag',
-    scope: 'Omfang',
-    completed: 'Fullført',
   },
   overview: {
     pullRequestAgent: 'Agent for pull requests',

@@ -1,47 +1,61 @@
 import type { Project } from '@ordo/shared';
-import { useMemo } from 'react';
-import { useIssues } from '../../api/queries.ts';
-import { LineChart } from '../../components/Charts.tsx';
+import { useState } from 'react';
+import { useInsightsTimeline } from '../../api/queries.ts';
+import {
+  BurndownChart,
+  CumulativeFlowChart,
+  hasPoints,
+  MeasureSelect,
+  useMeasure,
+} from '../../components/TimelineCharts.tsx';
 import { t } from '../../i18n/index.ts';
-import { burnUp, isoDay } from '../../lib/insights.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 
-/** Scope and completed work since the project started (or its first issue), day by day. */
+/**
+ * The project day by day since it started (or since its first issue), from issue history: work
+ * left against the target date with a forecast, and how it moved through the workflow.
+ */
 export function ProjectProgressChart({ project }: { project: Project }) {
   const ws = useWorkspace();
-  const filter = useMemo(() => ({ projectIds: [project.id] }), [project.id]);
-  const { data: issues = [] } = useIssues(ws.slug, filter);
-  const points = useMemo(() => {
-    if (issues.length === 0) return [];
-    const first = issues.map((i) => i.createdAt).sort()[0]!;
-    const from =
-      project.startDate && project.startDate < first ? project.startDate : first.slice(0, 10);
-    return burnUp(issues, 'count', from, isoDay(Date.now()));
-  }, [issues, project.startDate]);
-  if (points.length < 2) return null;
+  const { data } = useInsightsTimeline(ws.slug, { projectId: project.id });
+  const [flow, setFlow] = useState(false);
+  const points = hasPoints(data?.days);
+  const [measure, setMeasure] = useMeasure(points);
+  if (!data || data.days.length < 2) return null;
   return (
     <div className="mt-8">
-      <div className="section-label mb-3">{t('projects.chart.title')}</div>
-      <LineChart
-        label={t('projects.chart.label', { name: project.name })}
-        x={points.map((p) => p.day)}
-        height={160}
-        series={[
-          {
-            key: 'scope',
-            label: t('projects.chart.scope'),
-            color: 'var(--color-chart-2)',
-            dashed: true,
-            values: points.map((p) => p.scope),
-          },
-          {
-            key: 'completed',
-            label: t('projects.chart.completed'),
-            color: 'var(--color-primary)',
-            values: points.map((p) => p.completed),
-          },
-        ]}
-      />
+      <div className="mb-3 flex items-center gap-2">
+        <div className="section-label flex-1">{t('projects.chart.title')}</div>
+        <div className="flex" role="group">
+          {(
+            [
+              [false, t('insights.burndown.title')],
+              [true, t('insights.cumulativeFlow.title')],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={flow === value}
+              className={`btn btn-ghost btn-sm ${flow === value ? 'text-primary' : ''}`}
+              onClick={() => setFlow(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {points && <MeasureSelect value={measure} onChange={setMeasure} />}
+      </div>
+      {flow ? (
+        <CumulativeFlowChart days={data.days} measure={measure} height={180} />
+      ) : (
+        <BurndownChart
+          days={data.days}
+          measure={measure}
+          target={project.targetDate}
+          height={180}
+        />
+      )}
     </div>
   );
 }

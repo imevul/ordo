@@ -99,7 +99,9 @@ Charts (`components/Charts.tsx`) follow the same rules: square ends, 2 px lines,
 labels and values in text tokens (never the series color), a legend for two or more series and a hover readout. The
 "completed" series is the accent; the context series (scope, created) is `--color-chart-2` (#4f8ff7) and dashed, so
 it never depends on color alone. That pair passes color-blind separation checks against `bg`; re-check if you add a
-series.
+series. Reference lines (a burndown's ideal, a velocity average) are dashed in a text token. Stacked areas (cumulative
+flow) put completed work at the bottom in the accent and lighter mixes of `chart-2` and `muted` above it, separated by
+1 px `bg` edges, with a swatch legend and readout in stack order.
 
 ## Not adopted (yet)
 

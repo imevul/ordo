@@ -41,6 +41,7 @@ import { graphqlRoutes } from './routes/graphql.ts';
 import { hookRoutes } from './routes/hooks.ts';
 import { importRoutes } from './routes/imports.ts';
 import { initiativeRoutes } from './routes/initiatives.ts';
+import { insightsRoutes } from './routes/insights.ts';
 import { externalAccountRoutes, integrationRoutes } from './routes/integrations.ts';
 import { issueRoutes } from './routes/issues.ts';
 import { joiningRoutes } from './routes/joining.ts';
@@ -251,6 +252,7 @@ export async function buildApp(
       await w.register(syncRoutes);
       await w.register(teamRoutes);
       await w.register(cycleRoutes);
+      await w.register(insightsRoutes);
       await w.register(issueRoutes);
       await w.register(attachmentRoutes);
       await w.register(projectRoutes);

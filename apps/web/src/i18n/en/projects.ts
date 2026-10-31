@@ -36,9 +36,6 @@ export default {
   },
   chart: {
     title: 'Progress over time',
-    label: '{name}: scope and completed issues per day',
-    scope: 'Scope',
-    completed: 'Completed',
   },
   overview: {
     nameLabel: 'Project name',

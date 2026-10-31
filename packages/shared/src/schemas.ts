@@ -1295,3 +1295,26 @@ export const adminUsersQuerySchema = z.object({
   q: z.string().default(''),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+/**
+ * `GET /insights/timeline`: issues per status type, day by day, rebuilt from issue history. At
+ * most one of team, project or cycle; none is the whole workspace (the teams the caller sees).
+ */
+export const insightsTimelineQuerySchema = z
+  .object({
+    teamId: id.optional(),
+    projectId: id.optional(),
+    cycleId: id.optional(),
+    from: isoDate.optional(),
+    to: isoDate.optional(),
+  })
+  .refine((q) => [q.teamId, q.projectId, q.cycleId].filter(Boolean).length <= 1, {
+    message: 'Give at most one of teamId, projectId and cycleId',
+  })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, { message: 'from must not be after to' });
+
+/** `GET /insights/velocity`: the team's last `cycles` cycles that have started. */
+export const insightsVelocityQuerySchema = z.object({
+  teamId: id,
+  cycles: z.coerce.number().int().min(1).max(26).default(8),
+});
