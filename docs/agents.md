@@ -66,6 +66,7 @@ Failed runs stay in the **Open** list on the Agent runs page, with what went wro
 - **Dismiss** sets a failed run aside without restarting it.
 
 A newer run of the same agent on the issue (a restart, or **Run again**) also takes a failed run off the Open list.
+An assistant does both over MCP with `restart_agent_run` and `dismiss_agent_run` ([below](#from-an-assistant-over-mcp)).
 
 ### Usage limits
 
@@ -380,8 +381,13 @@ printf '%s' "$out" | jq -r .result
 ## From an assistant, over MCP
 
 The [MCP server](mcp.md) has tools for working with agents from a chat: `list_agents`, `assign_to_agent` (with a
-note for the agent), `agent_runs`, `rerun_agent` and `cancel_agent_run`. "Hand ENG-42 to Claude and tell me what it
-did" works from Claude in a browser.
+note for the agent), `agent_runs`, `list_agent_runs`, `rerun_agent`, `cancel_agent_run`, `restart_agent_run` and
+`dismiss_agent_run`. "Hand ENG-42 to Claude and tell me what it did" works from Claude in a browser.
+
+`restart_agent_run` and `dismiss_agent_run` act on a failed (or cancelled) run, named by its issue: on the issue, each
+agent's latest run counts if it failed or was cancelled and isn't dismissed. When that's more than one agent's, say
+which with `agent`; `run` (the id from `agent_runs` or `list_agent_runs`) names one run directly. Restarting works
+for any agent on the issue, including one that was only mentioned, unlike `rerun_agent`, which runs the assignee.
 
 An agent's own key also sees `current_run` and `report_run`, so an agent can report a session link or finish its run
 over MCP when the program running it doesn't report for it.

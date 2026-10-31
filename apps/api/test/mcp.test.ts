@@ -486,5 +486,103 @@ describe('agents', () => {
     expect(active.every((r: { status: string }) => r.status !== 'succeeded')).toBe(true);
     const finished = await tool('list_agent_runs', { status: 'finished', agent: 'robo' });
     expect(finished.map((r: { status: string }) => r.status)).toContain('succeeded');
+    expect(finished[0].run).toEqual(expect.any(String));
+  });
+
+  it('restarts and dismisses failed runs, mention runs included', async () => {
+    // A name no other test file uses: usernames are unique across the instance.
+    const helper = (await ada.post(`${ws}/agents`, { name: 'Log Reader', teamIds: [eng()] })).data;
+    const helperKey = (await ada.post(`${ws}/agents/${helper.id}/keys`, { name: 'h' })).data.token;
+    const name = (await tool('list_agents')).find(
+      (a: { name: string }) => a.name === 'Log Reader',
+    ).username;
+    const claim = (token: string) =>
+      app.inject({
+        method: 'POST',
+        url: `${ws}/agent/claim`,
+        headers: { authorization: `Bearer ${token}` },
+      });
+    // Robo's queued work from the tests above would be claimed first.
+    for (const r of await tool('list_agent_runs', { agent: 'robo' }))
+      await tool('cancel_agent_run', { issue: r.issue });
+    const issue = await tool('create_issue', { team: 'ENG', title: 'Flaky build' });
+    const ref = { issue: issue.identifier };
+    expect((await tool('restart_agent_run', ref)).error).toContain('No failed or cancelled run');
+    expect((await tool('dismiss_agent_run', {})).error).toContain('give issue');
+
+    // Robo is assigned; Helper is only asked in a comment, and fails.
+    await tool('assign_to_agent', { ...ref, agent: 'robo' });
+    await tool('add_comment', { ...ref, body: `@${name} can you look at the logs?` });
+    expect((await claim(helperKey)).json().trigger.kind).toBe('mention');
+    await tool('report_run', { status: 'failed', error: 'Out of disk' }, helperKey);
+    await claim(agentKey);
+    await tool('report_run', { status: 'failed', error: 'Timed out' }, agentKey);
+    const open = await tool('list_agent_runs', { status: 'open' });
+    const failed = open.filter((r: { issue: string }) => r.issue === issue.identifier);
+    expect(failed).toHaveLength(2);
+
+    // Two agents' runs failed, so the issue alone doesn't say which.
+    expect((await tool('restart_agent_run', ref)).error).toContain('several agents');
+    const restarted = await tool('restart_agent_run', { ...ref, agent: name });
+    const helperRun = failed.find(
+      (r: { agent: { username: string } }) => r.agent.username === name,
+    );
+    expect(restarted.restarted).toBe(helperRun.run);
+    expect(restarted.runs[0]).toMatchObject({
+      agent: { username: name },
+      status: 'queued',
+      trigger: 'mention',
+      retryOf: helperRun.run,
+    });
+    // A run that has already been restarted is no longer the one to act on.
+    expect((await tool('restart_agent_run', { ...ref, agent: name })).error).toContain(
+      `No failed or cancelled run of ${name}`,
+    );
+
+    // Now Robo's is the only failed run left, and dismissing takes it off the open list.
+    const roboRun = failed.find(
+      (r: { agent: { username: string } }) => r.agent.username === 'robo',
+    );
+    const dismissed = await tool('dismiss_agent_run', ref);
+    expect(dismissed.dismissed).toBe(roboRun.run);
+    expect(dismissed.runs.find((r: { run: string }) => r.run === roboRun.run).dismissed).toBe(true);
+    const stillOpen = await tool('list_agent_runs', { status: 'open' });
+    expect(stillOpen.map((r: { run: string }) => r.run)).not.toContain(roboRun.run);
+    expect((await tool('dismiss_agent_run', { ...ref, agent: 'robo' })).error).toContain(
+      'No failed or cancelled run',
+    );
+
+    // By id: a dismissed run can still be restarted, but an open one can't be dismissed.
+    expect((await tool('restart_agent_run', { run: roboRun.run })).runs[0]).toMatchObject({
+      agent: { username: 'robo' },
+      status: 'queued',
+      retryOf: roboRun.run,
+    });
+    expect((await tool('dismiss_agent_run', { run: restarted.runs[0].run })).error).toContain(
+      'This run is queued',
+    );
+  });
+
+  it("can't act on runs of issues the caller can't see", async () => {
+    const prv = (await ada.post(`${ws}/teams`, { name: 'Private', key: 'PRV', private: true })).data
+      .id;
+    await ada.post(`${ws}/agents`, { name: 'Secret Agent', teamIds: [prv] });
+    const issue = await tool('create_issue', { team: 'PRV', title: 'Hush' });
+    await tool('assign_to_agent', { issue: issue.identifier, agent: 'Secret Agent' });
+    const cancelled = await tool('cancel_agent_run', { issue: issue.identifier });
+    const runId = cancelled.runs[0].run;
+
+    const moe = (
+      await signup(app, 'Moe Member', {
+        inviteToken: (await ada.post(`${ws}/invites`, { role: 'member' })).data[0].token,
+      })
+    ).client;
+    const moeKey = (await moe.post('/api/me/api-keys', { name: 'mcp' })).data.token;
+    for (const name of ['restart_agent_run', 'dismiss_agent_run']) {
+      expect((await tool(name, { issue: issue.identifier }, moeKey)).error).toBe('Issue not found');
+      expect((await tool(name, { run: runId }, moeKey)).error).toBe('Run not found');
+    }
+    // The owner, with a person's key, can.
+    expect((await tool('dismiss_agent_run', { issue: issue.identifier })).dismissed).toBe(runId);
   });
 });
