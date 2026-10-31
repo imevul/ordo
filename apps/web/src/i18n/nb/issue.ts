@@ -25,6 +25,7 @@ export default {
     confirmTrashBody: 'Du kan gjenopprette den fra papirkurven senere.',
     subIssues: 'Undersaker',
     properties: 'Egenskaper',
+    jumpToLatest: 'Hopp til det siste',
     slaBreached: 'gikk ut for {time} siden',
     slaLeft: '{time} igjen',
     moveToTeam: 'Flytt til team…',

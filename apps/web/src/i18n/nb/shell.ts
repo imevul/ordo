@@ -159,6 +159,7 @@ export default {
     toggleLayout: 'Bytt mellom liste / tavle',
     assign: 'Tildel',
     copyBranch: 'Kopier navnet på git-grenen (åpen sak)',
+    jumpToLatest: 'Hopp til den siste aktiviteten (åpen sak)',
     submit: 'Send inn (skjemaer, kommentarer)',
     editDescription: 'Rediger beskrivelsen',
     boldItalic: 'Fet / kursiv (i tekst)',

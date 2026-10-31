@@ -25,6 +25,7 @@ export default {
     confirmTrashBody: 'Du kan återställa det från papperskorgen senare.',
     subIssues: 'Underärenden',
     properties: 'Egenskaper',
+    jumpToLatest: 'Hoppa till det senaste',
     slaBreached: 'gick ut för {time} sedan',
     slaLeft: '{time} kvar',
     moveToTeam: 'Flytta till team…',

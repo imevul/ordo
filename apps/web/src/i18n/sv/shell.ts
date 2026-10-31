@@ -159,6 +159,7 @@ export default {
     toggleLayout: 'Växla lista / tavla',
     assign: 'Tilldela',
     copyBranch: 'Kopiera git-grenens namn (öppet ärende)',
+    jumpToLatest: 'Hoppa till den senaste aktiviteten (öppet ärende)',
     submit: 'Skicka (formulär, kommentarer)',
     editDescription: 'Redigera beskrivningen',
     boldItalic: 'Fet / kursiv (i text)',
