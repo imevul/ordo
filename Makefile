@@ -123,23 +123,44 @@ backup: ## Dump the database and uploads to backups/ordo-<timestamp>.*
 		mv "$$base.sql.gz.tmp" "$$base.sql.gz" && mv "$$base.uploads.tar.gz.tmp" "$$base.uploads.tar.gz" && \
 		echo "Backup written to $$base.{sql,uploads.tar}.gz"
 
-# The archive is checked before anything stops, and psql runs as one transaction that stops at the first error, so a
-# bad dump leaves the old database in place and the uploads untouched.
+restore: UPLOADS = $(patsubst %.sql.gz,%.uploads.tar.gz,$(FILE))
+
+# Unpacks the archive on stdin into /data. It's extracted next to the old files first and swapped in only once tar
+# succeeds, so a bad archive leaves the current uploads alone. /data is a volume, so it can't be renamed itself.
+RESTORE_UPLOADS = d=/data; new=$$d/.restore-new; old=$$d/.restore-old; \
+	rm -rf "$$new" "$$old" && mkdir "$$new" "$$old" && tar -C "$$new" -xzf - \
+		|| { rm -rf "$$new" "$$old"; exit 1; }; \
+	for f in "$$d"/* "$$d"/.[!.]* "$$d"/..?*; do \
+		[ -e "$$f" ] && [ "$$f" != "$$new" ] && [ "$$f" != "$$old" ] || continue; \
+		mv "$$f" "$$old"/ || { echo "Moving the old uploads aside failed; they are in $$d and $$old." >&2; exit 1; }; \
+	done; \
+	for f in "$$new"/* "$$new"/.[!.]* "$$new"/..?*; do \
+		[ -e "$$f" ] || continue; \
+		mv "$$f" "$$d"/ || { echo "Moving the restored uploads in failed; the old ones are in $$old." >&2; exit 1; }; \
+	done; \
+	rm -rf "$$new" "$$old"
+
+# Both archives are checked before anything stops, psql runs as one transaction that stops at the first error, and the
+# uploads are swapped in only once they're unpacked, so a bad backup leaves the old data in place. The app is started
+# again however the restore ends.
 restore: ## Restore a backup: make restore FILE=backups/ordo-….sql.gz (uploads too, if alongside)
 	@test -n "$(FILE)" || (echo "Usage: make restore FILE=backups/ordo-….sql.gz" && exit 1)
 	@test -f "$(FILE)" || (echo "No such file: $(FILE)" >&2 && exit 1)
 	@gzip -t "$(FILE)" || (echo "$(FILE) is not a complete gzip file; nothing was restored." >&2 && exit 1)
+	@if [ "$(UPLOADS)" != "$(FILE)" ] && [ -f "$(UPLOADS)" ]; then \
+		gzip -t "$(UPLOADS)" && tar -tzf "$(UPLOADS)" >/dev/null \
+			|| { echo "$(UPLOADS) is not a complete archive; nothing was restored." >&2; exit 1; }; \
+	fi
 	$(COMPOSE) stop app
-	@set -o pipefail; \
+	@set -o pipefail; trap '$(COMPOSE) start app' EXIT; \
 		gunzip -c "$(FILE)" | $(COMPOSE) exec -T db sh -c \
 			'psql -q -v ON_ERROR_STOP=1 --single-transaction -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"' \
-		|| { echo "Restore failed; the database was rolled back and uploads were not touched. The app is stopped:" \
-			"fix the problem and run make restore again, or $(COMPOSE) start app to run on the old data." >&2; exit 1; }
-	@uploads=$$(echo $(FILE) | sed 's/\.sql\.gz$$/.uploads.tar.gz/'); \
-		if [ -f "$$uploads" ]; then \
-			$(COMPOSE) run --rm -T --no-deps --entrypoint sh app -c 'rm -rf /data/* && tar -C /data -xzf -' < "$$uploads" && echo "Restored uploads from $$uploads"; \
+		|| { echo "Restore failed; the database was rolled back and uploads were not touched." >&2; exit 1; }; \
+		if [ "$(UPLOADS)" != "$(FILE)" ] && [ -f "$(UPLOADS)" ]; then \
+			$(COMPOSE) run --rm -T --no-deps --entrypoint sh app -c '$(RESTORE_UPLOADS)' < "$(UPLOADS)" \
+			|| { echo "Restoring uploads failed; the database was restored, the old uploads were kept." >&2; exit 1; }; \
+			echo "Restored uploads from $(UPLOADS)"; \
 		fi
-	$(COMPOSE) start app
 
 admin: ## Make someone an instance admin: make admin EMAIL=you@example.com
 	@test -n "$(EMAIL)" || (echo "Usage: make admin EMAIL=you@example.com" && exit 1)
