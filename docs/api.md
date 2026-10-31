@@ -219,7 +219,7 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 | POST   | `/issues/batch`                     | `{ ids, patch }` — same patch on up to 250 issues                                            |
 | DELETE | `/issues/:id`                       | Move to trash                                                                                |
 | POST   | `/issues/batch-delete`              | `{ ids }`                                                                                    |
-| POST   | `/issues/:id/restore`               | Restore from trash                                                                           |
+| POST   | `/issues/:id/restore`               | Restore from trash; returns the issue                                                        |
 | POST   | `/issues/:id/archive`, `/unarchive` | Archive (out of lists, still readable) / bring back                                          |
 | POST   | `/issues/:id/links`                 | Attach a link `{ url, title? }`                                                              |
 | DELETE | `/issue-links/:id`                  | Remove a link (any kind)                                                                     |

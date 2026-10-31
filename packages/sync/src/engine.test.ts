@@ -289,6 +289,46 @@ describe('outbox', () => {
     expect(engine.issue('a')).toBeDefined();
   });
 
+  it('undoes a trash that was already sent, with what the server answers', async () => {
+    const { server, engine } = await ready();
+    await engine.mutate({ kind: 'issue.trash', ids: ['a'] });
+    expect(engine.issue('a')).toBeUndefined();
+    const calls = server.calls.length;
+    expect(await engine.mutate({ kind: 'issue.restore', ids: ['a'] })).toMatchObject([{ id: 'a' }]);
+    // Shown from the answer, without pulling.
+    expect(server.calls.length).toBe(calls);
+    expect(engine.issue('a')).toMatchObject({ id: 'a', deletedAt: null });
+    await engine.sync();
+    expect(engine.issue('a')).toMatchObject({ id: 'a', deletedAt: null });
+  });
+
+  it('undoes a sent trash offline: the issue shows again while the restore waits', async () => {
+    const { server, engine } = await ready();
+    await engine.mutate({ kind: 'issue.trash', ids: ['a'] });
+    expect(engine.issue('a')).toBeUndefined();
+    server.offline = true;
+    expect(await engine.mutate({ kind: 'issue.restore', ids: ['a'] })).toBeUndefined();
+    expect(engine.getState().waiting).toBe(1);
+    expect(engine.issue('a')).toMatchObject({ id: 'a', deletedAt: null });
+
+    server.offline = false;
+    await engine.sync();
+    expect(engine.getState().waiting).toBe(0);
+    expect(server.issues.has('a')).toBe(true);
+    expect(engine.issue('a')).toMatchObject({ id: 'a', deletedAt: null });
+  });
+
+  it('brings back an issue the change log took out when a restore follows', async () => {
+    const { server, engine } = await ready();
+    // Trashed elsewhere (another tab or device): the log drops it from the copy.
+    await server.transport().send({ kind: 'issue.trash', ids: ['a'] });
+    await engine.sync();
+    expect(engine.issue('a')).toBeUndefined();
+    server.offline = true;
+    await engine.mutate({ kind: 'issue.restore', ids: ['a'] });
+    expect(engine.issue('a')).toMatchObject({ id: 'a', deletedAt: null });
+  });
+
   it('moves issues to another team, showing it before the server renumbers them', async () => {
     const { server, engine } = await ready();
     server.offline = true;

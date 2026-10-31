@@ -405,7 +405,8 @@ describe('issues', () => {
     const trash = (await ada.post(`${ws}/issues/query`, { filter: { trashed: true } }))
       .data as Issue[];
     expect(trash.map((i) => i.id)).toContain(first.id);
-    await ada.post(`${ws}/issues/${first.id}/restore`);
+    const restored = (await ada.post(`${ws}/issues/${first.id}/restore`)).data as Issue;
+    expect(restored).toMatchObject({ id: first.id, identifier: first.identifier, deletedAt: null });
     const back = (await ada.post(`${ws}/issues/query`, { filter: {} })).data as Issue[];
     expect(back.some((i) => i.id === first.id)).toBe(true);
   });

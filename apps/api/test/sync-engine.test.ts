@@ -61,8 +61,9 @@ function device(client: Client) {
           return call('POST', '/issues/batch-delete', { ids: op.ids });
         case 'issue.restore':
           return (async () => {
-            for (const id of op.ids) await call('POST', `/issues/${id}/restore`);
-            return { ok: true };
+            const restored = [];
+            for (const id of op.ids) restored.push(await call('POST', `/issues/${id}/restore`));
+            return restored;
           })();
         case 'issue.move':
           return (async () => {

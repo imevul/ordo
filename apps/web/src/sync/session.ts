@@ -46,8 +46,9 @@ function sendOp(slug: string, op: Op): Promise<unknown> {
     // safe to send again (restoring a restored issue, moving it to the team it's in).
     case 'issue.restore':
       return (async () => {
-        for (const id of op.ids) await api.post(path(`/issues/${id}/restore`));
-        return { ok: true };
+        const restored: unknown[] = [];
+        for (const id of op.ids) restored.push(await api.post(path(`/issues/${id}/restore`)));
+        return restored;
       })();
     case 'issue.move':
       return (async () => {

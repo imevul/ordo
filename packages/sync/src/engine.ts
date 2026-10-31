@@ -88,12 +88,20 @@ export interface EngineOptions {
   onError?: (err: unknown) => void;
 }
 
+/** How many issues that left the copy are kept to be restored. */
+const GONE_KEPT = 200;
+
 type Waiter = { resolve: (result: unknown) => void; reject: (err: unknown) => void };
 
 export class Engine {
   private meta: Meta | null = null;
   /** The server's issues, as last heard. */
   private base = new Map<string, Issue>();
+  /**
+   * Issues that left the copy lately (trashed, mostly), so a restore queued after the trash was
+   * sent (Undo, offline) can show them again. Memory only, newest last.
+   */
+  private gone = new Map<string, Issue>();
   private pending: PendingOp[] = [];
   private state: SyncState = {
     ready: false,
@@ -144,7 +152,7 @@ export class Engine {
     const bootstrap = patch.bootstrap !== undefined ? patch.bootstrap : this.state.bootstrap;
     this.set({
       ...patch,
-      issues: overlayIssues(this.base, this.pending, bootstrap, this.opts.userId),
+      issues: overlayIssues(this.base, this.pending, bootstrap, this.opts.userId, this.gone),
       waiting: this.pending.filter((p) => !p.error).length,
       failed: this.pending.filter((p) => p.error),
     });
@@ -298,7 +306,7 @@ export class Engine {
     }
     if (delta.meta) this.meta = delta.meta;
     for (const issue of delta.issues ?? []) this.base.set(issue.id, issue);
-    for (const id of delta.deletedIssueIds ?? []) this.base.delete(id);
+    for (const id of delta.deletedIssueIds ?? []) this.drop(id);
     for (const c of delta.comments ?? []) this.comments.get(c.issueId)?.set(c.id, c);
     for (const id of delta.deletedCommentIds ?? [])
       for (const list of this.comments.values()) list.delete(id);
@@ -381,6 +389,16 @@ export class Engine {
     return run;
   }
 
+  /** Takes an issue out of the copy, keeping it (as trashed) for a restore that may follow. */
+  private drop(id: string) {
+    const issue = this.base.get(id);
+    if (!issue) return;
+    this.base.delete(id);
+    this.gone.delete(id);
+    this.gone.set(id, { ...issue, deletedAt: issue.deletedAt ?? new Date().toISOString() });
+    if (this.gone.size > GONE_KEPT) this.gone.delete(this.gone.keys().next().value!);
+  }
+
   /** Sends one change; false when sending has to stop for now. */
   private async sendOne(entry: PendingOp): Promise<boolean> {
     const { transport, store } = this.opts;
@@ -420,7 +438,7 @@ export class Engine {
       await store.write({ issues: answered });
       for (const issue of answered) this.base.set(issue.id, issue);
     }
-    if (entry.op.kind === 'issue.trash') for (const id of entry.op.ids) this.base.delete(id);
+    if (entry.op.kind === 'issue.trash') for (const id of entry.op.ids) this.drop(id);
     this.show(this.state.online ? {} : { online: true });
     this.opts.onDelta?.({ outbox: true, issues: answered });
     this.waiters.get(entry.key)?.resolve(result);
@@ -521,6 +539,7 @@ export class Engine {
     await this.opts.store.clear();
     this.meta = null;
     this.base.clear();
+    this.gone.clear();
     this.pending = [];
     this.comments.clear();
     this.show({ ready: false, bootstrap: null });
