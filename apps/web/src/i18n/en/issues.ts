@@ -159,6 +159,7 @@ export default {
     emptyBody: 'Deleted issues show up here and can be restored.',
     deleted: 'deleted {time}',
     restored: '{id} restored',
+    restoreQueued: '{id} will be restored when you are back online',
     confirmTitle: 'Permanently delete {id}?',
     confirmBody: 'This cannot be undone.',
     deleteForever: 'Delete forever',

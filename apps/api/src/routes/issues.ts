@@ -103,8 +103,11 @@ export async function issueRoutes(app: FastifyInstance) {
   app.post('/issues/:id/restore', async (req) => {
     const { id } = req.params as { id: string };
     const issue = await resolveIssue(req, id);
-    await mutate(app, req, (ctx) => trashIssue(ctx, issue.id, true));
-    return { ok: true };
+    // Answers with the issue: a sync client's copy has no trashed issues to bring back itself.
+    return mutate(app, req, async (ctx) => {
+      await trashIssue(ctx, issue.id, true);
+      return getIssue(ctx.tx, ctx.access, issue.id);
+    });
   });
 
   app.delete('/issues/:id/purge', async (req) => {

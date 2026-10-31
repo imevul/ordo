@@ -162,16 +162,20 @@ function applyOp(issue: Issue, op: IssueOp, queuedAt: string, bootstrap: Bootstr
   }
 }
 
-/** The server's issues with pending operations applied on top. */
+/**
+ * The server's issues with pending operations applied on top. `gone` holds issues already out of
+ * `base` (a trash that was sent) that a pending restore can bring back.
+ */
 export function overlayIssues(
   base: ReadonlyMap<string, Issue>,
   pending: readonly PendingOp[],
   bootstrap: Bootstrap | null,
   userId: string,
+  gone: ReadonlyMap<string, Issue> = new Map(),
 ): Map<string, Issue> {
   const out = new Map(base);
-  // Trashed here, so restoring them (Undo while offline) brings them back.
-  const trashed = new Map<string, Issue>();
+  // Trashed here or before, so restoring them (Undo while offline) brings them back.
+  const trashed = new Map(gone);
   for (const { op, queuedAt, error } of pending) {
     if (error) continue;
     if (op.kind === 'issue.create') {

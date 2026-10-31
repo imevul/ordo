@@ -264,7 +264,10 @@ export function TrashPage() {
   const restoreIssues = useRestoreIssues(ws.slug);
   const restore = (issue: Issue) =>
     restoreIssues.mutate([issue.id], {
-      onSuccess: () => toast.success(t('issues.trash.restored', { id: issue.identifier })),
+      onSuccess: (restored) =>
+        restored
+          ? toast.success(t('issues.trash.restored', { id: issue.identifier }))
+          : toast(t('issues.trash.restoreQueued', { id: issue.identifier })),
     });
   const purge = async (issue: Issue) => {
     if (

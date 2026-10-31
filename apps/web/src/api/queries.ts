@@ -442,14 +442,33 @@ export function useTrashIssues(slug: string) {
   });
 }
 
-/** Takes issues out of the trash (Undo): queued after the trash, so offline it still wins. */
+/**
+ * Takes issues out of the trash (Undo): queued after the trash, so offline it still wins.
+ * Resolves with the restored issues, or with undefined when the restore is queued to be sent later.
+ */
 export function useRestoreIssues(slug: string) {
   const qc = useQueryClient();
   const engine = useSyncEngine();
   return useMutation({
     mutationFn: async (ids: string[]) => {
-      if (engine) return engine.mutate({ kind: 'issue.restore', ids });
-      for (const id of ids) await api.post(wsPath(slug, `/issues/${id}/restore`));
+      if (engine)
+        return (await engine.mutate({ kind: 'issue.restore', ids })) as Issue[] | undefined;
+      const restored: Issue[] = [];
+      for (const id of ids)
+        restored.push(await api.post<Issue>(wsPath(slug, `/issues/${id}/restore`)));
+      return restored;
+    },
+    // Out of the trash at once (the trash list comes from the server, and may not answer).
+    onMutate: async (ids) => {
+      await cancelIssueQueries(qc, slug);
+      const set = new Set(ids);
+      qc.setQueriesData<Issue[]>(
+        {
+          queryKey: ['ws', slug, 'issues'],
+          predicate: (q) => !!(q.queryKey[3] as IssueFilter | undefined)?.trashed,
+        },
+        (list) => list?.filter((i) => !set.has(i.id)),
+      );
     },
     onError,
     onSettled: () => invalidateIssues(qc, slug),

@@ -158,6 +158,7 @@ export default {
     emptyBody: 'Raderade ärenden hamnar här och kan återställas.',
     deleted: 'raderat {time}',
     restored: '{id} återställt',
+    restoreQueued: '{id} återställs när du är online igen',
     confirmTitle: 'Radera {id} permanent?',
     confirmBody: 'Det går inte att ångra.',
     deleteForever: 'Radera permanent',

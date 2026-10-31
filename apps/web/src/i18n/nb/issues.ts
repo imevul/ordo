@@ -158,6 +158,7 @@ export default {
     emptyBody: 'Slettede saker havner her og kan gjenopprettes.',
     deleted: 'slettet {time}',
     restored: '{id} gjenopprettet',
+    restoreQueued: '{id} gjenopprettes når du er på nett igjen',
     confirmTitle: 'Slette {id} for godt?',
     confirmBody: 'Dette kan ikke angres.',
     deleteForever: 'Slett for godt',

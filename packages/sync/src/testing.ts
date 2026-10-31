@@ -205,12 +205,14 @@ export class FakeServer {
         }
         return { ok: true };
       case 'issue.restore':
-        for (const id of op.ids) {
+        // Like the API: each restored issue, as it is now.
+        return op.ids.flatMap((id) => {
           const i = this.trashed.get(id);
           this.trashed.delete(id);
-          if (i) this.put(i);
-        }
-        return { ok: true };
+          if (!i) return [];
+          this.put(i);
+          return [i];
+        });
       case 'issue.move':
         return op.ids.map((id) => {
           const n = this.issues.size + 1;
