@@ -436,10 +436,13 @@ there is refused with `403 sso_required`, except for owners). Only a hash of the
 ### Time tracking
 
 The time endpoints answer 403 `time_tracking_off` until a workspace admin sets `settings.timeTracking: true` with
-`PATCH /api/w/:ws`. Anyone who can read an issue can log time on it and see its entries. The report covers finished
-entries on issues you can read (guests: only their own), filtered by `from` and `to` (days, inclusive, in the
-workspace's time zone), `userId`, `teamId`, `projectId` (or `none`) and `cycleId`. With `format=csv` it downloads one
-row per entry: day, person, email, issue, title, project, cycle, hours (decimal), minutes, note and start time.
+`PATCH /api/w/:ws`. Anyone who can read an issue can log time on it and see its entries (guests see only their own,
+and the total counts only those). Starting a timer while another start for you is in flight answers 409
+`timer_conflict`. The report covers finished entries on issues you can read (guests: only their own), filtered by
+`from` and `to` (days, inclusive, in the workspace's time zone), `userId`, `teamId`, `projectId` (or `none`) and
+`cycleId`. With `format=csv` it downloads one row per entry: day, person, email, issue, title, project, cycle, hours
+(decimal), minutes, note and start time. Text that starts with `=`, `+`, `-` or `@` gets a leading `'` so spreadsheets
+don't run it as a formula; this applies to the workspace CSV export too.
 
 ### Notifications & search
 

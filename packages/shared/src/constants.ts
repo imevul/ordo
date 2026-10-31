@@ -568,6 +568,7 @@ export const API_MESSAGE_KEYS = [
   'time_tracking_off',
   'own_time_entries',
   'no_timer',
+  'timer_conflict',
 ] as const;
 export type ApiMessageKey = (typeof API_MESSAGE_KEYS)[number];
 

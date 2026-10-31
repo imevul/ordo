@@ -18,6 +18,7 @@ import {
   type McpToolName,
   type Milestone,
   mcpToolSchemas,
+  middayInZone,
   type Project,
   parseDuration,
   priorityLabel,
@@ -49,7 +50,7 @@ import {
 import { createComment, listComments } from './comments.ts';
 import type { Ctx } from './context.ts';
 import { listCustomFields } from './customFields.ts';
-import { workspaceToday } from './cycle-automation.ts';
+import { workspaceTimezone, workspaceToday } from './cycle-automation.ts';
 import { createCycle, listCycles, updateCycle } from './cycles.ts';
 import { createIssue, getIssue, getIssueDetail, queryIssues, updateIssue } from './issues.ts';
 import { listLabels } from './labels.ts';
@@ -102,6 +103,7 @@ class Directory {
   members = once(() => listMembers(this.db, this.c.access));
   /** "Today" as cycle automation sees it, so "current" means the same cycle everywhere. */
   today = once(() => workspaceToday(this.db, this.c.access.workspaceId));
+  timezone = once(() => workspaceTimezone(this.db, this.c.access.workspaceId));
 
   async team(ref: string): Promise<Team> {
     const teams = await this.teams();
@@ -872,8 +874,8 @@ function handlers(c: McpCaller): Handlers {
       const today = await dir.today();
       const input = parse(createTimeEntrySchema, {
         durationSeconds: seconds,
-        // Midday UTC is the same calendar day in nearly every zone.
-        startedAt: date && date !== today ? `${date}T12:00:00Z` : undefined,
+        // Midday in the workspace's zone, so the report puts it on that day.
+        startedAt: date && date !== today ? middayInZone(await dir.timezone(), date) : undefined,
         note,
       });
       const entry = await c.run((ctx) => logTime(ctx, issue, input));
@@ -892,17 +894,21 @@ function handlers(c: McpCaller): Handlers {
 
     time_report: async ({ from, to, person, team, project, cycle, limit }) => {
       const teamId = team ? (await dir.team(team)).id : undefined;
+      // Teams number their cycles separately, so "3" or "current" can mean one cycle per team.
+      const reportCycle = async (ref: string, teamId?: string) => {
+        if (teamId) return dir.cycle(ref, teamId);
+        const ids = await dir.cycleIds(ref);
+        if (ids.length > 1)
+          throw badRequest(`"${ref}" matches cycles in several teams; give a team as well`);
+        return ids[0]!;
+      };
       const report = await timeReport(c.app.db, c.access, {
         from,
         to,
         userId: person ? await dir.person(person) : undefined,
         teamId,
         projectId: project ? (await dir.project(project)).id : undefined,
-        cycleId: cycle
-          ? teamId
-            ? await dir.cycle(cycle, teamId)
-            : (await dir.cycleIds(cycle))[0]
-          : undefined,
+        cycleId: cycle ? await reportCycle(cycle, teamId) : undefined,
       });
       const [people, projects] = await Promise.all([
         dir.people(report.entries.map((e) => e.userId)),

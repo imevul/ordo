@@ -82,4 +82,11 @@ describe('toCsv', () => {
       ['ENG-2', ''],
     ]);
   });
+
+  it('keeps typed text from running as a formula', () => {
+    const csv = toCsv([['=HYPERLINK("http://x")', '+1', '-2', '@SUM(A1)', 'a=b', -3]]);
+    expect(parseCsv(csv)).toEqual([
+      ['\'=HYPERLINK("http://x")', "'+1", "'-2", "'@SUM(A1)", 'a=b', '-3'],
+    ]);
+  });
 });

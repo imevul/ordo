@@ -354,7 +354,7 @@ gets a _Time_ section:
 - **Start timer** runs a clock on the issue; it shows in the sidebar wherever you go, with a stop button. You have
   one timer at a time: starting it on another issue stops the first.
 - **Log time** adds time by hand: type `1h 30m`, `45m`, `1.5h` or `1:30`, pick the day and add a note.
-- The section shows each entry and the issue's total. You can edit or delete your own entries; workspace admins can
+- The section shows each entry and the issue's total (guests see only their own entries). You can edit or delete your own entries; workspace admins can
   correct anyone's, and those changes are recorded in the audit log.
 
 **Time** in the sidebar is the report: logged time over a range of days, by person and by project, filtered by

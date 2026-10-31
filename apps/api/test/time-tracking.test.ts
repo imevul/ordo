@@ -247,6 +247,43 @@ describe('time tracking', () => {
     ).toBe(200);
     const report = (await guest.get(`${ws}/time-entries/report`)).data as TimeReport;
     expect(report.entries.map((e) => e.userId)).toEqual([ids.guest]);
+    // The member's hour on the same issue stays out of the guest's view and total.
+    const onIssue = (await guest.get(`${ws}/issues/${ids.issue}/time-entries`)).data as IssueTime;
+    expect(onIssue.entries.map((e) => e.userId)).toEqual([ids.guest]);
+    expect(onIssue.totalSeconds).toBe(600);
+    const forMember = (await member.get(`${ws}/issues/${ids.issue}/time-entries`))
+      .data as IssueTime;
+    expect(forMember.totalSeconds).toBe(3600 + 600);
+  });
+
+  it('answers 409, not 500, when two timer starts race', async () => {
+    const starts = await Promise.all(
+      [1, 2, 3].map(() => other.post(`${ws}/issues/${ids.second}/timer`, {})),
+    );
+    for (const res of starts) {
+      expect([200, 409]).toContain(res.statusCode);
+      if (res.statusCode === 409) expect(res.data.messageKey).toBe('timer_conflict');
+    }
+    const stopped = await other.post(`${ws}/timer/stop`, {});
+    expect(stopped.statusCode).toBe(200);
+    expect((await other.get(`${ws}/timer`)).data).toBeNull();
+    for (const res of starts)
+      if (res.statusCode === 200) await other.del(`${ws}/time-entries/${res.data.id}`);
+  });
+
+  it('neutralises formulas in the CSV', async () => {
+    const entry = (
+      await other.post(`${ws}/issues/${ids.second}/time-entries`, {
+        durationSeconds: 60,
+        startedAt: '2026-04-01T10:00:00Z',
+        note: '=HYPERLINK("http://evil.test","Click")',
+      })
+    ).data as TimeEntry;
+    const csv = await owner.get(
+      `${ws}/time-entries/report?format=csv&from=2026-04-01&to=2026-04-01`,
+    );
+    expect(csv.body).toContain(`"'=HYPERLINK(""http://evil.test"",""Click"")"`);
+    await other.del(`${ws}/time-entries/${entry.id}`);
   });
 
   it('works over MCP', async () => {
@@ -273,6 +310,40 @@ describe('time tracking', () => {
       total: '1h 15m',
       byPerson: [{ person: 'tilda-time', seconds: 4500 }],
       entries: [{ date: '2026-03-04', issue: 'TPUB-2' }],
+    });
+  });
+
+  it('logs a past day over MCP on that day in zones far east of UTC', async () => {
+    await owner.patch(ws, { settings: { timezone: 'Pacific/Kiritimati' } });
+    try {
+      await tool('log_time', { issue: 'TPUB-2', duration: '10m', date: '2026-05-06' });
+      const report = await tool('time_report', {
+        from: '2026-05-06',
+        to: '2026-05-06',
+        person: 'me',
+      });
+      expect(report).toMatchObject({ total: '10m', entries: [{ date: '2026-05-06' }] });
+    } finally {
+      await owner.patch(ws, { settings: { timezone: 'Europe/Stockholm' } });
+    }
+  });
+
+  it('asks for a team when a cycle name matches cycles in several teams', async () => {
+    const other2 = (await owner.post(`${ws}/teams`, { name: 'Second', key: 'TSEC' })).data.id;
+    for (const team of [ids.pub, other2])
+      expect(
+        (
+          await owner.post(`${ws}/teams/${team}/cycles`, {
+            name: 'Sprint',
+            startsAt: '2026-06-01',
+            endsAt: '2026-06-15',
+          })
+        ).statusCode,
+      ).toBe(200);
+    await owner.post(`${ws}/teams/${other2}/members`, { userId: ids.member });
+    expect((await tool('time_report', { cycle: 'Sprint' })).error).toContain('give a team');
+    expect(await tool('time_report', { cycle: 'Sprint', team: 'TPUB' })).toMatchObject({
+      total: expect.any(String),
     });
   });
 });

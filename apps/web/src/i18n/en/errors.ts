@@ -116,5 +116,6 @@ export default {
     time_tracking_off: 'Time tracking is off in this workspace',
     own_time_entries: 'You can only change your own time entries',
     no_timer: 'No timer is running',
+    timer_conflict: 'Your timer was just started elsewhere. Try again.',
   },
 };

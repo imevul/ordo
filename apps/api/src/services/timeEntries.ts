@@ -1,5 +1,6 @@
 import {
   type CreateTimeEntryInput,
+  canonicalTimeZone,
   type IssueTime,
   MAX_TIME_ENTRY_SECONDS,
   type RunningTimer,
@@ -13,7 +14,7 @@ import {
 import { and, asc, desc, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { cycles, issues, projects, teams, timeEntries, users, workspaces } from '../db/schema.ts';
-import { forbidden, HttpError, notFound, one } from '../lib/errors.ts';
+import { conflict, forbidden, HttpError, isUniqueViolation, notFound, one } from '../lib/errors.ts';
 import { type Access, teamScope } from './access.ts';
 import { auditCtx } from './audit.ts';
 import { type Ctx, emit, record } from './context.ts';
@@ -75,14 +76,19 @@ function changed(
   );
 }
 
-/** Everything logged on an issue the caller can read, newest first. */
+/** Everything logged on an issue the caller can read (guests: only their own), newest first. */
 export async function issueTime(db: DbOrTx, access: Access, ref: string): Promise<IssueTime> {
   await assertTimeTracking(db, access.workspaceId);
   const issue = await getIssue(db, access, ref);
   const rows = await db
     .select()
     .from(timeEntries)
-    .where(eq(timeEntries.issueId, issue.id))
+    .where(
+      and(
+        eq(timeEntries.issueId, issue.id),
+        access.isGuest ? eq(timeEntries.userId, access.userId) : undefined,
+      ),
+    )
     .orderBy(desc(timeEntries.startedAt), desc(timeEntries.createdAt));
   const entries = rows.map(toTimeEntry);
   return { entries, totalSeconds: entries.reduce((n, e) => n + (e.durationSeconds ?? 0), 0) };
@@ -168,20 +174,23 @@ export async function startTimer(ctx: Ctx, ref: string, note = '') {
   const issue = await getIssue(ctx.tx, ctx.access, ref);
   const running = await runningRow(ctx.tx, ctx.workspaceId, ctx.userId);
   if (running) await finish(ctx, running);
-  const entry = toTimeEntry(
-    one(
-      await ctx.tx
-        .insert(timeEntries)
-        .values({
-          workspaceId: ctx.workspaceId,
-          issueId: issue.id,
-          userId: ctx.userId,
-          startedAt: new Date().toISOString(),
-          note,
-        })
-        .returning(),
-    ),
-  );
+  // Two starts at once both find no running row to lock; the unique index stops the second.
+  const rows = await ctx.tx
+    .insert(timeEntries)
+    .values({
+      workspaceId: ctx.workspaceId,
+      issueId: issue.id,
+      userId: ctx.userId,
+      startedAt: new Date().toISOString(),
+      note,
+    })
+    .returning()
+    .catch((err) => {
+      if (isUniqueViolation(err))
+        throw conflict('Your timer was just started elsewhere; try again').as('timer_conflict');
+      throw err;
+    });
+  const entry = toTimeEntry(one(rows));
   changed(ctx, entry, issue, 'created');
   return entry;
 }
@@ -281,7 +290,8 @@ export async function timeReport(
   const settings = await settingsOf(db, access.workspaceId);
   if (!settings.timeTracking)
     throw forbidden('Time tracking is off in this workspace').as('time_tracking_off');
-  const zone = settings.timezone ?? 'UTC';
+  // Postgres only gets canonical names: it reads offsets like "+01:00" the other way round.
+  const zone = canonicalTimeZone(settings.timezone ?? '') ?? 'UTC';
   const day = sql<string>`to_char(${timeEntries.startedAt} at time zone ${zone}, 'YYYY-MM-DD')`;
   const where: (SQL | undefined)[] = [
     eq(timeEntries.workspaceId, access.workspaceId),
