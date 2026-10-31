@@ -19,6 +19,7 @@ import {
   createAgentKey,
   describeAgent,
   dismissRun,
+  getRunDetail,
   heartbeat,
   listAgents,
   listAgentUsage,
@@ -115,6 +116,12 @@ export async function agentRoutes(app: FastifyInstance) {
   app.get('/agent-runs/active-count', async (req) => ({
     count: await countActiveRuns(db, requireAccess(req)),
   }));
+
+  // One run with its prompt, timeline and restarts: the run's page.
+  app.get('/agent-runs/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    return getRunDetail(db, requireAccess(req), id);
+  });
 
   app.post('/agent-runs/:id/cancel', async (req) => {
     const { id } = req.params as { id: string };

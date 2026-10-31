@@ -3,6 +3,7 @@ import {
   type Locale as DateLocale,
   differenceInCalendarDays,
   format,
+  formatDistanceStrict,
   formatDistanceToNowStrict,
   isThisYear,
   parseISO,
@@ -29,6 +30,11 @@ export function relativeTime(iso: string) {
   const diff = Date.now() - d.getTime();
   if (diff < 45_000) return t('time.justNow');
   return formatDistanceToNowStrict(d, { addSuffix: true, locale: DATE_LOCALES[getLocale()] });
+}
+
+/** How long from `from` to `to`: "12 minutes", "2 hours". */
+export function durationBetween(from: string, to: string) {
+  return formatDistanceStrict(parseISO(to), parseISO(from), { locale: DATE_LOCALES[getLocale()] });
 }
 
 /** "Oct 26" this year, "Oct 26, 2025" otherwise, in the reader's language's order. */

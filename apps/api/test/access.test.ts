@@ -807,6 +807,7 @@ describe('route inventory', () => {
     'DELETE /agents/:id/keys/:keyId': 'workspace admins only',
     'GET /issues/:id/agent-runs': "getIssue with the caller's access (agents.test.ts)",
     'POST /issues/:id/agent-runs': "getIssue with the caller's access (agents.test.ts)",
+    'GET /agent-runs/:id': "getRunDetail is scoped to the caller's teams (agents.test.ts)",
     'POST /agent-runs/:id/cancel': "loadRun is scoped to the caller's teams (agents.test.ts)",
     'POST /agent-runs/:id/restart': "loadRun is scoped to the caller's teams (agents.test.ts)",
     'POST /agent-runs/:id/dismiss': "loadRun is scoped to the caller's teams (agents.test.ts)",

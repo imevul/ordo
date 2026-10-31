@@ -285,8 +285,9 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 ### Product ideas — from the 2026-10-31 review
 
 - [ ] ⬜ Agents
-  - [ ] ⬜ A page per run: trigger, instructions, timeline (queued, claimed, heartbeats, result), runner, attempts,
-    restarts (`retryOf`), output tail, cost and progress; rows on the Agent runs page and the issue link to it
+  - [x] ✅ A page per run: trigger, prompt, timeline (queued, claimed, progress, question and reply, lapsed leases,
+    result), runner, attempts, restarts both ways and progress; rows on the Agent runs page and the issue link to it.
+    Output tail and cost come with live output and cost per run
   - [x] ✅ Progress updates from a running agent: an MCP `report_progress` tool (a short step like "running tests", an
     optional rough percentage), shown on the run page and the runs list, newest only, not a comment per update
   - [x] ✅ Cost per run: tokens, cost and duration (Claude Code's JSON result), totals per agent and month, and a

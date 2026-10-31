@@ -3,6 +3,7 @@ import {
   type AgentIdentity,
   type AgentRun,
   type AgentRunContext,
+  type AgentRunDetail,
   type AgentUsageTotal,
   type Bootstrap,
   type Comment,
@@ -12,7 +13,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { agentRuns, domainEvents } from '../src/db/schema.ts';
-import { reapLeases, restartAfterLimits } from '../src/services/agents.ts';
+import { runInWorkspace } from '../src/lib/mutate.ts';
+import { reapLeases, reportProgress, restartAfterLimits } from '../src/services/agents.ts';
 import { type Client, type Json, signup, testApp } from './helpers.ts';
 
 let app: FastifyInstance;
@@ -1283,5 +1285,212 @@ describe('repository run limits', () => {
     // Without a limit nothing waits.
     await owner.patch(`${ws}/repositories/${shared.id}`, { maxConcurrentRuns: null });
     expect((await loser.claim()).statusCode).toBe(200);
+  });
+});
+
+describe('a run’s page', () => {
+  let chronicler: string;
+  let chronKey: string;
+  const chronName = `chron-${Date.now().toString(36)}`;
+  const as = (method: string, url: string, body?: unknown) => bearer(chronKey, method, url, body);
+  const take = (instructions?: string) =>
+    as(
+      'POST',
+      `${ws}/agent/claim?runner=chron-host`,
+      instructions ? { instructions } : {},
+    ) as Promise<{
+      statusCode: number;
+      data: AgentRunContext;
+    }>;
+  const detail = async (who: Client, id: string) =>
+    (await who.get(`${ws}/agent-runs/${id}`)) as {
+      statusCode: number;
+      data: AgentRunDetail;
+    };
+  const kinds = (d: AgentRunDetail) => d.events.map((e) => e.kind);
+
+  beforeAll(async () => {
+    chronicler = (
+      await owner.post(`${ws}/agents`, {
+        name: 'Chronicler',
+        // Test files share a database; a name of its own keeps @mentions on this agent.
+        username: chronName,
+        teamIds: [eng, prv],
+        instructions: 'Write it all down.',
+      })
+    ).data.id;
+    chronKey = (await owner.post(`${ws}/agents/${chronicler}/keys`, { name: 'c' })).data.token;
+  });
+
+  it('tells the whole story: prompt, timeline, question and answer, result', async () => {
+    const i = await issue('Tell me everything', { assigneeId: chronicler });
+    const { data } = await take('SECRET_FROM_RUNNER_ENV');
+    const runId = data.run.id;
+    expect(data.prompt).toContain('SECRET_FROM_RUNNER_ENV');
+
+    await runInWorkspace(
+      app,
+      { workspaceId: boot.workspace.id, actorId: chronicler, source: 'api' },
+      (ctx) => reportProgress(ctx, runId, { step: 'Reading the code', percent: 10 }),
+    );
+    await as('PATCH', `${ws}/agent/runs/${runId}`, {
+      status: 'waiting',
+      question: 'Tabs or spaces?',
+    });
+    const reply = (await member.post(`${ws}/issues/${i.id}/comments`, { body: 'Spaces.' })).data;
+    await take();
+    await as('PATCH', `${ws}/agent/runs/${runId}`, {
+      status: 'succeeded',
+      summary: 'Wrote it down.',
+      sessionUrl: 'https://example.test/s/1',
+    });
+
+    const { statusCode, data: run } = await detail(member, runId);
+    expect(statusCode).toBe(200);
+    expect(run).toMatchObject({
+      id: runId,
+      status: 'succeeded',
+      summary: 'Wrote it down.',
+      sessionUrl: 'https://example.test/s/1',
+      issue: { id: i.id, identifier: i.identifier, title: 'Tell me everything' },
+      triggerComment: null,
+      restartedBy: [],
+    });
+    // The runner got every instruction; the page doesn't show any: the runner's may hold its
+    // environment, and the agent's are for admins, while a member sees this.
+    expect(data.prompt).toContain('Write it all down.');
+    expect(run.prompt).toContain(`# ${i.identifier}: Tell me everything`);
+    expect(run.prompt).toContain('## You asked\nTabs or spaces?');
+    expect(run.prompt).not.toContain('SECRET_FROM_RUNNER_ENV');
+    expect(run.prompt).not.toContain('Write it all down.');
+    expect(run.prompt).not.toContain('## Instructions');
+    expect(kinds(run)).toEqual([
+      'queued',
+      'claimed',
+      'started',
+      'progress',
+      'asked',
+      'resumed',
+      'claimed',
+      'succeeded',
+    ]);
+    const [, claimed, , progress, asked, resumed, again] = run.events;
+    expect(claimed!.data).toEqual({ runner: 'chron-host', attempt: 1 });
+    expect(claimed!.actorId).toBe(chronicler);
+    expect(progress!.data).toEqual({ step: 'Reading the code', percent: 10 });
+    expect(asked!.data).toEqual({ question: 'Tabs or spaces?' });
+    // Answered by the member's reply.
+    expect(resumed!).toMatchObject({ actorId: reply.authorId, data: { commentId: reply.id } });
+    expect(again!.data).toEqual({ runner: 'chron-host', attempt: 1 });
+  });
+
+  it('keeps related issues out of the saved prompt, since the agent may see more than the viewer', async () => {
+    const parent = (await owner.post(`${ws}/issues`, { teamId: prv, title: 'Secret parent' })).data;
+    const blocked = (await owner.post(`${ws}/issues`, { teamId: prv, title: 'Secret blocked' }))
+      .data;
+    const i = await issue('Linked to private work', { parentId: parent.id });
+    await owner.post(`${ws}/issues/${i.id}/relations`, {
+      type: 'blocks',
+      relatedIssueId: blocked.id,
+    });
+    await owner.patch(`${ws}/issues/${i.id}`, { assigneeId: chronicler });
+    const { data } = await take();
+    // The agent is on PRV, so its prompt names both.
+    expect(data.prompt).toContain(`Parent issue: ${parent.identifier} Secret parent`);
+    expect(data.prompt).toContain(`- blocks: ${blocked.identifier} Secret blocked`);
+
+    const { statusCode, data: run } = await detail(member, data.run.id);
+    expect(statusCode).toBe(200);
+    expect(run.prompt).toContain(`# ${i.identifier}: Linked to private work`);
+    expect(run.prompt).not.toContain('Secret');
+    expect(run.prompt).not.toContain(parent.identifier);
+    expect(run.prompt).not.toContain(blocked.identifier);
+    await owner.post(`${ws}/agent-runs/${data.run.id}/cancel`);
+  });
+
+  it('links restarts both ways and records why a run failed', async () => {
+    await issue('Fails, then restarts', { assigneeId: chronicler });
+    const { data } = await take();
+    await as('PATCH', `${ws}/agent/runs/${data.run.id}`, { status: 'failed', error: 'segfault' });
+    const restart = (await member.post(`${ws}/agent-runs/${data.run.id}/restart`)).data as AgentRun;
+
+    const failed = (await detail(owner, data.run.id)).data;
+    expect(failed.restartedBy).toEqual([
+      { id: restart.id, status: 'queued', createdAt: restart.createdAt },
+    ]);
+    expect(failed.events.at(-1)).toMatchObject({
+      kind: 'failed',
+      data: { reason: 'error', error: 'segfault' },
+    });
+    const next = (await detail(owner, restart.id)).data;
+    expect(next.retryOfId).toBe(data.run.id);
+    expect(next.events).toEqual([
+      expect.objectContaining({ kind: 'queued', data: { retryOfId: data.run.id } }),
+    ]);
+
+    await owner.post(`${ws}/agent-runs/${restart.id}/cancel`);
+    await owner.post(`${ws}/agent-runs/${data.run.id}/dismiss`);
+    expect(kinds((await detail(owner, restart.id)).data)).toEqual(['queued', 'cancelled']);
+    expect(kinds((await detail(owner, data.run.id)).data).at(-1)).toBe('dismissed');
+  });
+
+  it('records lapsed leases as Ordo’s doing', async () => {
+    await issue('Quiet runner', { assigneeId: chronicler });
+    const { data } = await take();
+    await app.db
+      .update(agentRuns)
+      .set({ leaseExpiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(eq(agentRuns.id, data.run.id));
+    await reapLeases(app);
+    const run = (await detail(owner, data.run.id)).data;
+    expect(run.events.at(-1)).toMatchObject({
+      kind: 'lapsed',
+      actorId: null,
+      data: { runner: 'chron-host', attempt: 1, failed: false },
+    });
+    await owner.post(`${ws}/agent-runs/${data.run.id}/cancel`);
+  });
+
+  it('shows what a run waits on, and who told it to run anyway', async () => {
+    const blocker = await issue('Blocks the page');
+    const blocked = await issue('Waits on the page');
+    await owner.post(`${ws}/issues/${blocked.id}/relations`, {
+      type: 'blocked_by',
+      relatedIssueId: blocker.id,
+    });
+    await owner.patch(`${ws}/issues/${blocked.id}`, { assigneeId: chronicler });
+    const [run] = await runsOf(blocked.id);
+    expect((await detail(member, run!.id)).data.blockedBy).toEqual([
+      { id: blocker.id, identifier: blocker.identifier, title: 'Blocks the page' },
+    ]);
+    await member.post(`${ws}/agent-runs/${run!.id}/run-anyway`);
+    const after = (await detail(member, run!.id)).data;
+    expect(after.blockedBy).toEqual([]);
+    const me = (await member.get('/api/auth/me')).data.id as string;
+    expect(after.events.at(-1)).toMatchObject({ kind: 'ran_anyway', actorId: me });
+    await owner.post(`${ws}/agent-runs/${run!.id}/cancel`);
+  });
+
+  it('shows the mention that asked for the run', async () => {
+    const i = await issue('Mention me');
+    const body = `@${chronName} look`;
+    const c = (await member.post(`${ws}/issues/${i.id}/comments`, { body })).data;
+    const [run] = await runsOf(i.id);
+    expect((await detail(member, run!.id)).data.triggerComment).toEqual({
+      id: c.id,
+      authorId: c.authorId,
+      body,
+    });
+    await owner.post(`${ws}/agent-runs/${run!.id}/cancel`);
+  });
+
+  it("is a 404 for someone who can't see the issue", async () => {
+    const hidden = (await owner.post(`${ws}/issues`, { teamId: prv, title: 'Hidden run' })).data;
+    await owner.patch(`${ws}/issues/${hidden.id}`, { assigneeId: chronicler });
+    const [run] = await runsOf(hidden.id);
+    expect((await detail(owner, run!.id)).statusCode).toBe(200);
+    expect((await detail(member, run!.id)).statusCode).toBe(404);
+    expect((await detail(member, '00000000-0000-4000-8000-000000000000')).statusCode).toBe(404);
+    await owner.post(`${ws}/agent-runs/${run!.id}/cancel`);
   });
 });

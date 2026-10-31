@@ -1,6 +1,7 @@
 import {
   AGENT_AUTO_RESTARTS,
   AGENT_BRANCH_FORMAT,
+  AGENT_LEASE_MS,
   AGENT_PROTOCOL_VERSION,
   AGENT_RUN_OPEN,
   type Agent,
@@ -9,6 +10,8 @@ import {
   type AgentPauseReason,
   type AgentRun,
   type AgentRunContext,
+  type AgentRunDetail,
+  type AgentRunEventKind,
   type AgentRunFailureReason,
   type AgentRunPullRequest,
   type AgentRunTrigger,
@@ -48,6 +51,7 @@ import type { FastifyInstance } from 'fastify';
 import type { z } from 'zod';
 import type { DbOrTx } from '../db/client.ts';
 import {
+  agentRunEvents,
   agentRuns,
   agents,
   apiKeys,
@@ -83,8 +87,6 @@ import { joinWorkspace, workspaceSettings } from './workspaces.ts';
  * heartbeat and report how they ended. Ordo never runs anything itself.
  */
 
-/** How long a claim holds without a heartbeat. */
-export const LEASE_MS = 5 * 60_000;
 /** Claims a run gets before a lapsed lease fails it instead of requeueing it. */
 export const MAX_ATTEMPTS = 3;
 
@@ -425,6 +427,17 @@ async function changed(ctx: Ctx, run: RunRow) {
   record(ctx, 'agent_run.updated', toAgentRun(run), { teamIds: [teamId] });
 }
 
+/** A step in the run's timeline, by `ctx`'s user unless `actorId` says otherwise. */
+async function logRun(
+  ctx: Ctx,
+  runId: string,
+  kind: AgentRunEventKind,
+  data: Record<string, unknown> = {},
+  actorId: string | null = ctx.userId,
+) {
+  await ctx.tx.insert(agentRunEvents).values({ runId, kind, data, actorId });
+}
+
 /** Whether `userId` is an enabled agent of this workspace. */
 export async function isActiveAgent(tx: DbOrTx, workspaceId: string, userId: string) {
   const [row] = await tx
@@ -481,6 +494,7 @@ export async function queueRun(
       })
       .returning(),
   );
+  await logRun(ctx, run.id, 'queued', opts.retryOfId ? { retryOfId: opts.retryOfId } : {});
   await changed(ctx, run);
   return run;
 }
@@ -497,7 +511,10 @@ async function cancelOpenRuns(ctx: Ctx, where: ReturnType<typeof eq>, reason: st
     })
     .where(and(where, inArray(agentRuns.status, [...AGENT_RUN_OPEN])))
     .returning();
-  for (const run of cancelled) await changed(ctx, run);
+  for (const run of cancelled) {
+    await logRun(ctx, run.id, 'cancelled', { reason });
+    await changed(ctx, run);
+  }
 }
 
 /**
@@ -540,14 +557,20 @@ export async function requestRun(ctx: Ctx, issueIdOrIdentifier: string): Promise
   return toAgentRun(run);
 }
 
-/** Waiting runs matching `where` go back in the queue; lapsed-lease counting starts over. */
-async function resumeRuns(ctx: Ctx, where: ReturnType<typeof eq>) {
+/**
+ * Waiting runs matching `where` go back in the queue; lapsed-lease counting starts over.
+ * `commentId`: the reply that answered them.
+ */
+async function resumeRuns(ctx: Ctx, where: ReturnType<typeof eq>, commentId?: string) {
   const resumed = await ctx.tx
     .update(agentRuns)
     .set({ status: 'queued', attempts: 0, updatedAt: new Date().toISOString() })
     .where(and(where, eq(agentRuns.status, 'waiting')))
     .returning();
-  for (const run of resumed) await changed(ctx, run);
+  for (const run of resumed) {
+    await logRun(ctx, run.id, 'resumed', commentId ? { commentId } : {});
+    await changed(ctx, run);
+  }
   return resumed;
 }
 
@@ -575,7 +598,7 @@ export async function onComment(
     .where(eq(users.id, authorId));
   // Agents mentioning agents would start each other forever; they hand work on by assigning.
   if (author?.kind !== 'human') return;
-  if (waiting) await resumeRuns(ctx, eq(agentRuns.issueId, issueId));
+  if (waiting) await resumeRuns(ctx, eq(agentRuns.issueId, issueId), comment.id);
   // A person @mentioning an agent asks it for something, whether or not the issue is its own.
   for (const id of mentioned)
     if (await isActiveAgent(ctx.tx, ctx.workspaceId, id))
@@ -616,6 +639,7 @@ export async function askQuestion(ctx: Ctx, runId: string, question: string): Pr
   await createComment(ctx, run.issueId, {
     body: `${asker ? `@${asker} ` : ''}${question}`.slice(0, 50_000),
   });
+  await logRun(ctx, runId, 'asked', { question });
   await changed(ctx, saved!);
   return toAgentRun(saved!);
 }
@@ -732,6 +756,7 @@ export async function runAnyway(ctx: Ctx, runId: string): Promise<AgentRun> {
     .set({ ignoreBlockers: true, updatedAt: new Date().toISOString() })
     .where(eq(agentRuns.id, run.id))
     .returning();
+  await logRun(ctx, run.id, 'ran_anyway');
   await changed(ctx, saved!);
   return toAgentRun(saved!);
 }
@@ -777,6 +802,7 @@ export async function dismissRun(ctx: Ctx, runId: string): Promise<AgentRun> {
     .set({ dismissedAt: new Date().toISOString(), updatedAt: new Date().toISOString() })
     .where(eq(agentRuns.id, run.id))
     .returning();
+  await logRun(ctx, run.id, 'dismissed');
   await changed(ctx, saved!);
   return toAgentRun(saved!);
 }
@@ -921,6 +947,78 @@ export async function listRuns(db: DbOrTx, access: Access, issueIdOrIdentifier: 
     .orderBy(desc(agentRuns.createdAt))
     .limit(50);
   return withBlockers(db, access, rows.map(toAgentRun));
+}
+
+/** One run of an issue `access` can read, with its timeline and restarts: the run's page. */
+export async function getRunDetail(
+  db: DbOrTx,
+  access: Access,
+  runId: string,
+): Promise<AgentRunDetail> {
+  const [row] = await db
+    .select({
+      run: agentRuns,
+      number: issues.number,
+      title: issues.title,
+      stateId: issues.stateId,
+      teamId: issues.teamId,
+      teamKey: teams.key,
+    })
+    .from(agentRuns)
+    .innerJoin(issues, eq(issues.id, agentRuns.issueId))
+    .innerJoin(teams, eq(teams.id, issues.teamId))
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        eq(agentRuns.workspaceId, access.workspaceId),
+        teamScope(access, issues.teamId),
+      ),
+    );
+  if (!row) throw notFound('Run');
+  const { run } = row;
+  const [[withBlocked], events, restartedBy, [triggerComment], held] = await Promise.all([
+    withBlockers(db, access, [toAgentRun(run)]),
+    db
+      .select()
+      .from(agentRunEvents)
+      .where(eq(agentRunEvents.runId, run.id))
+      // The newest, should a chatty agent have reported very many steps.
+      .orderBy(desc(agentRunEvents.id))
+      .limit(1000),
+    db
+      .select({ id: agentRuns.id, status: agentRuns.status, createdAt: agentRuns.createdAt })
+      .from(agentRuns)
+      .where(eq(agentRuns.retryOfId, run.id))
+      .orderBy(asc(agentRuns.createdAt)),
+    run.triggerCommentId
+      ? db
+          .select({ id: comments.id, authorId: comments.authorId, body: comments.body })
+          .from(comments)
+          .where(and(eq(comments.id, run.triggerCommentId), eq(comments.issueId, run.issueId)))
+      : Promise.resolve([]),
+    heldByRepository(db, access.workspaceId, run.status === 'queued' ? [run.issueId] : []),
+  ]);
+  return {
+    ...withBlocked!,
+    waitingForRepository: held.get(run.issueId) ?? null,
+    issue: {
+      id: run.issueId,
+      identifier: `${row.teamKey}-${row.number}`,
+      title: row.title,
+      stateId: row.stateId,
+      teamId: row.teamId,
+    },
+    prompt: run.prompt,
+    triggerComment: triggerComment ?? null,
+    restartedBy,
+    events: events.reverse().map((e) => ({
+      id: String(e.id),
+      kind: e.kind,
+      data: e.data,
+      actorId: e.actorId,
+      at: e.createdAt,
+    })),
+  };
 }
 
 /**
@@ -1091,7 +1189,7 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
     .set({
       status: 'claimed',
       attempts: sql`${agentRuns.attempts} + 1`,
-      leaseExpiresAt: new Date(Date.now() + LEASE_MS).toISOString(),
+      leaseExpiresAt: new Date(Date.now() + AGENT_LEASE_MS).toISOString(),
       runnerName,
       error: null,
       // A new pickup starts over; an earlier attempt's progress no longer says anything.
@@ -1103,6 +1201,7 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
     .where(eq(agentRuns.id, next.id))
     .returning();
   // Deleted since the select (its issue went away): nothing to claim this time.
+  if (run) await logRun(ctx, run.id, 'claimed', { runner: runnerName, attempt: run.attempts });
   return run ?? null;
 }
 
@@ -1125,7 +1224,8 @@ export async function claimRun(
         const run = await takeRun(ctx, runnerName);
         if (!run) return { done: true as const, context: null };
         try {
-          const context = await runContext(app, ctx, run, runnerInstructions);
+          const { context, prompt } = await runContext(app, ctx, run, runnerInstructions);
+          await ctx.tx.update(agentRuns).set({ prompt }).where(eq(agentRuns.id, run.id));
           await changed(ctx, run);
           return { done: true as const, context };
         } catch (err) {
@@ -1181,6 +1281,8 @@ export async function reportProgress(
     })
     .where(eq(agentRuns.id, runId))
     .returning();
+  if (run.status === 'claimed') await logRun(ctx, runId, 'started');
+  await logRun(ctx, runId, 'progress', { step: input.step, percent: input.percent ?? null });
   const teamId = await teamOfIssue(ctx.tx, run.issueId);
   emit(ctx, { kind: 'agentRun', action: 'updated', id: run.id, issueId: run.issueId, teamId });
   return toAgentRun(saved!);
@@ -1193,7 +1295,7 @@ export async function heartbeat(ctx: Ctx, runId: string) {
   if (run.status === 'waiting') return { cancelled: false, waiting: true, status: run.status };
   if (!AGENT_RUN_OPEN.includes(run.status) || run.status === 'queued')
     return { cancelled: true, status: run.status };
-  const leaseExpiresAt = new Date(Date.now() + LEASE_MS).toISOString();
+  const leaseExpiresAt = new Date(Date.now() + AGENT_LEASE_MS).toISOString();
   await ctx.tx.update(agentRuns).set({ leaseExpiresAt }).where(eq(agentRuns.id, runId));
   return { cancelled: false, status: run.status, leaseExpiresAt };
 }
@@ -1274,6 +1376,9 @@ export async function reportRun(
     })
     .where(eq(agentRuns.id, runId))
     .returning();
+  if (input.status === 'running' && run.status === 'claimed') await logRun(ctx, runId, 'started');
+  if (input.status === 'succeeded') await logRun(ctx, runId, 'succeeded');
+  if (failure) await logRun(ctx, runId, 'failed', { reason: failure.reason, error: saved!.error });
   if (failure?.reason === 'usage_limit') await pauseAgent(ctx, run.agentId, failure.pauseUntil);
   // A failure is reported as one, even when the runner kept some output as the summary.
   const body =
@@ -1575,6 +1680,15 @@ async function reapLease(app: FastifyInstance, run: typeof agentRuns.$inferSelec
         )
         .where(eq(agentRuns.id, run.id))
         .returning();
+      // Ordo noticed, not the agent.
+      await logRun(
+        ctx,
+        run.id,
+        'lapsed',
+        { runner: current.runnerName, attempt: current.attempts, failed },
+        null,
+      );
+      if (failed) await logRun(ctx, run.id, 'failed', { reason: 'runner_lost', error }, null);
       if (failed)
         await createComment(ctx, run.issueId, {
           body: `This run failed after ${current.attempts} attempts: ${error.toLowerCase()}.`,
@@ -1627,12 +1741,18 @@ export function waitForRuns(
 
 // --- What a runner gets ----------------------------------------------------------------------
 
+/**
+ * What the runner gets, and the prompt Ordo keeps: the same, without instructions, parent or
+ * related issues. Anyone who sees the issue sees the run's page, while the runner's instructions
+ * may hold expanded environment variables, the agent's are for admins only, and the parent and
+ * relations are filtered by the agent's teams, not the viewer's.
+ */
 async function runContext(
   app: FastifyInstance,
   ctx: Ctx,
   run: RunRow,
   runnerInstructions: string,
-): Promise<AgentRunContext> {
+): Promise<{ context: AgentRunContext; prompt: string }> {
   const detail = await getIssueDetail(ctx.tx, ctx.access, run.issueId);
   const [[agent], [ws], [team], commentRows, states, labelRows] = await Promise.all([
     ctx.tx
@@ -1748,13 +1868,20 @@ async function runContext(
     },
     assigned: detail.assigneeId === run.agentId,
   };
-  const stateName = states.find((s) => s.id === detail.stateId)?.name ?? '';
+  const extra = {
+    state: states.find((s) => s.id === detail.stateId)?.name ?? '',
+    labels: labelRows.map((l) => l.name),
+  };
   return {
-    ...context,
-    prompt: renderPrompt(context, {
-      state: stateName,
-      labels: labelRows.map((l) => l.name),
-    }),
+    context: { ...context, prompt: renderPrompt(context, extra) },
+    prompt: renderPrompt(
+      {
+        ...context,
+        agent: { ...context.agent, instructions: '' },
+        issue: { ...context.issue, parent: null, relations: [] },
+      },
+      extra,
+    ),
   };
 }
 

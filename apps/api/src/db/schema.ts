@@ -1,5 +1,6 @@
 import type {
   AgentPauseReason,
+  AgentRunEventKind,
   AgentRunFailureReason,
   AgentRunPullRequest,
   AgentRunStatus,
@@ -1954,6 +1955,11 @@ export const agentRuns = pgTable(
     question: text('question'),
     /** Opaque to Ordo: the runner's handle on the agent's session, returned on the next pickup. */
     resume: text('resume'),
+    /**
+     * The prompt of the latest pickup, as Ordo rendered it, without instructions: the runner's
+     * may hold expanded environment variables, and the agent's are for admins only.
+     */
+    prompt: text('prompt'),
     requestedById: uuid('requested_by_id').references(() => users.id, { onDelete: 'set null' }),
     startedAt: ts('started_at'),
     finishedAt: ts('finished_at'),
@@ -1965,5 +1971,26 @@ export const agentRuns = pgTable(
     index('agent_runs_issue_idx').on(t.issueId),
     index('agent_runs_lease_idx').on(t.leaseExpiresAt),
     index('agent_runs_usage_idx').on(t.workspaceId, t.usageAt),
+    index('agent_runs_retry_of_idx').on(t.retryOfId),
   ],
+);
+
+/**
+ * What happened to a run: its page's timeline. Heartbeats aren't kept. Ordered by `id`, since
+ * steps of one transaction share its `now()`.
+ */
+export const agentRunEvents = pgTable(
+  'agent_run_events',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<AgentRunEventKind>().notNull(),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    /** Who did it: the agent, a person who cancelled or answered, or nobody (the system). */
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('agent_run_events_run_idx').on(t.runId, t.id)],
 );

@@ -379,6 +379,8 @@ export const AGENT_PAUSE_REASONS = ['usage_limit', 'budget'] as const;
 export type AgentPauseReason = (typeof AGENT_PAUSE_REASONS)[number];
 /** Usage-limit failures in a row after which a run waits for a person instead of restarting. */
 export const AGENT_AUTO_RESTARTS = 3;
+/** How long a run's claim holds without a heartbeat; each heartbeat renews it. */
+export const AGENT_LEASE_MS = 5 * 60_000;
 /**
  * Why a run exists: its agent was assigned the issue, a person @mentioned it, Run again,
  * something happened to one of the issue's pull requests (see `AgentRun.triggerDetail`), or a
@@ -392,6 +394,27 @@ export const AGENT_RUN_TRIGGERS = [
   'scheduled',
 ] as const;
 export type AgentRunTrigger = (typeof AGENT_RUN_TRIGGERS)[number];
+/**
+ * What happens to a run, for its timeline (see `AgentRunEvent`). lapsed: its runner stopped
+ * heartbeating and the run went back in the queue (or failed, on the last attempt). resumed: a
+ * waiting run went back in the queue, after a person's reply or Resume. ran_anyway: someone told a
+ * queued run not to wait for its issue's blockers.
+ */
+export const AGENT_RUN_EVENT_KINDS = [
+  'queued',
+  'ran_anyway',
+  'claimed',
+  'started',
+  'progress',
+  'asked',
+  'resumed',
+  'lapsed',
+  'succeeded',
+  'failed',
+  'cancelled',
+  'dismissed',
+] as const;
+export type AgentRunEventKind = (typeof AGENT_RUN_EVENT_KINDS)[number];
 /** The runner protocol's version, in every claimed run's context. */
 export const AGENT_PROTOCOL_VERSION = 1;
 

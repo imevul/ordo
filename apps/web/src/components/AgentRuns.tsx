@@ -1,4 +1,4 @@
-import type { AgentRun, AgentRunStatus, IssueDetail } from '@ordo/shared';
+import type { AgentRun, AgentRunStatus, AgentRunWithIssue, IssueDetail } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Bot, ExternalLink, FastForward, RotateCcw, Square } from 'lucide-react';
@@ -13,6 +13,26 @@ import { Markdown } from './Markdown.tsx';
 export const agentRunsKey = (slug: string, issueId: string) =>
   ['ws', slug, 'agentRuns', issueId] as const;
 
+/** One run's page; under agentRuns, so run events refetch it. */
+export const agentRunKey = (slug: string, runId: string) =>
+  ['ws', slug, 'agentRuns', 'run', runId] as const;
+
+/** A run's status chip, linking to the run's page. */
+export function RunStatusLink({ run }: { run: AgentRun }) {
+  const ws = useWorkspace();
+  return (
+    <Link
+      to="/$slug/agent-runs/$runId"
+      params={{ slug: ws.slug, runId: run.id }}
+      className="chip flex-none hover:underline"
+      style={{ ['--chip' as string]: RUN_STATUS_COLOR[run.status] }}
+      title={t('agents.runsPage.open')}
+    >
+      {t(`agents.runs.status.${run.status}`)}
+    </Link>
+  );
+}
+
 export const RUN_STATUS_COLOR: Record<AgentRunStatus, string> = {
   queued: 'var(--color-index)',
   claimed: 'var(--color-warning)',
@@ -23,7 +43,7 @@ export const RUN_STATUS_COLOR: Record<AgentRunStatus, string> = {
   cancelled: 'var(--color-muted)',
 };
 
-export const isOpenRun = (r: AgentRun) =>
+export const isOpenRun = (r: Pick<AgentRun, 'status'>) =>
   r.status === 'queued' ||
   r.status === 'claimed' ||
   r.status === 'running' ||
@@ -109,6 +129,24 @@ export function RunBlocked({ run, className = '' }: { run: AgentRun; className?:
   return (
     <div className={`truncate font-mono text-[11px] text-warning ${className}`}>
       {tx('agents.runs.waitingOn', { issues: <>{issues}</> })}
+    </div>
+  );
+}
+
+/** A queued run held back by a repository at its run limit. */
+export function RunWaitingForSlot({
+  run,
+  className = '',
+}: {
+  run: AgentRunWithIssue;
+  className?: string;
+}) {
+  if (!run.waitingForRepository) return null;
+  return (
+    <div className={`truncate font-mono text-[11px] text-index ${className}`}>
+      <span className="text-warning">{t('agents.runsPage.waitingForSlot')}</span>
+      {' · '}
+      {t('agents.runsPage.waitingForSlotHint', { repository: run.waitingForRepository.name })}
     </div>
   );
 }
@@ -334,9 +372,7 @@ function RunRow({
           )}
         </button>
         <RunUsage run={run} className="hidden flex-none md:inline" />
-        <span className="chip flex-none" style={{ ['--chip' as string]: color }}>
-          {t(`agents.runs.status.${run.status}`)}
-        </span>
+        <RunStatusLink run={run} />
         <span className="hidden flex-none font-mono text-[11px] text-index sm:inline">
           {relativeTime(run.finishedAt ?? run.startedAt ?? run.createdAt)}
         </span>
