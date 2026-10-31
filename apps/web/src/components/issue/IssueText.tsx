@@ -16,13 +16,34 @@ export function IssueTitle({
   const [value, setValue] = useState(issue.title);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => setValue(issue.title), [issue.title]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the text changes
-  useLayoutEffect(() => {
+  const resize = () => {
     if (ref.current) {
       ref.current.style.height = 'auto';
       ref.current.style.height = `${ref.current.scrollHeight}px`;
     }
-  }, [value]);
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: resize whenever the text changes
+  useLayoutEffect(resize, [value]);
+  // The text also re-wraps when the width changes (resize, rotation, sidebar) or the web font
+  // loads. Only react to width: our own height change fires the observer too and would loop.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: set up once; resize reads the ref
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    let width = el.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (el.clientWidth === width) return;
+      width = el.clientWidth;
+      resize();
+    });
+    observer.observe(el);
+    let alive = true;
+    document.fonts.ready.then(() => alive && resize());
+    return () => {
+      alive = false;
+      observer.disconnect();
+    };
+  }, []);
   const commit = () => {
     const next = value.trim();
     if (next && next !== issue.title) onSave(next);
