@@ -11,6 +11,7 @@ import {
   isRestartable,
   RUN_STATUS_COLOR,
   RunDetail,
+  RunProgress,
   runDetail,
   triggerLabel,
 } from '../components/AgentRuns.tsx';
@@ -323,6 +324,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
           )}
         </span>
       </div>
+      <RunProgress run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
       {open && detail && (
         <div className="pb-3 pl-[11.5rem] pr-4 text-[13px]">
           <RunDetail run={run} />

@@ -54,6 +54,40 @@ export function FailureTags({ run }: { run: AgentRun }) {
   );
 }
 
+/**
+ * What a working agent last said it's doing (report_progress), with a bar when it gave a
+ * percentage. Gone once the run stops working.
+ */
+export function RunProgress({ run, className = '' }: { run: AgentRun; className?: string }) {
+  const p = run.progress;
+  if (!p || (run.status !== 'running' && run.status !== 'claimed')) return null;
+  return (
+    <div
+      className={`flex min-w-0 items-center gap-2 font-mono text-[11px] text-muted ${className}`}
+    >
+      <span className="min-w-0 truncate" title={longDate(p.at)}>
+        {p.step}
+      </span>
+      {p.percent !== null && (
+        <>
+          <span
+            className="hidden h-[3px] w-16 flex-none bg-border-soft sm:block"
+            role="progressbar"
+            aria-valuenow={p.percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label={t('agents.runs.progress')}
+          >
+            <span className="block h-full bg-primary" style={{ width: `${p.percent}%` }} />
+          </span>
+          <span className="flex-none text-index">{p.percent}%</span>
+        </>
+      )}
+      <span className="flex-none text-index">{relativeTime(p.at)}</span>
+    </div>
+  );
+}
+
 /** The expanded row: the agent's question, what went wrong (and what happens next), or its summary. */
 export function RunDetail({ run }: { run: AgentRun }) {
   if (run.status === 'waiting' && run.question)
@@ -249,6 +283,7 @@ function RunRow({
           </button>
         )}
       </div>
+      <RunProgress run={run} className="-mt-1 px-8 pb-2" />
       {open && detail && (
         <div className="px-8 pb-3 text-[13px]">
           <RunDetail run={run} />

@@ -70,6 +70,7 @@ export default {
     dismiss: 'Dismiss',
     /** Tag on a run that restarts a failed one. */
     restarted: 'restart',
+    progress: 'Progress',
     /** Why a run failed, next to its status. */
     failure: {
       usage_limit: 'usage limit',

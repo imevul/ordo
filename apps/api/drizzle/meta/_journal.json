@@ -386,6 +386,13 @@
       "when": 1793407567894,
       "tag": "0054_job_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1793449513646,
+      "tag": "0055_agent_run_progress",
+      "breakpoints": true
     }
   ]
 }

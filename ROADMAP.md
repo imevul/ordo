@@ -133,6 +133,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [x] ✅ Failed agent runs: a reason for each failure, Restart and Dismiss on the Agent runs page (failed runs stay
   in its Open list), and usage limits recognised: the agent pauses until the limit resets and its runs restart;
   MCP `restart_agent_run` and `dismiss_agent_run`
+- [x] ✅ Agents plan over MCP: `create_cycle`, `update_cycle`, `create_milestone`, `update_milestone`, and a
+  `milestone` on `create_issue` / `update_issue`
 - [x] ✅ Agents and pull requests: PRs with checks and review in the issue sidebar, a project's pull request
   agent (hand-off when a PR is ready, issues for PRs opened outside Ordo), assignees woken on failing checks and
   requested changes
@@ -283,7 +285,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 - [ ] ⬜ Agents
   - [ ] ⬜ A page per run: trigger, instructions, timeline (queued, claimed, heartbeats, result), runner, attempts,
     restarts (`retryOf`), output tail, cost and progress; rows on the Agent runs page and the issue link to it
-  - [ ] ⬜ Progress updates from a running agent: an MCP `report_progress` tool (a short step like "running tests", an
+  - [x] ✅ Progress updates from a running agent: an MCP `report_progress` tool (a short step like "running tests", an
     optional rough percentage), shown on the run page and the runs list, newest only, not a comment per update
   - [ ] ⬜ Cost per run: tokens, cost and duration (Claude Code's JSON result), totals per agent and month, and a
     budget that pauses the agent like a usage limit does

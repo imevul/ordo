@@ -24,6 +24,8 @@ const limit = (max: number, fallback: number) =>
     .default(fallback)
     .describe(`Maximum results (default ${fallback}, at most ${max})`);
 const cycle = ref('"current", a cycle number of the team, a cycle name or id');
+const project = ref('Project name or id');
+const milestone = ref('Milestone name within the project, or id');
 
 const issueFields = {
   description: z.string().max(100_000).describe('Markdown').optional(),
@@ -33,6 +35,10 @@ const issueFields = {
   labels: z.array(ref('Label name or id')).max(50).optional(),
   project: ref('Project name or id').nullable().optional(),
   cycle: cycle.nullable().optional(),
+  milestone: milestone
+    .nullable()
+    .optional()
+    .describe("Milestone of the issue's project (or of project, when given)"),
   parent: issue.nullable().optional().describe('Parent issue identifier, makes this a sub-issue'),
   estimate: z.number().int().min(0).max(100).nullable().optional(),
   dueDate: isoDate.nullable().optional(),
@@ -56,6 +62,34 @@ export const mcpToolSchemas = {
   list_cycles: z.object({
     team: team.optional(),
     includePast: z.boolean().default(false).describe('Include cycles that have ended'),
+  }),
+  create_cycle: z.object({
+    team,
+    startsAt: isoDate.describe('First day'),
+    endsAt: isoDate.describe('Day after the last day (the next cycle starts here)'),
+    name: z.string().trim().min(1).max(120).optional(),
+    description: z.string().max(5000).optional(),
+  }),
+  update_cycle: z.object({
+    team,
+    cycle,
+    startsAt: isoDate.optional(),
+    endsAt: isoDate.optional(),
+    name: z.string().trim().min(1).max(120).nullable().optional(),
+    description: z.string().max(5000).nullable().optional(),
+  }),
+  create_milestone: z.object({
+    project,
+    name: z.string().trim().min(1).max(120),
+    targetDate: isoDate.optional(),
+    description: z.string().max(5000).optional(),
+  }),
+  update_milestone: z.object({
+    project,
+    milestone,
+    name: z.string().trim().min(1).max(120).optional(),
+    targetDate: isoDate.nullable().optional(),
+    description: z.string().max(5000).nullable().optional(),
   }),
   search_issues: z.object({
     query: z
@@ -161,6 +195,22 @@ export const mcpToolSchemas = {
       .optional()
       .describe('Anything you need to continue this session later; handed back on the next pickup'),
   }),
+  report_progress: z.object({
+    step: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .describe('What you are doing now, in a few words (e.g. "Running the tests")'),
+    percent: z
+      .number()
+      .int()
+      .min(0)
+      .max(100)
+      .optional()
+      .describe('A rough estimate of how far along you are, if you can tell'),
+    run: z.uuid().optional().describe('The run (default: your only open run)'),
+  }),
   ask_question: z.object({
     question: z
       .string()
@@ -211,7 +261,7 @@ export const MCP_TOOLS: {
   {
     name: 'list_projects',
     title: 'List projects',
-    description: 'Projects with status, lead, teams, dates and progress.',
+    description: 'Projects with status, lead, teams, dates, progress and milestones.',
     readOnly: true,
   },
   {
@@ -219,6 +269,32 @@ export const MCP_TOOLS: {
     title: 'List cycles',
     description: 'Current and upcoming cycles (sprints) per team.',
     readOnly: true,
+  },
+  {
+    name: 'create_cycle',
+    title: 'Create cycle',
+    description:
+      "Plan a cycle (sprint) for a team: start date, end date (the day after its last day) and an optional name. It gets the team's next cycle number.",
+    readOnly: false,
+  },
+  {
+    name: 'update_cycle',
+    title: 'Update cycle',
+    description: "Change a cycle's dates, name or description.",
+    readOnly: false,
+  },
+  {
+    name: 'create_milestone',
+    title: 'Create milestone',
+    description:
+      'Add a milestone to a project, with an optional target date. Put issues in it with update_issue.',
+    readOnly: false,
+  },
+  {
+    name: 'update_milestone',
+    title: 'Update milestone',
+    description: "Change a project milestone's name, target date or description.",
+    readOnly: false,
   },
   {
     name: 'search_issues',
@@ -249,7 +325,7 @@ export const MCP_TOOLS: {
     name: 'update_issue',
     title: 'Update issue',
     description:
-      'Change an issue: title, description, status, priority, assignee, labels, project, cycle, parent, estimate or due date.',
+      'Change an issue: title, description, status, priority, assignee, labels, project, milestone, cycle, parent, estimate or due date.',
     readOnly: false,
   },
   {
@@ -325,6 +401,14 @@ export const MCP_TOOLS: {
     title: 'Report run',
     description:
       'For agents: report on a run you hold. Add a session link, mark it running, or finish it (succeeded or failed) with a summary that is posted on the issue.',
+    readOnly: false,
+    audience: 'agent',
+  },
+  {
+    name: 'report_progress',
+    title: 'Report progress',
+    description:
+      'For agents: say what you are doing now on a run you hold (a few words, optionally a rough percentage). People see the latest one on the run; it is not posted as a comment. Send one at each new step, not more often.',
     readOnly: false,
     audience: 'agent',
   },

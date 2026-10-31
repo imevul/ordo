@@ -2,18 +2,24 @@ import {
   type AgentRun,
   type Cycle,
   createCommentSchema,
+  createCycleSchema,
   createIssueSchema,
+  createMilestoneSchema,
   type Issue,
   type IssueFilter,
   isCycleCurrent,
   MCP_TOOLS,
   type McpToolArgs,
   type McpToolName,
+  type Milestone,
   mcpToolSchemas,
+  type Project,
   priorityLabel,
   STATE_TYPES,
   type Team,
+  updateCycleSchema,
   updateIssueSchema,
+  updateMilestoneSchema,
 } from '@ordo/shared';
 import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -28,6 +34,7 @@ import {
   heldRuns,
   listRuns,
   listWorkspaceRuns,
+  reportProgress,
   reportRun,
   requestRun,
   restartRun,
@@ -35,10 +42,10 @@ import {
 import { createComment, listComments } from './comments.ts';
 import type { Ctx } from './context.ts';
 import { workspaceToday } from './cycle-automation.ts';
-import { listCycles } from './cycles.ts';
+import { createCycle, listCycles, updateCycle } from './cycles.ts';
 import { createIssue, getIssue, getIssueDetail, queryIssues, updateIssue } from './issues.ts';
 import { listLabels } from './labels.ts';
-import { listProjects } from './projects.ts';
+import { createMilestone, listProjects, updateMilestone } from './projects.ts';
 import { listTeams } from './teams.ts';
 import { listMembers } from './workspaces.ts';
 
@@ -153,6 +160,14 @@ class Directory {
     throw badRequest(`Unknown project "${ref}". Use list_projects to see them.`);
   }
 
+  async milestone(project: Project, ref: string) {
+    const m = project.milestones.find((m) => m.id === ref || same(m.name, ref));
+    if (m) return m;
+    throw badRequest(
+      `Unknown milestone "${ref}" in ${project.name}. Milestones: ${project.milestones.map((m) => m.name).join(', ') || 'none'}`,
+    );
+  }
+
   /** Cycles matching `ref`: "current", a number, a name or an id, within one team or all. */
   async cycleIds(ref: string, teamId?: string): Promise<string[]> {
     const today = await this.today();
@@ -211,6 +226,7 @@ async function summarize(c: McpReader, dir: Directory, list: Issue[]) {
     const team = teams.find((t) => t.id === i.teamId);
     const state = team?.states.find((s) => s.id === i.stateId);
     const cycle = cycles.find((x) => x.id === i.cycleId);
+    const project = projects.find((p) => p.id === i.projectId);
     return {
       identifier: i.identifier,
       title: i.title,
@@ -222,7 +238,8 @@ async function summarize(c: McpReader, dir: Directory, list: Issue[]) {
       assignee: (i.assigneeId && people.get(i.assigneeId)) || null,
       creator: (i.creatorId && people.get(i.creatorId)) || null,
       labels: i.labelIds.map((id) => labels.find((l) => l.id === id)?.name).filter(Boolean),
-      project: projects.find((p) => p.id === i.projectId)?.name ?? null,
+      project: project?.name ?? null,
+      milestone: project?.milestones.find((m) => m.id === i.milestoneId)?.name ?? null,
       cycle: cycle ? { number: cycle.number, name: cycle.name } : null,
       estimate: i.estimate,
       dueDate: i.dueDate,
@@ -319,10 +336,14 @@ type Handlers = { [K in McpToolName]: (args: McpToolArgs<K>) => Promise<unknown>
 function handlers(c: McpCaller): Handlers {
   const dir = new Directory(c);
 
-  /** Issue fields shared by create and update, resolved within `team`. */
+  /**
+   * Issue fields shared by create and update, resolved within `team`. A milestone is looked up in
+   * the project being set, else in `projectId` (the issue's own).
+   */
   async function fields(
     args: McpToolArgs<'create_issue'> | McpToolArgs<'update_issue'>,
     team: Team,
+    projectId: string | null = null,
   ) {
     const out: Record<string, unknown> = {};
     if (args.description !== undefined) out.description = args.description;
@@ -331,8 +352,14 @@ function handlers(c: McpCaller): Handlers {
     if (args.assignee !== undefined)
       out.assigneeId = args.assignee === null ? null : await dir.person(args.assignee);
     if (args.labels !== undefined) out.labelIds = await dir.labelIds(args.labels, team.id);
-    if (args.project !== undefined)
-      out.projectId = args.project === null ? null : (await dir.project(args.project)).id;
+    const project = args.project ? await dir.project(args.project) : undefined;
+    if (args.project !== undefined) out.projectId = project?.id ?? null;
+    if (args.milestone === null) out.milestoneId = null;
+    else if (args.milestone !== undefined) {
+      const of = project ?? (projectId ? await dir.project(projectId) : undefined);
+      if (!of) throw badRequest('Say which project the milestone is in (project).');
+      out.milestoneId = (await dir.milestone(of, args.milestone)).id;
+    }
     if (args.cycle !== undefined)
       out.cycleId = args.cycle === null ? null : await dir.cycle(args.cycle, team.id);
     if (args.parent !== undefined)
@@ -412,6 +439,7 @@ function handlers(c: McpCaller): Handlers {
         targetDate: p.targetDate,
         progress: p.progress,
         description: p.description,
+        milestones: p.milestones.map(milestoneResult),
       }));
     },
 
@@ -421,15 +449,48 @@ function handlers(c: McpCaller): Handlers {
       const teams = await dir.teams();
       return (await dir.cycles())
         .filter((x) => (!teamId || x.teamId === teamId) && (includePast || x.endsAt > today))
-        .map((x) => ({
-          team: teams.find((t) => t.id === x.teamId)?.key ?? null,
-          number: x.number,
-          name: x.name,
-          startsAt: x.startsAt,
-          endsAt: x.endsAt,
-          current: isCycleCurrent(x, today),
-          progress: x.progress,
-        }));
+        .map((x) =>
+          cycleResult(
+            teams.find((t) => t.id === x.teamId),
+            x,
+            today,
+          ),
+        );
+    },
+
+    create_cycle: async ({ team, ...input }) => {
+      const t = await dir.team(team);
+      const cycle = await c.run((ctx) => createCycle(ctx, t.id, parse(createCycleSchema, input)));
+      return cycleResult(t, cycle, await dir.today());
+    },
+
+    update_cycle: async ({ team, cycle, ...input }) => {
+      const t = await dir.team(team);
+      const id = await dir.cycle(cycle, t.id);
+      const patch = parse(updateCycleSchema, input);
+      if (Object.keys(patch).length === 0) throw badRequest('Nothing to change');
+      const saved = await c.run((ctx) => updateCycle(ctx, id, patch));
+      return cycleResult(t, saved, await dir.today());
+    },
+
+    create_milestone: async ({ project, ...input }) => {
+      const p = await dir.project(project);
+      const { milestone } = await c.run((ctx) =>
+        createMilestone(ctx, p.id, parse(createMilestoneSchema, input)),
+      );
+      return { project: p.name, ...milestoneResult(milestone) };
+    },
+
+    update_milestone: async ({ project, milestone, ...input }) => {
+      const p = await dir.project(project);
+      const m = await dir.milestone(p, milestone);
+      const patch = parse(updateMilestoneSchema, input);
+      if (Object.keys(patch).length === 0) throw badRequest('Nothing to change');
+      const saved = await c.run((ctx) => updateMilestone(ctx, m.id, patch));
+      return {
+        project: p.name,
+        ...milestoneResult(saved.milestones.find((x) => x.id === m.id)!),
+      };
     },
 
     search_issues: async (a) => {
@@ -482,7 +543,7 @@ function handlers(c: McpCaller): Handlers {
       const patch = parse(updateIssueSchema, {
         ...(a.title !== undefined && { title: a.title }),
         ...(team.id !== current.teamId && { teamId: team.id }),
-        ...(await fields(a, team)),
+        ...(await fields(a, team, current.projectId)),
         ...(a.addLabels && { addLabelIds: await dir.labelIds(a.addLabels, team.id) }),
         ...(a.removeLabels && { removeLabelIds: await dir.labelIds(a.removeLabels, team.id) }),
       });
@@ -604,6 +665,13 @@ function handlers(c: McpCaller): Handlers {
       return { run: saved.id, status: saved.status, sessionUrl: saved.sessionUrl };
     },
 
+    report_progress: async ({ run, step, percent }) => {
+      requireAgent(c);
+      const runId = run ?? (await onlyHeldRun(c));
+      const saved = await c.run((ctx) => reportProgress(ctx, runId, { step, percent }));
+      return { run: saved.id, status: saved.status, progress: saved.progress };
+    },
+
     ask_question: async ({ question, run }) => {
       requireAgent(c);
       const runId = run ?? (await onlyHeldRun(c));
@@ -626,6 +694,27 @@ function handlers(c: McpCaller): Handlers {
         createdAt: comment.createdAt,
       };
     },
+  };
+}
+
+function cycleResult(team: Team | undefined, x: Cycle, today: string) {
+  return {
+    team: team?.key ?? null,
+    number: x.number,
+    name: x.name,
+    startsAt: x.startsAt,
+    endsAt: x.endsAt,
+    current: isCycleCurrent(x, today),
+    progress: x.progress,
+  };
+}
+
+function milestoneResult(m: Milestone) {
+  return {
+    name: m.name,
+    targetDate: m.targetDate,
+    description: m.description,
+    progress: m.progress,
   };
 }
 

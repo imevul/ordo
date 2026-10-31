@@ -344,6 +344,10 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
   retryAt: r.retryAt,
   retryOfId: r.retryOfId,
   dismissedAt: r.dismissedAt,
+  progress:
+    r.progressStep && r.progressAt
+      ? { step: r.progressStep, percent: r.progressPercent, at: r.progressAt }
+      : null,
   question: r.question,
   resume: r.resume,
   trigger: r.trigger,
@@ -888,6 +892,10 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
       leaseExpiresAt: new Date(Date.now() + LEASE_MS).toISOString(),
       runnerName,
       error: null,
+      // A new pickup starts over; an earlier attempt's progress no longer says anything.
+      progressStep: null,
+      progressPercent: null,
+      progressAt: null,
       updatedAt: new Date().toISOString(),
     })
     .where(eq(agentRuns.id, next.id))
@@ -942,6 +950,38 @@ async function ownRun(ctx: Ctx, runId: string) {
     .for('update');
   if (!run) throw notFound('Run');
   return run;
+}
+
+/**
+ * The agent says how far it got. Only the newest note is kept, and it isn't an event for webhooks
+ * (agents may send many); clients refetch the run. A claimed run is running once it reports.
+ */
+export async function reportProgress(
+  ctx: Ctx,
+  runId: string,
+  input: { step: string; percent?: number | null },
+): Promise<AgentRun> {
+  const run = await ownRun(ctx, runId);
+  if (run.status !== 'claimed' && run.status !== 'running')
+    throw conflict(`This run is ${run.status}`);
+  const now = new Date().toISOString();
+  const [saved] = await ctx.tx
+    .update(agentRuns)
+    .set({
+      progressStep: input.step,
+      progressPercent: input.percent ?? null,
+      progressAt: now,
+      ...(run.status === 'claimed' && {
+        status: 'running' as const,
+        startedAt: run.startedAt ?? now,
+      }),
+      updatedAt: now,
+    })
+    .where(eq(agentRuns.id, runId))
+    .returning();
+  const teamId = await teamOfIssue(ctx.tx, run.issueId);
+  emit(ctx, { kind: 'agentRun', action: 'updated', id: run.id, issueId: run.issueId, teamId });
+  return toAgentRun(saved!);
 }
 
 /** Keeps a claim alive. Tells the runner when a person cancelled the run, so it can stop. */
@@ -1429,7 +1469,7 @@ export function renderPrompt(
       `## You asked\n${c.run.question}\n\nThe answer is in the comments after your question. Continue from there.`,
     );
   out.push(
-    `## Reporting\nIf you need an answer before you can continue, ask it with the \`ask_question\` tool of the Ordo MCP server or \`ordo agent ask "<question>"\`, then stop: the run pauses, and it resumes when someone replies. When you are done, end with a short summary of what you did and anything a reviewer should check; it is posted on the issue.`,
+    `## Reporting\nIf you need an answer before you can continue, ask it with the \`ask_question\` tool of the Ordo MCP server or \`ordo agent ask "<question>"\`, then stop: the run pauses, and it resumes when someone replies. At each new step of the work, say what you are doing with the \`report_progress\` tool (a few words, and a rough percentage if you can tell); people watching the run see the latest one. When you are done, end with a short summary of what you did and anything a reviewer should check; it is posted on the issue.`,
   );
   return out.join('\n\n');
 }

@@ -105,15 +105,19 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       list_statuses: "A team's workflow statuses in order, with their type.",
       list_members: 'People in the workspace: name, username and role.',
       list_labels: 'Workspace labels and team labels.',
-      list_projects: 'Projects with status, lead, teams, dates and progress.',
+      list_projects: 'Projects with status, lead, teams, dates, progress and milestones.',
       list_cycles: 'Current and upcoming cycles (sprints) per team.',
+      create_cycle: "Plan a cycle for a team; it gets the team's next number.",
+      update_cycle: "Change a cycle's dates, name or description.",
+      create_milestone: 'Add a milestone to a project, with an optional target date.',
+      update_milestone: "Change a milestone's name, target date or description.",
       search_issues:
         'Find issues by text and filters (team, status, assignee, labels, project, cycle, priority). Open issues only unless includeClosed, status or statusType is set.',
       my_issues: 'Open issues assigned to you, most urgent first.',
       get_issue: 'One issue in full: description, comments, sub-issues, relations and links.',
       create_issue: 'Create an issue in a team. Statuses, labels and people are given by name.',
       update_issue:
-        'Change an issue: title, description, status, priority, assignee, labels, project, cycle, parent, estimate or due date.',
+        'Change an issue: title, description, status, priority, assignee, labels, project, milestone, cycle, parent, estimate or due date.',
       add_comment: 'Comment on an issue (Markdown, @mentions notify people).',
       list_agents: 'Agents in the workspace and the teams they work in.',
       assign_to_agent:
@@ -127,6 +131,7 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       dismiss_agent_run: "Set an issue's failed run aside, so it leaves the open runs.",
       current_run: 'The runs the agent is working on now.',
       report_run: 'Report on a run: a session link, started, or finished with a summary.',
+      report_progress: 'Say what the agent is doing now; the latest one shows on the run.',
       ask_question: 'Ask a person something and pause; a reply on the issue resumes the run.',
     },
     /** Tag on tools only an agent's key sees. */

@@ -505,6 +505,10 @@ the limit resets and the run gets a `retryAt`, when it restarts by itself (not a
 restart has `retryOfId`, the run it restarts; `dismissedAt` is set on dismissed runs. See
 [agents.md](agents.md#when-a-run-fails).
 
+`progress` is `{ step, percent, at }` (or `null`): what the agent last said it is doing, sent with the MCP tool
+`report_progress`. Only the newest is kept, and a new claim clears it. It changes the run (realtime `agentRun`
+events) but isn't an `agent_run.updated` webhook event.
+
 **Default assignee.** An issue created without `assigneeId` goes to the default assignee: its project's
 `defaultAssignee` (`"workspace"`, `"none"`, or a member's id) or else the workspace's `settings.defaultAssigneeId`,
 as long as they can work in the issue's team. Send `"assigneeId": null` for nobody. Imports and issues created in

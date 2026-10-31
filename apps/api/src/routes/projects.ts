@@ -5,33 +5,29 @@ import {
   updateMilestoneSchema,
   updateProjectSchema,
 } from '@ordo/shared';
-import { desc, eq, max } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { projectMilestones, projects, projectTeams, projectUpdates } from '../db/schema.ts';
 import { requireAccess } from '../lib/auth.ts';
 import { forbidden, notFound, one, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertCan } from '../services/access.ts';
-import { type Ctx, emit, record } from '../services/context.ts';
+import { emit, record } from '../services/context.ts';
 import { assertInitiative } from '../services/initiatives.ts';
 import {
   assertProjectLead,
   assertProjectTeams,
+  createMilestone,
   createProject,
   defaultAssigneeColumns,
   listProjects,
+  loadMilestone,
+  loadProject,
+  projectChanged,
   setPullRequestAgent,
+  updateMilestone,
 } from '../services/projects.ts';
 import { setProjectRepositories } from '../services/repositories.ts';
-
-/** A project the caller can see and change: visible through one of its teams, and not a guest. */
-async function loadProject(ctx: Ctx, id: string) {
-  const [visible] = await listProjects(ctx.tx, ctx.access, id);
-  if (!visible) throw notFound('Project');
-  if (ctx.access.isGuest) throw forbidden('Guests cannot change projects').as('guests_projects');
-  const [p] = await ctx.tx.select().from(projects).where(eq(projects.id, id));
-  return p!;
-}
 
 export async function projectRoutes(app: FastifyInstance) {
   const { db } = app;
@@ -105,44 +101,16 @@ export async function projectRoutes(app: FastifyInstance) {
   // ─── milestones ───────────────────────────────────────────────────────
   // Part of the project: changes come back as the project (and reach webhooks as project.updated).
 
-  const projectChanged = async (ctx: Ctx, projectId: string) => {
-    emit(ctx, { kind: 'project', action: 'updated', id: projectId });
-    const [project] = await listProjects(ctx.tx, ctx.access, projectId);
-    record(ctx, 'project.updated', project!, { teamIds: project!.teamIds });
-    return project!;
-  };
-
-  const loadMilestone = async (ctx: Ctx, id: string) => {
-    const [m] = await ctx.tx.select().from(projectMilestones).where(eq(projectMilestones.id, id));
-    if (!m) throw notFound('Milestone');
-    await loadProject(ctx, m.projectId);
-    return m;
-  };
-
   app.post('/projects/:id/milestones', async (req) => {
     const { id } = req.params as { id: string };
     const input = parse(createMilestoneSchema, req.body);
-    return mutate(app, req, async (ctx) => {
-      await loadProject(ctx, id);
-      const [{ last }] = (await ctx.tx
-        .select({ last: max(projectMilestones.sortOrder) })
-        .from(projectMilestones)
-        .where(eq(projectMilestones.projectId, id))) as [{ last: number | null }];
-      await ctx.tx
-        .insert(projectMilestones)
-        .values({ ...input, projectId: id, sortOrder: (last ?? 0) + 1024 });
-      return projectChanged(ctx, id);
-    });
+    return mutate(app, req, async (ctx) => (await createMilestone(ctx, id, input)).project);
   });
 
   app.patch('/milestones/:id', async (req) => {
     const { id } = req.params as { id: string };
     const input = parse(updateMilestoneSchema, req.body);
-    return mutate(app, req, async (ctx) => {
-      const m = await loadMilestone(ctx, id);
-      await ctx.tx.update(projectMilestones).set(input).where(eq(projectMilestones.id, id));
-      return projectChanged(ctx, m.projectId);
-    });
+    return mutate(app, req, (ctx) => updateMilestone(ctx, id, input));
   });
 
   app.delete('/milestones/:id', async (req) => {

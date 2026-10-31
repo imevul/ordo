@@ -679,6 +679,7 @@ export type CreateMilestoneInput = z.infer<typeof createMilestoneSchema>;
 export const updateMilestoneSchema = createMilestoneSchema
   .partial()
   .extend({ sortOrder: z.number().optional() });
+export type UpdateMilestoneInput = z.infer<typeof updateMilestoneSchema>;
 
 export const updateProjectSchema = createProjectSchema
   .partial()
@@ -708,6 +709,7 @@ export const updateCycleSchema = z.object({
   startsAt: isoDate.optional(),
   endsAt: isoDate.optional(),
 });
+export type UpdateCycleInput = z.infer<typeof updateCycleSchema>;
 
 export const createViewSchema = z.object({
   name: name,

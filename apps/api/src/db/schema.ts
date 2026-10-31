@@ -1777,6 +1777,10 @@ export const agentRuns = pgTable(
     }),
     /** A failed run someone looked at and set aside: it leaves the open runs. */
     dismissedAt: ts('dismissed_at'),
+    /** The agent's latest progress note while it works (report_progress); only the newest is kept. */
+    progressStep: text('progress_step'),
+    progressPercent: integer('progress_percent'),
+    progressAt: ts('progress_at'),
     /** Why it was queued: assignment, a person's @mention, or Run again. */
     trigger: text('trigger').$type<AgentRunTrigger>().notNull().default('assigned'),
     triggerCommentId: uuid('trigger_comment_id').references(() => comments.id, {

@@ -585,4 +585,117 @@ describe('agents', () => {
     // The owner, with a person's key, can.
     expect((await tool('dismiss_agent_run', { issue: issue.identifier })).dismissed).toBe(runId);
   });
+  it('shows what a working agent last said it is doing', async () => {
+    const bot = (await ada.post(`${ws}/agents`, { name: 'Progress Bot', teamIds: [eng()] })).data;
+    const botKey = (await ada.post(`${ws}/agents/${bot.id}/keys`, { name: 'p' })).data.token;
+    const issue = await tool('create_issue', { team: 'ENG', title: 'Long job' });
+    expect((await tool('report_progress', { step: 'Starting' }, botKey)).error).toContain('no run');
+    await ada.patch(`${ws}/issues/${issue.id}`, { assigneeId: bot.id });
+    const claim = () =>
+      app.inject({
+        method: 'POST',
+        url: `${ws}/agent/claim`,
+        headers: { authorization: `Bearer ${botKey}` },
+      });
+    await claim();
+    const first = await tool('report_progress', { step: 'Reading the code' }, botKey);
+    // Saying what it does means it's working.
+    expect(first).toMatchObject({
+      status: 'running',
+      progress: { step: 'Reading the code', percent: null },
+    });
+    await tool('report_progress', { step: 'Running the tests', percent: 70 }, botKey);
+    const [run] = (await ada.get(`${ws}/issues/${issue.id}/agent-runs`)).data;
+    expect(run.progress).toMatchObject({ step: 'Running the tests', percent: 70 });
+    expect((await tool('report_progress', { step: 'x', percent: 120 }, botKey)).error).toBeTruthy();
+    // Not a comment per update.
+    expect((await tool('get_issue', { issue: issue.identifier })).comments).toEqual([]);
+    // A person's key has no runs to report on.
+    expect((await tool('report_progress', { step: 'Hi' })).error).toContain('belongs to a person');
+    await tool('report_run', { status: 'succeeded', summary: 'Done.' }, botKey);
+    expect((await tool('report_progress', { step: 'Late' }, botKey)).error).toContain('no run');
+  });
+});
+
+describe('planning', () => {
+  it('creates and changes cycles by team and number', async () => {
+    const created = await tool('create_cycle', {
+      team: 'ENG',
+      startsAt: '2030-01-07',
+      endsAt: '2030-01-21',
+      name: 'Launch',
+    });
+    expect(created).toMatchObject({ team: 'ENG', name: 'Launch', startsAt: '2030-01-07' });
+    const updated = await tool('update_cycle', {
+      team: 'ENG',
+      cycle: String(created.number),
+      endsAt: '2030-01-28',
+      name: null,
+    });
+    expect(updated).toMatchObject({ number: created.number, endsAt: '2030-01-28', name: null });
+    expect(
+      (
+        await tool('update_cycle', {
+          team: 'ENG',
+          cycle: String(created.number),
+          endsAt: '2030-01-01',
+        })
+      ).error,
+    ).toContain('End date must be after start date');
+    expect((await tool('update_cycle', { team: 'ENG', cycle: 'Nope', name: 'x' })).error).toContain(
+      'Unknown cycle',
+    );
+    const cycles = await tool('list_cycles', { team: 'ENG' });
+    expect(cycles.map((c: { number: number }) => c.number)).toContain(created.number);
+    // Issues go in by number.
+    const issue = await tool('create_issue', {
+      team: 'ENG',
+      title: 'Planned',
+      cycle: String(created.number),
+    });
+    expect(issue.cycle).toEqual({ number: created.number, name: null });
+  });
+
+  it('adds milestones to projects and puts issues in them', async () => {
+    const eng = boot.teams.find((t) => t.key === 'ENG')!.id;
+    await ada.post(`${ws}/projects`, { name: 'Rocket', teamIds: [eng] });
+    const m = await tool('create_milestone', {
+      project: 'rocket',
+      name: 'Alpha',
+      targetDate: '2030-02-01',
+    });
+    expect(m).toMatchObject({ project: 'Rocket', name: 'Alpha', targetDate: '2030-02-01' });
+    await tool('create_milestone', { project: 'Rocket', name: 'Beta' });
+    const renamed = await tool('update_milestone', {
+      project: 'Rocket',
+      milestone: 'beta',
+      name: 'Beta 1',
+      targetDate: '2030-03-01',
+    });
+    expect(renamed).toMatchObject({ name: 'Beta 1', targetDate: '2030-03-01' });
+    expect(
+      (await tool('update_milestone', { project: 'Rocket', milestone: 'Gamma', name: 'x' })).error,
+    ).toContain('Milestones: Alpha, Beta 1');
+    const [rocket] = (await tool('list_projects')).filter(
+      (p: { name: string }) => p.name === 'Rocket',
+    );
+    expect(rocket.milestones.map((x: { name: string }) => x.name)).toEqual(['Alpha', 'Beta 1']);
+
+    const issue = await tool('create_issue', {
+      team: 'ENG',
+      title: 'First stage',
+      project: 'Rocket',
+      milestone: 'Alpha',
+    });
+    expect(issue).toMatchObject({ project: 'Rocket', milestone: 'Alpha' });
+    // Within the issue's own project when no project is given.
+    const moved = await tool('update_issue', { issue: issue.identifier, milestone: 'Beta 1' });
+    expect(moved.milestone).toBe('Beta 1');
+    const cleared = await tool('update_issue', { issue: issue.identifier, milestone: null });
+    expect(cleared).toMatchObject({ project: 'Rocket', milestone: null });
+    const loose = await tool('create_issue', { team: 'ENG', title: 'No project' });
+    expect(
+      (await tool('update_issue', { issue: loose.identifier, milestone: 'Alpha' })).error,
+    ).toContain('Say which project');
+  });
 });

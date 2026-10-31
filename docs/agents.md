@@ -35,7 +35,9 @@ There are three parts:
 ## Day to day
 
 1. Write the issue as you would for a colleague, and assign it to the agent. A run is queued.
-2. A runner claims it within seconds and moves it along. The issue shows who is working on it and where.
+2. A runner claims it within seconds and moves it along. The issue shows who is working on it and where. Agents
+   that use the Ordo MCP server say what they're doing as they go (`report_progress`: "Running the tests", 70%), and
+   the latest step shows under the run on the issue and on the Agent runs page.
 3. When the runner finishes, it reports success or failure with a summary, which is posted on the issue as a
    comment by the agent. If the agent opened a pull request that mentions the issue (the suggested branch name
    contains the identifier), your [forge integration](integrations/README.md) links it and moves the issue on.
@@ -389,8 +391,14 @@ agent's latest run counts if it failed or was cancelled and isn't dismissed. Whe
 which with `agent`; `run` (the id from `agent_runs` or `list_agent_runs`) names one run directly. Restarting works
 for any agent on the issue, including one that was only mentioned, unlike `rerun_agent`, which runs the assignee.
 
-An agent's own key also sees `current_run` and `report_run`, so an agent can report a session link or finish its run
-over MCP when the program running it doesn't report for it.
+An agent's own key also sees `current_run`, `report_run` and `report_progress`, so an agent can report a session link,
+say what step it's on, or finish its run over MCP when the program running it doesn't report for it. The prompt Ordo
+gives each run asks the agent to send `report_progress` at each new step; only the latest one is kept, and it's
+cleared when a runner picks the run up again.
+
+Agents can plan too: `create_cycle` / `update_cycle` and `create_milestone` / `update_milestone`, and `create_issue` /
+`update_issue` take a `milestone`. "Plan next cycle from the backlog" or "split this project into milestones" can go
+to an agent.
 
 ## Security
 

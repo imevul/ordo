@@ -1288,11 +1288,19 @@ export interface AgentRun {
   retryOfId: string | null;
   /** Set when someone dismissed the failed run; it then leaves the open runs. */
   dismissedAt: string | null;
+  /** What the agent last said it is doing, with a rough percentage if it gave one. */
+  progress: AgentRunProgress | null;
   requestedById: string | null;
   leaseExpiresAt: string | null;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;
+}
+
+export interface AgentRunProgress {
+  step: string;
+  percent: number | null;
+  at: string;
 }
 
 export interface AgentRunPullRequest {

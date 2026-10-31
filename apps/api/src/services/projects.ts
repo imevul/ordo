@@ -1,5 +1,12 @@
-import type { CreateProjectInput, Project, ProjectHealth } from '@ordo/shared';
-import { and, asc, desc, eq, exists, inArray, min, sql } from 'drizzle-orm';
+import type {
+  CreateMilestoneInput,
+  CreateProjectInput,
+  Milestone,
+  Project,
+  ProjectHealth,
+  UpdateMilestoneInput,
+} from '@ordo/shared';
+import { and, asc, desc, eq, exists, inArray, max, min, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import {
   projectMilestones,
@@ -9,7 +16,7 @@ import {
   teams,
   workspaceMembers,
 } from '../db/schema.ts';
-import { badRequest, forbidden, one } from '../lib/errors.ts';
+import { badRequest, forbidden, notFound, one } from '../lib/errors.ts';
 import { type Access, assertCan, canReadTeam } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { assertInitiative } from './initiatives.ts';
@@ -195,4 +202,57 @@ export async function listProjects(
       repos.get(p.id),
     ),
   );
+}
+
+/** A project the caller can see and change: visible through one of its teams, and not a guest. */
+export async function loadProject(ctx: Ctx, id: string) {
+  const [visible] = await listProjects(ctx.tx, ctx.access, id);
+  if (!visible) throw notFound('Project');
+  if (ctx.access.isGuest) throw forbidden('Guests cannot change projects').as('guests_projects');
+  const [p] = await ctx.tx.select().from(projects).where(eq(projects.id, id));
+  return p!;
+}
+
+// Milestones are part of their project: changes come back as the project (and reach webhooks as
+// project.updated).
+
+export async function projectChanged(ctx: Ctx, projectId: string) {
+  emit(ctx, { kind: 'project', action: 'updated', id: projectId });
+  const [project] = await listProjects(ctx.tx, ctx.access, projectId);
+  record(ctx, 'project.updated', project!, { teamIds: project!.teamIds });
+  return project!;
+}
+
+export async function loadMilestone(ctx: Ctx, id: string) {
+  const [m] = await ctx.tx.select().from(projectMilestones).where(eq(projectMilestones.id, id));
+  if (!m) throw notFound('Milestone');
+  await loadProject(ctx, m.projectId);
+  return m;
+}
+
+/** Adds a milestone at the end of the project's list. */
+export async function createMilestone(
+  ctx: Ctx,
+  projectId: string,
+  input: CreateMilestoneInput,
+): Promise<{ milestone: Milestone; project: Project }> {
+  await loadProject(ctx, projectId);
+  const [{ last }] = (await ctx.tx
+    .select({ last: max(projectMilestones.sortOrder) })
+    .from(projectMilestones)
+    .where(eq(projectMilestones.projectId, projectId))) as [{ last: number | null }];
+  const row = one(
+    await ctx.tx
+      .insert(projectMilestones)
+      .values({ ...input, projectId, sortOrder: (last ?? 0) + 1024 })
+      .returning(),
+  );
+  const project = await projectChanged(ctx, projectId);
+  return { milestone: project.milestones.find((m) => m.id === row.id)!, project };
+}
+
+export async function updateMilestone(ctx: Ctx, id: string, input: UpdateMilestoneInput) {
+  const m = await loadMilestone(ctx, id);
+  await ctx.tx.update(projectMilestones).set(input).where(eq(projectMilestones.id, id));
+  return projectChanged(ctx, m.projectId);
 }

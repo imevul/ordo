@@ -1,9 +1,9 @@
-import type { CreateCycleInput, Cycle } from '@ordo/shared';
+import type { CreateCycleInput, Cycle, UpdateCycleInput } from '@ordo/shared';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { cycles, teams } from '../db/schema.ts';
-import { forbidden, notFound, one } from '../lib/errors.ts';
-import { type Access, assertTeamAccess, teamScope } from './access.ts';
+import { badRequest, forbidden, notFound, one } from '../lib/errors.ts';
+import { type Access, assertTeamAccess, canReadTeam, teamScope } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { progressBy } from './progress.ts';
 import { toCycle } from './serialize.ts';
@@ -35,6 +35,29 @@ export async function createCycle(
   emit(ctx, { kind: 'cycle', action: 'created', id: cycle.id, teamId });
   record(ctx, 'cycle.created', toCycle(cycle), { teamIds: [teamId] });
   return toCycle(cycle);
+}
+
+/** A cycle of this workspace that the caller may plan. */
+export async function loadCycle(ctx: Ctx, id: string) {
+  const [row] = await ctx.tx
+    .select({ cycle: cycles })
+    .from(cycles)
+    .innerJoin(teams, eq(teams.id, cycles.teamId))
+    .where(and(eq(cycles.id, id), eq(teams.workspaceId, ctx.workspaceId)));
+  if (!row || !canReadTeam(ctx.access, row.cycle.teamId)) throw notFound('Cycle');
+  assertCanPlan(ctx, row.cycle.teamId);
+  return row.cycle;
+}
+
+export async function updateCycle(ctx: Ctx, id: string, input: UpdateCycleInput): Promise<Cycle> {
+  const cycle = await loadCycle(ctx, id);
+  const next = { ...cycle, ...input };
+  if (next.endsAt <= next.startsAt)
+    throw badRequest('End date must be after start date').as('end_after_start');
+  const row = one(await ctx.tx.update(cycles).set(input).where(eq(cycles.id, id)).returning());
+  emit(ctx, { kind: 'cycle', action: 'updated', id, teamId: cycle.teamId });
+  record(ctx, 'cycle.updated', toCycle(row), { teamIds: [cycle.teamId] });
+  return toCycle(row);
 }
 
 /** Cycles of the teams `access` can see. */
