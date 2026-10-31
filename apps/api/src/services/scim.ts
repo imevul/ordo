@@ -425,7 +425,7 @@ export async function createScimUser(ctx: Ctx, baseUrl: string, body: unknown) {
   let user = await claimableUser(
     ctx.tx,
     email,
-    { workspaceId: ctx.workspaceId, actorId: ctx.userId, via: 'scim' },
+    { workspaceId: ctx.workspaceId, actorId: ctx.userId, via: 'scim', events: ctx.events },
     ctx.meta,
   );
   if (user && user.kind !== 'human')
@@ -513,7 +513,7 @@ export async function updateScimUser(
     const taken = await claimableUser(
       ctx.tx,
       email,
-      { workspaceId: ctx.workspaceId, actorId: ctx.userId, via: 'scim' },
+      { workspaceId: ctx.workspaceId, actorId: ctx.userId, via: 'scim', events: ctx.events },
       ctx.meta,
     );
     if (taken) throw new ScimError(409, 'Another account uses that address', 'uniqueness');

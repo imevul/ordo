@@ -8,13 +8,14 @@ import type { RequestMeta } from './context.ts';
  * Revokes everything that lets a script or app act as this person without a session: personal
  * API keys, connected OAuth apps and their pending authorization codes. Run after a password
  * reset (and, when asked, a password change or turning on 2FA), so a key or MCP grant minted by
- * whoever had the account doesn't outlive the recovery. Each revocation is audited as if the
+ * whoever had the account doesn't outlive the recovery; and when an unverified account is released
+ * from an address someone proved (`claimableUser` in sso.ts). Each revocation is audited as if the
  * person had removed it themselves, with `via` saying why.
  */
 export async function revokeCredentials(
   tx: DbOrTx,
   userId: string,
-  via: 'reset' | 'password_change' | '2fa_enabled',
+  via: 'reset' | 'password_change' | '2fa_enabled' | 'released',
   meta: RequestMeta | null,
 ) {
   const keys = await tx

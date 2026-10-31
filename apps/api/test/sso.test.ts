@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   auditLog,
   authProviders,
+  passkeys,
   sessions,
   userIdentities,
   users,
@@ -295,10 +296,10 @@ describe('sign-in', () => {
       .where(eq(userIdentities.subject, claims.sub));
     expect(identity!.userId).toBe(me.id);
 
-    // The squatter's account stays theirs, at another address and outside the workspace.
-    const theirs = (await squatter.client.get('/api/auth/me')).data;
-    expect(theirs.id).toBe(squatterId);
-    expect(theirs.email).toMatch(/\.invalid$/);
+    // The squatter's account remains, at another address, signed out and outside the workspace.
+    expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(401);
+    const [theirs] = await app.db.select().from(users).where(eq(users.id, squatterId));
+    expect(theirs!.email).toMatch(/\.invalid$/);
     const [membership] = await app.db
       .select()
       .from(workspaceMembers)
@@ -309,6 +310,53 @@ describe('sign-in', () => {
       .from(auditLog)
       .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
     expect(logged!.data).toMatchObject({ from: claims.email, via: 'sso' });
+  });
+
+  it('signs a released account out everywhere and suspends its memberships', async () => {
+    // A squatter at the person's address joins through an open invite and arms the account.
+    const claims = person('armed');
+    const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0];
+    const squatter = await signup(app, 'Armed Squatter', { inviteToken: invite.token });
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    await app.db.update(users).set({ email: claims.email }).where(eq(users.id, squatterId));
+    expect((await squatter.client.get(`${ws}/bootstrap`)).statusCode).toBe(200);
+    const key = (await squatter.client.post('/api/me/api-keys', { name: 'cli' })).data.token;
+    await app.db.insert(passkeys).values({
+      userId: squatterId,
+      credentialId: `cred-${squatterId}`,
+      publicKey: 'key',
+      name: 'Laptop',
+    });
+    const bearer = (url: string) =>
+      app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${key}` } });
+    expect((await bearer(`${ws}/bootstrap`)).statusCode).toBe(200);
+
+    const { client } = await sso(claims);
+    expect((await client.get('/api/auth/me')).data.id).not.toBe(squatterId);
+
+    expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(401);
+    expect((await squatter.client.get(`${ws}/bootstrap`)).statusCode).toBe(401);
+    expect((await bearer('/api/auth/me')).statusCode).toBe(401);
+    expect(await app.db.select().from(sessions).where(eq(sessions.userId, squatterId))).toEqual([]);
+    expect(await app.db.select().from(passkeys).where(eq(passkeys.userId, squatterId))).toEqual([]);
+    const [membership] = await app.db
+      .select()
+      .from(workspaceMembers)
+      .where(and(eq(workspaceMembers.workspaceId, wsId), eq(workspaceMembers.userId, squatterId)));
+    expect(membership!.suspendedAt).not.toBeNull();
+
+    const logged = await app.db
+      .select()
+      .from(auditLog)
+      .where(eq(auditLog.targetId, squatterId))
+      .orderBy(desc(auditLog.createdAt));
+    expect(logged.find((e) => e.action === 'member.suspended')).toMatchObject({
+      workspaceId: wsId,
+      data: { via: 'sso', reason: 'unverified_address_claimed' },
+    });
+    expect(logged.find((e) => e.action === 'auth.email_changed')!.data).toMatchObject({
+      revoked: { sessions: 1, passkeys: 1, apiKeys: 1, memberships: 1 },
+    });
   });
 
   it("doesn't link an unverified account without a password at the address", async () => {
