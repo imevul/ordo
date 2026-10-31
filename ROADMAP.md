@@ -293,7 +293,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
     budget that pauses the agent like a usage limit does
   - [ ] ⬜ Plan approval: a run can post a plan and wait; an admin approves (or answers) before it goes on
   - [ ] ⬜ Live output: the runner streams the output tail while a run works
-  - [ ] ⬜ Scheduled agent tasks (nightly dependency check, weekly review) on top of recurring issues
+  - [x] ✅ Scheduled agent tasks (nightly dependency check, weekly review) on top of recurring issues
   - [ ] ⬜ Concurrency per repository, so two runs don't work in one repo at once
 - [ ] ⬜ Everyday tracking
   - [ ] ⬜ Custom fields per workspace or team (select, multi-select, number, date, text, person) in filters,

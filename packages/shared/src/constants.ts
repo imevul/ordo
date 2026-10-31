@@ -367,10 +367,17 @@ export type AgentRunFailureReason = (typeof AGENT_RUN_FAILURE_REASONS)[number];
 /** Usage-limit failures in a row after which a run waits for a person instead of restarting. */
 export const AGENT_AUTO_RESTARTS = 3;
 /**
- * Why a run exists: its agent was assigned the issue, a person @mentioned it, Run again, or
- * something happened to one of the issue's pull requests (see `AgentRun.triggerDetail`).
+ * Why a run exists: its agent was assigned the issue, a person @mentioned it, Run again,
+ * something happened to one of the issue's pull requests (see `AgentRun.triggerDetail`), or a
+ * recurring schedule created the issue with the agent as assignee.
  */
-export const AGENT_RUN_TRIGGERS = ['assigned', 'mention', 'rerun', 'pull_request'] as const;
+export const AGENT_RUN_TRIGGERS = [
+  'assigned',
+  'mention',
+  'rerun',
+  'pull_request',
+  'scheduled',
+] as const;
 export type AgentRunTrigger = (typeof AGENT_RUN_TRIGGERS)[number];
 /** The runner protocol's version, in every claimed run's context. */
 export const AGENT_PROTOCOL_VERSION = 1;

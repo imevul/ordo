@@ -15,6 +15,7 @@ import { useWorkspace } from '../../../lib/workspace.tsx';
 import { SettingsCard } from '../ui.tsx';
 import { AgentModal } from './agent-modal.tsx';
 import { KeyModal, TokenModal } from './keys.tsx';
+import { AgentSchedules } from './schedules.tsx';
 import { errMsg } from './shared.ts';
 
 /** Settings → Agents: who they are, which teams they work in, and the keys their runners use. */
@@ -147,6 +148,7 @@ export function AgentsSection() {
                 ))}
               </div>
             )}
+            <AgentSchedules agentId={a.id} />
           </div>
         ))}
         {agents.length === 0 && (

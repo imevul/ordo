@@ -497,7 +497,7 @@ Projects take `repositoryIds` (in order) on create and update; teams take `defau
 project's `pullRequestAgentId` (an agent in one of its teams, or `null`) and `pullRequestScope` (`"linked"` or
 `"all"`): who gets its pull requests when they're ready for review ([agents.md](agents.md#pull-requests)).
 
-A run's `trigger` is `assigned`, `mention`, `rerun` or `pull_request`; for `pull_request`, `triggerDetail` is
+A run's `trigger` is `assigned`, `mention`, `rerun`, `pull_request` or `scheduled` (a recurring issue); for `pull_request`, `triggerDetail` is
 `{ event: "ready_for_review" | "checks_failed" | "changes_requested", repo, number, url, branch }`.
 
 A failed run has a `failureReason`: `usage_limit`, `timeout`, `runner_lost`, `checkout` or `error`. A runner may send

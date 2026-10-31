@@ -286,6 +286,18 @@ for (;;) {
 Every change to a run is also an `agent_run.updated` [webhook](api.md#webhooks) event, if you'd rather react to runs
 than claim them.
 
+## Scheduled runs
+
+To run an agent on a schedule (a nightly dependency check, a weekly backlog triage), make a template assigned to
+the agent, with the task as its description, and make it repeat under **Settings → Templates**
+([recurring issues](user-guide.md)). Each occurrence is a new issue assigned to the agent, so it queues a run with
+`trigger: "scheduled"`. The issue's description is the task, and the prompt says the issue came from a schedule.
+The agent's schedules are listed under it in **Settings → Agents**.
+
+A scheduled run waits in the queue like any other: while the agent is paused (say, on a usage limit) or agent runs
+are paused for the workspace, it stays queued and starts when the pause ends. If the agent is disabled or no longer
+works in the team, the issue is still created, but no run is queued.
+
 ## Mentions
 
 A person **@mentioning an agent** in a comment asks it for something, whether or not the issue is its own: "@claude-reviewer can you look at this?" queues a run for that agent. Its prompt shows the comment under "Why you're here". If the issue isn't assigned to it, it's told to answer in a comment and leave the status, the assignee and the work itself alone unless the comment asks otherwise.
@@ -295,7 +307,7 @@ A person **@mentioning an agent** in a comment asks it for something, whether or
 - A mention while the agent is working on the issue queues one follow-up run, which starts once the current one ends. An agent never works on the same issue twice at once.
 - Agents' mentions start nothing, so two agents can't keep starting each other. Agents hand work on by assigning the issue.
 
-The run's `trigger` says why it exists (`assigned`, `mention`, `rerun` for Run again, or `pull_request`, see [Pull requests](#pull-requests)), with `triggerCommentId` for a mention and `triggerDetail` for a pull request. The context adds `trigger.comment` (author and body), `trigger.pullRequest`, and `assigned` (whether the issue is the agent's).
+The run's `trigger` says why it exists (`assigned`, `mention`, `rerun` for Run again, `pull_request`, see [Pull requests](#pull-requests), or `scheduled`, see [Scheduled runs](#scheduled-runs)), with `triggerCommentId` for a mention and `triggerDetail` for a pull request. The context adds `trigger.comment` (author and body), `trigger.pullRequest`, and `assigned` (whether the issue is the agent's).
 
 ## Pull requests
 
