@@ -35,6 +35,7 @@ import {
   type comments,
   cycles,
   issueHistory,
+  issueIdentifierAliases,
   issueLabels,
   issueRelations,
   issueSubscribers,
@@ -314,34 +315,51 @@ export async function workspaceIssuePage(
 
 /** One issue by id or identifier; "not found" if it's outside the teams `access` can read. */
 export async function getIssue(db: DbOrTx, access: Access, idOrIdentifier: string): Promise<Issue> {
-  let where: SQL | undefined;
-  if (UUID_RE.test(idOrIdentifier)) where = eq(issues.id, idOrIdentifier);
-  else {
-    const m = ISSUE_IDENTIFIER_PATTERN.exec(idOrIdentifier.toUpperCase());
-    if (!m) throw notFound('Issue');
-    where = and(
-      eq(issues.number, Number(m[2])),
-      // Former keys keep old identifiers working after a team is renamed.
-      or(
-        eq(teams.key, m[1]!),
-        inArray(
-          issues.teamId,
-          db
-            .select({ id: teamKeyAliases.teamId })
-            .from(teamKeyAliases)
-            .where(
-              and(
-                eq(teamKeyAliases.workspaceId, access.workspaceId),
-                eq(teamKeyAliases.key, m[1]!),
-              ),
-            ),
-        ),
-      ),
+  const find = async (where: SQL | undefined) => {
+    const [row] = await baseQuery(db).where(
+      and(eq(issues.workspaceId, access.workspaceId), teamScope(access, issues.teamId), where),
     );
+    return row;
+  };
+  if (UUID_RE.test(idOrIdentifier)) {
+    const row = await find(eq(issues.id, idOrIdentifier));
+    if (!row) throw notFound('Issue');
+    return toIssue(row);
   }
-  const [row] = await baseQuery(db).where(
-    and(eq(issues.workspaceId, access.workspaceId), teamScope(access, issues.teamId), where),
-  );
+  const m = ISSUE_IDENTIFIER_PATTERN.exec(idOrIdentifier.toUpperCase());
+  if (!m) throw notFound('Issue');
+  const key = m[1]!;
+  const number = Number(m[2]);
+  // The team that has (or, under a former key, had) this key.
+  const keyTeams = db
+    .select({ id: teams.id })
+    .from(teams)
+    .where(and(eq(teams.workspaceId, access.workspaceId), eq(teams.key, key)))
+    .union(
+      db
+        .select({ id: teamKeyAliases.teamId })
+        .from(teamKeyAliases)
+        .where(
+          and(eq(teamKeyAliases.workspaceId, access.workspaceId), eq(teamKeyAliases.key, key)),
+        ),
+    );
+  const row =
+    (await find(and(eq(issues.number, number), inArray(issues.teamId, keyTeams)))) ??
+    // An issue that has since moved to another team.
+    (await find(
+      inArray(
+        issues.id,
+        db
+          .select({ id: issueIdentifierAliases.issueId })
+          .from(issueIdentifierAliases)
+          .where(
+            and(
+              eq(issueIdentifierAliases.number, number),
+              inArray(issueIdentifierAliases.teamId, keyTeams),
+            ),
+          ),
+      ),
+    ));
   if (!row) throw notFound('Issue');
   return toIssue(row);
 }
@@ -880,6 +898,14 @@ export async function updateIssue(
     }
     if (cycleId === undefined) cycleId = null;
     changes.push({ field: 'team', from: current.teamId, to: target.id });
+    // Links, branches and pages opened before the move still name the old identifier.
+    await ctx.tx
+      .insert(issueIdentifierAliases)
+      .values({ teamId: current.teamId, number: current.number, issueId })
+      .onConflictDoUpdate({
+        target: [issueIdentifierAliases.teamId, issueIdentifierAliases.number],
+        set: { issueId },
+      });
     set.teamId = target.id;
     set.number = counter;
     teamId = target.id;

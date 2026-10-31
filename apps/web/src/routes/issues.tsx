@@ -1,8 +1,8 @@
 import type { Issue, IssueFilter } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { RotateCcw, Search, Trash2 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
 import {
@@ -20,6 +20,7 @@ import { Avatar } from '../components/ui/Avatar.tsx';
 import { confirmDialog } from '../components/ui/Modal.tsx';
 import { t } from '../i18n/index.ts';
 import { relativeTime, shortDate } from '../lib/format.ts';
+import { newerIdentifier } from '../lib/issues.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
 function Tabs({
@@ -150,6 +151,18 @@ export function IssuePage() {
   const ws = useWorkspace();
   const { identifier } = useParams({ from: '/$slug/issue/$identifier' });
   const { data, error, isLoading } = useIssue(ws.slug, identifier);
+  const navigate = useNavigate();
+  // A move sent later (queued offline or by another tab) renumbers the issue under this page,
+  // and old links resolve to the moved issue: keep the URL (and so copied links) current.
+  const newer = data ? newerIdentifier(identifier, data) : null;
+  useEffect(() => {
+    if (newer)
+      navigate({
+        to: '/$slug/issue/$identifier',
+        params: { slug: ws.slug, identifier: newer },
+        replace: true,
+      });
+  }, [newer, navigate, ws.slug]);
   if (isLoading) return <Spinner label={t('issues.issuePage.loading', { id: identifier })} />;
   if (error || !data)
     return (

@@ -1,5 +1,4 @@
 import type { IssueDetail, Team, UpdateIssueInput } from '@ordo/shared';
-import { useNavigate } from '@tanstack/react-router';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -45,16 +44,13 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 export function IssueProperties({
   issue,
   team,
-  compact,
   onPatch,
 }: {
   issue: IssueDetail;
   team: Team | undefined;
-  compact: boolean;
   onPatch: (p: UpdateIssueInput) => void;
 }) {
   const ws = useWorkspace();
-  const navigate = useNavigate();
   const sla = slaState(issue, isDone(ws, issue));
 
   const move = useMoveIssues(ws.slug);
@@ -63,21 +59,15 @@ export function IssueProperties({
     move.mutate(
       { ids: [issue.id], teamId },
       {
+        // The issue page follows the new identifier itself once the issue has it (IssuePage):
+        // a queued move (offline, or sent by another tab) gets its number later.
         onSuccess: (result) => {
           const moved = result?.[0];
-          // Queued (offline): the page shows the move now, the new number once it's sent.
-          if (!moved) {
-            const team = ws.teamById.get(teamId)?.name ?? '';
-            toast.success(t('issue.detail.movedToTeam', { team }));
-            return;
-          }
-          toast.success(t('issue.detail.movedTo', { identifier: moved.identifier }));
-          if (!compact)
-            navigate({
-              to: '/$slug/issue/$identifier',
-              params: { slug: ws.slug, identifier: moved.identifier },
-              replace: true,
-            });
+          if (moved) toast.success(t('issue.detail.movedTo', { identifier: moved.identifier }));
+          else
+            toast.success(
+              t('issue.detail.movedToTeam', { team: ws.teamById.get(teamId)?.name ?? '' }),
+            );
         },
       },
     );
@@ -196,12 +186,10 @@ export function IssueProperties({
 export function IssueSidebar({
   issue,
   team,
-  compact,
   onPatch,
 }: {
   issue: IssueDetail;
   team: Team | undefined;
-  compact: boolean;
   onPatch: (p: UpdateIssueInput) => void;
 }) {
   const ws = useWorkspace();
@@ -210,7 +198,7 @@ export function IssueSidebar({
   return (
     <aside className="hidden w-72 flex-none overflow-y-auto border-l border-border-soft bg-surface/40 p-4 lg:block">
       <div className="section-label mb-3">{t('issue.detail.properties')}</div>
-      <IssueProperties issue={issue} team={team} compact={compact} onPatch={onPatch} />
+      <IssueProperties issue={issue} team={team} onPatch={onPatch} />
 
       <IssuePullRequests issue={issue} className="mt-6" />
 
