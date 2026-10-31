@@ -179,6 +179,8 @@ export const AUDIT_ACTIONS = [
   'repository.created',
   'repository.updated',
   'repository.deleted',
+  'time_entry.updated',
+  'time_entry.deleted',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
@@ -187,7 +189,7 @@ export const AUDIT_CATEGORIES = {
   security: ['auth.', 'sso.', 'scim.', 'api_key.', 'calendar_feed.', 'oauth.', 'domain.'],
   members: ['member.', 'invite.', 'placeholder.', 'admin.'],
   teams: ['team.'],
-  workspace: ['workspace.', 'settings.'],
+  workspace: ['workspace.', 'settings.', 'time_entry.'],
   integrations: ['integration.', 'webhook.', 'chat_account.', 'agent.', 'repository.'],
   imports: ['import.'],
 } as const satisfies Record<string, readonly string[]>;
@@ -325,6 +327,9 @@ export const DOMAIN_EVENT_TYPES = [
   'release.reopened',
   'release.deleted',
   'agent_run.updated',
+  'time_entry.created',
+  'time_entry.updated',
+  'time_entry.deleted',
 ] as const;
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
 
@@ -560,6 +565,9 @@ export const API_MESSAGE_KEYS = [
   'username_claimed',
   'attachment_too_large',
   'max_reactions',
+  'time_tracking_off',
+  'own_time_entries',
+  'no_timer',
 ] as const;
 export type ApiMessageKey = (typeof API_MESSAGE_KEYS)[number];
 

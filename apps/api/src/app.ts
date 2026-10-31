@@ -65,6 +65,7 @@ import { ssoRoutes } from './routes/sso.ts';
 import { syncRoutes } from './routes/sync.ts';
 import { teamRoutes } from './routes/teams.ts';
 import { templateRoutes } from './routes/templates.ts';
+import { timeEntryRoutes } from './routes/timeEntries.ts';
 import { viewRoutes } from './routes/views.ts';
 import { webhookRoutes } from './routes/webhooks.ts';
 import { workspaceRoutes } from './routes/workspaces.ts';
@@ -266,6 +267,7 @@ export async function buildApp(
       await w.register(templateRoutes);
       await w.register(initiativeRoutes);
       await w.register(customerRoutes);
+      await w.register(timeEntryRoutes);
       await w.register(documentRoutes);
       await w.register(viewRoutes);
       await w.register(dashboardRoutes);

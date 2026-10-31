@@ -7,7 +7,9 @@ import {
   createCycleSchema,
   createIssueSchema,
   createMilestoneSchema,
+  createTimeEntrySchema,
   fieldsForTeam,
+  formatDuration,
   type Issue,
   type IssueFilter,
   isCycleCurrent,
@@ -17,9 +19,11 @@ import {
   type Milestone,
   mcpToolSchemas,
   type Project,
+  parseDuration,
   priorityLabel,
   STATE_TYPES,
   type Team,
+  type TimeEntry,
   updateCycleSchema,
   updateIssueSchema,
   updateMilestoneSchema,
@@ -52,6 +56,7 @@ import { listLabels } from './labels.ts';
 import { createMilestone, listProjects, updateMilestone } from './projects.ts';
 import { createRelation, deleteRelation } from './relations.ts';
 import { listTeams } from './teams.ts';
+import { issueTime, logTime, startTimer, stopTimer, timeReport } from './timeEntries.ts';
 import { listMembers } from './workspaces.ts';
 
 /**
@@ -849,6 +854,83 @@ function handlers(c: McpCaller): Handlers {
       return relationsResult(c, detail.id);
     },
 
+    issue_time: async ({ issue }) => {
+      const target = await getIssue(c.app.db, c.access, issue);
+      const time = await issueTime(c.app.db, c.access, target.id);
+      const people = await dir.people(time.entries.map((e) => e.userId));
+      return {
+        issue: target.identifier,
+        total: formatDuration(time.totalSeconds),
+        totalSeconds: time.totalSeconds,
+        entries: time.entries.map((e) => timeEntryResult(e, people)),
+      };
+    },
+
+    log_time: async ({ issue, duration, note, date }) => {
+      const seconds = parseDuration(duration);
+      if (!seconds) throw badRequest(`"${duration}" is not a duration; try "1h 30m" or "45m"`);
+      const today = await dir.today();
+      const input = parse(createTimeEntrySchema, {
+        durationSeconds: seconds,
+        // Midday UTC is the same calendar day in nearly every zone.
+        startedAt: date && date !== today ? `${date}T12:00:00Z` : undefined,
+        note,
+      });
+      const entry = await c.run((ctx) => logTime(ctx, issue, input));
+      return timeEntryResult(entry, await dir.people([entry.userId]));
+    },
+
+    start_timer: async ({ issue, note }) => {
+      const entry = await c.run((ctx) => startTimer(ctx, issue, note));
+      return { ...timeEntryResult(entry, new Map()), issue };
+    },
+
+    stop_timer: async () => {
+      const entry = await c.run((ctx) => stopTimer(ctx));
+      return timeEntryResult(entry, await dir.people([entry.userId]));
+    },
+
+    time_report: async ({ from, to, person, team, project, cycle, limit }) => {
+      const teamId = team ? (await dir.team(team)).id : undefined;
+      const report = await timeReport(c.app.db, c.access, {
+        from,
+        to,
+        userId: person ? await dir.person(person) : undefined,
+        teamId,
+        projectId: project ? (await dir.project(project)).id : undefined,
+        cycleId: cycle
+          ? teamId
+            ? await dir.cycle(cycle, teamId)
+            : (await dir.cycleIds(cycle))[0]
+          : undefined,
+      });
+      const [people, projects] = await Promise.all([
+        dir.people(report.entries.map((e) => e.userId)),
+        dir.projects(),
+      ]);
+      const who = (id: string | null) => (id && people.get(id)?.username) || null;
+      return {
+        total: formatDuration(report.totalSeconds),
+        totalSeconds: report.totalSeconds,
+        byPerson: report.byUser.map((u) => ({
+          person: who(u.userId),
+          time: formatDuration(u.seconds),
+          seconds: u.seconds,
+        })),
+        byProject: report.byProject.map((p) => ({
+          project: projects.find((x) => x.id === p.projectId)?.name ?? null,
+          time: formatDuration(p.seconds),
+          seconds: p.seconds,
+        })),
+        entries: report.entries.slice(0, limit).map((e) => ({
+          date: e.date,
+          issue: e.issue.identifier,
+          ...timeEntryResult(e, people),
+        })),
+        more: report.entries.length > limit || undefined,
+      };
+    },
+
     add_comment: async ({ issue, body, replyTo }) => {
       const input = parse(createCommentSchema, { body, parentId: replyTo });
       const target = await getIssue(c.app.db, c.access, issue);
@@ -885,6 +967,17 @@ function cycleResult(team: Team | undefined, x: Cycle, today: string) {
     endsAt: x.endsAt,
     current: isCycleCurrent(x, today),
     progress: x.progress,
+  };
+}
+
+function timeEntryResult(e: TimeEntry, people: Map<string, Person>) {
+  return {
+    id: e.id,
+    person: (e.userId && people.get(e.userId)?.username) || null,
+    time: e.durationSeconds === null ? 'running' : formatDuration(e.durationSeconds),
+    seconds: e.durationSeconds,
+    note: e.note || undefined,
+    startedAt: e.startedAt,
   };
 }
 

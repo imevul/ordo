@@ -17,4 +17,5 @@ export * from './releases.ts';
 export * from './schemas.ts';
 export * from './sort.ts';
 export * from './theme.ts';
+export * from './time.ts';
 export * from './types.ts';

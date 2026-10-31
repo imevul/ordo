@@ -1114,6 +1114,8 @@ export interface WorkspaceSettings {
   agentRunsPaused: boolean;
   /** IANA zone that decides when a day starts for cycle automation; null is UTC. */
   timezone: string | null;
+  /** People log time on issues; off by default. */
+  timeTracking: boolean;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -1132,7 +1134,55 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   defaultAssigneeId: null,
   agentRunsPaused: false,
   timezone: null,
+  timeTracking: false,
 };
+
+/** Time someone spent on an issue. A running timer has no duration yet. */
+export interface TimeEntry {
+  id: string;
+  issueId: string;
+  /** Null once the person is deleted; the time stays for reports. */
+  userId: string | null;
+  startedAt: string;
+  durationSeconds: number | null;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The time logged on one issue, newest first. `totalSeconds` leaves out running timers. */
+export interface IssueTime {
+  entries: TimeEntry[];
+  totalSeconds: number;
+}
+
+/** The caller's running timer and the issue it's on. */
+export interface RunningTimer {
+  entry: TimeEntry;
+  issue: { id: string; identifier: string; title: string };
+}
+
+export interface TimeReportEntry extends TimeEntry {
+  durationSeconds: number;
+  /** The calendar day it started, in the workspace's time zone. */
+  date: string;
+  issue: {
+    id: string;
+    identifier: string;
+    title: string;
+    teamId: string;
+    projectId: string | null;
+    cycleId: string | null;
+  };
+}
+
+/** Finished entries matching a report's filters, oldest first, with totals. */
+export interface TimeReport {
+  entries: TimeReportEntry[];
+  totalSeconds: number;
+  byUser: { userId: string | null; seconds: number }[];
+  byProject: { projectId: string | null; seconds: number }[];
+}
 
 export interface WorkspaceDomain {
   id: string;

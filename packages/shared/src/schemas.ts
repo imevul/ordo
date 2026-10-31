@@ -29,6 +29,7 @@ import { DATE_RANGES, filterDepth } from './filters.ts';
 import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
 import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
 import { HEX_COLOR } from './theme.ts';
+import { MAX_TIME_ENTRY_SECONDS } from './time.ts';
 import { AUTOMATION_FIELDS, OFFLINE_SYNC_MODES, WORKSPACE_AI_POLICIES } from './types.ts';
 
 /** Request payload schemas, shared by the API (validation) and the web client (forms). */
@@ -179,6 +180,7 @@ export const updateWorkspaceSchema = z.object({
       defaultAssigneeId: id.nullable().optional(),
       agentRunsPaused: z.boolean().optional(),
       timezone: z.string().max(64).refine(isTimeZone, 'Unknown time zone').nullable().optional(),
+      timeTracking: z.boolean().optional(),
     })
     .optional(),
 });
@@ -778,6 +780,41 @@ export const createCustomerRequestSchema = z.object({
   body: z.string().trim().max(10_000).default(''),
   contact: z.string().trim().max(300).nullish(),
 });
+
+const timeEntryNote = z.string().trim().max(2000);
+const durationSeconds = z.number().int().min(1).max(MAX_TIME_ENTRY_SECONDS);
+
+/** Time logged by hand; it ends now unless `startedAt` says when it began. */
+export const createTimeEntrySchema = z.object({
+  durationSeconds,
+  startedAt: z.iso.datetime({ offset: true }).optional(),
+  note: timeEntryNote.default(''),
+});
+export type CreateTimeEntryInput = z.input<typeof createTimeEntrySchema>;
+
+export const updateTimeEntrySchema = z.object({
+  durationSeconds: durationSeconds.optional(),
+  startedAt: z.iso.datetime({ offset: true }).optional(),
+  note: timeEntryNote.optional(),
+});
+export type UpdateTimeEntryInput = z.infer<typeof updateTimeEntrySchema>;
+
+export const startTimerSchema = z.object({ note: timeEntryNote.default('') });
+
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date like 2026-01-31');
+
+/** Filters for the time report; days are inclusive and in the workspace's time zone. */
+export const timeReportQuerySchema = z.object({
+  from: calendarDate.optional(),
+  to: calendarDate.optional(),
+  userId: id.optional(),
+  teamId: id.optional(),
+  /** A project's id, or `none` for issues outside projects. */
+  projectId: z.union([id, z.literal('none')]).optional(),
+  cycleId: id.optional(),
+  format: z.enum(['json', 'csv']).default('json'),
+});
+export type TimeReportQuery = z.input<typeof timeReportQuerySchema>;
 
 export const pushSubscriptionSchema = z.object({
   endpoint: z.url({ protocol: /^https$/ }).max(2000),
