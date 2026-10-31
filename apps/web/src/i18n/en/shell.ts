@@ -159,6 +159,7 @@ export default {
     toggleLayout: 'Toggle list / board',
     assign: 'Assign',
     copyBranch: 'Copy git branch name (open issue)',
+    jumpToLatest: 'Jump to latest activity (open issue)',
     submit: 'Submit (forms, comments)',
     editDescription: 'Edit description',
     boldItalic: 'Bold / italic (in text)',

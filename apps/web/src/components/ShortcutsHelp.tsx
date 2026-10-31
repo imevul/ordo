@@ -50,6 +50,7 @@ export const shortcuts = (): { section: string; items: [string, string][] }[] =>
       ['D', t('shell.shortcuts.editDescription')],
       [`${modKey} ⌫`, t('shell.palette.moveToTrash')],
       [`${modKey} Shift .`, t('shell.shortcuts.copyBranch')],
+      ['Shift G', t('shell.shortcuts.jumpToLatest')],
       [`${modKey} Enter`, t('shell.shortcuts.submit')],
       [`${modKey} B / ${modKey} I`, t('shell.shortcuts.boldItalic')],
     ],

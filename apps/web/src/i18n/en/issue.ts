@@ -24,6 +24,7 @@ export default {
     confirmTrashBody: 'You can restore it from the trash later.',
     subIssues: 'Sub-issues',
     properties: 'Properties',
+    jumpToLatest: 'Jump to latest',
     slaBreached: 'ran out {time} ago',
     slaLeft: '{time} left',
     moveToTeam: 'Move to team…',

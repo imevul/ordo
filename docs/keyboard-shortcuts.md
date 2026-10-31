@@ -56,6 +56,7 @@ These apply to the selected issues, or the focused one if nothing is selected, o
 | `E`                | Estimate                                                          |
 | `Mod ⌫` / `Delete` | Move to trash (undo from the toast)                               |
 | `Mod Shift .`      | Copy the open issue's git branch name (the `.` key on any layout) |
+| `Shift G`          | Jump to the latest activity on the open issue                     |
 | `1`–`9`            | In a property menu: pick the nth option                           |
 | `⌫`                | In a property menu with an empty filter: back to the command menu |
 
