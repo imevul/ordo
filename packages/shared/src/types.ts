@@ -143,8 +143,11 @@ export interface Team {
   slaHours: SlaHours;
   /** Applied in order to issues created in triage. */
   triageRules: TriageRule[];
+  /** Each member's capacity per cycle when they have none of their own; null for no default. */
+  defaultCapacity: number | null;
   memberIds: string[];
-  members: { userId: string; role: TeamRole }[];
+  /** `capacity`: per cycle, null uses `defaultCapacity`. */
+  members: { userId: string; role: TeamRole; capacity: number | null }[];
   /** Directory groups (SCIM) that decide who is on the team; empty when people join by hand. */
   managedBy: string[];
   states: WorkflowState[];
@@ -404,6 +407,45 @@ export interface Cycle {
   startsAt: string;
   endsAt: string;
   progress: Progress;
+}
+
+/** An issue on someone's plate in a cycle. */
+export interface WorkloadIssue {
+  id: string;
+  identifier: string;
+  title: string;
+  estimate: number | null;
+  stateId: string;
+  /** Completed issues count toward what someone took on, but not toward what is left. */
+  completed: boolean;
+}
+
+export interface WorkloadEntry {
+  /** Null for the cycle's unassigned issues. */
+  userId: string | null;
+  /** In `unit`: the sum of estimates, or the number of issues. */
+  load: number;
+  /** The part of `load` that is done. */
+  completed: number;
+  issueCount: number;
+  /** Issues without an estimate, when the unit is points. */
+  unestimated: number;
+  /** Null when neither the person, the team nor the cycle sets one. */
+  capacity: number | null;
+  /** Where `capacity` comes from. */
+  capacitySource: 'cycle' | 'member' | 'team' | null;
+  /** Assigned issues in this cycle, though not a member of the team. */
+  outsideTeam: boolean;
+  issues: WorkloadIssue[];
+}
+
+/** Who has what in a cycle, against what they can take. */
+export interface CycleWorkload {
+  cycleId: string;
+  /** Points when any issue in the cycle has an estimate (and the team estimates); issues otherwise. */
+  unit: 'points' | 'issues';
+  /** Team members first (by name), then other assignees, then unassigned (if any). */
+  entries: WorkloadEntry[];
 }
 
 export interface Issue {

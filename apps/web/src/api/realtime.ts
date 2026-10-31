@@ -77,6 +77,7 @@ export function useRealtime(slug: string): RealtimeStatus {
       if (kinds.has('import')) inv(['ws', slug, 'imports']);
       if (kinds.has('export')) inv(['ws', slug, 'exports']);
       if (kinds.has('agentRun')) inv(['ws', slug, 'agentRuns']);
+      if (kinds.has('issue') || kinds.has('cycle') || kinds.has('team')) inv(keys.workload(slug));
       if (bootstrapStale) inv(keys.bootstrap(slug));
       if (kinds.has('member') || kinds.has('workspace')) inv(keys.me);
     };

@@ -63,6 +63,9 @@ export default {
       exponential: 'Exponential',
       tshirt: 'T-shirt sizes',
     },
+    capacity: 'Capacity per cycle',
+    capacityHint:
+      'What each member can take in a cycle: points, or issues when nothing is estimated. Set it per person under Members, and per cycle on its Workload panel.',
     workflow: 'Workflow',
     workflowDescription:
       'Statuses are grouped by type. Issues move through them from left to right on the board.',
@@ -84,6 +87,8 @@ export default {
     /** Tag next to a guest's name. */
     guest: 'guest',
     roleOf: 'Team role of {name}',
+    capacityOf: 'Capacity per cycle of {name} (empty uses the team default)',
+    capacitySaved: 'Capacity updated',
     member: 'Member',
     teamAdmin: 'Team admin',
     /** Lower-case role tags, shown to people who can't change roles. */

@@ -6,6 +6,7 @@ import type {
   Comment,
   CommentReaction,
   CreateIssueInput,
+  CycleWorkload,
   HistoryEntry,
   InboxFilter,
   InsightsTimeline,
@@ -59,6 +60,8 @@ export const keys = {
     ['ws', slug, 'projectUpdates', projectId] as const,
   invites: (slug: string) => ['ws', slug, 'invites'] as const,
   search: (slug: string, q: string) => ['ws', slug, 'search', q] as const,
+  workload: (slug: string, cycleId?: string) =>
+    cycleId ? (['ws', slug, 'workload', cycleId] as const) : (['ws', slug, 'workload'] as const),
 };
 
 /** The server can't be reached (a proxy answering for a stopped API counts). */
@@ -392,6 +395,15 @@ export function invalidateIssues(qc: QueryClient, slug: string) {
   qc.invalidateQueries({ queryKey: keys.issue(slug) });
   qc.invalidateQueries({ queryKey: ['ws', slug, 'history'] });
   qc.invalidateQueries({ queryKey: keys.bootstrap(slug) });
+  qc.invalidateQueries({ queryKey: keys.workload(slug) });
+}
+
+/** Who has what in a cycle, against their capacity. Online only: capacities live on the server. */
+export function useCycleWorkload(slug: string, cycleId: string) {
+  return useQuery({
+    queryKey: keys.workload(slug, cycleId),
+    queryFn: () => api.get<CycleWorkload>(wsPath(slug, `/cycles/${cycleId}/workload`)),
+  });
 }
 
 const onError = (err: unknown) =>

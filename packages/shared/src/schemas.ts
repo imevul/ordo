@@ -267,7 +267,15 @@ export const addTeamMemberSchema = z.object({
   role: z.enum(TEAM_ROLES).default('member'),
 });
 
-export const updateTeamMemberSchema = z.object({ role: z.enum(TEAM_ROLES) });
+/** Points per cycle (issues when the cycle has no estimates). */
+const capacity = z.number().int().min(0).max(10_000);
+
+export const updateTeamMemberSchema = z
+  .object({ role: z.enum(TEAM_ROLES).optional(), capacity: capacity.nullish() })
+  .refine((m) => m.role !== undefined || m.capacity !== undefined, 'Nothing to change');
+
+/** Someone's capacity in one cycle; null goes back to their default. */
+export const setCycleCapacitySchema = z.object({ capacity: capacity.nullable() });
 
 export const createTeamSchema = z.object({
   private: z.boolean().optional(),
@@ -302,6 +310,7 @@ export const updateTeamSchema = z.object({
   autoArchiveMonths: z
     .union([z.literal(1), z.literal(3), z.literal(6), z.literal(9), z.literal(12)])
     .nullish(),
+  defaultCapacity: capacity.nullish(),
   cycleAutomation: z
     .object({
       enabled: z.boolean(),

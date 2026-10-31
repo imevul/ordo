@@ -12,7 +12,7 @@ import { useWorkspace } from '../../../lib/workspace.tsx';
 import { TriageRulesCard } from '../triage-rules.tsx';
 import { FormRow, SettingsCard } from '../ui.tsx';
 import { CycleAutomationCard, GitAutomationCard, SlaCard } from './automation.tsx';
-import { TeamMembers } from './members.tsx';
+import { CapacityInput, TeamMembers } from './members.tsx';
 import { AddState, StateRow } from './states.tsx';
 
 export function TeamSettings({ team }: { team: Team }) {
@@ -197,6 +197,20 @@ export function TeamSettings({ team }: { team: Team }) {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="flex items-center justify-between gap-3 py-3 text-[13.5px]">
+            <span>
+              {t('teams.settings.capacity')}
+              <span className="block text-[12px] text-index">
+                {t('teams.settings.capacityHint')}
+              </span>
+            </span>
+            <CapacityInput
+              value={team.defaultCapacity}
+              onSave={(defaultCapacity) => save.mutate({ defaultCapacity })}
+              label={t('teams.settings.capacity')}
+              className="input w-40"
+            />
           </label>
         </SettingsCard>
 

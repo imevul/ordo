@@ -287,23 +287,25 @@ export async function teamRoutes(app: FastifyInstance) {
 
   app.patch('/teams/:teamId/members/:userId', async (req) => {
     const { teamId, userId } = req.params as { teamId: string; userId: string };
-    const { role } = parse(updateTeamMemberSchema, req.body);
+    const { role, capacity } = parse(updateTeamMemberSchema, req.body);
     return mutate(app, req, async (ctx) => {
       await loadTeam(ctx, teamId, 'admin');
       const [row] = await ctx.tx
         .update(teamMembers)
-        .set({ role })
+        .set({ role, capacity })
         .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
         .returning();
       if (!row) throw notFound('Team member');
       emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
-      emit(ctx, { kind: 'member', action: 'updated', id: userId });
-      await auditCtx(ctx, {
-        action: 'team.member_role_changed',
-        targetType: 'team',
-        targetId: teamId,
-        data: { userId, role },
-      });
+      if (role) {
+        emit(ctx, { kind: 'member', action: 'updated', id: userId });
+        await auditCtx(ctx, {
+          action: 'team.member_role_changed',
+          targetType: 'team',
+          targetId: teamId,
+          data: { userId, role },
+        });
+      }
       return { ok: true };
     });
   });

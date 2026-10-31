@@ -49,6 +49,8 @@ interface Props {
   burn?: { from: string; to: string; cycleId?: string };
   /** Open the insights panel until the person closes it (remembered per screen). */
   insightsOpen?: boolean;
+  /** Another side panel beside the issues (a cycle's workload). */
+  aside?: ReactNode;
   emptyTitle?: string;
   emptyBody?: ReactNode;
 }
@@ -290,7 +292,7 @@ export function IssuesView(props: Props) {
         <FilterChips filter={userFilter} onChange={setUserFilter} teamId={teamId} />
       </PageHeader>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="relative flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           {isLoading && !data ? (
             <Spinner label={t('issues.view.loading')} />
@@ -359,6 +361,7 @@ export function IssuesView(props: Props) {
             onClose={() => toggleInsights(false)}
           />
         )}
+        {props.aside}
       </div>
 
       {selected.size > 0 && (
