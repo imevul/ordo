@@ -79,7 +79,7 @@ interface Snapshot {
 
 const cfg = configOf<JiraConfig>();
 const stateOf = (row: IntegrationRow) => row.state as JiraState;
-const FIELDS = 'summary,description,status,priority,assignee,issuetype,parent,updated';
+const FIELDS = 'summary,description,status,priority,assignee,creator,issuetype,parent,updated';
 const MAX_POLL = 1000;
 
 // ─── the API ──────────────────────────────────────────────────────────────
@@ -388,12 +388,32 @@ async function pullIssue(ictx: IntegrationContext, i: JiraIssue) {
     if (adopted) {
       await saveRef(ictx.app.db, ictx, 'issue', i.id, adopted, {});
       ref = await refBy(ictx, 'issue', 'externalId', i.id);
-    } else if (project.createInOrdo && !isEpic(i.fields.issuetype)) {
+    } else if (project.createInOrdo && !isEpic(i.fields.issuetype) && !createdBySelf(ictx, i)) {
       await createFromJira(ictx, i, project.teamId);
       return;
     } else return;
   }
-  await applyFromJira(ictx, ref!, i);
+  // Not applied here: a push to this issue may be halfway through (its PUTs done, the new snapshot
+  // not saved yet), and comparing against the old snapshot would take Ordo's own change for Jira's
+  // and overwrite newer Ordo edits. Queued behind the issue's outbound events, it re-reads Jira then.
+  await ictx.queueForIssue(ref!.localId, { jiraId: i.id });
+}
+
+/** A synced issue's queued pull (see pullIssue). */
+async function pullQueued(ictx: IntegrationContext, ordoId: string, jiraId: string) {
+  const ref = await refBy(ictx, 'issue', 'externalId', jiraId);
+  if (!ref || ref.localId !== ordoId) return;
+  const i = await getIssue(ictx, jiraId);
+  if (i) await applyFromJira(ictx, ref, i);
+}
+
+/**
+ * Jira issues Ordo created itself (pushCreate). Outbound and inbound work run concurrently, so
+ * Jira's webhook for such an issue can arrive before pushCreate has saved the ref; it isn't new.
+ */
+function createdBySelf(ictx: IntegrationContext, i: JiraIssue) {
+  const self = stateOf(ictx.integration).self?.id;
+  return !!self && accountOf(i.fields.creator) === self;
 }
 
 /** An Ordo issue the Jira importer brought in from this key (its link says so). */
@@ -792,6 +812,11 @@ export const jiraProvider: IntegrationProvider = {
     }
     const issue = await getIssue(ictx, String(id));
     if (issue) await pullIssue(ictx, issue);
+  },
+
+  async handleIssueInbound(ictx, issueId, payload) {
+    const { jiraId } = payload as { jiraId?: string };
+    if (jiraId && cfg(ictx.integration).mode !== 'links') await pullQueued(ictx, issueId, jiraId);
   },
 
   async onDomainEvent(ictx, event) {

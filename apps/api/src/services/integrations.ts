@@ -117,6 +117,14 @@ export function integrationContext(
         .set({ state: sql`${integrations.state} || ${JSON.stringify(patch)}::jsonb` })
         .where(eq(integrations.id, row.id));
     },
+    queueForIssue: async (issueId, payload) => {
+      await enqueue(
+        app.db,
+        'integration.issue',
+        { integrationId: row.id, issueId, payload },
+        { orderingKey: issueKey(row.id, issueId) },
+      );
+    },
   };
 }
 
@@ -218,6 +226,36 @@ export async function activeIntegration(app: FastifyInstance, id: string) {
 
 // ─── the three paths in ───────────────────────────────────────────────────
 
+/** The issue an event is about, if any: outbound order only matters per issue. */
+function eventIssueId({ type, data }: EventRow): string | null {
+  const d = data as {
+    id?: string;
+    issueId?: string;
+    issue?: { id?: string };
+    comment?: { issueId?: string };
+    reaction?: { issueId?: string };
+  };
+  if (type.startsWith('issue.')) return d.id ?? null;
+  if (type.startsWith('comment.')) return d.issue?.id ?? d.comment?.issueId ?? null;
+  if (type.startsWith('reaction.')) return d.reaction?.issueId ?? null;
+  if (type.startsWith('relation.')) return d.issueId ?? null;
+  return null;
+}
+
+/**
+ * Ordering keys. A job that keeps failing holds up everything behind it with the same key while it
+ * retries, so outbound work is ordered per issue and kept apart from inbound work (webhooks and
+ * polls, which share one key so they never race each other). Inbound work that must not overlap
+ * an issue's outbound pushes is queued under that issue's key (`ictx.queueForIssue`).
+ */
+const issueKey = (integrationId: string, issueId: string) =>
+  `integration:${integrationId}/out/${issueId}`;
+const outboundKey = (integrationId: string, event: EventRow) => {
+  const issueId = eventIssueId(event);
+  return issueId ? issueKey(integrationId, issueId) : `integration:${integrationId}/out`;
+};
+const inboundKey = (integrationId: string) => `integration:${integrationId}/in`;
+
 /** Called by the event dispatcher: one ordered job per integration and event. */
 export async function dispatchToIntegrations(
   app: FastifyInstance,
@@ -244,7 +282,7 @@ export async function dispatchToIntegrations(
           'integration.event',
           { integrationId: integration.id, eventId: event.id },
           {
-            orderingKey: `integration:${integration.id}`,
+            orderingKey: outboundKey(integration.id, event),
             dedupeKey: `ie:${integration.id}:${event.id}`,
             once: true,
           },
@@ -282,7 +320,7 @@ export async function queueInbound(
     app.db,
     'integration.inbound',
     { integrationId: row.id, req },
-    { dedupeKey: `in:${row.id}:${deliveryId}`, orderingKey: `integration:${row.id}` },
+    { dedupeKey: `in:${row.id}:${deliveryId}`, orderingKey: inboundKey(row.id) },
   );
 }
 
@@ -295,6 +333,18 @@ export async function runInbound(
   if (!found?.provider.handleInbound) return;
   const ictx = integrationContext(app, found.row, job.log);
   await track(app, found.row, () => found.provider.handleInbound!(ictx, req));
+}
+
+/** Inbound work a provider queued behind one issue's outbound events (`ictx.queueForIssue`). */
+export async function runIssueInbound(
+  app: FastifyInstance,
+  { integrationId, issueId, payload }: { integrationId: string; issueId: string; payload: unknown },
+  job: JobContext,
+) {
+  const found = await activeIntegration(app, integrationId);
+  if (!found?.provider.handleIssueInbound) return;
+  const ictx = integrationContext(app, found.row, job.log);
+  await track(app, found.row, () => found.provider.handleIssueInbound!(ictx, issueId, payload));
 }
 
 /** Scheduled every minute: queues a poll for each integration whose interval has passed. */
@@ -322,7 +372,7 @@ export async function schedulePolls(app: FastifyInstance) {
       'integration.poll',
       { integrationId: row.id },
       {
-        orderingKey: `integration:${row.id}`,
+        orderingKey: inboundKey(row.id),
         dedupeKey: `poll:${row.id}:${Math.floor(now / interval)}`,
         maxAttempts: 1,
       },

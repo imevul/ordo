@@ -35,6 +35,9 @@ const STATUSES = {
   Done: { name: 'Done', statusCategory: { key: 'done' } },
 } as const;
 type StatusName = keyof typeof STATUSES;
+/** The account of Ordo's token, and someone working in Jira. */
+const BOT = { accountId: 'acc-bot', displayName: 'Ordo Bot' };
+const CARA = { accountId: 'acc-cara', displayName: 'Cara Customer' };
 
 interface FakeIssue {
   id: string;
@@ -44,6 +47,7 @@ interface FakeIssue {
   status: StatusName;
   priority: string | null;
   assignee: { accountId: string; displayName: string; emailAddress?: string } | null;
+  creator: { accountId: string; displayName: string };
   updated: string;
   comments: {
     id: string;
@@ -69,6 +73,7 @@ function addJira(key: string, extra: Partial<FakeIssue> = {}) {
     status: 'To Do',
     priority: 'Medium',
     assignee: null,
+    creator: CARA,
     updated: '',
     comments: [],
     ...extra,
@@ -86,14 +91,18 @@ const asJson = (i: FakeIssue) => ({
     status: STATUSES[i.status],
     priority: i.priority ? { name: i.priority } : null,
     assignee: i.assignee,
+    creator: i.creator,
     issuetype: { name: 'Task' },
     parent: null,
     updated: i.updated,
   },
 });
-const BOT = { accountId: 'acc-bot', displayName: 'Ordo Bot' };
+/** Runs while Jira is still answering Ordo's create call. */
+let whileCreating: ((created: FakeIssue) => Promise<void>) | null = null;
+/** Runs once, after the next issue PUT is applied and before Jira answers it. */
+let whilePut: ((issue: FakeIssue) => Promise<void>) | null = null;
 
-function jiraApi(req: ForgeRequest) {
+async function jiraApi(req: ForgeRequest) {
   const url = new URL(req.path, 'http://x');
   const parts = url.pathname.replace('/rest/api/2/issue', '').split('/').filter(Boolean);
   // What Ordo sends: the subset of Jira's request bodies it uses.
@@ -114,7 +123,9 @@ function jiraApi(req: ForgeRequest) {
     const created = addJira(`${project}-${n}`, {
       summary: body!.fields.summary!,
       description: body!.fields.description ?? null,
+      creator: BOT,
     });
+    await whileCreating?.(created);
     return { status: 201, body: { id: created.id, key: created.key } };
   }
   const issue = find(decodeURIComponent(parts[0] ?? ''));
@@ -129,6 +140,9 @@ function jiraApi(req: ForgeRequest) {
     if (f.assignee !== undefined)
       issue.assignee = f.assignee && { accountId: f.assignee.accountId, displayName: 'Bob Member' };
     touch(issue);
+    const fn = whilePut;
+    whilePut = null;
+    await fn?.(issue);
     return { status: 204, body: null };
   }
   if (sub === 'transitions' && req.method === 'GET') {
@@ -414,6 +428,60 @@ describe('mirror and sync', () => {
     await settle();
     const comments = (await owner.get(`${ws}/issues/${ref!.localId}/comments`)).data as unknown[];
     expect(comments).toHaveLength(1);
+  });
+
+  it("doesn't take its own push for a Jira change while the push is still running", async () => {
+    // Jira's webhook for Ordo's first PUT arrives before the push saved its new snapshot, and the
+    // user edits the issue again meanwhile. The newer edit must win on both sides.
+    const j = find('JRA-3')!;
+    const [ref] = await app.db
+      .select()
+      .from(integrationRefs)
+      .where(eq(integrationRefs.externalId, j.id));
+    whilePut = async (i) => {
+      await owner.patch(`${ws}/issues/${ref!.localId}`, { title: 'Third' });
+      expect((await hook(jira, updated(i))).statusCode).toBe(202);
+      await app.jobs.drain();
+    };
+    await owner.patch(`${ws}/issues/${ref!.localId}`, { title: 'Second' });
+    await settle();
+    expect(whilePut).toBeNull();
+    expect({ ordo: (await detail(ref!.localId)).title, jira: j.summary }).toEqual({
+      ordo: 'Third',
+      jira: 'Third',
+    });
+  });
+
+  it("doesn't mirror back a Jira issue it's still creating", async () => {
+    // Inbound work doesn't wait for outbound work, so Jira's webhook for an issue Ordo creates
+    // can be handled before Ordo has recorded the issue as its own.
+    whileCreating = async (created) => {
+      expect(
+        (await hook(jira, { webhookEvent: 'jira:issue_created', issue: { id: created.id } }))
+          .statusCode,
+      ).toBe(202);
+      await app.jobs.drain();
+    };
+    try {
+      const issue = await newIssue('Created mid-webhook');
+      await settle();
+      const created = [...jiraIssues.values()].find((i) => i.summary === 'Created mid-webhook')!;
+      expect(calls('GET', `/rest/api/2/issue/${created.id}`).length).toBeGreaterThan(0);
+      const same = await app.db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(
+          and(eq(issues.workspaceId, boot.workspace.id), eq(issues.title, 'Created mid-webhook')),
+        );
+      expect(same.map((r) => r.id)).toEqual([issue.id]);
+      const refs = await app.db
+        .select({ localId: integrationRefs.localId })
+        .from(integrationRefs)
+        .where(eq(integrationRefs.externalId, created.id));
+      expect(refs).toEqual([{ localId: issue.id }]);
+    } finally {
+      whileCreating = null;
+    }
   });
 
   it('creates Jira issues for new issues in mapped teams', async () => {
