@@ -9,6 +9,7 @@
     ".": "./src/index.ts",
     "./engine": "./src/engine.ts",
     "./match": "./src/match.ts",
+    "./rest": "./src/rest.ts",
     "./store": "./src/store.ts"
   },
   "scripts": {

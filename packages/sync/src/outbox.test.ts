@@ -81,4 +81,44 @@ describe('overlay', () => {
     const out = overlayIssues(base, queued({ kind: 'issue.restore', ids: ['a'] }), null, 'me');
     expect(out.get('a')!.deletedAt).toBeNull();
   });
+
+  it('drafts a new issue with the status and assignee the server would give it', () => {
+    const t3 = {
+      id: 't3',
+      key: 'THR',
+      defaultStateId: null,
+      private: true,
+      memberIds: ['me'],
+      states: [
+        state('s3-doing', 't3', 'started', 0),
+        state('s3-later', 't3', 'unstarted', 2),
+        state('s3-todo', 't3', 'unstarted', 1),
+        state('s3-triage', 't3', 'triage', 3),
+      ],
+    };
+    const people = {
+      ...bootstrap,
+      teams: [...bootstrap.teams, t3],
+      workspace: { settings: { defaultAssigneeId: 'me' } },
+      members: [
+        { id: 'me', role: 'member' },
+        { id: 'pat', role: 'member' },
+      ],
+      projects: [{ id: 'p-pat', defaultAssignee: 'pat', milestones: [{ id: 'm1' }] }],
+    } as unknown as Bootstrap;
+    const draft = (input: Partial<Extract<Op, { kind: 'issue.create' }>['issue']>) =>
+      overlayIssues(
+        new Map(),
+        queued({ kind: 'issue.create', issue: { id: 'n', teamId: 't3', title: 'New', ...input } }),
+        people,
+        'me',
+      ).get('n');
+    // No default and no backlog: the first unstarted status by position.
+    expect(draft({})).toMatchObject({ stateId: 's3-todo', assigneeId: 'me' });
+    // Pat can't see the private team, so the project's choice doesn't stick.
+    expect(draft({ milestoneId: 'm1' })).toMatchObject({ assigneeId: null });
+    expect(draft({ assigneeId: null })).toMatchObject({ assigneeId: null });
+    expect(draft({ stateId: 's3-triage' })).toMatchObject({ assigneeId: null });
+    expect(draft({ teamId: 't2' })).toMatchObject({ stateId: 's2-backlog', assigneeId: 'me' });
+  });
 });

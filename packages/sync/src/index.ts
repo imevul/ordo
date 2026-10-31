@@ -5,4 +5,5 @@ export * from './leader.ts';
 export * from './match.ts';
 export * from './optimistic.ts';
 export * from './outbox.ts';
+export * from './rest.ts';
 export * from './store.ts';
