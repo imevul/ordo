@@ -483,6 +483,35 @@ export const customerRequests = pgTable(
   ],
 );
 
+/** Time someone spent on an issue. `duration_seconds` is null while it's a running timer. */
+export const timeEntries = pgTable(
+  'time_entries',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references((): AnyPgColumn => issues.id, { onDelete: 'cascade' }),
+    // Kept when the person goes: logged time is still billed.
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    startedAt: ts('started_at').notNull(),
+    durationSeconds: integer('duration_seconds'),
+    note: text('note').notNull().default(''),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('time_entries_issue_idx').on(t.issueId),
+    index('time_entries_workspace_started_idx').on(t.workspaceId, t.startedAt),
+    // One running timer per person and workspace.
+    uniqueIndex('time_entries_running_idx')
+      .on(t.workspaceId, t.userId)
+      .where(sql`${t.durationSeconds} is null`),
+  ],
+);
+
 /** Workspace-level goals; each project belongs to at most one. */
 export const initiatives = pgTable(
   'initiatives',

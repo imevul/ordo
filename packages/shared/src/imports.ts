@@ -324,10 +324,20 @@ export function parsePriority(value: string): number | null {
   return null;
 }
 
-/** Fields → CSV text: quotes where needed, CRLF line ends, a BOM so spreadsheets read UTF-8. */
-export function toCsv(rows: (string | number | null | undefined)[][]): string {
+/**
+ * Fields → CSV text: quotes where needed, CRLF line ends, a BOM so spreadsheets read UTF-8. With
+ * `formulaSafe`, text that a spreadsheet would run as a formula (=, +, -, @, tab, CR first) gets a
+ * leading `'`, so a title or note someone typed can't run when the file is opened; numbers are left
+ * as they are. It's off by default because the `'` doesn't survive a re-import, and the workspace
+ * export promises to import back as it is.
+ */
+export function toCsv(
+  rows: (string | number | null | undefined)[][],
+  opts: { formulaSafe?: boolean } = {},
+): string {
   const field = (v: string | number | null | undefined) => {
-    const s = v == null ? '' : String(v);
+    let s = v == null ? '' : String(v);
+    if (opts.formulaSafe && typeof v === 'string' && /^[=+\-@\t\r]/.test(s)) s = `'${s}`;
     return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   return `\ufeff${rows.map((r) => r.map(field).join(',')).join('\r\n')}\r\n`;

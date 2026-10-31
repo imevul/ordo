@@ -375,6 +375,12 @@ curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
 | GET                  | `/customers/:id/requests`       | Requests on issues you can see, each with its `issue`                                                                                                                                                  |
 | POST                 | `/issues/:id/customer-requests` | `{ customerId, body?, contact? }`; issue details list them as `customerRequests`                                                                                                                       |
 | DELETE               | `/customer-requests/:id`        |                                                                                                                                                                                                        |
+| GET / POST           | `/issues/:id/time-entries`      | [Time tracking](#time-tracking): `{ entries, totalSeconds }`; log `{ durationSeconds, startedAt?, note? }`                                                                                             |
+| POST                 | `/issues/:id/timer`             | `{ note? }`: starts your timer (an entry with `durationSeconds: null`), stopping one you have running                                                                                                  |
+| GET                  | `/timer`                        | Your running timer `{ entry, issue }`, or `null`                                                                                                                                                       |
+| POST                 | `/timer/stop`                   | Stops it and returns the entry (404 `no_timer` if none is running)                                                                                                                                     |
+| PATCH / DELETE       | `/time-entries/:id`             | `{ durationSeconds?, startedAt?, note? }`; your own entries, or anyone's for workspace admins (audited)                                                                                                |
+| GET                  | `/time-entries/report`          | `{ entries, totalSeconds, byUser, byProject }`; filters and `format=csv` below                                                                                                                         |
 | GET / POST           | `/recurring`                    | Template schedules: `{ templateId, teamId, every: 1–52, unit: "day" \| "week" \| "month", nextOn }`                                                                                                    |
 | PATCH / DELETE       | `/recurring/:id`                | `{ every?, unit?, nextOn?, paused? }`                                                                                                                                                                  |
 | GET / POST           | `/initiatives`                  | `{ name, description?, status?: "planned" \| "active" \| "completed", ownerId?, targetDate?, color? }`                                                                                                 |
@@ -427,6 +433,17 @@ follows team changes; it's `404` once revoked, when the view is deleted or no lo
 disabled or your membership suspended, and when the workspace requires SSO without allowing API keys (creating one
 there is refused with `403 sso_required`, except for owners). Only a hash of the token is stored. Resetting your password revokes your feeds along with your API keys.
 
+### Time tracking
+
+The time endpoints answer 403 `time_tracking_off` until a workspace admin sets `settings.timeTracking: true` with
+`PATCH /api/w/:ws`. Anyone who can read an issue can log time on it and see its entries (guests see only their own,
+and the total counts only those). Starting a timer while another start for you is in flight answers 409
+`timer_conflict`. The report covers finished entries on issues you can read (guests: only their own), filtered by
+`from` and `to` (days, inclusive, in the workspace's time zone), `userId`, `teamId`, `projectId` (or `none`) and
+`cycleId`. With `format=csv` it downloads one row per entry: day, person, email, issue, title, project, cycle, hours
+(decimal), minutes, note and start time. Text that starts with `=`, `+`, `-` or `@` gets a leading `'` so spreadsheets
+don't run it as a formula. The workspace CSV export doesn't do this, so it imports back unchanged.
+
 ### Notifications & search
 
 | Method | Path                    |                                                                                                                                        |
@@ -449,7 +466,7 @@ there is refused with `403 sso_required`, except for owners). Only a hash of the
 
 `kind` is one of `issue`, `comment`, `project`, `projectUpdate`, `cycle`, `label`, `template`, `initiative`,
 `customer`, `document`, `team`, `state`, `workspace`, `member`, `view`, `favorite`, `notification`, `import`, `export`,
-`repository`, `agentRun` (`EntityKind` in `packages/shared/src/events.ts`); `action` is `created`, `updated` or `deleted`. Notification and
+`repository`, `agentRun`, `timeEntry` (`EntityKind` in `packages/shared/src/events.ts`); `action` is `created`, `updated` or `deleted`. Notification and
 favorite events are delivered only to their user. Events are hints — refetch what you display.
 Events also carry `seq` and `epoch`, their place in the workspace's change log (below). An issue that moves to a
 team you can't read arrives as `deleted` from the team you could.
@@ -516,6 +533,7 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 | `project_update.created`                                         | `{ update, project }`                                                           |
 | `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                       |
 | `agent_run.updated`                                              | The run when its status changes (statuses below), see [agents](agents.md)       |
+| `time_entry.created` `time_entry.updated` `time_entry.deleted`   | `{ timeEntry, issue: { id, identifier, title } }`; stopping a timer updates     |
 | `ping`                                                           | Sent by the "test" button                                                       |
 
 `source` says where a change came from: `web`, `api` (an API key), `mcp` (an agent through the [MCP server](mcp.md)),

@@ -26,6 +26,7 @@ import sso from './sso.ts';
 import teams from './teams.ts';
 import templates from './templates.ts';
 import time from './time.ts';
+import timeTracking from './timeTracking.ts';
 import triageRules from './triageRules.ts';
 import views from './views.ts';
 import webhooks from './webhooks.ts';
@@ -57,6 +58,7 @@ export default {
   agents,
   imports,
   customers,
+  timeTracking,
   views,
   projects,
   initiatives,

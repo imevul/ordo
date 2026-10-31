@@ -306,7 +306,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [ ] ⬜ Automation rules: "when … then …" (label added → assign; all sub-issues done → close the parent; pull
     request merged → status)
   - [ ] ⬜ Workload and capacity per person in a cycle (points or issues against capacity)
-  - [ ] ⬜ Time tracking (optional per workspace), with CSV export
+  - [x] ✅ Time tracking (optional per workspace), with CSV export
 - [ ] ⬜ Planning, charts and output
   - [x] ✅ Project and workspace charts: burndown with an ideal line and a forecast completion date, velocity
     across cycles, cumulative flow; charts from issue history (scope as it was each day, not as it is now)

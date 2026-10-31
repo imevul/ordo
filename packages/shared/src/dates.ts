@@ -36,3 +36,33 @@ export function dayInZone(zone: string | null | undefined, at: Date = new Date()
   }
   return at.toISOString().slice(0, 10);
 }
+
+/**
+ * Midday of a calendar day (YYYY-MM-DD) in `zone`, as an ISO instant; UTC midday without a known
+ * zone. Midday is the same day in the zone whatever its offset, unlike midday UTC east of +12.
+ */
+export function middayInZone(zone: string | null | undefined, day: string) {
+  const noon = Date.parse(`${day}T12:00:00Z`);
+  if (!zone || !isTimeZone(zone)) return new Date(noon).toISOString();
+  const wall = (t: number) => {
+    const p = Object.fromEntries(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: zone,
+        hourCycle: 'h23',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        second: 'numeric',
+      })
+        .formatToParts(new Date(t))
+        .map((x) => [x.type, Number(x.value)]),
+    );
+    return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  };
+  // The zone's offset at UTC noon, then again at the corrected instant in case DST moved it.
+  let at = noon - (wall(noon) - noon);
+  at = noon - (wall(at) - at);
+  return new Date(at).toISOString();
+}

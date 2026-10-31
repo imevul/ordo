@@ -122,6 +122,11 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       add_relation: 'Relate two issues: blocks, blocked by, related or duplicate of.',
       remove_relation: 'Remove the relation between two issues.',
       add_comment: 'Comment on an issue (Markdown, @mentions notify people).',
+      issue_time: 'Time logged on an issue, entry by entry, with the total.',
+      log_time: 'Log time spent on an issue, like "1h 30m", with a note.',
+      start_timer: 'Start your timer on an issue.',
+      stop_timer: 'Stop your running timer and log the time.',
+      time_report: 'Logged time by person and project over a range of days.',
       list_agents: 'Agents in the workspace and the teams they work in.',
       assign_to_agent:
         'Hand an issue to an agent, optionally with a note. If it already has it, it runs again.',
