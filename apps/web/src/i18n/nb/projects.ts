@@ -90,6 +90,7 @@ export default {
     conflict: 'Noen andre lagret en nyere versjon mens du redigerte.',
     closedConflict:
       'De siste endringene dine i «{title}» ble ikke lagret: noen andre lagret en nyere versjon.',
+    closedSaveFailed: 'De siste endringene dine i «{title}» kunne ikke lagres.',
     loadTheirs: 'Hent deres',
     keepMine: 'Behold min',
     titleLabel: 'Dokumenttittel',

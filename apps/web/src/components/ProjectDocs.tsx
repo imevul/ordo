@@ -14,6 +14,9 @@ import { MarkdownEditor } from './MarkdownEditor.tsx';
 import { confirmDialog } from './ui/Modal.tsx';
 
 const SAVE_AFTER_MS = 1000;
+const RETRY_MAX_MS = 30_000;
+/** Retries left to a closed editor before it gives up on its unsaved edits. */
+const CLOSED_RETRIES = 5;
 
 /** A project's documents: a list, and the open one, always editable. */
 export function ProjectDocs({ project, docId }: { project: Project; docId?: string }) {
@@ -126,12 +129,21 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
   const inFlight = useRef(false);
   const queued = useRef<{ force: boolean } | null>(null);
   const mounted = useRef(true);
+  // Failed saves in a row; while there are any, the next try waits longer each time.
+  const failures = useRef(0);
+  // A failed "Keep mine" stays forced when it's retried.
+  const retryForce = useRef(false);
+  // Bumped after a failed save so the timer below re-arms even when the state was already dirty.
+  const [retry, setRetry] = useState(0);
+  // Set once a delete is under way: saving then would PATCH a document that's going away.
+  const deleting = useRef(false);
   const readOnly = ws.isGuest;
 
   const setSaveState = (s: SaveState) => {
     latest.current.state = s;
     setStateValue(s);
   };
+  const retryDelay = () => Math.min(SAVE_AFTER_MS * 2 ** failures.current, RETRY_MAX_MS);
 
   // Take the server's version when there's nothing unsaved here.
   useEffect(() => {
@@ -144,6 +156,7 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
   }, [doc, state]);
 
   const save = async (force = false) => {
+    if (deleting.current) return;
     if (inFlight.current) {
       // Wait for the one in flight: sending now would use its base and conflict with it.
       queued.current = { force: force || (queued.current?.force ?? false) };
@@ -164,40 +177,59 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
       qc.invalidateQueries({ queryKey: ['ws', ws.slug, 'documents'] });
       // More typing while this was in flight: the next save picks it up.
       setSaveState(edits.current === sent ? 'saved' : 'dirty');
+      failures.current = 0;
+      retryForce.current = false;
       ok = true;
     } catch (err) {
       if ((err as { status?: number }).status === 409) {
+        failures.current = 0;
+        retryForce.current = false;
         setSaveState('conflict');
         if (!mounted.current)
           toast.error(t('projects.docs.closedConflict', { title: latest.current.title }));
       } else {
         setSaveState('dirty');
-        toast.error(err instanceof Error ? err.message : t('projects.docs.saveFailed'));
+        failures.current++;
+        retryForce.current = force || (queued.current?.force ?? false);
+        // Once per run of failures: the retries would otherwise toast every few seconds.
+        if (failures.current === 1 && !deleting.current)
+          toast.error(err instanceof Error ? err.message : t('projects.docs.saveFailed'));
       }
     }
     inFlight.current = false;
     const next = queued.current;
     queued.current = null;
-    // A closed editor has no timer left, so it saves what's left straight away.
-    if (ok && (next || (!mounted.current && latest.current.state === 'dirty')))
-      void save(next?.force);
+    if (ok) {
+      // A closed editor has no timer left, so it saves what's left straight away.
+      if (next || (!mounted.current && latest.current.state === 'dirty')) void save(next?.force);
+    } else if (latest.current.state === 'dirty' && !deleting.current) {
+      // The edits (and any queued follow-up, which saves the same latest values) are still here:
+      // try again, waiting longer each time.
+      if (mounted.current) setRetry((n) => n + 1);
+      else if (failures.current <= CLOSED_RETRIES)
+        setTimeout(() => void save(retryForce.current), retryDelay());
+      else toast.error(t('projects.docs.closedSaveFailed', { title: latest.current.title }));
+    }
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: save after each pause in typing
+  // biome-ignore lint/correctness/useExhaustiveDependencies: save after each pause in typing, or retry
   useEffect(() => {
     if (state !== 'dirty') return;
-    const timer = setTimeout(() => save(), SAVE_AFTER_MS);
+    const timer = setTimeout(
+      () => save(retryForce.current),
+      failures.current ? retryDelay() : SAVE_AFTER_MS,
+    );
     return () => clearTimeout(timer);
-  }, [state, title, content]);
+  }, [state, title, content, retry]);
 
   // Flush unsaved edits when the editor closes (another doc, another page). A doc in conflict is
-  // left alone: saving it would need the person to choose.
+  // left alone: saving it would need the person to choose. So is one that was just deleted.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only on mount and unmount; save reads refs
   useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
-      if (latest.current.state === 'dirty') void save();
+      if (latest.current.state === 'dirty' && !deleting.current) void save(retryForce.current);
     };
   }, []);
 
@@ -279,8 +311,17 @@ function DocumentEditor({ id, onDeleted }: { id: string; onDeleted: () => void }
                   title: t('projects.docs.confirmDeleteTitle', { title: doc.title }),
                   danger: true,
                 })
-              )
-                remove.mutate(undefined, { onSuccess: onDeleted });
+              ) {
+                deleting.current = true;
+                remove.mutate(undefined, {
+                  onSuccess: onDeleted,
+                  onError: () => {
+                    deleting.current = false;
+                    // A save skipped while the delete was under way still needs to go out.
+                    if (latest.current.state === 'dirty') setRetry((n) => n + 1);
+                  },
+                });
+              }
             }}
           >
             <Trash2 size={13} />

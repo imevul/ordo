@@ -89,6 +89,7 @@ export default {
     conflict: 'Någon annan sparade en nyare version medan du redigerade.',
     closedConflict:
       'Dina senaste ändringar i ”{title}” sparades inte: någon annan sparade en nyare version.',
+    closedSaveFailed: 'Dina senaste ändringar i ”{title}” kunde inte sparas.',
     loadTheirs: 'Hämta deras',
     keepMine: 'Behåll min',
     titleLabel: 'Dokumentets titel',
