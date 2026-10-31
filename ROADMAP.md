@@ -256,7 +256,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
 ### Hardening, round 3 — findings from the 2026-10-31 review
 
 - [ ] ⬜ Security
-  - [ ] ⬜ SSO and SCIM release any unverified account at the address, including long-standing real ones (sign-up
+  - [x] ✅ SSO and SCIM release any unverified account at the address, including long-standing real ones (sign-up
     never verifies without mail): ask an admin, or only release accounts with no memberships or activity
   - [ ] ⬜ A released unverified account keeps its sessions, API keys, passkeys and memberships
   - [x] ✅ The per-account sign-in lockout also blocks a signed-in owner from changing their password or 2FA

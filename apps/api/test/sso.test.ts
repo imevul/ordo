@@ -10,6 +10,7 @@ import {
   users,
   workspaceMembers,
 } from '../src/db/schema.ts';
+import { createToken } from '../src/services/tokens.ts';
 import { Client, signup, testApp } from './helpers.ts';
 import { type MockIdp, startMockIdp } from './mock-idp.ts';
 
@@ -392,6 +393,48 @@ describe('sign-in', () => {
       .from(auditLog)
       .where(and(eq(auditLog.action, 'auth.email_changed'), eq(auditLog.targetId, squatterId)));
     expect(logged!.data).toMatchObject({ from: claims.email, via: 'sso' });
+  });
+
+  it('refuses to release an unverified account that has been used, until it verifies', async () => {
+    // Someone who signed up long ago, before anything could verify them, and has a workspace.
+    const claims = person('longstanding');
+    const early = await signup(app, 'Early Person');
+    const earlyId = (await early.client.get('/api/auth/me')).data.id;
+    await early.client.post('/api/workspaces', {
+      name: 'Early',
+      slug: `early-${Date.now()}`,
+      teamName: 'Early',
+      teamKey: 'EAR',
+    });
+    await app.db.update(users).set({ email: claims.email }).where(eq(users.id, earlyId));
+
+    const refused = await sso(claims);
+    expect(decodeURIComponent(refused.location)).toMatch(
+      /^\/login\?error=An account with this address exists but hasn't verified it/,
+    );
+    const holders = await app.db.select().from(users).where(eq(users.email, claims.email));
+    expect(holders.map((u) => u.id)).toEqual([earlyId]);
+    expect(
+      await app.db.select().from(userIdentities).where(eq(userIdentities.subject, claims.sub)),
+    ).toEqual([]);
+    const [logged] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'auth.claim_refused'), eq(auditLog.targetId, earlyId)));
+    expect(logged).toMatchObject({ workspaceId: wsId, data: { email: claims.email, via: 'sso' } });
+    expect((await early.client.get('/api/auth/me')).data.email).toBe(claims.email);
+
+    // A password reset proves the address; then SSO links the same account.
+    const token = await createToken(app.db, earlyId, 'password_reset', 60);
+    const reset = await new Client(app).post('/api/auth/reset', {
+      token,
+      password: 'another horse battery',
+    });
+    expect(reset.statusCode, reset.body).toBe(200);
+    const { client, location } = await sso(claims);
+    expect(location).toBe(`/${slug}`);
+    expect((await client.get('/api/auth/me')).data.id).toBe(earlyId);
+    expect(await roleOf(claims.email)).toBe('member');
   });
 
   it('lets signed-in users link an identity explicitly', async () => {

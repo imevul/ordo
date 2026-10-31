@@ -263,6 +263,10 @@ export default {
       login: 'logget inn',
       loginSso: 'logget inn med {provider}',
       ssoBypass: 'logget inn med passord (reserveløsning for eier)',
+      claimRefusedSso:
+        'SSO-innlogging som {email} ble avvist: en ubekreftet konto med aktivitet bruker adressen',
+      claimRefusedScim:
+        'katalogsynk av {email} ble avvist: en ubekreftet konto med aktivitet bruker adressen',
       webhookCreated: 'la til en webhook til {url}',
       webhookUpdated: 'endret en webhook',
       webhookDeleted: 'fjernet webhooken til {url}',

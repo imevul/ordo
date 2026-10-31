@@ -36,6 +36,7 @@ import {
   previewLink,
   updateScimGroup,
 } from '../services/scimGroups.ts';
+import { auditClaimRefused, ClaimRefused } from '../services/sso.ts';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -100,20 +101,34 @@ export async function scimRoutes(app: FastifyInstance) {
     },
   };
 
-  /** Runs as the workspace's Directory sync bot. Reads too, for one consistent snapshot. */
-  const run = <T>(req: FastifyRequest, fn: (ctx: Ctx) => Promise<T>) => {
+  /**
+   * Runs as the workspace's Directory sync bot. Reads too, for one consistent snapshot. A refused
+   * claim is audited here, after its transaction rolled back, and fails only this user.
+   */
+  const run = async <T>(req: FastifyRequest, fn: (ctx: Ctx) => Promise<T>) => {
     const { workspaceId, botId } = req.scim!;
-    return runInWorkspace(
-      app,
-      {
-        workspaceId,
-        actorId: botId,
-        access: systemAccess(workspaceId, botId),
-        source: 'scim',
-        meta: requestMeta(req),
-      },
-      fn,
-    );
+    const meta = requestMeta(req);
+    try {
+      return await runInWorkspace(
+        app,
+        {
+          workspaceId,
+          actorId: botId,
+          access: systemAccess(workspaceId, botId),
+          source: 'scim',
+          meta,
+        },
+        fn,
+      );
+    } catch (err) {
+      if (!(err instanceof ClaimRefused)) throw err;
+      await auditClaimRefused(app.db, err, meta);
+      throw new ScimError(
+        409,
+        `An unverified Ordo account already uses ${err.email}. Its owner must verify the address (a password reset does) before it can be provisioned.`,
+        'uniqueness',
+      );
+    }
   };
   const send = (reply: FastifyReply, body: unknown, status = 200) =>
     reply.status(status).type(SCIM_JSON).send(body);
