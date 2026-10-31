@@ -1,4 +1,4 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -168,6 +168,84 @@ describe('safeFetch', () => {
       });
       expect(seen['first/done']?.['content-type']).toBeUndefined();
       expect(seen['first/done']?.authorization).toBe('Bearer secret');
+    } finally {
+      await new Promise<void>((r) => other.close(() => r()));
+      await new Promise<void>((r) => first.close(() => r()));
+    }
+  });
+
+  it("doesn't resend a body when a 307/308 changes origin", async () => {
+    const received: { server: string; url?: string; method?: string; body: string }[] = [];
+    const record = (server: string, req: IncomingMessage) =>
+      new Promise<void>((resolve) => {
+        let body = '';
+        req.on('data', (c) => (body += c));
+        req.on('end', () => {
+          received.push({ server, url: req.url, method: req.method, body });
+          resolve();
+        });
+      });
+    const other = createServer(async (req, res) => {
+      await record('other', req);
+      res.end('{}');
+    });
+    const first = createServer(async (req, res) => {
+      await record('first', req);
+      const otherUrl = `http://127.0.0.1:${(other.address() as AddressInfo).port}/token`;
+      const redirects: Record<string, [number, string]> = {
+        '/307': [307, otherUrl],
+        '/308': [308, otherUrl],
+        '/same': [307, '/token'],
+        '/303': [303, otherUrl],
+        '/302': [302, otherUrl],
+      };
+      const hop = redirects[req.url ?? ''];
+      if (hop) res.writeHead(hop[0], { location: hop[1] });
+      res.end('{}');
+    });
+    await new Promise<void>((r) => other.listen(0, '127.0.0.1', r));
+    await new Promise<void>((r) => first.listen(0, '127.0.0.1', r));
+    const base = `http://127.0.0.1:${(first.address() as AddressInfo).port}`;
+    const post = (path: string) =>
+      safeFetch(`${base}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'client_secret=s3cret',
+        allowPrivate: true,
+      });
+    try {
+      // Cross-origin 307/308: refused, and the other host never hears from us.
+      for (const path of ['/307', '/308']) {
+        await expect(post(path)).rejects.toThrow(/Refusing to resend the request body/);
+      }
+      expect(received.filter((r) => r.server === 'other')).toEqual([]);
+
+      // Same origin: the body is resent as before.
+      received.length = 0;
+      await post('/same');
+      expect(received.at(-1)).toEqual({
+        server: 'first',
+        url: '/token',
+        method: 'POST',
+        body: 'client_secret=s3cret',
+      });
+
+      // 303, and 302 after a POST, still become a bodiless GET, even to another origin.
+      for (const path of ['/303', '/302']) {
+        received.length = 0;
+        await post(path);
+        expect(received.at(-1)).toEqual({
+          server: 'other',
+          url: '/token',
+          method: 'GET',
+          body: '',
+        });
+      }
+
+      // A bodiless 307 to another origin is still followed.
+      received.length = 0;
+      await safeFetch(`${base}/307`, { allowPrivate: true });
+      expect(received.at(-1)).toMatchObject({ server: 'other', method: 'GET' });
     } finally {
       await new Promise<void>((r) => other.close(() => r()));
       await new Promise<void>((r) => first.close(() => r()));

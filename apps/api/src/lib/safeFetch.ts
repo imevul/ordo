@@ -175,14 +175,21 @@ export async function safeFetch(input: string, opts: SafeFetchOptions = {}): Pro
       await res.body?.cancel();
       if (hop >= maxRedirects) throw new Error('Too many redirects');
       const next = new URL(res.headers.get('location')!, url);
-      // A token for one host must not reach another, even when the first one sends us there.
-      if (next.origin !== url.origin) headers = withoutHeaders(headers, CREDENTIAL_HEADERS);
-      url = next;
+      const crossOrigin = next.origin !== url.origin;
       if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === 'POST')) {
         method = 'GET';
         body = undefined;
         headers = withoutHeaders(headers, BODY_HEADERS);
+      } else if (crossOrigin && body !== undefined) {
+        // A body can hold a secret too (client_secret in an OIDC token request), and a 307/308
+        // would replay it to the other host.
+        throw new Error(
+          `Refusing to resend the request body to ${next.origin} on a cross-origin redirect`,
+        );
       }
+      // A token for one host must not reach another, even when the first one sends us there.
+      if (crossOrigin) headers = withoutHeaders(headers, CREDENTIAL_HEADERS);
+      url = next;
       continue;
     }
 
