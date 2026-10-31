@@ -23,6 +23,7 @@ works the same on layouts where Shift+`.` types `:` (Swedish, Norwegian, Danish,
 | `G` then `T` | Your first team's issues |
 | `G` then `P` | Projects                 |
 | `G` then `V` | Views                    |
+| `G` then `D` | Dashboards               |
 | `G` then `S` | Settings                 |
 
 `G` then a key always navigates, even on pages where that key alone does something else (`I` on an issue
@@ -56,6 +57,7 @@ These apply to the selected issues, or the focused one if nothing is selected, o
 | `E`                | Estimate                                                          |
 | `Mod ⌫` / `Delete` | Move to trash (undo from the toast)                               |
 | `Mod Shift .`      | Copy the open issue's git branch name (the `.` key on any layout) |
+| `Shift G`          | Jump to the latest activity on the open issue                     |
 | `1`–`9`            | In a property menu: pick the nth option                           |
 | `⌫`                | In a property menu with an empty filter: back to the command menu |
 
@@ -101,3 +103,10 @@ In the rich text editor, Markdown typed at the start of a line or around a word 
 | `1` – `4`   | Quick filter: All, Mentions, Assigned, Comments     |
 | `5`         | Unread only, on or off                              |
 | `Shift` `F` | More filters (kind, why, who, team, issue priority) |
+
+## Dashboards
+
+| Keys | Action                           |
+| ---- | -------------------------------- |
+| `E`  | Edit the layout (again: save it) |
+| `A`  | While editing: add a widget      |

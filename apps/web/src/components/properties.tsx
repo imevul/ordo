@@ -9,7 +9,7 @@ import {
   type UpdateIssueInput,
 } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { CalendarDays, Hexagon, Milestone, RefreshCcw, Tag, Users } from 'lucide-react';
+import { CalendarDays, Hexagon, Milestone, Package, RefreshCcw, Tag, Users } from 'lucide-react';
 import { type ReactNode, useRef, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys } from '../api/queries.ts';
@@ -462,6 +462,68 @@ export function CycleProp({ issue, onPatch, variant = 'chip' }: IssuePropProps) 
         <button type="button" className={cls(variant)} aria-label={t('common.cycle')}>
           <RefreshCcw size={14} />
           {variant !== 'icon' && <span>{c ? cycleName(c) : t('common.cycle')}</span>}
+        </button>
+      }
+    />
+  );
+}
+
+/** Releases an issue of `teamId` can join: workspace-wide ones and its team's, not out yet. */
+export function releaseOptions(ws: WorkspaceData, teamId: string): Option[] {
+  return [
+    {
+      value: 'none',
+      label: t('issues.none.release'),
+      icon: <Package size={14} className="text-index" />,
+    },
+    ...ws.releases
+      .filter((r) => !r.releasedAt && (!r.teamId || r.teamId === teamId))
+      .map((r) => ({
+        value: r.id,
+        label: r.name,
+        icon: <Package size={14} className="text-muted" />,
+        hint: r.targetDate ? shortDate(r.targetDate) : undefined,
+      })),
+  ];
+}
+
+/**
+ * The issue's release. Hidden while the team has none to pick; one that's out can't be left, so
+ * it shows without a picker.
+ */
+export function ReleaseProp({
+  issue,
+  onPatch,
+  variant = 'chip',
+}: IssuePropProps & { issue: { releaseId?: string | null } }) {
+  const ws = useWorkspace();
+  const current = issue.releaseId ? ws.releaseById.get(issue.releaseId) : undefined;
+  const options = releaseOptions(ws, issue.teamId);
+  if (!current && options.length < 2) return null;
+  const label = (
+    <>
+      <Package size={14} />
+      {variant !== 'icon' && (
+        <span className="truncate">{current?.name ?? t('common.release')}</span>
+      )}
+    </>
+  );
+  if (current?.releasedAt)
+    return (
+      <span className={cls(variant)} title={t('issues.props.releaseOut', { name: current.name })}>
+        {label}
+      </span>
+    );
+  return (
+    <Picker
+      placeholder={t('issues.props.setRelease')}
+      options={options}
+      selected={[issue.releaseId ?? 'none']}
+      onSelect={(v) => onPatch({ releaseId: v === 'none' ? null : v })}
+      width={260}
+      trigger={
+        <button type="button" className={cls(variant)} aria-label={t('common.release')}>
+          {label}
         </button>
       }
     />

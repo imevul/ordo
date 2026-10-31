@@ -52,12 +52,14 @@ import {
   labels,
   projectMilestones,
   projects,
+  releases,
   teamKeyAliases,
   teams,
+  users,
   workflowStates,
   workspaces,
 } from '../db/schema.ts';
-import { badRequest, conflict, notFound, one } from '../lib/errors.ts';
+import { badRequest, conflict, forbidden, notFound, one } from '../lib/errors.ts';
 import {
   type Access,
   assertTeamAccess,
@@ -119,6 +121,7 @@ export function toIssue(r: IssueRow): Issue {
     projectId: r.projectId,
     milestoneId: r.milestoneId,
     cycleId: r.cycleId,
+    releaseId: r.releaseId,
     parentId: r.parentId,
     estimate: r.estimate,
     dueDate: r.dueDate,
@@ -135,10 +138,11 @@ export function toIssue(r: IssueRow): Issue {
     deletedAt: r.deletedAt,
     slaBreachesAt: r.slaBreachesAt,
     archivedAt: r.archivedAt,
+    planApproval: r.planApproval,
   };
 }
 
-function baseQuery(db: DbOrTx) {
+export function baseQuery(db: DbOrTx) {
   return db.select(issueSelect).from(issues).innerJoin(teams, eq(teams.id, issues.teamId));
 }
 
@@ -221,7 +225,8 @@ function conditionParts(c: IssueConditions, env: FilterEnv): SQL[] {
       | typeof issues.assigneeId
       | typeof issues.projectId
       | typeof issues.milestoneId
-      | typeof issues.cycleId,
+      | typeof issues.cycleId
+      | typeof issues.releaseId,
     values: string[] | undefined,
     mapper = (v: string) => v,
   ) => {
@@ -236,6 +241,7 @@ function conditionParts(c: IssueConditions, env: FilterEnv): SQL[] {
   nullable(issues.projectId, c.projectIds);
   nullable(issues.milestoneId, c.milestoneIds);
   nullable(issues.cycleId, c.cycleIds);
+  nullable(issues.releaseId, c.releaseIds);
   if (c.creatorIds?.length) conds.push(inArray(issues.creatorId, c.creatorIds.map(me)));
   if (c.labelIds?.length) {
     conds.push(
@@ -701,12 +707,36 @@ export async function assertProject(ctx: Ctx, projectId: string) {
   if (!p) throw badRequest('Unknown project').as('unknown_project');
 }
 
-async function assertCycle(ctx: Ctx, teamId: string, cycleId: string) {
+export async function assertCycle(ctx: Ctx, teamId: string, cycleId: string) {
   const [c] = await ctx.tx
     .select({ id: cycles.id })
     .from(cycles)
     .where(and(eq(cycles.id, cycleId), eq(cycles.teamId, teamId)));
   if (!c) throw badRequest('Cycle does not belong to this team');
+}
+
+/**
+ * A release the issue can join: of this workspace, workspace-wide or of the issue's team, and
+ * not out yet (a release's list is frozen once it's out).
+ */
+async function assertRelease(ctx: Ctx, teamId: string, releaseId: string) {
+  const [r] = await ctx.tx
+    .select({ teamId: releases.teamId, releasedAt: releases.releasedAt })
+    .from(releases)
+    .where(and(eq(releases.id, releaseId), eq(releases.workspaceId, ctx.workspaceId)));
+  if (!r || (r.teamId && r.teamId !== teamId))
+    throw badRequest('Unknown release for this team').as('unknown_release');
+  if (r.releasedAt) throw badRequest('That release is out; reopen it first').as('release_frozen');
+}
+
+/** Throws when the issue's current release is out: it can't leave the frozen list. */
+async function assertLeavesRelease(ctx: Ctx, releaseId: string | null) {
+  if (!releaseId) return;
+  const [r] = await ctx.tx
+    .select({ releasedAt: releases.releasedAt })
+    .from(releases)
+    .where(eq(releases.id, releaseId));
+  if (r?.releasedAt) throw badRequest('That release is out; reopen it first').as('release_frozen');
 }
 
 export async function assertLabels(ctx: Ctx, teamId: string | null, labelIds: string[]) {
@@ -768,10 +798,12 @@ async function recordHistory(
   at: { actorId?: string | null; createdAt?: string } = {},
 ) {
   if (changes.length === 0) return;
+  const rule = ctx.automation?.rule;
   await ctx.tx.insert(issueHistory).values({
     issueId,
     actorId: at.actorId === undefined ? ctx.userId : at.actorId,
-    changes,
+    // The activity line names the automation rule that made the change.
+    changes: rule ? [...changes, { field: 'automation', from: null, to: rule }] : changes,
     createdAt: at.createdAt,
   });
 }
@@ -845,6 +877,7 @@ export async function createIssue(
     input.milestoneId,
   );
   if (input.cycleId) await assertCycle(ctx, team.id, input.cycleId);
+  if (input.releaseId) await assertRelease(ctx, team.id, input.releaseId);
   // Leaving the assignee out means "the usual person"; null means nobody. Imports and triage
   // keep what they were given: triage is where someone decides who takes it.
   const assigneeId =
@@ -884,6 +917,8 @@ export async function createIssue(
     sortOrder = min == null ? 0 : min - SORT_GAP;
   }
 
+  if (input.planApproval != null)
+    await assertPerson(ctx, 'Only people can change whether a plan needs approval');
   const { id } = one(
     await ctx.tx
       .insert(issues)
@@ -901,9 +936,11 @@ export async function createIssue(
         projectId: placed.projectId ?? null,
         milestoneId: placed.milestoneId ?? null,
         cycleId,
+        releaseId: input.releaseId ?? null,
         parentId: input.parentId ?? null,
         estimate: input.estimate ?? null,
         dueDate: input.dueDate ?? null,
+        planApproval: input.planApproval ?? null,
         sortOrder,
         // Imported issues keep their history; an SLA would only mark them breached on arrival.
         slaBreachesAt: imported
@@ -955,6 +992,7 @@ const BOOTSTRAP_COLUMNS = [
   'projectId',
   'milestoneId',
   'cycleId',
+  'releaseId',
   'estimate',
   'assigneeId',
 ] as const;
@@ -962,6 +1000,19 @@ const BOOTSTRAP_COLUMNS = [
 /** The `bootstrapUnchanged` hint for an issue update that wrote `set`. */
 const unchangedBootstrap = (set: object): { bootstrapUnchanged?: true } =>
   BOOTSTRAP_COLUMNS.some((c) => c in set) ? {} : { bootstrapUnchanged: true };
+
+/**
+ * For what an agent mustn't decide about its own work (plan approval): the actor is a person, or
+ * the system. Bots and agents get a 403.
+ */
+async function assertPerson(ctx: Ctx, message: string) {
+  if (ctx.access.system) return;
+  const [actor] = await ctx.tx
+    .select({ kind: users.kind })
+    .from(users)
+    .where(eq(users.id, ctx.userId));
+  if (actor?.kind !== 'human') throw forbidden(message);
+}
 
 export async function updateIssue(
   ctx: Ctx,
@@ -1000,6 +1051,7 @@ export async function updateIssue(
   let teamId = current.teamId;
   let stateId = patch.stateId;
   let cycleId = patch.cycleId;
+  let releaseId = patch.releaseId;
 
   // Moving to another team: renumber and map the status onto the new team's workflow.
   if (patch.teamId && patch.teamId !== current.teamId) {
@@ -1030,6 +1082,14 @@ export async function updateIssue(
       stateId = candidates[0]?.id ?? (await defaultState(ctx, target)).id;
     }
     if (cycleId === undefined) cycleId = null;
+    // The old team's release can't hold it. One that's out keeps it: that's what shipped.
+    if (releaseId === undefined && current.releaseId) {
+      const [r] = await ctx.tx
+        .select({ teamId: releases.teamId, releasedAt: releases.releasedAt })
+        .from(releases)
+        .where(eq(releases.id, current.releaseId));
+      if (r?.teamId && !r.releasedAt) releaseId = null;
+    }
     changes.push({ field: 'team', from: current.teamId, to: target.id });
     // Links, branches and pages opened before the move still name the old identifier.
     await ctx.tx
@@ -1103,12 +1163,21 @@ export async function updateIssue(
     if (cycleId) await assertCycle(ctx, teamId, cycleId);
     change('cycleId', 'cycle', cycleId);
   }
+  if (releaseId !== undefined && releaseId !== current.releaseId) {
+    await assertLeavesRelease(ctx, current.releaseId);
+    if (releaseId) await assertRelease(ctx, teamId, releaseId);
+    change('releaseId', 'release', releaseId);
+  }
   if (patch.parentId !== undefined) {
     if (patch.parentId) await assertParent(ctx, issueId, patch.parentId);
     change('parentId', 'parent', patch.parentId);
   }
   if (patch.estimate !== undefined) change('estimate', 'estimate', patch.estimate);
   if (patch.dueDate !== undefined) change('dueDate', 'dueDate', patch.dueDate);
+  if (patch.planApproval !== undefined && patch.planApproval !== current.planApproval) {
+    await assertPerson(ctx, 'Only people can change whether a plan needs approval');
+    change('planApproval', 'planApproval', patch.planApproval);
+  }
   if (patch.sortOrder !== undefined) change('sortOrder', null, patch.sortOrder);
 
   // Labels: full replacement, or incremental add/remove (used by bulk edits).
@@ -1203,6 +1272,11 @@ export interface BulkIssuePatch {
   stateId?: string;
   cycleId?: string | null;
   assigneeId?: string | null;
+  /**
+   * Joining a release checks it as `updateIssue` does. Clearing doesn't: a deleted release lets go
+   * of its issues even when it's out.
+   */
+  releaseId?: string | null;
 }
 
 /**
@@ -1211,7 +1285,8 @@ export interface BulkIssuePatch {
  * `updateIssue`. Meant for rewrites the system does on someone's behalf (deleting a cycle or
  * status, cycle rollover, placeholder merges): it notifies nobody, runs no assignee hooks and does
  * no cycle automation (an issue moved to a started status doesn't join the active cycle), since
- * nobody changed these issues' progress. A person's own edits still go through `updateIssue`.
+ * nobody changed these issues' progress. A person's own edits still go through `updateIssue`,
+ * except adding many issues to a release, which has none of those side effects anyway.
  * Trashed and archived issues are updated too. Returns the ids that changed.
  */
 export async function bulkUpdateIssues(
@@ -1226,6 +1301,7 @@ export async function bulkUpdateIssues(
       teamId: issues.teamId,
       stateId: issues.stateId,
       cycleId: issues.cycleId,
+      releaseId: issues.releaseId,
       assigneeId: issues.assigneeId,
       parentId: issues.parentId,
       archivedAt: issues.archivedAt,
@@ -1247,6 +1323,11 @@ export async function bulkUpdateIssues(
     if (patch.stateId) state = await stateOf(ctx, teamId, patch.stateId);
     if (patch.cycleId) await assertCycle(ctx, teamId, patch.cycleId);
     if (patch.assigneeId) await assertAssignee(ctx, teamId, patch.assigneeId);
+    if (patch.releaseId) await assertRelease(ctx, teamId, patch.releaseId);
+  }
+  if (patch.releaseId) {
+    const leaving = new Set(rows.map((r) => r.releaseId).filter((r) => r && r !== patch.releaseId));
+    for (const releaseId of leaving) await assertLeavesRelease(ctx, releaseId);
   }
   const closed = state?.type === 'completed' || state?.type === 'canceled';
 
@@ -1262,6 +1343,8 @@ export async function bulkUpdateIssues(
       changes.push({ field: 'cycle', from: row.cycleId, to: patch.cycleId });
     if (patch.assigneeId !== undefined && patch.assigneeId !== row.assigneeId)
       changes.push({ field: 'assignee', from: row.assigneeId, to: patch.assigneeId });
+    if (patch.releaseId !== undefined && patch.releaseId !== row.releaseId)
+      changes.push({ field: 'release', from: row.releaseId, to: patch.releaseId });
     if (changes.length) changed.push({ row, changes });
   }
   if (changed.length === 0) return [];
@@ -1288,6 +1371,7 @@ export async function bulkUpdateIssues(
   }
   if (patch.cycleId !== undefined) set.cycleId = patch.cycleId;
   if (patch.assigneeId !== undefined) set.assigneeId = patch.assigneeId;
+  if (patch.releaseId !== undefined) set.releaseId = patch.releaseId;
   await ctx.tx.update(issues).set(set).where(inArray(issues.id, changedIds));
 
   await ctx.tx

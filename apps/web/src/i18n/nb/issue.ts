@@ -25,6 +25,7 @@ export default {
     confirmTrashBody: 'Du kan gjenopprette den fra papirkurven senere.',
     subIssues: 'Undersaker',
     properties: 'Egenskaper',
+    jumpToLatest: 'Hopp til det siste',
     slaBreached: 'gikk ut for {time} siden',
     slaLeft: '{time} igjen',
     moveToTeam: 'Flytt til team…',
@@ -131,6 +132,7 @@ export default {
     dueDateRemoved: '{actor} fjernet forfallsdatoen',
     team: '{actor} flyttet saken fra {from} til {to}',
     changed: '{actor} endret {field}',
+    automation: '{actor} kjørte automatiseringen {rule}',
     fallback: {
       someone: 'noen',
       nobody: 'ingen',

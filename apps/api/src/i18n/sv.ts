@@ -123,4 +123,5 @@ export default {
     docs: 'Dokumentation',
     housekeeping: 'Underhåll',
   },
+  releases: { otherHeading: 'Övriga ändringar' },
 } satisfies Translation<typeof en>;

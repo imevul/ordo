@@ -1,8 +1,10 @@
 import type {
   Account,
+  AgentActivityReport,
   ApiKey,
   Attachment,
   Bootstrap,
+  CalendarFeed,
   Comment,
   CommentReaction,
   CreateIssueInput,
@@ -15,13 +17,16 @@ import type {
   Issue,
   IssueDetail,
   IssueFilter,
+  IssueTime,
   Me,
   Notification,
   NotificationType,
   OAuthGrant,
   ProjectUpdate,
+  RunningTimer,
   SearchResults,
   SessionInfo,
+  TimeReport,
   UpdateIssueInput,
   Velocity,
 } from '@ordo/shared';
@@ -61,6 +66,7 @@ export const keys = {
   projectUpdates: (slug: string, projectId: string) =>
     ['ws', slug, 'projectUpdates', projectId] as const,
   invites: (slug: string) => ['ws', slug, 'invites'] as const,
+  calendarFeeds: (slug: string) => ['ws', slug, 'calendarFeeds'] as const,
   search: (slug: string, q: string) => ['ws', slug, 'search', q] as const,
   workload: (slug: string, cycleId?: string) =>
     cycleId ? (['ws', slug, 'workload', cycleId] as const) : (['ws', slug, 'workload'] as const),
@@ -331,6 +337,29 @@ export const useActiveAgentRunCount = (slug: string, enabled: boolean) =>
     enabled,
   });
 
+// Time queries live under ['ws', slug, 'time'] so realtime timeEntry events refetch them all.
+export const useIssueTime = (slug: string, issueId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['ws', slug, 'time', 'issue', issueId],
+    queryFn: () => api.get<IssueTime>(wsPath(slug, `/issues/${issueId}/time-entries`)),
+    enabled,
+  });
+
+export const useRunningTimer = (slug: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['ws', slug, 'time', 'timer'],
+    queryFn: () => api.get<RunningTimer | null>(wsPath(slug, '/timer')),
+    enabled,
+  });
+
+export const useTimeReport = (slug: string, query: string, enabled: boolean) =>
+  useQuery({
+    queryKey: ['ws', slug, 'time', 'report', query],
+    queryFn: () => api.get<TimeReport>(wsPath(slug, `/time-entries/report?${query}`)),
+    enabled,
+    placeholderData: keepPreviousData,
+  });
+
 export const useProjectUpdates = (slug: string, projectId: string) =>
   useQuery({
     queryKey: keys.projectUpdates(slug, projectId),
@@ -362,6 +391,21 @@ export const useVelocity = (slug: string, teamId: string | undefined) =>
     enabled: !!teamId,
   });
 
+/** Agent runs started lately, per agent; under `agentRuns` so a run's change refetches it. */
+export const useAgentActivity = (
+  slug: string,
+  q: { days: number; agentId?: string | null; teamId?: string | null },
+) =>
+  useQuery({
+    queryKey: ['ws', slug, 'agentRuns', 'activity', q],
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(q.days) });
+      if (q.agentId) params.set('agentId', q.agentId);
+      if (q.teamId) params.set('teamId', q.teamId);
+      return api.get<AgentActivityReport>(wsPath(slug, `/agent-activity?${params}`));
+    },
+  });
+
 export const useInvites = (slug: string, enabled: boolean) =>
   useQuery({
     queryKey: keys.invites(slug),
@@ -377,6 +421,12 @@ export const useSessions = () =>
 
 export const useApiKeys = () =>
   useQuery({ queryKey: keys.apiKeys, queryFn: () => api.get<ApiKey[]>('/me/api-keys') });
+
+export const useCalendarFeeds = (slug: string) =>
+  useQuery({
+    queryKey: keys.calendarFeeds(slug),
+    queryFn: () => api.get<CalendarFeed[]>(wsPath(slug, '/calendar-feeds')),
+  });
 
 export const useOAuthGrants = () =>
   useQuery({

@@ -115,6 +115,7 @@ export const AUDIT_ACTIONS = [
   'auth.identity_linked',
   'auth.identity_unlinked',
   'auth.sso_bypass',
+  'auth.claim_refused',
   'sso.provider_created',
   'sso.provider_updated',
   'sso.provider_deleted',
@@ -139,6 +140,8 @@ export const AUDIT_ACTIONS = [
   'placeholder.merged',
   'api_key.created',
   'api_key.revoked',
+  'calendar_feed.created',
+  'calendar_feed.revoked',
   'oauth.authorized',
   'oauth.revoked',
   'workspace.created',
@@ -172,19 +175,22 @@ export const AUDIT_ACTIONS = [
   'agent.updated',
   'agent.disabled',
   'agent.unpaused',
+  'agent.plan_approved',
   'agent.key_created',
   'repository.created',
   'repository.updated',
   'repository.deleted',
+  'time_entry.updated',
+  'time_entry.deleted',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
 
 /** Groups of audit actions, by prefix, for filtering the audit log. */
 export const AUDIT_CATEGORIES = {
-  security: ['auth.', 'sso.', 'scim.', 'api_key.', 'oauth.', 'domain.'],
+  security: ['auth.', 'sso.', 'scim.', 'api_key.', 'calendar_feed.', 'oauth.', 'domain.'],
   members: ['member.', 'invite.', 'placeholder.', 'admin.'],
   teams: ['team.'],
-  workspace: ['workspace.', 'settings.'],
+  workspace: ['workspace.', 'settings.', 'time_entry.'],
   integrations: ['integration.', 'webhook.', 'chat_account.', 'agent.', 'repository.'],
   imports: ['import.'],
 } as const satisfies Record<string, readonly string[]>;
@@ -243,7 +249,7 @@ export const QUICK_REACTIONS = ['👍', '👎', '❤️', '🎉', '😄', '😕'
 /** Distinct emoji one comment can collect, so reactions stay a row and not a wall. */
 export const MAX_REACTION_KINDS = 20;
 
-export const FAVORITE_KINDS = ['issue', 'project', 'view', 'cycle', 'team'] as const;
+export const FAVORITE_KINDS = ['issue', 'project', 'view', 'cycle', 'team', 'dashboard'] as const;
 export type FavoriteKind = (typeof FAVORITE_KINDS)[number];
 
 /** Label palette tuned to sit on the Hotline Pink charcoal ground. */
@@ -333,7 +339,15 @@ export const DOMAIN_EVENT_TYPES = [
   'cycle.created',
   'cycle.updated',
   'cycle.deleted',
+  'release.created',
+  'release.updated',
+  'release.released',
+  'release.reopened',
+  'release.deleted',
   'agent_run.updated',
+  'time_entry.created',
+  'time_entry.updated',
+  'time_entry.deleted',
 ] as const;
 export type DomainEventType = (typeof DOMAIN_EVENT_TYPES)[number];
 
@@ -389,6 +403,17 @@ export const AGENT_PAUSE_REASONS = ['usage_limit', 'budget'] as const;
 export type AgentPauseReason = (typeof AGENT_PAUSE_REASONS)[number];
 /** Usage-limit failures in a row after which a run waits for a person instead of restarting. */
 export const AGENT_AUTO_RESTARTS = 3;
+/** How long a run's claim holds without a heartbeat; each heartbeat renews it. */
+export const AGENT_LEASE_MS = 5 * 60_000;
+/**
+ * A running run's live output: Ordo keeps only its tail (the last lines, and at most so many
+ * bytes in all, each line cut short), since output can hold secrets and grows without end.
+ */
+export const AGENT_OUTPUT_LINES = 200;
+export const AGENT_OUTPUT_BYTES = 64 * 1024;
+export const AGENT_OUTPUT_LINE_CHARS = 1000;
+/** A run's output is deleted this long after its runner last sent some. */
+export const AGENT_OUTPUT_RETENTION_MS = 7 * 86_400_000;
 /**
  * Why a run exists: its agent was assigned the issue, a person @mentioned it, Run again,
  * something happened to one of the issue's pull requests (see `AgentRun.triggerDetail`), or a
@@ -402,6 +427,30 @@ export const AGENT_RUN_TRIGGERS = [
   'scheduled',
 ] as const;
 export type AgentRunTrigger = (typeof AGENT_RUN_TRIGGERS)[number];
+/**
+ * What happens to a run, for its timeline (see `AgentRunEvent`). lapsed: its runner stopped
+ * heartbeating and the run went back in the queue (or failed, on the last attempt). resumed: a
+ * waiting run went back in the queue, after a person's reply or Resume. ran_anyway: someone told a
+ * queued run not to wait for its issue's blockers. planned: it posted a plan and waits for
+ * approval. plan_approved: a person approved it (and the run went back in the queue).
+ */
+export const AGENT_RUN_EVENT_KINDS = [
+  'queued',
+  'ran_anyway',
+  'claimed',
+  'started',
+  'progress',
+  'asked',
+  'planned',
+  'plan_approved',
+  'resumed',
+  'lapsed',
+  'succeeded',
+  'failed',
+  'cancelled',
+  'dismissed',
+] as const;
+export type AgentRunEventKind = (typeof AGENT_RUN_EVENT_KINDS)[number];
 /** The runner protocol's version, in every claimed run's context. */
 export const AGENT_PROTOCOL_VERSION = 1;
 
@@ -477,8 +526,16 @@ export const API_MESSAGE_KEYS = [
   'own_comments_delete',
   'attachment_remove',
   'view_change',
+  'dashboard_change',
+  'dashboard_share',
+  'guests_dashboards',
   'guests_customers',
   'guests_cycles',
+  'guests_releases',
+  'release_frozen',
+  'release_out',
+  'release_not_out',
+  'unknown_release',
   'guests_projects',
   'guests_documents',
   'guests_own',
@@ -529,6 +586,10 @@ export const API_MESSAGE_KEYS = [
   'username_claimed',
   'attachment_too_large',
   'max_reactions',
+  'time_tracking_off',
+  'own_time_entries',
+  'no_timer',
+  'timer_conflict',
 ] as const;
 export type ApiMessageKey = (typeof API_MESSAGE_KEYS)[number];
 

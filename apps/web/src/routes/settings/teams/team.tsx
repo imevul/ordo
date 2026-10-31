@@ -9,6 +9,7 @@ import { ConfirmModal } from '../../../components/ui/Modal.tsx';
 import { t } from '../../../i18n/index.ts';
 import { stateTypeLabel } from '../../../i18n/labels.ts';
 import { useWorkspace } from '../../../lib/workspace.tsx';
+import { AutomationRulesCard } from '../automation-rules.tsx';
 import { TriageRulesCard } from '../triage-rules.tsx';
 import { FormRow, SettingsCard } from '../ui.tsx';
 import { CycleAutomationCard, GitAutomationCard, SlaCard } from './automation.tsx';
@@ -235,6 +236,7 @@ export function TeamSettings({ team }: { team: Team }) {
 
         <SlaCard team={team} onSave={(slaHours) => save.mutate({ slaHours })} />
         {team.triageEnabled && <TriageRulesCard team={team} />}
+        <AutomationRulesCard team={team} />
         {team.cyclesEnabled && (
           <CycleAutomationCard
             team={team}

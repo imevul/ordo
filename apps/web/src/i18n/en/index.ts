@@ -1,10 +1,12 @@
 import admin from './admin.ts';
 import agents from './agents.ts';
 import auth from './auth.ts';
+import automationRules from './automationRules.ts';
 import common from './common.ts';
 import customers from './customers.ts';
 import customFields from './customFields.ts';
 import cycles from './cycles.ts';
+import dashboards from './dashboards.ts';
 import enums from './enums.ts';
 import errors from './errors.ts';
 import imports from './imports.ts';
@@ -16,6 +18,7 @@ import issue from './issue.ts';
 import issues from './issues.ts';
 import mcp from './mcp.ts';
 import projects from './projects.ts';
+import releases from './releases.ts';
 import roadmap from './roadmap.ts';
 import settings from './settings.ts';
 import shell from './shell.ts';
@@ -23,6 +26,7 @@ import sso from './sso.ts';
 import teams from './teams.ts';
 import templates from './templates.ts';
 import time from './time.ts';
+import timeTracking from './timeTracking.ts';
 import triageRules from './triageRules.ts';
 import views from './views.ts';
 import webhooks from './webhooks.ts';
@@ -46,6 +50,7 @@ export default {
   teams,
   templates,
   triageRules,
+  automationRules,
   sso,
   webhooks,
   integrations,
@@ -53,12 +58,15 @@ export default {
   agents,
   imports,
   customers,
+  timeTracking,
   views,
   projects,
   initiatives,
   roadmap,
   cycles,
+  dashboards,
   inbox,
   insights,
+  releases,
   errors,
 };

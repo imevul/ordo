@@ -1,4 +1,11 @@
-import { type InsightsDay, type Issue, STATE_TYPES, type StateType } from '@ordo/shared';
+import {
+  BREAKDOWN_SLICES,
+  type BreakdownSlice,
+  type InsightsDay,
+  type Issue,
+  STATE_TYPES,
+  type StateType,
+} from '@ordo/shared';
 import { t } from '../i18n/index.ts';
 import { priorityLabel } from '../i18n/labels.ts';
 import type { WorkspaceData } from './workspace.tsx';
@@ -9,16 +16,8 @@ import type { WorkspaceData } from './workspace.tsx';
  */
 
 export type Measure = 'count' | 'estimate';
-export const SLICES = [
-  'state',
-  'assignee',
-  'priority',
-  'label',
-  'project',
-  'team',
-  'cycle',
-] as const;
-export type Slice = (typeof SLICES)[number];
+export const SLICES = BREAKDOWN_SLICES;
+export type Slice = BreakdownSlice;
 
 export interface Bar {
   key: string;

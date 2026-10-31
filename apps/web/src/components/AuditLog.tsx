@@ -465,6 +465,8 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
         : a('login');
     case 'auth.sso_bypass':
       return a('ssoBypass');
+    case 'auth.claim_refused':
+      return a(d.via === 'scim' ? 'claimRefusedScim' : 'claimRefusedSso', { email: str(d.email) });
     case 'webhook.created':
       return a('webhookCreated', { url: str(d.url) });
     case 'webhook.updated':
@@ -535,6 +537,10 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
       return a('apiKeyCreated');
     case 'api_key.revoked':
       return a('apiKeyRevoked');
+    case 'calendar_feed.created':
+      return a('calendarFeedCreated');
+    case 'calendar_feed.revoked':
+      return a('calendarFeedRevoked');
     case 'oauth.authorized':
       return a('oauthAuthorized');
     case 'oauth.revoked':
@@ -563,6 +569,8 @@ export function describeAudit(e: { action: string; data: Record<string, unknown>
       return a('agentDisabled');
     case 'agent.unpaused':
       return a('agentUnpaused');
+    case 'agent.plan_approved':
+      return a('agentPlanApproved', { identifier: str(d.issue) });
     case 'agent.key_created':
       return a('agentKeyCreated', { name: str(d.name) });
     case 'repository.created':

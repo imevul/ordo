@@ -28,11 +28,16 @@ export function nextWeekday(day: string, weekday: number) {
  * there.
  */
 export async function workspaceToday(db: DbOrTx, workspaceId: string, at = new Date()) {
+  return dayInZone(await workspaceTimezone(db, workspaceId), at);
+}
+
+/** The workspace's time zone setting, if it has one. */
+export async function workspaceTimezone(db: DbOrTx, workspaceId: string) {
   const [ws] = await db
     .select({ settings: workspaces.settings })
     .from(workspaces)
     .where(eq(workspaces.id, workspaceId));
-  return dayInZone(ws?.settings.timezone, at);
+  return ws?.settings.timezone;
 }
 
 /** Hourly: every team with cycle automation plans ahead and closes the cycles that ended. */

@@ -187,6 +187,15 @@ function ChangeText({
           })
         : tx('issue.activity.cycleRemoved', { actor });
     }
+    case 'release': {
+      const r = c.to ? ws.releaseById.get(c.to as string) : null;
+      return c.to
+        ? tx('issue.activity.releaseSet', {
+            actor,
+            release: strong(r?.name ?? t('issue.activity.fallback.release')),
+          })
+        : tx('issue.activity.releaseRemoved', { actor });
+    }
     case 'parent':
       if (!c.to) return tx('issue.activity.parentRemoved', { actor });
       return issue.parent
@@ -201,6 +210,12 @@ function ChangeText({
             estimate: strong(estimateLabel(team?.estimateScale ?? 'linear', c.to as number)),
           });
     }
+    case 'planApproval':
+      return c.to === true
+        ? tx('issue.activity.planApprovalOn', { actor })
+        : c.to === false
+          ? tx('issue.activity.planApprovalOff', { actor })
+          : tx('issue.activity.planApprovalDefault', { actor });
     case 'dueDate':
       return c.to
         ? tx('issue.activity.dueDateSet', { actor, date: strong(shortDate(c.to as string)) })
@@ -212,6 +227,11 @@ function ChangeText({
           ws.teamById.get(c.from as string)?.name ?? t('issue.activity.fallback.fromTeam'),
         ),
         to: strong(ws.teamById.get(c.to as string)?.name ?? t('issue.activity.fallback.toTeam')),
+      });
+    case 'automation':
+      return tx('issue.activity.automation', {
+        actor,
+        rule: strong((c.to as { name?: string } | null)?.name ?? ''),
       });
     default:
       return tx('issue.activity.changed', { actor, field: c.field });

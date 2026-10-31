@@ -272,6 +272,10 @@ export default {
       login: 'signed in',
       loginSso: 'signed in with {provider}',
       ssoBypass: 'signed in with a password (owner fallback)',
+      claimRefusedSso:
+        'SSO sign-in as {email} refused: an unverified account with activity uses the address',
+      claimRefusedScim:
+        'directory sync of {email} refused: an unverified account with activity uses the address',
       webhookCreated: 'added a webhook to {url}',
       webhookUpdated: 'changed a webhook',
       webhookDeleted: 'removed the webhook to {url}',
@@ -310,6 +314,8 @@ export default {
       passkeyAdded: 'added a passkey',
       passkeyRemoved: 'removed a passkey',
       apiKeyRevoked: 'revoked an API key',
+      calendarFeedCreated: 'created a calendar feed',
+      calendarFeedRevoked: 'revoked a calendar feed',
       oauthAuthorized: 'connected an app',
       oauthRevoked: 'disconnected an app',
       aiUpdated: 'changed AI assistance settings',
@@ -324,6 +330,7 @@ export default {
       agentUpdated: 'changed an agent',
       agentDisabled: 'disabled an agent',
       agentUnpaused: 'resumed a paused agent',
+      agentPlanApproved: 'approved an agent’s plan on {identifier}',
       agentKeyCreated: 'created the agent key "{name}"',
       repositoryCreated: 'added the repository {name}',
       repositoryUpdated: 'changed a repository',

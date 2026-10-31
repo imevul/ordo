@@ -1,11 +1,13 @@
 import {
   addTeamMemberSchema,
+  createAutomationRuleSchema,
   createStateSchema,
   createTeamSchema,
   createTriageRuleSchema,
   cycleAutomationOf,
   isTeamAdminRole,
   SORT_GAP,
+  updateAutomationRuleSchema,
   updateStateSchema,
   updateTeamMemberSchema,
   updateTeamSchema,
@@ -14,6 +16,7 @@ import {
 import { and, count, eq, isNull, lte, max, ne } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
+  automationRules,
   cycles,
   issues,
   teamKeyAliases,
@@ -35,6 +38,7 @@ import {
 import { mutate } from '../lib/mutate.ts';
 import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../services/access.ts';
 import { auditCtx } from '../services/audit.ts';
+import { assertAutomationRule, toAutomationRule } from '../services/automationRules.ts';
 import { type Ctx, emit } from '../services/context.ts';
 import { workspaceToday } from '../services/cycle-automation.ts';
 import { bulkUpdateIssues, releaseTriage } from '../services/issues.ts';
@@ -230,6 +234,65 @@ export async function teamRoutes(app: FastifyInstance) {
     return mutate(app, req, async (ctx) => {
       const rule = await loadRule(ctx, id);
       await ctx.tx.delete(triageRules).where(eq(triageRules.id, id));
+      emit(ctx, { kind: 'team', action: 'updated', id: rule.teamId, teamId: rule.teamId });
+      return { ok: true };
+    });
+  });
+
+  // ─── automation rules (team admins) ──────────────────────────────────
+
+  app.post('/teams/:teamId/automation-rules', async (req) => {
+    const { teamId } = req.params as { teamId: string };
+    const input = parse(createAutomationRuleSchema, req.body);
+    return mutate(app, req, async (ctx) => {
+      await loadTeam(ctx, teamId, 'admin');
+      await assertAutomationRule(ctx, teamId, input);
+      const [{ last }] = (await ctx.tx
+        .select({ last: max(automationRules.position) })
+        .from(automationRules)
+        .where(eq(automationRules.teamId, teamId))) as [{ last: number | null }];
+      const row = one(
+        await ctx.tx
+          .insert(automationRules)
+          .values({ ...input, teamId, position: (last ?? 0) + SORT_GAP })
+          .returning(),
+      );
+      emit(ctx, { kind: 'team', action: 'updated', id: teamId, teamId });
+      return toAutomationRule(row);
+    });
+  });
+
+  const loadAutomationRule = async (ctx: Ctx, id: string) => {
+    const [rule] = await ctx.tx.select().from(automationRules).where(eq(automationRules.id, id));
+    if (!rule) throw notFound('Automation rule');
+    await loadTeam(ctx, rule.teamId, 'admin');
+    return rule;
+  };
+
+  app.patch('/automation-rules/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    const input = parse(updateAutomationRuleSchema, req.body);
+    return mutate(app, req, async (ctx) => {
+      const rule = await loadAutomationRule(ctx, id);
+      await assertAutomationRule(ctx, rule.teamId, input);
+      const row = one(
+        await ctx.tx
+          .update(automationRules)
+          .set(input)
+          .where(eq(automationRules.id, id))
+          .returning(),
+        'Automation rule',
+      );
+      emit(ctx, { kind: 'team', action: 'updated', id: rule.teamId, teamId: rule.teamId });
+      return toAutomationRule(row);
+    });
+  });
+
+  app.delete('/automation-rules/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, async (ctx) => {
+      const rule = await loadAutomationRule(ctx, id);
+      await ctx.tx.delete(automationRules).where(eq(automationRules.id, id));
       emit(ctx, { kind: 'team', action: 'updated', id: rule.teamId, teamId: rule.teamId });
       return { ok: true };
     });

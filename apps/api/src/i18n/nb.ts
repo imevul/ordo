@@ -123,4 +123,5 @@ export default {
     docs: 'Dokumentasjon',
     housekeeping: 'Vedlikehold',
   },
+  releases: { otherHeading: 'Andre endringer' },
 } satisfies Translation<typeof en>;

@@ -122,6 +122,11 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       add_relation: 'Relate two issues: blocks, blocked by, related or duplicate of.',
       remove_relation: 'Remove the relation between two issues.',
       add_comment: 'Comment on an issue (Markdown, @mentions notify people).',
+      issue_time: 'Time logged on an issue, entry by entry, with the total.',
+      log_time: 'Log time spent on an issue, like "1h 30m", with a note.',
+      start_timer: 'Start your timer on an issue.',
+      stop_timer: 'Stop your running timer and log the time.',
+      time_report: 'Logged time by person and project over a range of days.',
       list_agents: 'Agents in the workspace and the teams they work in.',
       assign_to_agent:
         'Hand an issue to an agent, optionally with a note. If it already has it, it runs again.',
@@ -138,6 +143,7 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       report_run: 'Report on a run: a session link, started, or finished with a summary.',
       report_progress: 'Say what the agent is doing now; the latest one shows on the run.',
       ask_question: 'Ask a person something and pause; a reply on the issue resumes the run.',
+      propose_plan: 'Post a plan and pause; approving it or replying with changes resumes the run.',
     },
     /** Tag on tools only an agent's key sees. */
     agentsOnly: 'agents only',

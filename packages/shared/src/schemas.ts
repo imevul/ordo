@@ -29,7 +29,8 @@ import { DATE_RANGES, filterDepth } from './filters.ts';
 import { GIT_EVENTS, PULL_REQUEST_SCOPES } from './git.ts';
 import { CSV_FIELDS, EXPORT_FORMATS } from './imports.ts';
 import { HEX_COLOR } from './theme.ts';
-import { OFFLINE_SYNC_MODES, WORKSPACE_AI_POLICIES } from './types.ts';
+import { MAX_TIME_ENTRY_SECONDS } from './time.ts';
+import { AUTOMATION_FIELDS, OFFLINE_SYNC_MODES, WORKSPACE_AI_POLICIES } from './types.ts';
 
 /** Request payload schemas, shared by the API (validation) and the web client (forms). */
 
@@ -69,6 +70,9 @@ export const changePasswordSchema = z.object({
 });
 
 export const createApiKeySchema = z.object({ name: name });
+
+/** A calendar feed: the personal one (no view), or one for a saved view. */
+export const createCalendarFeedSchema = z.object({ viewId: id.nullable().default(null) });
 
 export const forgotPasswordSchema = z.object({ email: z.email() });
 
@@ -176,6 +180,7 @@ export const updateWorkspaceSchema = z.object({
       defaultAssigneeId: id.nullable().optional(),
       agentRunsPaused: z.boolean().optional(),
       timezone: z.string().max(64).refine(isTimeZone, 'Unknown time zone').nullable().optional(),
+      timeTracking: z.boolean().optional(),
     })
     .optional(),
 });
@@ -436,6 +441,46 @@ export const updateTriageRuleSchema = z
   .extend({ position: z.number() })
   .partial();
 
+const automationTriggerSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('issue_created') }),
+  z.object({
+    type: z.literal('issue_updated'),
+    fields: z.array(z.enum(AUTOMATION_FIELDS)).max(AUTOMATION_FIELDS.length).optional(),
+  }),
+  z.object({ type: z.literal('status_changed'), stateIds: z.array(id).max(50).optional() }),
+  z.object({ type: z.literal('label_added'), labelIds: z.array(id).max(50).optional() }),
+  z.object({ type: z.literal('sub_issues_completed') }),
+  z.object({ type: z.literal('pull_request_opened') }),
+  z.object({ type: z.literal('pull_request_merged') }),
+]);
+
+const automationRuleFields = {
+  name: z.string().trim().min(1).max(80),
+  enabled: z.boolean(),
+  trigger: automationTriggerSchema,
+  // Declared after issueFilterSchema; see below.
+  conditions: z.lazy(() => automationConditionsSchema),
+  actions: z
+    .object({
+      stateId: id,
+      priority: z.number().int().min(0).max(4),
+      assigneeId: id.nullable(),
+      addLabelIds: z.array(id).max(20),
+      removeLabelIds: z.array(id).max(20),
+      cycleId: z.union([id, z.literal('active')]).nullable(),
+      projectId: id.nullable(),
+      comment: z.string().trim().min(1).max(10_000),
+    })
+    .partial(),
+};
+export const createAutomationRuleSchema = z
+  .object(automationRuleFields)
+  .partial({ enabled: true, conditions: true });
+export const updateAutomationRuleSchema = z
+  .object(automationRuleFields)
+  .extend({ position: z.number() })
+  .partial();
+
 export const createRecurringSchema = z.object({
   templateId: id,
   teamId: id,
@@ -472,9 +517,12 @@ export const createIssueSchema = z.object({
   projectId: id.nullish(),
   milestoneId: id.nullish(),
   cycleId: id.nullish(),
+  releaseId: id.nullish(),
   parentId: id.nullish(),
   estimate: z.number().int().min(0).max(100).nullish(),
   dueDate: isoDate.nullish(),
+  /** Null: the assigned agent's default. */
+  planApproval: z.boolean().nullish(),
   labelIds: z.array(id).max(50).optional(),
   customFields: customFieldValues.optional(),
   sortOrder: z.number().optional(),
@@ -491,9 +539,11 @@ export const updateIssueSchema = z.object({
   projectId: id.nullish(),
   milestoneId: id.nullish(),
   cycleId: id.nullish(),
+  releaseId: id.nullish(),
   parentId: id.nullish(),
   estimate: z.number().int().min(0).max(100).nullish(),
   dueDate: isoDate.nullish(),
+  planApproval: z.boolean().nullish(),
   labelIds: z.array(id).max(50).optional(),
   addLabelIds: z.array(id).max(50).optional(),
   removeLabelIds: z.array(id).max(50).optional(),
@@ -540,6 +590,7 @@ const conditionFields = {
   projectIds: z.array(idOrNone).max(200).optional(),
   milestoneIds: z.array(idOrNone).max(200).optional(),
   cycleIds: z.array(idOrNone).max(200).optional(),
+  releaseIds: z.array(idOrNone).max(200).optional(),
   /**
    * Custom field id → wanted values: option ids, user ids or `me`, a number or date written out,
    * or `none` for no value. A multi-select matches when it has any of the options.
@@ -604,6 +655,25 @@ export const issueFilterSchema = z
   })
   .refine((f) => filterDepth(f) <= MAX_FILTER_DEPTH, 'Filter groups nest too deeply');
 export type IssueFilter = z.infer<typeof issueFilterSchema>;
+
+/**
+ * The part of the filter model automation rules check. The bot is "me", so people are by id.
+ * Built from `conditionFields`, not `issueFilterSchema`: zod can't `.pick()` a refined object.
+ */
+const automationConditionsSchema = z
+  .object({
+    stateIds: conditionFields.stateIds,
+    stateTypes: conditionFields.stateTypes,
+    priorities: conditionFields.priorities,
+    labelIds: conditionFields.labelIds,
+    projectIds: conditionFields.projectIds,
+    milestoneIds: conditionFields.milestoneIds,
+    cycleIds: conditionFields.cycleIds,
+    q: z.string().max(200).optional(),
+    assigneeIds: z.array(idOrNone).max(200).optional(),
+    creatorIds: z.array(id).max(200).optional(),
+  })
+  .strict();
 
 export const GROUP_BY_OPTIONS = [
   'state',
@@ -714,6 +784,41 @@ export const createCustomerRequestSchema = z.object({
   contact: z.string().trim().max(300).nullish(),
 });
 
+const timeEntryNote = z.string().trim().max(2000);
+const durationSeconds = z.number().int().min(1).max(MAX_TIME_ENTRY_SECONDS);
+
+/** Time logged by hand; it ends now unless `startedAt` says when it began. */
+export const createTimeEntrySchema = z.object({
+  durationSeconds,
+  startedAt: z.iso.datetime({ offset: true }).optional(),
+  note: timeEntryNote.default(''),
+});
+export type CreateTimeEntryInput = z.input<typeof createTimeEntrySchema>;
+
+export const updateTimeEntrySchema = z.object({
+  durationSeconds: durationSeconds.optional(),
+  startedAt: z.iso.datetime({ offset: true }).optional(),
+  note: timeEntryNote.optional(),
+});
+export type UpdateTimeEntryInput = z.infer<typeof updateTimeEntrySchema>;
+
+export const startTimerSchema = z.object({ note: timeEntryNote.default('') });
+
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a date like 2026-01-31');
+
+/** Filters for the time report; days are inclusive and in the workspace's time zone. */
+export const timeReportQuerySchema = z.object({
+  from: calendarDate.optional(),
+  to: calendarDate.optional(),
+  userId: id.optional(),
+  teamId: id.optional(),
+  /** A project's id, or `none` for issues outside projects. */
+  projectId: z.union([id, z.literal('none')]).optional(),
+  cycleId: id.optional(),
+  format: z.enum(['json', 'csv']).default('json'),
+});
+export type TimeReportQuery = z.input<typeof timeReportQuerySchema>;
+
 export const pushSubscriptionSchema = z.object({
   endpoint: z.url({ protocol: /^https$/ }).max(2000),
   keys: z.object({
@@ -819,6 +924,22 @@ export const createProjectUpdateSchema = z.object({
   body: z.string().trim().min(1).max(50_000),
   health: z.enum(PROJECT_HEALTH),
 });
+
+export const createReleaseSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  /** Left out for a workspace-wide release. */
+  teamId: id.nullish(),
+  notes: markdown.optional(),
+  targetDate: isoDate.nullish(),
+});
+export type CreateReleaseInput = z.infer<typeof createReleaseSchema>;
+/** The team can't change: the release's issues were picked for it. */
+export const updateReleaseSchema = createReleaseSchema.omit({ teamId: true }).partial();
+export type UpdateReleaseInput = z.infer<typeof updateReleaseSchema>;
+/** Releasing drafts notes from its issues when it has none yet, unless `draft` is false. */
+export const releaseReleaseSchema = z.object({ draft: z.boolean().optional() });
+/** Issues to add to a release; room for all of its suggestions at once. */
+export const addReleaseIssuesSchema = z.object({ ids: z.array(id).min(1).max(1000) });
 
 export const createCycleSchema = z
   .object({
@@ -1281,6 +1402,7 @@ const agentFields = {
   waitForBlockers: z.boolean(),
   /** What its runs may cost in a calendar month (UTC) before it pauses; null for no cap. */
   monthlyBudgetUsd: z.number().positive().max(1_000_000).nullable(),
+  requirePlanApproval: z.boolean(),
 };
 export const createAgentSchema = z.object({
   ...agentFields,
@@ -1291,6 +1413,7 @@ export const createAgentSchema = z.object({
   followPullRequests: agentFields.followPullRequests.default(true),
   waitForBlockers: agentFields.waitForBlockers.default(true),
   monthlyBudgetUsd: agentFields.monthlyBudgetUsd.default(null),
+  requirePlanApproval: agentFields.requirePlanApproval.default(false),
 });
 // No defaults here: in Zod 4 `.partial()` keeps them, and a PATCH would reset what it didn't send.
 export const updateAgentSchema = z
@@ -1324,15 +1447,29 @@ export const reportAgentRunSchema = z
     failureReason: z.enum(AGENT_RUN_FAILURE_REASONS).optional(),
     /** With `waiting`: what the agent asks. Posted on the issue; a person's reply resumes the run. */
     question: z.string().trim().min(1).max(10_000).optional(),
+    /** With `waiting`, instead of a question: the plan, for a person to approve or answer. */
+    plan: z.string().trim().min(1).max(50_000).optional(),
     /** Opaque: handed back on the next pickup so the runner can continue the agent's session. */
     resume: z.string().max(2000).nullish(),
     /** What this pickup used (tokens, cost, duration); added to the run's totals. */
     usage: agentRunUsageSchema.optional(),
   })
-  .refine((r) => r.status !== 'waiting' || !!r.question, {
-    message: 'Say what you are asking (question)',
+  .refine((r) => r.status !== 'waiting' || !!r.question || !!r.plan, {
+    message: 'Say what you are asking (question) or proposing (plan)',
     path: ['question'],
+  })
+  .refine((r) => !(r.question && r.plan), {
+    message: 'Ask a question or propose a plan, not both',
+    path: ['plan'],
   });
+
+/**
+ * `POST /agent/runs/:id/output`: lines the run's command printed since the last call. Ordo keeps
+ * the last `AGENT_OUTPUT_LINES` and cuts long lines short, so sending more is harmless but wasted.
+ */
+export const agentRunOutputSchema = z.object({
+  lines: z.array(z.string().max(10_000)).min(1).max(1000),
+});
 
 /**
  * `GET /agent-runs`: active runs, finished ones, or both, optionally of one agent. `open` is the

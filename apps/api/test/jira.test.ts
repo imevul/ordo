@@ -101,6 +101,8 @@ const asJson = (i: FakeIssue) => ({
 let whileCreating: ((created: FakeIssue) => Promise<void>) | null = null;
 /** Runs once, after the next issue PUT is applied and before Jira answers it. */
 let whilePut: ((issue: FakeIssue) => Promise<void>) | null = null;
+/** Issue PUTs Jira answers with a 500 before it takes them again. */
+let failPuts = 0;
 
 async function jiraApi(req: ForgeRequest) {
   const url = new URL(req.path, 'http://x');
@@ -133,6 +135,10 @@ async function jiraApi(req: ForgeRequest) {
   const sub = parts[1];
   if (!sub && req.method === 'GET') return { body: asJson(issue) };
   if (!sub && req.method === 'PUT') {
+    if (failPuts > 0) {
+      failPuts--;
+      return { status: 500, body: { errorMessages: ['Internal server error'] } };
+    }
     const f = body!.fields;
     if (f.summary !== undefined) issue.summary = f.summary;
     if (f.description !== undefined) issue.description = f.description;
@@ -493,6 +499,64 @@ describe('mirror and sync', () => {
     } finally {
       whileCreating = null;
     }
+    const pending = await app.db
+      .select()
+      .from(integrationRefs)
+      .where(and(eq(integrationRefs.integrationId, jira.id), eq(integrationRefs.kind, 'pending')));
+    expect(pending).toEqual([]);
+  });
+
+  it('finishes creating a Jira issue after a step past the create fails', async () => {
+    const pendingRefs = () =>
+      app.db
+        .select({ data: integrationRefs.data })
+        .from(integrationRefs)
+        .where(
+          and(eq(integrationRefs.integrationId, jira.id), eq(integrationRefs.kind, 'pending')),
+        );
+    failPuts = 1;
+    try {
+      const issue = await newIssue('Fails halfway');
+      await app.jobs.drain();
+      expect(failPuts).toBe(0);
+      const created = [...jiraIssues.values()].filter((i) => i.summary === 'Fails halfway');
+      expect(created).toHaveLength(1);
+      expect(await pendingRefs()).toEqual([
+        { data: { jiraId: created[0]!.id, key: created[0]!.key } },
+      ]);
+
+      // Jira's webhook before the retry: still Ordo's own issue, not a new one.
+      await hook(jira, { webhookEvent: 'jira:issue_created', issue: { id: created[0]!.id } });
+      await app.jobs.drain();
+      // The retry carries on with the Jira issue it made instead of making another.
+      await settle();
+      expect([...jiraIssues.values()].filter((i) => i.summary === 'Fails halfway')).toHaveLength(1);
+      const same = await app.db
+        .select({ id: issues.id })
+        .from(issues)
+        .where(and(eq(issues.workspaceId, boot.workspace.id), eq(issues.title, 'Fails halfway')));
+      expect(same.map((r) => r.id)).toEqual([issue.id]);
+      const refs = await app.db
+        .select({ localId: integrationRefs.localId })
+        .from(integrationRefs)
+        .where(eq(integrationRefs.externalId, created[0]!.id));
+      expect(refs).toEqual([{ localId: issue.id }]);
+      expect(await pendingRefs()).toEqual([]);
+    } finally {
+      failPuts = 0;
+    }
+  });
+
+  it('mirrors issues the connecting account files by hand in Jira', async () => {
+    // The connecting account is usually a person's, not a bot's.
+    const j = addJira('JRA-60', { summary: 'Filed by the admin', creator: BOT });
+    await hook(jira, { webhookEvent: 'jira:issue_created', issue: { id: j.id } });
+    await settle();
+    const [ref] = await app.db
+      .select()
+      .from(integrationRefs)
+      .where(and(eq(integrationRefs.integrationId, jira.id), eq(integrationRefs.externalId, j.id)));
+    expect((await detail(ref!.localId)).title).toBe('Filed by the admin');
   });
 
   it('creates Jira issues for new issues in mapped teams', async () => {

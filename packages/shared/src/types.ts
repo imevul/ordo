@@ -1,5 +1,6 @@
 import type {
   AgentPauseReason,
+  AgentRunEventKind,
   AgentRunFailureReason,
   AgentRunStatus,
   AgentRunTrigger,
@@ -25,6 +26,7 @@ import type {
 } from './constants.ts';
 import { DEFAULT_LOCALE, NOTIFICATION_TYPES } from './constants.ts';
 import type { CustomField, CustomFieldValue } from './customFields.ts';
+import type { Dashboard } from './dashboards.ts';
 import {
   DEFAULT_BRANCH_FORMAT,
   type GitAutomation,
@@ -145,6 +147,8 @@ export interface Team {
   triageRules: TriageRule[];
   /** Each member's capacity per cycle when they have none of their own; null for no default. */
   defaultCapacity: number | null;
+  /** "When … then …" rules, in order. */
+  automationRules: AutomationRule[];
   memberIds: string[];
   /** `capacity`: per cycle, null uses `defaultCapacity`. */
   members: { userId: string; role: TeamRole; capacity: number | null }[];
@@ -188,6 +192,94 @@ export interface TriageRule {
   position: number;
   conditions: TriageConditions;
   actions: TriageActions;
+}
+
+/**
+ * What sets an automation rule off. `sub_issues_completed` acts on the parent once every
+ * sub-issue is closed (at least one done); the pull request triggers act on the linked issue.
+ */
+export const AUTOMATION_TRIGGERS = [
+  'issue_created',
+  'issue_updated',
+  'status_changed',
+  'label_added',
+  'sub_issues_completed',
+  'pull_request_opened',
+  'pull_request_merged',
+] as const;
+export type AutomationTriggerType = (typeof AUTOMATION_TRIGGERS)[number];
+
+/** Fields an `issue_updated` trigger can watch (history field names). */
+export const AUTOMATION_FIELDS = [
+  'state',
+  'priority',
+  'assignee',
+  'labels',
+  'project',
+  'milestone',
+  'cycle',
+  'parent',
+  'estimate',
+  'dueDate',
+  'title',
+  'description',
+] as const;
+export type AutomationField = (typeof AUTOMATION_FIELDS)[number];
+
+export type AutomationTrigger =
+  | { type: 'issue_created' }
+  /** Any of `fields` changed; none given means any change. */
+  | { type: 'issue_updated'; fields?: AutomationField[] }
+  /** Moved into one of `stateIds`; none given means any move. */
+  | { type: 'status_changed'; stateIds?: string[] }
+  /** One of `labelIds` was added; none given means any label. */
+  | { type: 'label_added'; labelIds?: string[] }
+  | { type: 'sub_issues_completed' }
+  | { type: 'pull_request_opened' }
+  | { type: 'pull_request_merged' };
+
+/** The issue must also match this part of the filter model when the rule runs. */
+export type AutomationConditions = Pick<
+  IssueFilter,
+  | 'stateIds'
+  | 'stateTypes'
+  | 'priorities'
+  | 'assigneeIds'
+  | 'creatorIds'
+  | 'labelIds'
+  | 'projectIds'
+  | 'milestoneIds'
+  | 'cycleIds'
+  | 'q'
+>;
+
+/** What a rule does. Missing means leave as is; null clears. */
+export interface AutomationActions {
+  stateId?: string;
+  priority?: number;
+  /** A person or an agent (assigning an agent hands the issue to it). */
+  assigneeId?: string | null;
+  addLabelIds?: string[];
+  removeLabelIds?: string[];
+  /** `active`: the team's cycle running today, if any. */
+  cycleId?: string | null;
+  projectId?: string | null;
+  /** Posted as the Ordo bot (Markdown). */
+  comment?: string;
+}
+
+export interface AutomationRule {
+  id: string;
+  teamId: string;
+  name: string;
+  enabled: boolean;
+  position: number;
+  trigger: AutomationTrigger;
+  conditions: AutomationConditions;
+  actions: AutomationActions;
+  /** When it last acted on an issue. */
+  lastRunAt: string | null;
+  runCount: number;
 }
 
 export type SlaHours = Partial<Record<'1' | '2' | '3' | '4', number>>;
@@ -448,6 +540,22 @@ export interface CycleWorkload {
   entries: WorkloadEntry[];
 }
 
+/** A version that groups finished issues. Without a team it's workspace-wide. */
+export interface Release {
+  id: string;
+  teamId: string | null;
+  name: string;
+  /** Markdown; left out of lists. */
+  notes?: string;
+  targetDate: string | null;
+  /** Set once released: its issue list is frozen until it's reopened. */
+  releasedAt: string | null;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+  progress: Progress;
+}
+
 export interface Issue {
   id: string;
   identifier: string;
@@ -464,6 +572,7 @@ export interface Issue {
   /** A milestone of the issue's project. */
   milestoneId: string | null;
   cycleId: string | null;
+  releaseId: string | null;
   parentId: string | null;
   estimate: number | null;
   dueDate: string | null;
@@ -483,6 +592,8 @@ export interface Issue {
   /** When the team's SLA for this priority runs out; null without one. */
   slaBreachesAt: string | null;
   archivedAt: string | null;
+  /** Whether its agent posts a plan for approval before changing code; null: the agent's default. */
+  planApproval: boolean | null;
 }
 
 /** A relation as seen from one issue; stored relations are mirrored for the other side. */
@@ -644,6 +755,16 @@ export interface ApiKey {
   createdAt: string;
 }
 
+/** A secret iCal URL. Its token (and so the URL) is returned once, when the feed is created. */
+export interface CalendarFeed {
+  id: string;
+  /** Null for the personal feed: due dates of your issues, your teams' cycles, milestones. */
+  viewId: string | null;
+  prefix: string;
+  lastUsedAt: string | null;
+  createdAt: string;
+}
+
 /** An app as the consent screen and the connected-apps list show it. */
 export interface OAuthClientInfo {
   name: string;
@@ -692,7 +813,10 @@ export interface Bootstrap {
   initiatives: Initiative[];
   projects: Project[];
   cycles: Cycle[];
+  /** Without their notes. */
+  releases: Release[];
   views: View[];
+  dashboards: Dashboard[];
   favorites: Favorite[];
   unreadCount: number;
   /** The model this workspace uses (its own or the instance's), or null when there is none; `enabled` is the workspace's switch. */
@@ -992,6 +1116,8 @@ export interface WorkspaceSettings {
   agentRunsPaused: boolean;
   /** IANA zone that decides when a day starts for cycle automation; null is UTC. */
   timezone: string | null;
+  /** People log time on issues; off by default. */
+  timeTracking: boolean;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -1010,7 +1136,55 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   defaultAssigneeId: null,
   agentRunsPaused: false,
   timezone: null,
+  timeTracking: false,
 };
+
+/** Time someone spent on an issue. A running timer has no duration yet. */
+export interface TimeEntry {
+  id: string;
+  issueId: string;
+  /** Null once the person is deleted; the time stays for reports. */
+  userId: string | null;
+  startedAt: string;
+  durationSeconds: number | null;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The time logged on one issue, newest first. `totalSeconds` leaves out running timers. */
+export interface IssueTime {
+  entries: TimeEntry[];
+  totalSeconds: number;
+}
+
+/** The caller's running timer and the issue it's on. */
+export interface RunningTimer {
+  entry: TimeEntry;
+  issue: { id: string; identifier: string; title: string };
+}
+
+export interface TimeReportEntry extends TimeEntry {
+  durationSeconds: number;
+  /** The calendar day it started, in the workspace's time zone. */
+  date: string;
+  issue: {
+    id: string;
+    identifier: string;
+    title: string;
+    teamId: string;
+    projectId: string | null;
+    cycleId: string | null;
+  };
+}
+
+/** Finished entries matching a report's filters, oldest first, with totals. */
+export interface TimeReport {
+  entries: TimeReportEntry[];
+  totalSeconds: number;
+  byUser: { userId: string | null; seconds: number }[];
+  byProject: { projectId: string | null; seconds: number }[];
+}
 
 export interface WorkspaceDomain {
   id: string;
@@ -1296,6 +1470,8 @@ export interface Agent {
   followPullRequests: boolean;
   /** Whether its runs wait while their issue is blocked by an open issue. */
   waitForBlockers: boolean;
+  /** Whether its runs post a plan for approval before changing code, unless the issue says otherwise. */
+  requirePlanApproval: boolean;
   /** Claims hand out nothing until then (e.g. its runner hit a usage limit); null when not paused. */
   pausedUntil: string | null;
   pauseReason: AgentPauseReason | null;
@@ -1333,6 +1509,10 @@ export interface AgentRun {
   triggerDetail: AgentRunPullRequest | null;
   /** What the agent asked when it last paused (the run is `waiting` until a person answers). */
   question: string | null;
+  /** The plan the agent proposed; the run is `waiting` on it until it's approved or answered. */
+  plan: string | null;
+  planApprovedAt: string | null;
+  planApprovedById: string | null;
   /** Opaque to Ordo: what the runner needs to continue the agent's session on the next pickup. */
   resume: string | null;
   error: string | null;
@@ -1417,6 +1597,47 @@ export interface AgentRunWithIssue extends AgentRun {
   waitingForRepository: { id: string; name: string } | null;
 }
 
+/**
+ * One step in a run's timeline. `data` by kind: claimed `{ runner, attempt }`, progress
+ * `{ step, percent }`, asked `{ question }`, resumed `{ commentId? }` (the reply that answered),
+ * lapsed `{ runner, attempt, failed }`, failed `{ reason, error }`, cancelled `{ reason }`,
+ * queued `{ retryOfId? }`.
+ */
+export interface AgentRunEvent {
+  id: string;
+  kind: AgentRunEventKind;
+  data: Record<string, unknown>;
+  actorId: string | null;
+  at: string;
+}
+
+/** Everything about one run, for its page: `GET /agent-runs/:id`. */
+export interface AgentRunDetail extends AgentRunWithIssue {
+  /**
+   * The prompt of the latest pickup, without the runner's or the agent's instructions, and without
+   * the parent or related issues (the agent may see teams the viewer can't).
+   */
+  prompt: string | null;
+  /** The comment that @mentioned the agent, for a `mention` run. */
+  triggerComment: { id: string; authorId: string | null; body: string } | null;
+  /** Runs that restart this one, oldest first. */
+  restartedBy: Pick<AgentRun, 'id' | 'status' | 'createdAt'>[];
+  /** Oldest first. Runs from before the timeline existed have none. */
+  events: AgentRunEvent[];
+}
+
+/**
+ * `GET /agent-runs/:id/output`: the tail of what the run's command printed in its latest pickup,
+ * as its runner sent it, oldest line first.
+ */
+export interface AgentRunOutput {
+  lines: string[];
+  /** Lines received in all this pickup; more than `lines.length` when older ones were dropped. */
+  total: number;
+  /** When the runner last sent some; null when it sent none, or it has since been deleted. */
+  updatedAt: string | null;
+}
+
 /** A repository as a run sees it: where to clone and which branch to work on. */
 export interface AgentRunRepository extends Repository {
   suggestedBranch: string;
@@ -1445,6 +1666,11 @@ export interface AgentRunContext {
   };
   /** Whether the issue is the agent's (assigned to it), or it was only asked to help. */
   assigned: boolean;
+  /**
+   * Whether the agent must post a plan with `propose_plan` and wait for approval before changing
+   * code: the issue's switch, else the agent's default, on assigned runs until a plan is approved.
+   */
+  planApproval: boolean;
   /** The issue's team workflow, so the runner can move the issue along. */
   states: { id: string; name: string; type: StateType }[];
   /** All of the above as one Markdown prompt, for tools that just want text. */

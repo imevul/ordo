@@ -1,13 +1,18 @@
 import type {
   AgentPauseReason,
+  AgentRunEventKind,
   AgentRunFailureReason,
   AgentRunPullRequest,
   AgentRunStatus,
   AgentRunTrigger,
   AuditAction,
+  AutomationActions,
+  AutomationConditions,
+  AutomationTrigger,
   CustomFieldOption,
   CustomFieldType,
   CycleAutomation,
+  DashboardWidget,
   DomainEventType,
   EstimateScale,
   ExportFormat,
@@ -274,6 +279,27 @@ export const triageRules = pgTable(
   (t) => [index('triage_rules_team_idx').on(t.teamId)],
 );
 
+/** "When … then …" rules a team runs on its issues (`services/automationRules.ts`). */
+export const automationRules = pgTable(
+  'automation_rules',
+  {
+    id: pk(),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    enabled: boolean('enabled').notNull().default(true),
+    position: doublePrecision('position').notNull().default(0),
+    trigger: jsonb('trigger').$type<AutomationTrigger>().notNull(),
+    conditions: jsonb('conditions').$type<AutomationConditions>().notNull().default({}),
+    actions: jsonb('actions').$type<AutomationActions>().notNull().default({}),
+    lastRunAt: ts('last_run_at'),
+    runCount: integer('run_count').notNull().default(0),
+    createdAt: createdAt(),
+  },
+  (t) => [index('automation_rules_team_idx').on(t.teamId)],
+);
+
 /** Former team keys, so identifiers in old branches, commits and links keep resolving. */
 export const teamKeyAliases = pgTable(
   'team_key_aliases',
@@ -454,6 +480,35 @@ export const customerRequests = pgTable(
   (t) => [
     index('customer_requests_issue_idx').on(t.issueId),
     index('customer_requests_customer_idx').on(t.customerId),
+  ],
+);
+
+/** Time someone spent on an issue. `duration_seconds` is null while it's a running timer. */
+export const timeEntries = pgTable(
+  'time_entries',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references((): AnyPgColumn => issues.id, { onDelete: 'cascade' }),
+    // Kept when the person goes: logged time is still billed.
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    startedAt: ts('started_at').notNull(),
+    durationSeconds: integer('duration_seconds'),
+    note: text('note').notNull().default(''),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    index('time_entries_issue_idx').on(t.issueId),
+    index('time_entries_workspace_started_idx').on(t.workspaceId, t.startedAt),
+    // One running timer per person and workspace.
+    uniqueIndex('time_entries_running_idx')
+      .on(t.workspaceId, t.userId)
+      .where(sql`${t.durationSeconds} is null`),
   ],
 );
 
@@ -646,6 +701,31 @@ export const cycleCapacities = pgTable(
   (t) => [primaryKey({ columns: [t.cycleId, t.userId] })],
 );
 
+/**
+ * A version that groups finished issues, with release notes. Workspace-wide without a team;
+ * a team's release only takes that team's issues. Released ones are frozen.
+ */
+export const releases = pgTable(
+  'releases',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    /** Markdown. */
+    notes: text('notes').notNull().default(''),
+    /** The planned release date. */
+    targetDate: date('target_date', { mode: 'string' }),
+    releasedAt: ts('released_at'),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('releases_workspace_idx').on(t.workspaceId)],
+);
+
 export const issues = pgTable(
   'issues',
   {
@@ -670,6 +750,7 @@ export const issues = pgTable(
       onDelete: 'set null',
     }),
     cycleId: uuid('cycle_id').references(() => cycles.id, { onDelete: 'set null' }),
+    releaseId: uuid('release_id').references(() => releases.id, { onDelete: 'set null' }),
     parentId: uuid('parent_id'),
     estimate: integer('estimate'),
     dueDate: date('due_date', { mode: 'string' }),
@@ -684,6 +765,8 @@ export const issues = pgTable(
     /** Set once the breach was announced, so it's announced once. */
     slaNotifiedAt: ts('sla_notified_at'),
     archivedAt: ts('archived_at'),
+    /** Whether its agent posts a plan for approval before changing code; null: the agent's default. */
+    planApproval: boolean('plan_approval'),
   },
   (t) => [
     uniqueIndex('issues_team_number_idx').on(t.teamId, t.number),
@@ -692,6 +775,7 @@ export const issues = pgTable(
     index('issues_assignee_idx').on(t.assigneeId),
     index('issues_project_idx').on(t.projectId),
     index('issues_cycle_idx').on(t.cycleId),
+    index('issues_release_idx').on(t.releaseId),
     index('issues_parent_idx').on(t.parentId),
     // Full-text search; the expression must stay identical to issueDocument in services/search.ts.
     index('issues_search_idx').using(
@@ -867,6 +951,57 @@ export const views = pgTable(
     updatedAt: updatedAt(),
   },
   (t) => [index('views_workspace_idx').on(t.workspaceId)],
+);
+
+/** Widgets pinned to a page; scoped and shared like views. The widgets are kept in order. */
+export const dashboards = pgTable(
+  'dashboards',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    shared: boolean('shared').notNull().default(true),
+    widgets: jsonb('widgets').$type<DashboardWidget[]>().notNull().default([]),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('dashboards_workspace_idx').on(t.workspaceId)],
+);
+
+/**
+ * Secret iCal URLs (`/api/calendar/<token>.ics`) a calendar app polls without a session. One per
+ * user and workspace for "my dates" (no view), plus one per subscribed saved view. Only the
+ * sha256 of the token is stored; the feed is built with the user's access at fetch time.
+ */
+export const calendarFeeds = pgTable(
+  'calendar_feeds',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    viewId: uuid('view_id').references(() => views.id, { onDelete: 'cascade' }),
+    tokenHash: text('token_hash').notNull().unique(),
+    prefix: text('prefix').notNull(),
+    lastUsedAt: ts('last_used_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('calendar_feeds_user_idx').on(t.userId, t.workspaceId),
+    // One feed per user and view, and one personal feed (no view) per user and workspace.
+    uniqueIndex('calendar_feeds_user_view_idx').on(t.userId, t.viewId),
+    uniqueIndex('calendar_feeds_user_personal_idx')
+      .on(t.userId, t.workspaceId)
+      .where(sql`${t.viewId} is null`),
+  ],
 );
 
 export const favorites = pgTable(
@@ -1436,6 +1571,8 @@ export const domainEvents = pgTable(
     teamIds: uuid('team_ids').array().notNull().default(sql`'{}'`),
     data: jsonb('data').$type<Record<string, unknown>>().notNull(),
     changes: jsonb('changes').$type<HistoryChange[]>(),
+    /** Set when automation rules caused it: the rules so far in the chain (loop protection). */
+    automationChain: uuid('automation_chain').array(),
     createdAt: createdAt(),
   },
   (t) => [index('domain_events_workspace_idx').on(t.workspaceId, t.id)],
@@ -1647,7 +1784,8 @@ export const integrationRefs = pgTable(
     integrationId: uuid('integration_id')
       .notNull()
       .references(() => integrations.id, { onDelete: 'cascade' }),
-    kind: text('kind').$type<'issue' | 'comment'>().notNull(),
+    // 'pending': an issue an integration is creating at the outside service, keyed by the Ordo id.
+    kind: text('kind').$type<'issue' | 'comment' | 'pending'>().notNull(),
     externalId: text('external_id').notNull(),
     localId: uuid('local_id').notNull(),
     data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
@@ -1823,6 +1961,8 @@ export const agents = pgTable('agents', {
   followPullRequests: boolean('follow_pull_requests').notNull().default(true),
   /** Whether its runs wait while their issue is blocked by an open issue. */
   waitForBlockers: boolean('wait_for_blockers').notNull().default(true),
+  /** Whether its runs post a plan for approval before changing code, unless the issue says otherwise. */
+  requirePlanApproval: boolean('require_plan_approval').notNull().default(false),
   /** Claims hand out nothing until then, e.g. after its runner hit a usage limit. */
   pausedUntil: ts('paused_until'),
   pauseReason: text('pause_reason').$type<AgentPauseReason>(),
@@ -1894,8 +2034,19 @@ export const agentRuns = pgTable(
     triggerDetail: jsonb('trigger_detail').$type<AgentRunPullRequest>(),
     /** The agent's last question; set while `waiting`, kept after it resumes. */
     question: text('question'),
+    /** The plan the agent proposed (propose_plan); set while it waits for approval, kept after. */
+    plan: text('plan'),
+    planApprovedAt: ts('plan_approved_at'),
+    planApprovedById: uuid('plan_approved_by_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
     /** Opaque to Ordo: the runner's handle on the agent's session, returned on the next pickup. */
     resume: text('resume'),
+    /**
+     * The prompt of the latest pickup, as Ordo rendered it, without instructions: the runner's
+     * may hold expanded environment variables, and the agent's are for admins only.
+     */
+    prompt: text('prompt'),
     requestedById: uuid('requested_by_id').references(() => users.id, { onDelete: 'set null' }),
     startedAt: ts('started_at'),
     finishedAt: ts('finished_at'),
@@ -1907,5 +2058,44 @@ export const agentRuns = pgTable(
     index('agent_runs_issue_idx').on(t.issueId),
     index('agent_runs_lease_idx').on(t.leaseExpiresAt),
     index('agent_runs_usage_idx').on(t.workspaceId, t.usageAt),
+    index('agent_runs_retry_of_idx').on(t.retryOfId),
   ],
+);
+
+/**
+ * What happened to a run: its page's timeline. Heartbeats aren't kept. Ordered by `id`, since
+ * steps of one transaction share its `now()`.
+ */
+export const agentRunEvents = pgTable(
+  'agent_run_events',
+  {
+    id: bigserial('id', { mode: 'number' }).primaryKey(),
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: 'cascade' }),
+    kind: text('kind').$type<AgentRunEventKind>().notNull(),
+    data: jsonb('data').$type<Record<string, unknown>>().notNull().default({}),
+    /** Who did it: the agent, a person who cancelled or answered, or nobody (the system). */
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+  },
+  (t) => [index('agent_run_events_run_idx').on(t.runId, t.id)],
+);
+
+/**
+ * The tail of a run's live output in its latest pickup (capped, see `AGENT_OUTPUT_LINES`). Its own
+ * table so listing runs never reads it; deleted a while after the last line (`pruneRunOutput`).
+ */
+export const agentRunOutput = pgTable(
+  'agent_run_output',
+  {
+    runId: uuid('run_id')
+      .primaryKey()
+      .references(() => agentRuns.id, { onDelete: 'cascade' }),
+    lines: jsonb('lines').$type<string[]>().notNull().default([]),
+    /** Lines received in all, dropped ones included. */
+    total: integer('total').notNull().default(0),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index('agent_run_output_updated_idx').on(t.updatedAt)],
 );

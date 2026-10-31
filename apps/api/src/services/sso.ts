@@ -3,11 +3,12 @@ import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import {
+  attachments,
   authProviders,
   authStates,
-  authTokens,
-  passkeys,
-  sessions,
+  comments,
+  issues,
+  teamMembers,
   userIdentities,
   users,
   workspaceDomains,
@@ -20,7 +21,7 @@ import { escapeHtml as esc } from '../lib/html.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from './audit.ts';
 import type { RequestMeta } from './context.ts';
-import { revokeCredentials } from './credentials.ts';
+import { revokeSignIns } from './credentials.ts';
 import { publishChanges } from './sync.ts';
 import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 
@@ -134,12 +135,68 @@ export async function uniqueUsername(tx: DbOrTx, base: string) {
   }
 }
 
+type ClaimEntry = {
+  workspaceId: string;
+  actorId: string | null;
+  via: 'sso' | 'scim';
+  events: RealtimeEvent[];
+};
+
+/**
+ * An unverified account at the address that has been used (memberships, issues, comments,
+ * uploads): most likely the real person, who signed up before anything could verify them.
+ * Releasing it would take their work away, so the claim stops until they verify the address with
+ * a password reset. It may still be a squatter's who joined somewhere, so that first reset also
+ * removes every other way in (`revokeSignIns`). Thrown inside the transaction; callers audit it
+ * after the rollback.
+ */
+export class ClaimRefused extends Error {
+  constructor(
+    readonly userId: string,
+    readonly email: string,
+    readonly entry: ClaimEntry,
+  ) {
+    super(
+      "An account with this address exists but hasn't verified it. Verify the address first (ask an admin for a password reset link), then sign in again.",
+    );
+  }
+}
+
+/** Audits a refused claim; call it with `app.db`, after the claim's transaction rolled back. */
+export const auditClaimRefused = (db: DbOrTx, err: ClaimRefused, meta: RequestMeta | null) =>
+  audit(
+    db,
+    {
+      action: 'auth.claim_refused',
+      workspaceId: err.entry.workspaceId,
+      actorId: err.entry.actorId,
+      targetType: 'user',
+      targetId: err.userId,
+      data: { email: err.email, via: err.entry.via },
+    },
+    meta,
+  );
+
+/** Whether an account has left anything behind. A squatter's account is empty. */
+async function hasFootprint(tx: DbOrTx, userId: string) {
+  const [row] = await tx.execute<{ used: boolean }>(sql`select (
+    exists (select 1 from ${workspaceMembers} where ${workspaceMembers.userId} = ${userId})
+    or exists (select 1 from ${teamMembers} where ${teamMembers.userId} = ${userId})
+    or exists (select 1 from ${issues}
+      where ${issues.creatorId} = ${userId} or ${issues.assigneeId} = ${userId})
+    or exists (select 1 from ${comments} where ${comments.authorId} = ${userId})
+    or exists (select 1 from ${attachments} where ${attachments.uploaderId} = ${userId})
+  ) as used`);
+  return !!row?.used;
+}
+
 /**
  * The account an identity that proves `email` (SSO at a verified domain, SCIM) may take over, if
  * any. An unverified account never proved the address: anyone can create one through open sign-up,
- * an open invite or an email change without mail, to sit there until the real person arrives. So
- * it isn't linked; it moves to an address of its own (and can't sign in by email any more) and the
- * caller creates a fresh account. Bots and placeholders come back as they are, for the caller to refuse.
+ * an open invite or an email change without mail, to sit there until the real person arrives. An
+ * empty one isn't linked; it moves to an address of its own (and can't sign in by email any more)
+ * and the caller creates a fresh account. One that has been used throws `ClaimRefused` instead.
+ * Bots and placeholders come back as they are, for the caller to refuse.
  * The released account is also signed out everywhere and suspended from its workspaces
  * (`releaseUnverified`); the member events for that land in `entry.events`, to publish after
  * commit, which also closes its open sockets.
@@ -147,19 +204,25 @@ export async function uniqueUsername(tx: DbOrTx, base: string) {
 export async function claimableUser(
   tx: DbOrTx,
   email: string,
-  entry: {
-    workspaceId: string;
-    actorId: string | null;
-    via: 'sso' | 'scim';
-    events: RealtimeEvent[];
-  },
+  entry: ClaimEntry,
   meta: RequestMeta | null,
 ) {
-  const [existing] = await tx
-    .select({ id: users.id, kind: users.kind, emailVerifiedAt: users.emailVerifiedAt })
+  const [row] = await tx
+    .select({
+      id: users.id,
+      kind: users.kind,
+      emailVerifiedAt: users.emailVerifiedAt,
+      isInstanceAdmin: users.isInstanceAdmin,
+    })
     .from(users)
     .where(eq(users.email, email));
-  if (!existing || existing.emailVerifiedAt || existing.kind !== 'human') return existing ?? null;
+  if (!row) return null;
+  const { isInstanceAdmin, ...existing } = row;
+  if (existing.emailVerifiedAt || existing.kind !== 'human') return existing;
+  // A squatter can't make themselves instance admin, but the first sign-up is one, often unverified.
+  if (isInstanceAdmin || (await hasFootprint(tx, existing.id))) {
+    throw new ClaimRefused(existing.id, email, entry);
+  }
   const released = `unverified-${existing.id}@released.ordo.invalid`;
   await tx
     .update(users)
@@ -189,9 +252,10 @@ export async function claimableUser(
 
 /**
  * Whoever held a released account may be the squatter `claimableUser` guards against: signed in,
- * with keys and passkeys, a member of the workspace they joined with the borrowed address. This
- * takes away every way to sign in or act as the account, and its pending email links, and suspends
- * its memberships: that keeps its history and lets an admin restore an honest mistake.
+ * with keys and passkeys. This takes away every way to sign in or act as the account, and its
+ * pending email links, and suspends its memberships: that keeps its history and lets an admin
+ * restore an honest mistake. (A membership makes `claimableUser` refuse instead, so suspending
+ * only catches one added while the claim ran.)
  */
 async function releaseUnverified(
   tx: DbOrTx,
@@ -199,20 +263,7 @@ async function releaseUnverified(
   entry: { actorId: string | null; via: 'sso' | 'scim'; events: RealtimeEvent[] },
   meta: RequestMeta | null,
 ) {
-  const signedOut = await tx
-    .delete(sessions)
-    .where(eq(sessions.userId, userId))
-    .returning({ id: sessions.id });
-  const keys = await tx
-    .delete(passkeys)
-    .where(eq(passkeys.userId, userId))
-    .returning({ id: passkeys.id });
-  const identities = await tx
-    .delete(userIdentities)
-    .where(eq(userIdentities.userId, userId))
-    .returning({ id: userIdentities.id });
-  await tx.delete(authTokens).where(eq(authTokens.userId, userId));
-  const credentials = await revokeCredentials(tx, userId, 'released', meta);
+  const revoked = await revokeSignIns(tx, userId, 'released', meta);
 
   const suspended = await tx
     .update(workspaceMembers)
@@ -240,13 +291,7 @@ async function releaseUnverified(
       actorId: entry.actorId ?? undefined,
     });
   }
-  return {
-    sessions: signedOut.length,
-    passkeys: keys.length,
-    identities: identities.length,
-    ...credentials,
-    memberships: suspended.length,
-  };
+  return { ...revoked, memberships: suspended.length };
 }
 
 export class SsoError extends Error {}
@@ -264,128 +309,138 @@ export async function resolveSsoUser(
 ) {
   let membershipChanged = false;
   const released: RealtimeEvent[] = [];
-  const user = await app.db.transaction(async (tx) => {
-    const now = new Date().toISOString();
-    const [identity] = await tx
-      .select()
-      .from(userIdentities)
-      .where(
-        and(eq(userIdentities.providerId, provider.id), eq(userIdentities.subject, claims.sub)),
-      );
-    let userId = identity?.userId ?? null;
-    const email = claims.email?.toLowerCase();
-    const trusted =
-      !!email && emailTrusted && (await domainVerifiedFor(tx, provider.workspaceId, email));
+  const user = await app.db
+    .transaction(async (tx) => {
+      const now = new Date().toISOString();
+      const [identity] = await tx
+        .select()
+        .from(userIdentities)
+        .where(
+          and(eq(userIdentities.providerId, provider.id), eq(userIdentities.subject, claims.sub)),
+        );
+      let userId = identity?.userId ?? null;
+      const email = claims.email?.toLowerCase();
+      const trusted =
+        !!email && emailTrusted && (await domainVerifiedFor(tx, provider.workspaceId, email));
 
-    if (!userId) {
-      if (!trusted) {
-        throw new SsoError(
-          "This sign-in isn't linked to an Ordo account. Sign in another way, then connect it under Settings → Connected accounts.",
+      if (!userId) {
+        if (!trusted) {
+          throw new SsoError(
+            "This sign-in isn't linked to an Ordo account. Sign in another way, then connect it under Settings → Connected accounts.",
+          );
+        }
+        const existing = await claimableUser(
+          tx,
+          email!,
+          { workspaceId: provider.workspaceId, actorId: null, via: 'sso', events: released },
+          { ip, userAgent: null },
         );
-      }
-      const existing = await claimableUser(
-        tx,
-        email!,
-        { workspaceId: provider.workspaceId, actorId: null, via: 'sso', events: released },
-        { ip, userAgent: null },
-      );
-      if (existing) userId = existing.id;
-      else {
-        const created = one(
-          await tx
-            .insert(users)
-            .values({
-              email: email!,
-              name: claims.name || claims.preferred_username || email!.split('@')[0]!,
-              username: await uniqueUsername(
-                tx,
-                claims.preferred_username || email!.split('@')[0]!,
-              ),
-              passwordHash: null,
-              emailVerifiedAt: now,
-              avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
-            })
-            .returning({ id: users.id }),
-        );
-        userId = created.id;
+        if (existing) userId = existing.id;
+        else {
+          const created = one(
+            await tx
+              .insert(users)
+              .values({
+                email: email!,
+                name: claims.name || claims.preferred_username || email!.split('@')[0]!,
+                username: await uniqueUsername(
+                  tx,
+                  claims.preferred_username || email!.split('@')[0]!,
+                ),
+                passwordHash: null,
+                emailVerifiedAt: now,
+                avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
+              })
+              .returning({ id: users.id }),
+          );
+          userId = created.id;
+          await audit(
+            tx,
+            {
+              action: 'auth.signup',
+              actorId: userId,
+              data: { via: 'sso', provider: provider.name },
+            },
+            { ip, userAgent: null },
+          );
+        }
+        await tx
+          .insert(userIdentities)
+          .values({ userId, providerId: provider.id, subject: claims.sub, email: email ?? null });
         await audit(
           tx,
-          { action: 'auth.signup', actorId: userId, data: { via: 'sso', provider: provider.name } },
+          {
+            action: 'auth.identity_linked',
+            workspaceId: provider.workspaceId,
+            actorId: userId,
+            data: { provider: provider.name, auto: true },
+          },
           { ip, userAgent: null },
         );
       }
+
+      const [user] = await tx.select().from(users).where(eq(users.id, userId));
+      if (!user || user.disabledAt || user.kind !== 'human')
+        throw new SsoError('This account has been disabled. Contact your administrator.');
       await tx
-        .insert(userIdentities)
-        .values({ userId, providerId: provider.id, subject: claims.sub, email: email ?? null });
-      await audit(
-        tx,
-        {
-          action: 'auth.identity_linked',
-          workspaceId: provider.workspaceId,
-          actorId: userId,
-          data: { provider: provider.name, auto: true },
-        },
-        { ip, userAgent: null },
-      );
-    }
-
-    const [user] = await tx.select().from(users).where(eq(users.id, userId));
-    if (!user || user.disabledAt || user.kind !== 'human')
-      throw new SsoError('This account has been disabled. Contact your administrator.');
-    await tx
-      .update(userIdentities)
-      .set({ lastLoginAt: now, email: email ?? null })
-      .where(
-        and(eq(userIdentities.providerId, provider.id), eq(userIdentities.subject, claims.sub)),
-      );
-
-    // Membership: join on first SSO login (domain-trusted only); group mappings apply every time.
-    const mapped = roleFromGroups(provider, claims);
-    const [membership] = await tx
-      .select()
-      .from(workspaceMembers)
-      .where(
-        and(
-          eq(workspaceMembers.workspaceId, provider.workspaceId),
-          eq(workspaceMembers.userId, user.id),
-        ),
-      );
-    if (!membership) {
-      if (trusted) {
-        await joinWorkspace(
-          tx,
-          provider.workspaceId,
-          user.id,
-          (mapped ?? provider.defaultRole) as MemberRole,
+        .update(userIdentities)
+        .set({ lastLoginAt: now, email: email ?? null })
+        .where(
+          and(eq(userIdentities.providerId, provider.id), eq(userIdentities.subject, claims.sub)),
         );
-        membershipChanged = true;
-      }
-    } else if (mapped && !isOwnerRole(membership.role) && membership.role !== mapped) {
-      membershipChanged = true;
-      await tx
-        .update(workspaceMembers)
-        .set({ role: mapped })
+
+      // Membership: join on first SSO login (domain-trusted only); group mappings apply every time.
+      const mapped = roleFromGroups(provider, claims);
+      const [membership] = await tx
+        .select()
+        .from(workspaceMembers)
         .where(
           and(
             eq(workspaceMembers.workspaceId, provider.workspaceId),
             eq(workspaceMembers.userId, user.id),
           ),
         );
-      await audit(
-        tx,
-        {
-          action: 'member.role_changed',
-          workspaceId: provider.workspaceId,
-          actorId: null,
-          targetType: 'user',
-          targetId: user.id,
-          data: { role: mapped, via: 'sso_groups' },
-        },
-        { ip, userAgent: null },
-      );
-    }
-    return user;
-  });
+      if (!membership) {
+        if (trusted) {
+          await joinWorkspace(
+            tx,
+            provider.workspaceId,
+            user.id,
+            (mapped ?? provider.defaultRole) as MemberRole,
+          );
+          membershipChanged = true;
+        }
+      } else if (mapped && !isOwnerRole(membership.role) && membership.role !== mapped) {
+        membershipChanged = true;
+        await tx
+          .update(workspaceMembers)
+          .set({ role: mapped })
+          .where(
+            and(
+              eq(workspaceMembers.workspaceId, provider.workspaceId),
+              eq(workspaceMembers.userId, user.id),
+            ),
+          );
+        await audit(
+          tx,
+          {
+            action: 'member.role_changed',
+            workspaceId: provider.workspaceId,
+            actorId: null,
+            targetType: 'user',
+            targetId: user.id,
+            data: { role: mapped, via: 'sso_groups' },
+          },
+          { ip, userAgent: null },
+        );
+      }
+      return user;
+    })
+    .catch(async (err: unknown) => {
+      if (!(err instanceof ClaimRefused)) throw err;
+      await auditClaimRefused(app.db, err, { ip, userAgent: null });
+      throw new SsoError(err.message);
+    });
   const events = [...released];
   if (membershipChanged)
     events.push({

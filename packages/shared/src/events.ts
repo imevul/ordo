@@ -8,6 +8,7 @@ export type EntityKind =
   | 'project'
   | 'projectUpdate'
   | 'cycle'
+  | 'release'
   | 'label'
   | 'customField'
   | 'template'
@@ -19,12 +20,16 @@ export type EntityKind =
   | 'workspace'
   | 'member'
   | 'view'
+  | 'dashboard'
   | 'favorite'
   | 'notification'
   | 'import'
   | 'export'
   | 'repository'
-  | 'agentRun';
+  | 'agentRun'
+  /** New live output of a run (`id` is the run's). Not in the change log: nothing syncs it. */
+  | 'agentRunOutput'
+  | 'timeEntry';
 
 export interface RealtimeEvent {
   kind: EntityKind;

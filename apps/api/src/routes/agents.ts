@@ -1,4 +1,5 @@
 import {
+  agentRunOutputSchema,
   agentRunsQuerySchema,
   agentUsageQuerySchema,
   createAgentSchema,
@@ -12,6 +13,8 @@ import { requireAccess, requireAdmin, requireUser } from '../lib/auth.ts';
 import { forbidden, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import {
+  appendRunOutput,
+  approvePlan,
   cancelRun,
   claimRun,
   countActiveRuns,
@@ -19,6 +22,8 @@ import {
   createAgentKey,
   describeAgent,
   dismissRun,
+  getRunDetail,
+  getRunOutput,
   heartbeat,
   listAgents,
   listAgentUsage,
@@ -116,6 +121,18 @@ export async function agentRoutes(app: FastifyInstance) {
     count: await countActiveRuns(db, requireAccess(req)),
   }));
 
+  // One run with its prompt, timeline and restarts: the run's page.
+  app.get('/agent-runs/:id', async (req) => {
+    const { id } = req.params as { id: string };
+    return getRunDetail(db, requireAccess(req), id);
+  });
+
+  // The tail of what the run printed: anyone who can see its issue, like the rest of the run.
+  app.get('/agent-runs/:id/output', async (req) => {
+    const { id } = req.params as { id: string };
+    return getRunOutput(db, requireAccess(req), id);
+  });
+
   app.post('/agent-runs/:id/cancel', async (req) => {
     const { id } = req.params as { id: string };
     return mutate(app, req, (ctx) => cancelRun(ctx, id));
@@ -136,6 +153,12 @@ export async function agentRoutes(app: FastifyInstance) {
   app.post('/agent-runs/:id/dismiss', async (req) => {
     const { id } = req.params as { id: string };
     return mutate(app, req, (ctx) => dismissRun(ctx, id));
+  });
+
+  // Approve: the plan the run is waiting on is fine; the run resumes to carry it out.
+  app.post('/agent-runs/:id/approve', async (req) => {
+    const { id } = req.params as { id: string };
+    return mutate(app, req, (ctx) => approvePlan(ctx, id));
   });
 
   // Agents whose claims are on hold (e.g. after a usage limit), for the Agent runs page.
@@ -175,6 +198,30 @@ export async function agentRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     return mutate(app, req, (ctx) => heartbeat(ctx, id));
   });
+
+  /**
+   * Live output: lines the command printed since the last call. The runner batches them every few
+   * seconds; more often than twice a second per run is refused (429), and it's safe to drop some.
+   */
+  app.post(
+    '/agent/runs/:id/output',
+    {
+      config: {
+        rateLimit: {
+          max: 120,
+          timeWindow: '1 minute',
+          keyGenerator: (req: FastifyRequest) =>
+            `${req.user?.id ?? req.ip}:${(req.params as { id?: string }).id}`,
+        },
+      },
+    },
+    async (req) => {
+      requireAgent(req);
+      const { id } = req.params as { id: string };
+      const { lines } = parse(agentRunOutputSchema, req.body);
+      return mutate(app, req, (ctx) => appendRunOutput(ctx, id, lines));
+    },
+  );
 
   app.patch('/agent/runs/:id', async (req) => {
     requireAgent(req);

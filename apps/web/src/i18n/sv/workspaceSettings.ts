@@ -263,6 +263,10 @@ export default {
       login: 'loggade in',
       loginSso: 'loggade in med {provider}',
       ssoBypass: 'loggade in med lösenord (reservväg för ägare)',
+      claimRefusedSso:
+        'SSO-inloggning som {email} nekades: ett overifierat konto med aktivitet använder adressen',
+      claimRefusedScim:
+        'katalogsynk av {email} nekades: ett overifierat konto med aktivitet använder adressen',
       webhookCreated: 'lade till en webhook till {url}',
       webhookUpdated: 'ändrade en webhook',
       webhookDeleted: 'tog bort webhooken till {url}',
@@ -301,6 +305,8 @@ export default {
       passkeyAdded: 'lade till en lösennyckel',
       passkeyRemoved: 'tog bort en lösennyckel',
       apiKeyRevoked: 'återkallade en API-nyckel',
+      calendarFeedCreated: 'skapade ett kalenderflöde',
+      calendarFeedRevoked: 'återkallade ett kalenderflöde',
       oauthAuthorized: 'anslöt en app',
       oauthRevoked: 'kopplade bort en app',
       aiUpdated: 'ändrade inställningarna för AI-hjälp',

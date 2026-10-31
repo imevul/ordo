@@ -9,6 +9,7 @@ import {
 import { Toaster } from 'sonner';
 import { ConfirmHost } from './components/ui/Modal.tsx';
 import { AdminPage } from './routes/admin/index.tsx';
+import { AgentRunPage } from './routes/agentRun.tsx';
 import { AgentRunsPage } from './routes/agentRuns.tsx';
 import { EmailLinkPage } from './routes/auth/emailLink.tsx';
 import { InvitePage } from './routes/auth/invite.tsx';
@@ -19,6 +20,7 @@ import { ForgotPasswordPage, ResetPasswordPage } from './routes/auth/password.ts
 import { SignupPage } from './routes/auth/signup.tsx';
 import { CustomerPage, CustomersPage } from './routes/customers.tsx';
 import { CycleDetailPage, CyclesPage } from './routes/cycles.tsx';
+import { DashboardPage, DashboardsPage } from './routes/dashboards.tsx';
 import { InboxPage } from './routes/inbox.tsx';
 import { InitiativePage, InitiativesPage } from './routes/initiatives.tsx';
 import { InsightsPage } from './routes/insights.tsx';
@@ -30,8 +32,10 @@ import {
   TrashPage,
 } from './routes/issues.tsx';
 import { ProjectDetailPage, ProjectsPage } from './routes/projects/index.tsx';
+import { ReleasePage, ReleasesPage } from './routes/releases.tsx';
 import { RoadmapPage } from './routes/roadmap.tsx';
 import { SettingsPage, TeamSettingsPage } from './routes/settings/index.tsx';
+import { TimeReportPage } from './routes/time.tsx';
 import { ViewPage, ViewsPage } from './routes/views.tsx';
 import { NotFound, WorkspaceIndex, WorkspaceLayout } from './routes/workspace.tsx';
 
@@ -191,15 +195,37 @@ const initiativeRoute = createRoute({
   path: '/initiative/$initiativeId',
   component: InitiativePage,
 });
+const releasesRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/releases',
+  component: ReleasesPage,
+});
+const releaseRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/release/$releaseId',
+  validateSearch: (s: Record<string, unknown>): { tab?: 'issues' | 'suggested' } =>
+    s.tab === 'issues' || s.tab === 'suggested' ? { tab: s.tab } : {},
+  component: ReleasePage,
+});
 const agentRunsRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/agent-runs',
   component: AgentRunsPage,
 });
+const agentRunRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/agent-runs/$runId',
+  component: AgentRunPage,
+});
 const customersRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/customers',
   component: CustomersPage,
+});
+const timeRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/time',
+  component: TimeReportPage,
 });
 const customerRoute = createRoute({
   getParentRoute: () => wsRoute,
@@ -215,6 +241,16 @@ const insightsRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/insights',
   component: InsightsPage,
+});
+const dashboardsRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/dashboards',
+  component: DashboardsPage,
+});
+const dashboardRoute = createRoute({
+  getParentRoute: () => wsRoute,
+  path: '/dashboard/$dashboardId',
+  component: DashboardPage,
 });
 const viewsRoute = createRoute({
   getParentRoute: () => wsRoute,
@@ -276,10 +312,16 @@ const routeTree = rootRoute.addChildren([
     projectRoute,
     initiativesRoute,
     initiativeRoute,
+    releasesRoute,
+    releaseRoute,
     roadmapRoute,
     insightsRoute,
+    dashboardsRoute,
+    dashboardRoute,
     customersRoute,
+    timeRoute,
     agentRunsRoute,
+    agentRunRoute,
     customerRoute,
     viewsRoute,
     viewRoute,

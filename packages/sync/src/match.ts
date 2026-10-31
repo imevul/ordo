@@ -89,6 +89,8 @@ function parts(issue: Issue, c: IssueConditions, env: Env): boolean[] {
   if (c.projectIds?.length) out.push(among(issue.projectId, c.projectIds));
   if (c.milestoneIds?.length) out.push(among(issue.milestoneId, c.milestoneIds));
   if (c.cycleIds?.length) out.push(among(issue.cycleId, c.cycleIds));
+  // Copies saved before releases existed lack the field until their issues change.
+  if (c.releaseIds?.length) out.push(among(issue.releaseId ?? null, c.releaseIds));
   if (c.creatorIds?.length) {
     const creators = c.creatorIds.map((v) => (v === 'me' ? ctx.userId : v));
     out.push(!!issue.creatorId && creators.includes(issue.creatorId));

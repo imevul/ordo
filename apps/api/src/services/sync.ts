@@ -60,8 +60,12 @@ export async function logChanges(tx: DbOrTx, workspaceId: string, events: Realti
   return { seq: cursor!.seq, epoch: cursor!.epoch };
 }
 
-/** A deleted workspace takes its log with it; nothing to log about that. */
-const loggable = (e: RealtimeEvent) => !(e.kind === 'workspace' && e.action === 'deleted');
+/**
+ * A deleted workspace takes its log with it; nothing to log about that. Live run output arrives
+ * every few seconds and no local copy holds it, so it would only fill the log.
+ */
+const loggable = (e: RealtimeEvent) =>
+  !(e.kind === 'workspace' && e.action === 'deleted') && e.kind !== 'agentRunOutput';
 
 /** Events stamped with their place in the log, for clients to know how far they've read. */
 export const stamp = (

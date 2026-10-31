@@ -57,6 +57,9 @@ export default {
     waitForBlockers: 'Wait for blocking issues',
     waitForBlockersHint:
       'A run on a blocked issue waits until the issues blocking it are done or cancelled. Turn off for agents that only triage.',
+    requirePlanApproval: 'Approve the plan first',
+    requirePlanApprovalHint:
+      'Its runs post a plan and wait for someone to approve it before changing code. Each issue can turn this on or off.',
     pickTeam: 'Pick at least one team.',
     budget: 'Monthly budget (USD)',
     budgetHint:
@@ -97,6 +100,16 @@ export default {
     resume: 'Resume',
     /** Above the agent's question on a waiting run. Replying on the issue resumes it. */
     asked: 'Asked · reply on the issue to continue',
+    /** Above the plan an agent posted (propose_plan) while it waits for approval. */
+    planForApproval: 'Plan for approval',
+    approvePlan: 'Approve',
+    replyWithChanges: 'Or reply on the issue with changes.',
+    /** Status chip of a run waiting on its plan. */
+    waitingForApproval: 'waiting for approval',
+    /** Tag on a run whose plan was approved. */
+    planApproved: 'plan approved',
+    /** {time} is like "Oct 31 · 01:00". */
+    planApprovedBy: 'Approved by {name}, {time}',
     cancel: 'Cancel',
     /** On a failed or cancelled run: the same agent, issue and reason, as a new run. */
     restart: 'Restart',
@@ -191,6 +204,86 @@ export default {
     emptyTitle: 'No runs yet',
     emptyBody: 'Assign an issue to an agent and its run shows up here.',
     noAgents: 'Add an agent under Settings → Agents, then assign it an issue.',
+    /** Tooltip on a run's status, which links to its page. */
+    open: 'Open the run',
+  },
+  /** One run's page (Agent runs → a run). */
+  runPage: {
+    kicker: 'run',
+    notFound: 'Run not found',
+    /** Page title; {name} is the agent, {identifier} the issue, e.g. "Claude on ENG-42". */
+    title: '{name} on {identifier}',
+    details: 'Details',
+    issue: 'Issue',
+    agent: 'Agent',
+    trigger: 'Why it ran',
+    pullRequest: 'Pull request',
+    requestedBy: 'Asked for by',
+    nobody: 'nobody',
+    runner: 'Runner',
+    attempts: 'Attempts',
+    session: 'Session',
+    queuedAt: 'Queued',
+    startedAt: 'Started',
+    finishedAt: 'Finished',
+    took: 'Took',
+    /** {time} is like "Oct 31 · 14:51"; heartbeats move it on. */
+    leaseUntil: 'Lease until {time}',
+    /** {time} is like "2 minutes ago": the lease was last renewed then. */
+    heartbeat: 'last heartbeat {time}',
+    /** <a>…</a> links to the failed run this one restarts. */
+    restarts: 'This run restarts <a>an earlier one</a> that failed or was cancelled.',
+    restartedBy: 'Restarted as',
+    mentionedIn: 'Mentioned in a comment',
+    progress: 'Latest progress',
+    result: 'Result',
+    summary: 'Summary',
+    error: 'Error',
+    noResult: 'No summary or error yet.',
+    output: 'Output',
+    /** Tag next to Output while the run works: it updates as the command prints. */
+    outputLive: 'Live',
+    outputHint:
+      "The end of what the agent's command printed in its latest pickup, as its runner sent it. Anyone who can see the issue can read it, and it's deleted a week after the last line.",
+    outputWaiting: 'Nothing printed yet.',
+    outputNone: 'No output: the runner sent none, or it has been deleted.',
+    /** Above the lines when older ones were dropped; {shown} and {total} are numbers. */
+    outputTail: 'The last {shown} of {total} lines',
+    timeline: 'Timeline',
+    noTimeline: 'This run is from before Ordo kept timelines; only its times are known.',
+    prompt: 'Prompt',
+    promptHint:
+      "What Ordo gave the agent on its latest pickup, without the instructions, parent or related issues: the agent's instructions are in its settings, the runner's aren't stored, and the issue page shows the parent and related issues you can see.",
+    noPrompt: 'Not picked up yet.',
+    showPrompt: 'Show prompt',
+    hidePrompt: 'Hide prompt',
+    /** Who did a timeline step when nobody did: Ordo itself. */
+    system: 'Ordo',
+    event: {
+      queued: 'Queued',
+      queuedRestart: 'Queued as a restart',
+      ran_anyway: 'Told to run without waiting for blocking issues',
+      /** {runner} like jonas-laptop/claude, {attempt} a number */
+      claimed: 'Picked up by {runner} · attempt {attempt}',
+      claimedNoRunner: 'Picked up · attempt {attempt}',
+      started: 'Started',
+      progress: 'Progress',
+      asked: 'Asked a question',
+      planned: 'Proposed a plan for approval',
+      plan_approved: 'Approved the plan',
+      resumed: 'Resumed after a reply',
+      resumedNoAnswer: 'Resumed without an answer',
+      /** {runner} like jonas-laptop/claude */
+      lapsed: '{runner} stopped responding; back in the queue',
+      lapsedFailed: '{runner} stopped responding on the last attempt',
+      lapsedNoRunner: 'The runner stopped responding; back in the queue',
+      lapsedFailedNoRunner: 'The runner stopped responding on the last attempt',
+      succeeded: 'Done',
+      failed: 'Failed',
+      cancelled: 'Cancelled',
+      dismissed: 'Dismissed',
+      finished: 'Finished',
+    },
   },
   repositories: {
     adminsOnly: 'Only admins can manage repositories.',

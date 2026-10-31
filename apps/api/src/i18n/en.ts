@@ -124,4 +124,8 @@ export default {
     docs: 'Docs',
     housekeeping: 'Housekeeping',
   },
+  releases: {
+    /** Heading in drafted release notes for issues without a label. */
+    otherHeading: 'Other changes',
+  },
 };

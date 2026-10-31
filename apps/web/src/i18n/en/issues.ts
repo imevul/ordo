@@ -6,6 +6,7 @@ export default {
     project: 'No project',
     milestone: 'No milestone',
     cycle: 'No cycle',
+    release: 'No release',
     labels: 'No labels',
   },
   /** Assignee group headers for people who aren't members. */
@@ -140,6 +141,8 @@ export default {
     setMilestone: 'Set milestone…',
     setProject: 'Set project…',
     setCycle: 'Set cycle…',
+    setRelease: 'Set release…',
+    releaseOut: '{name} is out, so this issue stays in it',
     setEstimate: 'Set estimate…',
     statusIs: 'Status: {status}',
     priorityIs: 'Priority: {priority}',

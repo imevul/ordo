@@ -308,6 +308,17 @@ export class WorkspaceClient {
       ),
 
     /**
+     * Live output: lines the command printed since the last call, for the run's page. Ordo keeps
+     * the last 200; `accepted` is false once the run no longer works (cancelled, waiting).
+     */
+    output: (runId: string, lines: string[]) =>
+      this.request<{ accepted: boolean }>(
+        'POST',
+        `/agent/runs/${encodeURIComponent(runId)}/output`,
+        { lines },
+      ),
+
+    /**
      * Started (`running`), finished (a summary is posted on the issue), or `waiting` with a
      * `question`. `resume` is handed back on the next pickup. Once a run is waiting, other
      * reports change nothing but `sessionUrl` and `resume`.
@@ -322,6 +333,7 @@ export class WorkspaceClient {
         /** With `failed`, when the runner knows why; otherwise Ordo reads the error. */
         failureReason?: AgentRunFailureReason;
         question?: string;
+        plan?: string;
         resume?: string | null;
         /** What this pickup used; added to the run's totals, so send it once per pickup. */
         usage?: AgentRunUsageReport;
@@ -333,6 +345,13 @@ export class WorkspaceClient {
       this.request<AgentRun>('PATCH', `/agent/runs/${encodeURIComponent(runId)}`, {
         status: 'waiting',
         question,
+      }),
+
+    /** Posts a plan and pauses the run until a person approves it or replies with changes. */
+    plan: (runId: string, plan: string) =>
+      this.request<AgentRun>('PATCH', `/agent/runs/${encodeURIComponent(runId)}`, {
+        status: 'waiting',
+        plan,
       }),
   };
 }

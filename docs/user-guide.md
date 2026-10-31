@@ -76,6 +76,23 @@ label or a priority, and then sets a priority, adds labels, assigns someone — 
 on-call rotation — and can accept the issue straight into a status. Rules run in order and every matching one
 applies; the **Ordo** bot makes the changes, so the issue's history shows them.
 
+**Automations** (team settings; team admins) are "when … then …" rules for the team's issues:
+
+- **When** an issue is created; an issue changes (optionally only certain fields); an issue moves to a status; a
+  label is added; all of an issue's sub-issues are done (the rule acts on the parent; canceled sub-issues count as
+  finished, but at least one must be done); or a pull request that closes the issue opens or merges.
+- **And the issue** is in a status, has a priority or label, is assigned to someone, is in a project, or mentions
+  some text — the same conditions as the issue filters, checked when the rule runs. Leave them empty to match
+  every issue.
+- **Then** set the status, priority, assignee (pick an agent to hand the issue to it), cycle (a specific one or
+  whichever is active), or project; add or remove labels; or post a comment.
+
+For example: when the label _Security_ is added, set priority Urgent and assign the on-call person; when an issue
+moves to _In Review_, assign the reviewer agent. Rules run in order shortly after the change, as the **Ordo** bot,
+and the activity says which automation acted. A rule acts at most once in a chain of changes that automations set
+off, and a chain stops after five rules, so two rules can't keep undoing each other. Each rule shows how often it
+ran and when it last did. Triage rules still run first, the moment an issue lands in triage.
+
 ## Issues
 
 Create an issue with `C` (or the pen icon). Type a title, optionally a description, then set
@@ -188,7 +205,30 @@ Team screens have tabs: **All**, **Active** (unstarted + started), **Backlog**, 
 
 Filter any list, then **Save view** to give it a name. Views are shared with the workspace unless you untick
 the option. Open one from **Views** in the sidebar; change its filters or display and press **Save** to
-update it. Star views and projects to pin them under _Favorites_.
+update it. Star views and projects to pin them under _Favorites_. The calendar button on a view gives a URL to
+subscribe to its due dates in a calendar app (see **Calendar** under [Your account](#your-account)).
+
+## Dashboards
+
+A dashboard pins what you check every day to one page: **Dashboards** in the sidebar (`G` then `D`), then **New
+dashboard**. Make it for the whole workspace or for one team, which only people who can see the team see. Shared
+dashboards are for everyone who can see them. Untick sharing for one only you see.
+
+**Edit layout** (`E`) shows the dashboard as a grid of four columns. **Add widget** (`A`) to pin one of these:
+
+- **Chart**: a burn-up or cumulative flow for the workspace, a team, a project or a team's _current cycle_ (it
+  follows along as cycles change); a project's burndown with its forecast; a team's velocity; or, over any
+  filter, a breakdown (by status, priority, assignee…) or created vs completed per week.
+- **Saved view**: the first issues of a view, in the view's order, with a link to the rest.
+- **Number**: how many issues (or points) match a filter, like "urgent and open".
+- **Agent activity**: agent runs started in the last days, per agent: how many finished, failed or are still open,
+  and what they cost.
+
+Drag widgets to reorder them, or use the arrows. **W−/W+** and **H−/H+** make them narrower, wider, shorter or
+taller. **Save layout** (or `E` again) keeps the changes; **Cancel** drops them. Each widget shows only what you can
+see, so a teammate with fewer teams may see smaller numbers on the same dashboard. A dashboard is changed by its
+owner, workspace admins, and, for a shared team dashboard, the team's admins. Star a dashboard to pin it under
+_Favorites_.
 
 ## My issues and Inbox
 
@@ -255,6 +295,20 @@ are made by a bot called **Ordo**, without notifications, and show in each issue
 ended when you turned automation on keep their issues. "Today" is the date in the workspace's time zone
 (workspace settings → _Time zone_; UTC unless you pick one).
 
+## Releases
+
+A **release** (sidebar → _Releases_) groups finished issues into a version, such as "v0.2", with release notes.
+Create one for the whole workspace or for one team; a team's release only takes that team's issues. Its
+_Suggested_ tab lists done issues that are in no release and were completed after the previous release went out:
+tick the ones you want and add them. You can also pick the _Release_ on an issue.
+
+**Release** puts it out. Its issue list is frozen (issues can't join or leave it) until you **reopen** it, except
+that an issue you move to the trash or delete leaves it, and comes back if you restore it from the trash. If it
+has no notes yet, Ordo drafts them from its issues, one section per label (Features, Bugs, …) and _Other changes_
+for issues without one. Edit the notes in the _Notes_ tab, or redraft them with _Draft from issues_. Download them as
+a Markdown file or copy them, to paste into a changelog or a forge release. Guests can read releases but not change
+them.
+
 ## Projects
 
 Projects collect issues toward a goal, possibly across teams. Each has a **status** (backlog, planned, in
@@ -291,6 +345,22 @@ they asked for in their words and who asked: add one under _Customer requests_ o
 the customer), or let [email intake](integrations/email.md) add them as mail comes in. A customer's page lists their
 requests and the issues behind them, and the customer list shows how many requests and still-open issues each has, so
 you can see who's waiting on what. Guests don't see customers.
+
+## Time tracking
+
+Time tracking is off until a workspace admin turns it on (**Settings → Workspace → Time tracking**). Then every issue
+gets a _Time_ section:
+
+- **Start timer** runs a clock on the issue; it shows in the sidebar wherever you go, with a stop button. You have
+  one timer at a time: starting it on another issue stops the first.
+- **Log time** adds time by hand: type `1h 30m`, `45m`, `1.5h` or `1:30`, pick the day and add a note.
+- The section shows each entry and the issue's total (guests see only their own entries). You can edit or delete your own entries; workspace admins can
+  correct anyone's, and those changes are recorded in the audit log.
+
+**Time** in the sidebar is the report: logged time over a range of days, by person and by project, filtered by
+person, team, project or cycle. Days follow the workspace's time zone. **Export CSV** downloads the entries (day,
+person, issue, project, cycle, hours, note) for invoicing. You see time on issues you can see; guests see only their
+own. Agents can log and report time too, through the [MCP tools](mcp.md).
 
 ## Labels and estimates
 
@@ -400,8 +470,13 @@ Open **Settings** (workspace menu, or `G` then `S`):
 - **API keys** — personal keys for scripts and integrations ([API docs](api.md)). Resetting your password with
   **Forgot password?** revokes all of them, along with every app you've connected (below), so nothing someone else
   set up while they had your account keeps working. Changing your password or turning on the authenticator app
-  offers the same (_Also revoke my API keys and connected apps_, on by default). Each revoked key and app shows in
-  the audit log.
+  offers the same (_Also revoke my API keys, connected apps and calendar feeds_, on by default). Each revoked key
+  and app shows in the audit log.
+- **Calendar** — a secret iCal URL for Google Calendar, Outlook or Apple Calendar (_Open in calendar app_, or paste
+  it as a subscription): the due dates of your open issues, the cycles of your teams and the milestones of their
+  projects, as all-day events that update on their own (Google can take several hours to refresh). Saved views can
+  be subscribed to as well. Anyone with a URL can read those dates, so it's shown once; **New URL** replaces it and
+  the trash button revokes it. A feed only shows what you can see in the workspace right now.
 - **AI agents** — connect Claude, Claude Code, Cursor or VS Code to Ordo's MCP server: the URL, setup snippets for
   OAuth sign-in or an API key, a prompt that lets your agent set itself up, and the apps you've connected, which you
   can disconnect ([MCP docs](mcp.md)). When an app signs in with OAuth, Ordo shows which app is asking and for

@@ -59,6 +59,13 @@ const issueFields = {
   estimate: z.number().int().min(0).max(100).nullable().optional(),
   dueDate: isoDate.nullable().optional(),
   customFields: customFieldValues.optional(),
+  planApproval: z
+    .boolean()
+    .nullable()
+    .optional()
+    .describe(
+      "Whether the assigned agent posts its plan for approval before changing code; null uses the agent's default. People only.",
+    ),
 };
 
 /** A finished run, by issue (and agent) since runs have no identifier people type, or by id. */
@@ -184,6 +191,32 @@ export const mcpToolSchemas = {
     body: z.string().trim().min(1).max(50_000).describe('Markdown; @username mentions notify'),
     replyTo: z.uuid().optional().describe('Id of the comment to reply to'),
   }),
+  issue_time: z.object({ issue }),
+  log_time: z.object({
+    issue,
+    duration: z
+      .string()
+      .trim()
+      .min(1)
+      .max(50)
+      .describe('How long: "1h 30m", "45m", "1.5h" or "1:30"'),
+    note: z.string().trim().max(2000).optional().describe('What the time was spent on'),
+    date: isoDate.optional().describe('The day the work was done (default today)'),
+  }),
+  start_timer: z.object({
+    issue,
+    note: z.string().trim().max(2000).optional(),
+  }),
+  stop_timer: z.object({}),
+  time_report: z.object({
+    from: isoDate.optional().describe('First day, inclusive'),
+    to: isoDate.optional().describe('Last day, inclusive'),
+    person: person.optional(),
+    team: team.optional(),
+    project: project.optional(),
+    cycle: cycle.optional().describe('A cycle of team (required with a cycle number or "current")'),
+    limit: limit(500, 100).describe('Entries to list (totals count them all)'),
+  }),
   list_agents: z.object({}),
   assign_to_agent: z.object({
     issue,
@@ -260,6 +293,17 @@ export const mcpToolSchemas = {
       .min(1)
       .max(10_000)
       .describe('Markdown; posted on the issue, mentioning whoever asked for the work'),
+    run: z.uuid().optional().describe('The run (default: your only open run)'),
+  }),
+  propose_plan: z.object({
+    plan: z
+      .string()
+      .trim()
+      .min(1)
+      .max(50_000)
+      .describe(
+        'Markdown: what you will change and how, and the risks. Posted on the issue for approval.',
+      ),
     run: z.uuid().optional().describe('The run (default: your only open run)'),
   }),
 };
@@ -398,6 +442,40 @@ export const MCP_TOOLS: {
     readOnly: false,
   },
   {
+    name: 'issue_time',
+    title: 'Issue time',
+    description:
+      'Time logged on an issue: each entry (person, duration, note) and the total. Needs time tracking on in the workspace.',
+    readOnly: true,
+  },
+  {
+    name: 'log_time',
+    title: 'Log time',
+    description:
+      'Log time you spent on an issue, like "1h 30m", with an optional note and day. Needs time tracking on in the workspace.',
+    readOnly: false,
+  },
+  {
+    name: 'start_timer',
+    title: 'Start timer',
+    description:
+      'Start your timer on an issue. A timer you have running on another issue stops first.',
+    readOnly: false,
+  },
+  {
+    name: 'stop_timer',
+    title: 'Stop timer',
+    description: 'Stop your running timer; the time is logged on its issue.',
+    readOnly: false,
+  },
+  {
+    name: 'time_report',
+    title: 'Time report',
+    description:
+      'Logged time by person and project over a range of days, optionally for one person, team, project or cycle, with the entries.',
+    readOnly: true,
+  },
+  {
     name: 'list_agents',
     title: 'List agents',
     description:
@@ -480,6 +558,14 @@ export const MCP_TOOLS: {
     title: 'Ask a question',
     description:
       'For agents: ask a person something you need before you can continue, then stop. The question is posted on the issue, the run pauses, and it resumes when someone replies.',
+    readOnly: false,
+    audience: 'agent',
+  },
+  {
+    name: 'propose_plan',
+    title: 'Propose a plan',
+    description:
+      'For agents: post your plan before changing code, then stop. The plan is posted on the issue and the run pauses until a person approves it or replies with changes; it then resumes with the outcome.',
     readOnly: false,
     audience: 'agent',
   },

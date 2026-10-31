@@ -195,6 +195,30 @@ export function WorkspaceSection() {
         </select>
       </SettingsCard>
 
+      <SettingsCard
+        title={t('timeTracking.setting.title')}
+        description={t('timeTracking.setting.description')}
+      >
+        <label className="flex items-center justify-between gap-3 py-1 text-[13.5px]">
+          {t('timeTracking.setting.enable')}
+          <input
+            type="checkbox"
+            className="accent-primary"
+            checked={ws.workspace.settings.timeTracking}
+            onChange={async (e) => {
+              try {
+                await api.patch(wsPath(ws.slug, '/'), {
+                  settings: { timeTracking: e.target.checked },
+                });
+                refresh();
+              } catch (err) {
+                toast.error(errMsg(err));
+              }
+            }}
+          />
+        </label>
+      </SettingsCard>
+
       <AccentCard />
 
       <BranchFormatCard />

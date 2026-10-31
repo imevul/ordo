@@ -10,6 +10,7 @@ import { ConfirmModal } from '../components/ui/Modal.tsx';
 import { t } from '../i18n/index.ts';
 import { relativeTime } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
+import { SubscribeViewButton } from './settings/account/calendar.tsx';
 
 export function ViewsPage() {
   const ws = useWorkspace();
@@ -111,6 +112,7 @@ export function ViewPage() {
             >
               <Star size={13} className={fav ? 'fill-primary text-primary' : ''} />
             </button>
+            <SubscribeViewButton viewId={view.id} />
             {canEdit && (
               <button
                 type="button"

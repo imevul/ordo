@@ -20,7 +20,7 @@ import {
   serveAgent,
 } from '@ordo/cli/agent';
 import { Ordo } from '@ordo/sdk';
-import type { AgentRun, AgentRunContext, Bootstrap, Comment } from '@ordo/shared';
+import type { AgentRun, AgentRunContext, AgentRunOutput, Bootstrap, Comment } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Client, signup, testApp } from './helpers.ts';
@@ -648,6 +648,42 @@ describe('ordo agent', () => {
     expect(runRow!.summary).toMatch(/^in ordo-run-/);
   });
 
+  it("sends the command's output for the run's page, unless told not to", async () => {
+    const event = {
+      type: 'assistant',
+      message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'pnpm test' } }] },
+    };
+    const script = write(
+      'chatty.sh',
+      `#!/bin/sh\necho 'Checking out'\nprintf '\\033[31mwarn\\033[0m: careful\\n' >&2\ncat <<'EOF'\n${JSON.stringify(event)}\nEOF\necho 'ORDO_SESSION_URL=https://example.com/s/1'\necho done\n`,
+    );
+    chmodSync(script, 0o700);
+    const file = write(
+      'chatty.yaml',
+      `url: ${url}\nworkspace: ${slug}\nkey: ${keys.Docs}\ncheckout: false\ncommand: [./chatty.sh]\n`,
+    );
+    const output = async (id: string) => {
+      const [run] = await runsOf(id);
+      return (await owner.get(`${ws}/agent-runs/${run!.id}/output`)).data as AgentRunOutput;
+    };
+
+    const issue = await assign('Say what you do', 'Docs');
+    expect((await ordo(['agent', 'run', '--file', file, '--once'])).code).toBe(0);
+    expect((await runsOf(issue.id))[0]).toMatchObject({ status: 'succeeded' });
+    // Sent before the final report, which ends the run; the launch contract's lines stay out.
+    const { lines } = await output(issue.id);
+    expect(lines).toContain('Checking out');
+    expect(lines).toContain('warn: careful');
+    expect(lines).toContain('→ Bash: pnpm test');
+    expect(lines.at(-1)).toBe('done');
+    expect(lines.join('\n')).not.toContain('ORDO_SESSION_URL');
+
+    const quiet = await assign('Keep it to yourself', 'Docs');
+    expect((await ordo(['agent', 'run', '--file', file, '--once', '--no-output'])).code).toBe(0);
+    expect((await runsOf(quiet.id))[0]).toMatchObject({ status: 'succeeded' });
+    expect((await output(quiet.id)).lines).toEqual([]);
+  });
+
   it("reports what a run cost, from Claude Code's JSON result or an ORDO_USAGE line", async () => {
     const result = {
       type: 'result',
@@ -882,6 +918,7 @@ describe('ordo agent', () => {
         prune: false,
         baseDir: dir,
         instructions: '',
+        output: true,
       },
       { log: (l) => lines.push(l), signal: new AbortController().signal },
     );

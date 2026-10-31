@@ -171,7 +171,9 @@ Notable choices:
 - Two-factor: TOTP (RFC 6238, ±1 step), secret encrypted with the keyring; ten single-use recovery codes stored as
   hashes. Logging in with 2FA returns a short-lived `mfa` token instead of a session; `POST /auth/mfa` completes it.
 - Email links (reset, verification, email change) are single-use tokens stored as hashes in `auth_tokens` with short
-  expiries; a reset signs out every session.
+  expiries; a reset signs out every session and revokes API keys and OAuth grants. A reset that first verifies the
+  address also runs `revokeSignIns` (passkeys, linked identities, pending links), since SSO and SCIM link the
+  account from then on and its earlier holder may not have owned the address.
 - SSO (`services/sso.ts`, `routes/sso.ts`): the protocols prove who someone is, and the shared core (`resolveSsoUser`,
   `finishSso`) decides which account that is. The state lives in `auth_states` (single use, 10 minutes) and in a short
   `HttpOnly` cookie, so a sign-in must come back to the browser that started it.
@@ -184,8 +186,9 @@ Notable choices:
     library's signature, time, audience and InResponseTo checks; any DOCTYPE is refused.
     Accounts are created or matched by email only for trusted emails (OIDC `email_verified`, or SAML with the provider's
     "trust emails" on) at the workspace's verified domains, and matched only to accounts whose `email_verified_at` is
-    set (`claimableUser`, shared with SCIM: an unverified holder is moved to an `.invalid` address); otherwise
-    identities are linked explicitly. Require-SSO is checked in `authorizeWorkspace` (HTTP and WebSocket):
+    set (`claimableUser`, shared with SCIM: an empty unverified holder is moved to an `.invalid` address and loses
+    every way in via `revokeSignIns`; an instance admin or one with memberships or activity throws `ClaimRefused`,
+    audited as `auth.claim_refused` after the rollback); otherwise identities are linked explicitly. Require-SSO is checked in `authorizeWorkspace` (HTTP and WebSocket):
     the session's `auth_provider_id` must belong to the workspace; owners pass (password sign-ins are audited as
     `auth.sso_bypass`); `sso_expires_at` caps SSO session length in `resolveUser`.
 - Sessions: 32 random bytes in an `HttpOnly`, `SameSite=Lax` cookie; stored as SHA-256; 30-day sliding expiry.

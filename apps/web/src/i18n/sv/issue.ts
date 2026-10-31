@@ -25,6 +25,7 @@ export default {
     confirmTrashBody: 'Du kan återställa det från papperskorgen senare.',
     subIssues: 'Underärenden',
     properties: 'Egenskaper',
+    jumpToLatest: 'Hoppa till det senaste',
     slaBreached: 'gick ut för {time} sedan',
     slaLeft: '{time} kvar',
     moveToTeam: 'Flytta till team…',
@@ -131,6 +132,7 @@ export default {
     dueDateRemoved: '{actor} tog bort förfallodatumet',
     team: '{actor} flyttade ärendet från {from} till {to}',
     changed: '{actor} ändrade {field}',
+    automation: '{actor} körde automatiseringen {rule}',
     fallback: {
       someone: 'någon',
       nobody: 'ingen',

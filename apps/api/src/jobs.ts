@@ -1,9 +1,10 @@
 import { lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { sessions } from './db/schema.ts';
-import { reapLeases, restartAfterLimits } from './services/agents.ts';
+import { pruneRunOutput, reapLeases, restartAfterLimits } from './services/agents.ts';
 import { sweepAttachments } from './services/attachments.ts';
 import { autoArchive, forEachIsolated } from './services/automation.ts';
+import { runAutomationEvent, runAutomationRules } from './services/automationRules.ts';
 import { runChatNotification, runChatPost } from './services/chat.ts';
 import { automateCycles } from './services/cycle-automation.ts';
 import { sendNotificationEmails } from './services/digest.ts';
@@ -50,10 +51,19 @@ export function registerJobs(app: FastifyInstance) {
   jobs.every('agents.leases', 60);
   jobs.define('agents.restart', () => restartAfterLimits(app));
   jobs.every('agents.restart', 60);
+  jobs.define('agents.outputPrune', () => pruneRunOutput(app));
+  jobs.every('agents.outputPrune', 3600);
 
   // The outbox: one dispatch per transaction, then one job per webhook delivery / integration.
   jobs.define<{ workspaceId: string; ids: number[] }>('events.dispatch', (p) =>
     dispatchEvents(app, p),
+  );
+  // Automation rules: one run per issue event, plus pull request triggers from forges.
+  jobs.define<Parameters<typeof runAutomationEvent>[1]>('automations.event', (p) =>
+    runAutomationEvent(app, p),
+  );
+  jobs.define<Parameters<typeof runAutomationRules>[1]>('automations.run', (p) =>
+    runAutomationRules(app, p),
   );
   jobs.define<{ deliveryId: string }>('webhook.deliver', (p, job) => deliverWebhook(app, p, job));
   jobs.define<Parameters<typeof runIntegrationEvent>[1]>('integration.event', (p, job) =>

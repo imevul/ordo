@@ -278,29 +278,29 @@ from the bytes — are served inline; everything else downloads as `application/
 
 `POST /issues/query` takes an `IssueFilter`. All fields are optional and combine with AND; arrays are OR.
 
-| Field                                              | Type                                                                     | Notes                                             |
-| -------------------------------------------------- | ------------------------------------------------------------------------ | ------------------------------------------------- |
-| `teamId`                                           | uuid                                                                     |                                                   |
-| `stateIds`                                         | uuid[]                                                                   |                                                   |
-| `stateTypes`                                       | (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`)[] |                                                   |
-| `priorities`                                       | (0–4)[]                                                                  | 0 none, 1 urgent, 2 high, 3 medium, 4 low         |
-| `assigneeIds`                                      | (uuid \| `"me"` \| `"none"`)[]                                           |                                                   |
-| `creatorIds`                                       | (uuid \| `"me"`)[]                                                       |                                                   |
-| `labelIds`                                         | uuid[]                                                                   | has any of                                        |
-| `customFields`                                     | { fieldId: string[] }                                                    | per field, any of the values (see below)          |
-| `projectIds`, `milestoneIds`, `cycleIds`           | (uuid \| `"none"`)[]                                                     |                                                   |
-| `parentId`                                         | uuid                                                                     | sub-issues of                                     |
-| `subscribedBy`                                     | `"me"`                                                                   |                                                   |
-| `q`                                                | string                                                                   | words (full text, as prefixes), or an identifier  |
-| `trashed`                                          | boolean                                                                  | only trashed issues                               |
-| `archived`                                         | `"include"` \| `"only"`                                                  | archived issues are left out otherwise            |
-| `dueDate`, `createdAt`, `updatedAt`, `completedAt` | `{ range?, from?, to? }`                                                 | see below                                         |
-| `estimate`                                         | `{ none?, min?, max? }`                                                  | see below                                         |
-| `blocked`, `blocking`                              | boolean                                                                  | open, and blocked by (or blocking) an open issue  |
-| `hasPullRequest`, `hasSubIssues`, `isSubIssue`     | boolean                                                                  | `false` asks for the opposite                     |
-| `exclude`                                          | conditions                                                               | each condition in it must _not_ hold ("is not")   |
-| `or`                                               | conditions[]                                                             | at least one group must match                     |
-| `tz`, `weekStartsOn`                               | IANA zone, `0` \| `1`                                                    | where "today" is for relative dates (UTC, Monday) |
+| Field                                                  | Type                                                                     | Notes                                             |
+| ------------------------------------------------------ | ------------------------------------------------------------------------ | ------------------------------------------------- |
+| `teamId`                                               | uuid                                                                     |                                                   |
+| `stateIds`                                             | uuid[]                                                                   |                                                   |
+| `stateTypes`                                           | (`triage`, `backlog`, `unstarted`, `started`, `completed`, `canceled`)[] |                                                   |
+| `priorities`                                           | (0–4)[]                                                                  | 0 none, 1 urgent, 2 high, 3 medium, 4 low         |
+| `assigneeIds`                                          | (uuid \| `"me"` \| `"none"`)[]                                           |                                                   |
+| `creatorIds`                                           | (uuid \| `"me"`)[]                                                       |                                                   |
+| `labelIds`                                             | uuid[]                                                                   | has any of                                        |
+| `customFields`                                         | { fieldId: string[] }                                                    | per field, any of the values (see below)          |
+| `projectIds`, `milestoneIds`, `cycleIds`, `releaseIds` | (uuid \| `"none"`)[]                                                     |                                                   |
+| `parentId`                                             | uuid                                                                     | sub-issues of                                     |
+| `subscribedBy`                                         | `"me"`                                                                   |                                                   |
+| `q`                                                    | string                                                                   | words (full text, as prefixes), or an identifier  |
+| `trashed`                                              | boolean                                                                  | only trashed issues                               |
+| `archived`                                             | `"include"` \| `"only"`                                                  | archived issues are left out otherwise            |
+| `dueDate`, `createdAt`, `updatedAt`, `completedAt`     | `{ range?, from?, to? }`                                                 | see below                                         |
+| `estimate`                                             | `{ none?, min?, max? }`                                                  | see below                                         |
+| `blocked`, `blocking`                                  | boolean                                                                  | open, and blocked by (or blocking) an open issue  |
+| `hasPullRequest`, `hasSubIssues`, `isSubIssue`         | boolean                                                                  | `false` asks for the opposite                     |
+| `exclude`                                              | conditions                                                               | each condition in it must _not_ hold ("is not")   |
+| `or`                                                   | conditions[]                                                             | at least one group must match                     |
+| `tz`, `weekStartsOn`                                   | IANA zone, `0` \| `1`                                                    | where "today" is for relative dates (UTC, Monday) |
 
 **Dates.** `range` is `overdue` (before today on an open issue), `today`, `thisWeek`, `last7Days`, `last30Days`,
 `next14Days` (today and the 13 days after), `none` (not set) or `any` (set). `from` and `to` are days (`YYYY-MM-DD`),
@@ -375,6 +375,12 @@ curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
 | GET                  | `/customers/:id/requests`       | Requests on issues you can see, each with its `issue`                                                                                                                                                  |
 | POST                 | `/issues/:id/customer-requests` | `{ customerId, body?, contact? }`; issue details list them as `customerRequests`                                                                                                                       |
 | DELETE               | `/customer-requests/:id`        |                                                                                                                                                                                                        |
+| GET / POST           | `/issues/:id/time-entries`      | [Time tracking](#time-tracking): `{ entries, totalSeconds }`; log `{ durationSeconds, startedAt?, note? }`                                                                                             |
+| POST                 | `/issues/:id/timer`             | `{ note? }`: starts your timer (an entry with `durationSeconds: null`), stopping one you have running                                                                                                  |
+| GET                  | `/timer`                        | Your running timer `{ entry, issue }`, or `null`                                                                                                                                                       |
+| POST                 | `/timer/stop`                   | Stops it and returns the entry (404 `no_timer` if none is running)                                                                                                                                     |
+| PATCH / DELETE       | `/time-entries/:id`             | `{ durationSeconds?, startedAt?, note? }`; your own entries, or anyone's for workspace admins (audited)                                                                                                |
+| GET                  | `/time-entries/report`          | `{ entries, totalSeconds, byUser, byProject }`; filters and `format=csv` below                                                                                                                         |
 | GET / POST           | `/recurring`                    | Template schedules: `{ templateId, teamId, every: 1–52, unit: "day" \| "week" \| "month", nextOn }`                                                                                                    |
 | PATCH / DELETE       | `/recurring/:id`                | `{ every?, unit?, nextOn?, paused? }`                                                                                                                                                                  |
 | GET / POST           | `/initiatives`                  | `{ name, description?, status?: "planned" \| "active" \| "completed", ownerId?, targetDate?, color? }`                                                                                                 |
@@ -389,6 +395,14 @@ curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
 | PATCH / DELETE       | `/cycles/:id`                   | Deleting unassigns its issues                                                                                                                                                                          |
 | GET                  | `/cycles/:id/workload`          | `{ unit: 'points' \| 'issues', entries: [{ userId, load, completed, issueCount, unestimated, capacity, capacitySource, outsideTeam, issues }] }` — team members, then other assignees, then unassigned |
 | PUT                  | `/cycles/:id/capacity/:userId`  | _Not guests._ `{ capacity }` — a team member's capacity in this cycle; `null` goes back to their default                                                                                               |
+| GET / POST           | `/releases`                     | List (without `notes`, with `progress`) / create `{ name, teamId?, notes?, targetDate? }`; without a team it's workspace-wide                                                                          |
+| GET / PATCH / DELETE | `/releases/:id`                 | `PATCH { name?, notes?, targetDate? }`; deleting takes its issues out. Not for guests. Issues join one with `releaseId`                                                                                |
+| GET                  | `/releases/:id/suggestions`     | Done issues in no release, completed after the previous release of the same scope went out                                                                                                             |
+| POST                 | `/releases/:id/issues`          | `{ ids }` (up to 1000) — adds them to a release that isn't out; returns `{ ids }` of those that changed                                                                                                |
+| POST                 | `/releases/:id/draft`           | `{ notes }` drafted from its issues, grouped by label (not saved)                                                                                                                                      |
+| POST                 | `/releases/:id/release`         | `{ draft? }` — puts it out: freezes its issue list and drafts notes if it has none (unless `draft: false`)                                                                                             |
+| POST                 | `/releases/:id/reopen`          | Unfreezes its issue list                                                                                                                                                                               |
+| GET                  | `/releases/:id/notes.md`        | The notes as a Markdown file, headed by the name and date                                                                                                                                              |
 | GET                  | `/insights/timeline`            | `?teamId=` \| `?projectId=` \| `?cycleId=` (or none: every team you see), `&from=&to=` → `{ from, to, days: [{ day, issues, points }] }` per status type, rebuilt from issue history                   |
 | GET                  | `/insights/velocity`            | `?teamId=&cycles=8` → the team's last cycles that started, each with `committed` and `completed` `{ issues, points }`, and `average`                                                                   |
 | POST                 | `/labels`                       | `{ name, color, teamId? }`                                                                                                                                                                             |
@@ -397,6 +411,38 @@ curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
 | PATCH / DELETE       | `/templates/:id`                | Same fields except `teamId` (`null` clears a default)                                                                                                                                                  |
 | POST                 | `/views`                        | `{ name, filters, display?, shared?, teamId? }`                                                                                                                                                        |
 | PATCH / DELETE       | `/views/:id`                    | Owner or admin                                                                                                                                                                                         |
+| GET / POST           | `/dashboards`                   | Shared ones and yours, on teams you see (also in `bootstrap.dashboards`) / create `{ name, description?, teamId?, shared?, widgets? }`; not guests                                                     |
+| GET                  | `/dashboards/:id`               | One dashboard                                                                                                                                                                                          |
+| PATCH / DELETE       | `/dashboards/:id`               | `{ name?, description?, shared?, widgets? }`, widgets replaced as a whole. Owner, admin, or the team's admins for a shared team dashboard; only the owner or an admin changes `shared`                 |
+| GET                  | `/agent-activity`               | `?days=7&agentId=&teamId=` → `{ since, agents: [{ agentId, runs, succeeded, failed, open, costUsd, durationMs }] }`, runs started since then on issues you can see                                     |
+| GET / POST           | `/calendar-feeds`               | Your iCal feeds here / create `{ viewId? }` → `{ feed, url }`. The `url` is shown once; creating again replaces that feed                                                                              |
+| DELETE               | `/calendar-feeds/:id`           | Revoke one of your feeds                                                                                                                                                                               |
+
+**Dashboard widgets.** Each has an `id` (unique in the dashboard), an optional `title`, a width `w` (1–4 columns)
+and height `h` (1–3 rows), in grid order, and a `type`: `chart` (`chart`: `burnUp`, `cumulativeFlow` over
+`teamId`, `projectId`, `teamId` with `currentCycle: true`, or the workspace, with `weeks`; `burndown` with
+`projectId`; `velocity` with `teamId`; `breakdown` with `filters` and `slice`; `flow` with `filters`; and
+`measure`: `count` or `estimate`), `view` (`viewId`, `limit`), `count` (`filters`, `measure`) or `agents` (`days`,
+`agentId?`, `teamId?`). Widgets read with the viewer's access, like everything else.
+
+**Calendar feeds.** `GET /api/calendar/<token>.ics` (no session, no header: the token in the URL is the
+credential) answers `text/calendar` with all-day events. Without a view: the due dates of your open issues, the
+cycles of teams you've joined (from 180 days back) and the dated milestones of their open projects. With a view:
+the due dates of the issues the view shows to you. The feed is built with your access when it's fetched, so it
+follows team changes; it's `404` once revoked, when the view is deleted or no longer visible, when your account is
+disabled or your membership suspended, and when the workspace requires SSO without allowing API keys (creating one
+there is refused with `403 sso_required`, except for owners). Only a hash of the token is stored. Resetting your password revokes your feeds along with your API keys.
+
+### Time tracking
+
+The time endpoints answer 403 `time_tracking_off` until a workspace admin sets `settings.timeTracking: true` with
+`PATCH /api/w/:ws`. Anyone who can read an issue can log time on it and see its entries (guests see only their own,
+and the total counts only those). Starting a timer while another start for you is in flight answers 409
+`timer_conflict`. The report covers finished entries on issues you can read (guests: only their own), filtered by
+`from` and `to` (days, inclusive, in the workspace's time zone), `userId`, `teamId`, `projectId` (or `none`) and
+`cycleId`. With `format=csv` it downloads one row per entry: day, person, email, issue, title, project, cycle, hours
+(decimal), minutes, note and start time. Text that starts with `=`, `+`, `-` or `@` gets a leading `'` so spreadsheets
+don't run it as a formula. The workspace CSV export doesn't do this, so it imports back unchanged.
 
 ### Notifications & search
 
@@ -420,7 +466,7 @@ curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
 
 `kind` is one of `issue`, `comment`, `project`, `projectUpdate`, `cycle`, `label`, `template`, `initiative`,
 `customer`, `document`, `team`, `state`, `workspace`, `member`, `view`, `favorite`, `notification`, `import`, `export`,
-`repository`, `agentRun` (`EntityKind` in `packages/shared/src/events.ts`); `action` is `created`, `updated` or `deleted`. Notification and
+`repository`, `agentRun`, `timeEntry` (`EntityKind` in `packages/shared/src/events.ts`); `action` is `created`, `updated` or `deleted`. Notification and
 favorite events are delivered only to their user. Events are hints — refetch what you display.
 Events also carry `seq` and `epoch`, their place in the workspace's change log (below). An issue that moves to a
 team you can't read arrives as `deleted` from the team you could.
@@ -487,13 +533,15 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 | `project_update.created`                                         | `{ update, project }`                                                           |
 | `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                       |
 | `agent_run.updated`                                              | The run when its status changes (statuses below), see [agents](agents.md)       |
+| `time_entry.created` `time_entry.updated` `time_entry.deleted`   | `{ timeEntry, issue: { id, identifier, title } }`; stopping a timer updates     |
 | `ping`                                                           | Sent by the "test" button                                                       |
 
 `source` says where a change came from: `web`, `api` (an API key), `mcp` (an agent through the [MCP server](mcp.md)),
 `system`, `import`, `scim` (directory sync through [SCIM](scim.md)) or `integration:<id>`.
 
 A run's `status` is `queued` (waiting for a runner), `claimed` (a runner took it), `running`, `waiting` (the agent
-asked a question; a reply requeues it), or one of the final `succeeded`, `failed` and `cancelled`.
+asked a question or proposed a plan; a reply, or approving the plan, requeues it), or one of the final `succeeded`,
+`failed` and `cancelled`.
 
 **Headers:** `Ordo-Event` (the type), `Ordo-Delivery` (unique per attempt series; reuse it to deduplicate), and
 `Ordo-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 over `"<t>.<raw body>"` with the webhook's
@@ -533,29 +581,33 @@ Ordo if an admin chose to send them.
 
 Agents are members a runner works for; see [agents.md](agents.md) for the idea and the runner protocol.
 
-| Method         | Path                                                             | What                                                                                                                                                               |
-| -------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| GET / POST     | `/agents`                                                        | _Admin._ List (with `monthCostUsd`) / create `{ name, teamIds, instructions?, concurrency?, followPullRequests?, waitForBlockers?, monthlyBudgetUsd?, username? }` |
-| PATCH          | `/agents/:id`                                                    | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, followPullRequests?, waitForBlockers?, monthlyBudgetUsd?, disabled? }` (`null` budget: no cap)           |
-| POST           | `/agents/:id/keys`                                               | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                                                                     |
-| DELETE         | `/agents/:id/keys/:keyId`                                        | _Admin._ Revoke a key                                                                                                                                              |
-| POST           | `/agents/:id/unpause`                                            | _Admin._ Lift a pause ("Resume now") and restart the runs that failed on its usage limit; a budget pause stays lifted for the month                                |
-| GET            | `/agent-pauses`                                                  | Agents on hold right now: `[{ agentId, pausedUntil, reason }]`, `reason` `usage_limit` or `budget`                                                                 |
-| GET            | `/agent-usage?month=YYYY-MM`                                     | Per agent, a month's (UTC, default this one) `runs`, tokens, `costUsd`, `durationMs` on issues you can see, and its `budgetUsd`                                    |
-| GET / POST     | `/issues/:id/agent-runs`                                         | The issue's runs / queue a new one for its agent ("Run again")                                                                                                     |
-| GET            | `/agent-runs?status=open\|active\|finished\|all&agentId=&limit=` | Runs across the workspace on issues you can see, latest change first (≤ 500). `open`: active plus failed runs nobody restarted or dismissed                        |
-| GET            | `/agent-runs/active-count`                                       | `{ count }` of active runs (queued, claimed, running, waiting) on issues you can see                                                                               |
-| POST           | `/agent-runs/:id/cancel`                                         | Cancel a run; its runner hears it on the next heartbeat                                                                                                            |
-| POST           | `/agent-runs/:id/restart`                                        | A failed or cancelled run again: same agent, issue and trigger, as a new run with `retryOfId` (an open one is returned)                                            |
-| POST           | `/agent-runs/:id/run-anyway`                                     | A queued run held back by its issue's blockers goes ahead (`ignoreBlockers`)                                                                                       |
-| POST           | `/agent-runs/:id/dismiss`                                        | Set a finished run aside (`dismissedAt`); it leaves the `open` list                                                                                                |
-| GET            | `/agent/me`                                                      | _Agent key._ The agent and its teams, and `pausedUntil` / `pauseReason` while it's paused                                                                          |
-| POST           | `/agent/claim?wait=30&runner=…`                                  | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)                                                      |
-| POST           | `/agent/runs/:id/heartbeat`                                      | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                                                            |
-| PATCH          | `/agent/runs/:id`                                                | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, resume?, sessionUrl?, summary?, error?, failureReason?, usage? }`                   |
-| GET            | `/repositories`                                                  | The workspace's repositories (also in the bootstrap)                                                                                                               |
-| POST           | `/repositories`                                                  | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo?, maxConcurrentRuns? }`                                                                        |
-| PATCH / DELETE | `/repositories/:id`                                              | _Admin._ Update / delete                                                                                                                                           |
+| Method         | Path                                                             | What                                                                                                                                                                                     |
+| -------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET / POST     | `/agents`                                                        | _Admin._ List (with `monthCostUsd`) / create `{ name, teamIds, instructions?, concurrency?, followPullRequests?, waitForBlockers?, requirePlanApproval?, monthlyBudgetUsd?, username? }` |
+| PATCH          | `/agents/:id`                                                    | _Admin._ `{ name?, teamIds?, instructions?, concurrency?, followPullRequests?, waitForBlockers?, requirePlanApproval?, monthlyBudgetUsd?, disabled? }` (`null` budget: no cap)           |
+| POST           | `/agents/:id/keys`                                               | _Admin._ `{ name }` → `{ id, token }`, the token returned once                                                                                                                           |
+| DELETE         | `/agents/:id/keys/:keyId`                                        | _Admin._ Revoke a key                                                                                                                                                                    |
+| POST           | `/agents/:id/unpause`                                            | _Admin._ Lift a pause ("Resume now") and restart the runs that failed on its usage limit; a budget pause stays lifted for the month                                                      |
+| GET            | `/agent-pauses`                                                  | Agents on hold right now: `[{ agentId, pausedUntil, reason }]`, `reason` `usage_limit` or `budget`                                                                                       |
+| GET            | `/agent-usage?month=YYYY-MM`                                     | Per agent, a month's (UTC, default this one) `runs`, tokens, `costUsd`, `durationMs` on issues you can see, and its `budgetUsd`                                                          |
+| GET / POST     | `/issues/:id/agent-runs`                                         | The issue's runs / queue a new one for its agent ("Run again")                                                                                                                           |
+| GET            | `/agent-runs?status=open\|active\|finished\|all&agentId=&limit=` | Runs across the workspace on issues you can see, latest change first (≤ 500). `open`: active plus failed runs nobody restarted or dismissed                                              |
+| GET            | `/agent-runs/active-count`                                       | `{ count }` of active runs (queued, claimed, running, waiting) on issues you can see                                                                                                     |
+| GET            | `/agent-runs/:id`                                                | One run with its issue, `prompt` (latest pickup, no instructions, parent or related issues), `triggerComment`, `restartedBy` and `events` (its timeline)                                 |
+| GET            | `/agent-runs/:id/output`                                         | `{ lines, total, updatedAt }`: the last 200 lines the run's command printed in its latest pickup; kept a week after the last line                                                        |
+| POST           | `/agent-runs/:id/cancel`                                         | Cancel a run; its runner hears it on the next heartbeat                                                                                                                                  |
+| POST           | `/agent-runs/:id/restart`                                        | A failed or cancelled run again: same agent, issue and trigger, as a new run with `retryOfId` (an open one is returned)                                                                  |
+| POST           | `/agent-runs/:id/run-anyway`                                     | A queued run held back by its issue's blockers goes ahead (`ignoreBlockers`)                                                                                                             |
+| POST           | `/agent-runs/:id/dismiss`                                        | Set a finished run aside (`dismissedAt`); a failed one then leaves the `open` list                                                                                                       |
+| POST           | `/agent-runs/:id/approve`                                        | _People only._ Approve the plan the run is waiting on; it's requeued with `planApprovedAt`. `409` without a pending plan                                                                 |
+| GET            | `/agent/me`                                                      | _Agent key._ The agent and its teams, and `pausedUntil` / `pauseReason` while it's paused                                                                                                |
+| POST           | `/agent/claim?wait=30&runner=…`                                  | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)                                                                            |
+| POST           | `/agent/runs/:id/heartbeat`                                      | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                                                                                  |
+| PATCH          | `/agent/runs/:id`                                                | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, plan?, resume?, sessionUrl?, summary?, error?, failureReason?, usage? }`                                  |
+| POST           | `/agent/runs/:id/output`                                         | _Agent key._ `{ lines }` (≤ 1,000) printed since the last call → `{ accepted }` (false once the run isn't claimed or running); 120 a minute per run                                      |
+| GET            | `/repositories`                                                  | The workspace's repositories (also in the bootstrap)                                                                                                                                     |
+| POST           | `/repositories`                                                  | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo?, maxConcurrentRuns? }`                                                                                              |
+| PATCH / DELETE | `/repositories/:id`                                              | _Admin._ Update / delete                                                                                                                                                                 |
 
 Projects take `repositoryIds` (in order) on create and update; teams take `defaultRepositoryId`. Admins can set a
 project's `pullRequestAgentId` (an agent in one of its teams, or `null`) and `pullRequestScope` (`"linked"` or
@@ -583,6 +635,11 @@ costUsd?, durationMs? }`. It's added to the run's `usage` (each field `null` unt
 pickup; a cancelled run takes a report with only `usage`. Costs count in the month (UTC) they're reported in, and
 reaching an agent's `monthlyBudgetUsd` pauses it with `pauseReason: "budget"` until the next month starts. See
 [agents.md](agents.md#cost-and-budgets).
+
+`plan` is what the agent proposed with `waiting` and `plan` (or the MCP tool `propose_plan`); `planApprovedAt` and
+`planApprovedById` are set once a person approves it. Issues have `planApproval` (`true`, `false`, or `null` for
+the agent's `requirePlanApproval`), which only people can change, and the run context has `planApproval`: whether
+this run must propose a plan first. See [agents.md](agents.md#plan-approval).
 
 `progress` is `{ step, percent, at }` (or `null`): what the agent last said it is doing, sent with the MCP tool
 `report_progress`. Only the newest is kept, and a new claim clears it. It changes the run (realtime `agentRun`

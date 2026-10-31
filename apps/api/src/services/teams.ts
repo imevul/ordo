@@ -18,6 +18,7 @@ import {
 import { badRequest, conflict, one } from '../lib/errors.ts';
 import { type Access, teamScope } from './access.ts';
 import { auditCtx } from './audit.ts';
+import { automationRulesOf, toAutomationRule } from './automationRules.ts';
 import { type Ctx, emit } from './context.ts';
 import { toTriageRule, triageRulesOf } from './triage.ts';
 
@@ -76,7 +77,7 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     .orderBy(asc(teams.name));
   if (rows.length === 0) return [];
   const ids = rows.map((t) => t.id);
-  const [states, members, rules, groups] = await Promise.all([
+  const [states, members, rules, automations, groups] = await Promise.all([
     db
       .select()
       .from(workflowStates)
@@ -84,6 +85,7 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
       .orderBy(asc(workflowStates.position)),
     db.select().from(teamMembers).where(inArray(teamMembers.teamId, ids)),
     triageRulesOf(db, ids),
+    automationRulesOf(db, ids),
     db
       .select({ teamId: scimGroups.teamId, name: scimGroups.displayName })
       .from(scimGroups)
@@ -108,6 +110,7 @@ export async function listTeams(db: DbOrTx, access: Access): Promise<Team[]> {
     slaHours: t.slaHours,
     triageRules: rules.filter((r) => r.teamId === t.id).map(toTriageRule),
     defaultCapacity: t.defaultCapacity,
+    automationRules: automations.filter((r) => r.teamId === t.id).map(toAutomationRule),
     memberIds: members.filter((m) => m.teamId === t.id).map((m) => m.userId),
     members: members
       .filter((m) => m.teamId === t.id)

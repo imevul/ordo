@@ -6,6 +6,7 @@ import { type Catalog, t } from '../../i18n/index.ts';
 import { useWorkspace } from '../../lib/workspace.tsx';
 import { useOnline } from '../../sync/context.tsx';
 import { ApiKeysSection, CliCard } from './account/api-keys.tsx';
+import { CalendarSection } from './account/calendar.tsx';
 import { NotificationsSection, PushCard } from './account/notifications.tsx';
 import { AccountSection } from './account/profile.tsx';
 import { SecuritySection } from './account/security.tsx';
@@ -39,6 +40,7 @@ const SECTIONS: {
     { key: 'connected', message: 'connected', group: 'account' },
     { key: 'notifications', message: 'notifications', group: 'account' },
     { key: 'api', message: 'apiKeys', group: 'account' },
+    { key: 'calendar', message: 'calendar', group: 'account' },
     { key: 'mcp', message: 'aiAgents', group: 'account' },
     { key: 'workspace', message: 'general', group: 'workspace', admin: true },
     { key: 'members', message: 'members', group: 'workspace' },
@@ -142,6 +144,8 @@ export function SettingsPage() {
         <ApiKeysSection />
         <CliCard />
       </>
+    ) : section === 'calendar' ? (
+      <CalendarSection />
     ) : section === 'mcp' ? (
       <McpSection />
     ) : section === 'security' ? (

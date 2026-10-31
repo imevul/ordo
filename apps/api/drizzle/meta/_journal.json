@@ -435,6 +435,62 @@
       "when": 1793469040772,
       "tag": "0061_cycle_capacity",
       "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1793469568550,
+      "tag": "0062_releases",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1793470555363,
+      "tag": "0063_calendar_feeds",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1793470990243,
+      "tag": "0064_agent_run_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1793472028394,
+      "tag": "0065_automation_rules",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1793478727837,
+      "tag": "0066_agent_run_output",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1793480347549,
+      "tag": "0067_dashboards",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1793482122883,
+      "tag": "0068_time_entries",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1793485358837,
+      "tag": "0069_plan_approval",
+      "breakpoints": true
     }
   ]
 }

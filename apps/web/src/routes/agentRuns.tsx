@@ -8,13 +8,16 @@ import { keys, useWsMutation } from '../api/queries.ts';
 import {
   FailureTags,
   isOpenRun,
+  isPlanPending,
   isRestartable,
-  RUN_STATUS_COLOR,
+  PlanApprovedTag,
   RunAnywayButton,
   RunBlocked,
   RunDetail,
   RunProgress,
+  RunStatusLink,
   RunUsage,
+  RunWaitingForSlot,
   runDetail,
   triggerLabel,
 } from '../components/AgentRuns.tsx';
@@ -271,7 +274,6 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
   const [toggled, setToggled] = useState<boolean | null>(null);
   const open = toggled ?? (run.status === 'waiting' || run.status === 'failed');
   const agent = ws.memberById.get(run.agentId);
-  const color = RUN_STATUS_COLOR[run.status];
   const detail = runDetail(run);
   const invalidate = { invalidate: [['ws', ws.slug, 'agentRuns']] };
   const resume = useWsMutation(
@@ -303,9 +305,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
     <div className="border-b border-border-soft/60">
       <div className={`row grid h-11 ${COLUMNS} items-center gap-3 px-4`}>
         <span>
-          <span className="chip" style={{ ['--chip' as string]: color }}>
-            {t(`agents.runs.status.${run.status}`)}
-          </span>
+          <RunStatusLink run={run} />
         </span>
         <span className="flex min-w-0 items-center gap-2">
           <Link
@@ -321,6 +321,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
           {/* The issue column is narrow below xl; the expanded row says what failed anyway. */}
           <span className="hidden xl:contents">
             <FailureTags run={run} />
+            <PlanApprovedTag run={run} />
           </span>
           {detail && (
             <button
@@ -363,7 +364,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
               <ExternalLink size={13} />
             </a>
           )}
-          {run.status === 'waiting' && (
+          {run.status === 'waiting' && !isPlanPending(run) && (
             <button
               type="button"
               className="flex h-6 w-6 items-center justify-center text-index hover:text-text"
@@ -416,15 +417,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
       </div>
       <RunProgress run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
       <RunBlocked run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
-      {run.waitingForRepository && (
-        <div className="-mt-1.5 truncate pb-2 pl-[11.5rem] pr-4 font-mono text-[11px] text-index">
-          <span className="text-warning">{t('agents.runsPage.waitingForSlot')}</span>
-          {' · '}
-          {t('agents.runsPage.waitingForSlotHint', {
-            repository: run.waitingForRepository.name,
-          })}
-        </div>
-      )}
+      <RunWaitingForSlot run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
       {open && detail && (
         <div className="pb-3 pl-[11.5rem] pr-4 text-[13px]">
           <RunDetail run={run} />

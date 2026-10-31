@@ -7,12 +7,15 @@ import {
   ChartLine,
   ChevronRight,
   CircleDot,
+  Clock,
   Eye,
   Goal,
   Hexagon,
   Inbox,
   Layers,
+  LayoutDashboard,
   Lock,
+  Package,
   Plus,
   RefreshCcw,
   Search,
@@ -30,6 +33,7 @@ import type { RealtimeStatus } from '../api/realtime.ts';
 import { t } from '../i18n/index.ts';
 import { readPref, ui, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
+import { RunningTimerItem } from './IssueTime.tsx';
 import { OrdoMark, ProjectIcon, TeamIcon } from './icons.tsx';
 import { ProfileMenu } from './ProfileMenu.tsx';
 import { SyncStatus } from './SyncStatus.tsx';
@@ -60,6 +64,20 @@ function FavoriteLink({ fav }: { fav: Favorite }) {
         <Link to="/$slug/view/$viewId" params={{ ...p, viewId: view.id }} className="nav-item">
           <Eye size={15} />
           <span className="truncate">{view.name}</span>
+        </Link>
+      );
+    }
+    case 'dashboard': {
+      const dashboard = ws.dashboardById.get(fav.targetId);
+      if (!dashboard) return null;
+      return (
+        <Link
+          to="/$slug/dashboard/$dashboardId"
+          params={{ ...p, dashboardId: dashboard.id }}
+          className="nav-item"
+        >
+          <LayoutDashboard size={15} />
+          <span className="truncate">{dashboard.name}</span>
         </Link>
       );
     }
@@ -227,6 +245,7 @@ export function Sidebar({
             <Target size={15} />
             {t('shell.nav.myIssues')}
           </Link>
+          {ws.workspace.settings.timeTracking && <RunningTimerItem />}
         </div>
 
         <div className="mt-5 mb-1 px-2 font-mono text-[10.5px] font-semibold tracking-[0.2em] text-index uppercase">
@@ -249,10 +268,24 @@ export function Sidebar({
             <ChartLine size={15} />
             {t('shell.nav.insights')}
           </Link>
+          <Link to="/$slug/dashboards" params={p} className="nav-item">
+            <LayoutDashboard size={15} />
+            {t('shell.nav.dashboards')}
+          </Link>
+          <Link to="/$slug/releases" params={p} className="nav-item">
+            <Package size={15} />
+            {t('shell.nav.releases')}
+          </Link>
           {!ws.isGuest && (
             <Link to="/$slug/customers" params={p} className="nav-item">
               <Building2 size={15} />
               {t('shell.nav.customers')}
+            </Link>
+          )}
+          {ws.workspace.settings.timeTracking && (
+            <Link to="/$slug/time" params={p} className="nav-item">
+              <Clock size={15} />
+              {t('timeTracking.report.nav')}
             </Link>
           )}
           {hasAgents && (

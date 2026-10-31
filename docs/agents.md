@@ -54,11 +54,23 @@ There are three parts:
    workspace. It opens on **Open**: runs that are queued, working or waiting for an answer, plus failed runs nobody
    has dealt with yet. **Finished** and **All** show the rest. Rows have Resume, Cancel, and for failed runs
    **Restart** and **Dismiss** (see [When a run fails](#when-a-run-fails)).
-8. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
+8. A run's status (on the Agent runs page or the issue) opens **its page**, the whole story in one place: the issue,
+   agent, why it ran and who asked; a timeline of when it was queued, picked up (by which runner, which attempt),
+   started, each progress step, its question and the reply that resumed it, lapsed leases, someone choosing **Run
+   anyway**, and how it ended; what it's waiting on; the summary, error and failure reason; the session link; which
+   run it restarts and which runs restarted it; and the prompt of its latest pickup. Anyone who can see the issue sees
+   the page, so Ordo keeps the prompt without instructions, parent or related issues: the agent's instructions are
+   for admins (in its settings), a runner file's `instructions` may hold expanded environment variables, and the
+   agent may see related issues on teams the viewer can't. Heartbeats aren't kept one by one: the page
+   shows when the lease runs out. The same actions as on the list are at the top.
+
+   While the run works, **Output** shows the last 200 lines its command printed, updating every few seconds (see
+   [Live output](#live-output)).
+9. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
    queue for another runner. After three claims it is marked failed, with a comment on the issue.
-9. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
-   while it's paused: queued runs wait, and runs already going finish. **Resume runs** picks up the queue again. (It's
-   the workspace setting `agentRunsPaused`.)
+10. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
+    while it's paused: queued runs wait, and runs already going finish. **Resume runs** picks up the queue again. (It's
+    the workspace setting `agentRunsPaused`.)
 
 ## When a run fails
 
@@ -71,7 +83,8 @@ Failed runs stay in the **Open** list on the Agent runs page, with what went wro
 - **Restart** queues the same agent on the same issue again, for the same reason (the assignment, the comment that
   mentioned it, the pull request), as a new run marked _restart_. It works for cancelled runs too, and on the issue's
   own run list.
-- **Dismiss** sets a failed run aside without restarting it.
+- **Dismiss** sets a failed or cancelled run aside without restarting it. A failed run then leaves the Open list; a
+  cancelled run was never on it, since cancelling was someone's choice.
 
 A newer run of the same agent on the issue (a restart, or **Run again**) also takes a failed run off the Open list.
 An assistant does both over MCP with `restart_agent_run` and `dismiss_agent_run` ([below](#from-an-assistant-over-mcp)).
@@ -159,6 +172,7 @@ left alone. Set `prune: false` in a runner file to keep them.
 | `--name <name>`            | What the runner is called on the issue (default `<hostname>/<label>`)             |
 | `--once`                   | Work through what's queued now, then exit (for cron or CI)                        |
 | `-v, --verbose`            | Echo the command's output                                                         |
+| `--no-output`              | Don't send the command's output to Ordo ([Live output](#live-output))             |
 | `--file <yaml>`            | Read agents and commands from a runner file (repeatable); `--only a,b` picks some |
 
 `ordo agent check --file <yaml>` validates a runner file and shows who each key belongs to, without claiming
@@ -206,6 +220,19 @@ command: claude -p --permission-mode acceptEdits --mcp-config "$ORDO_MCP_CONFIG"
 
 That's the string form (run with `sh -c`), which expands `$ORDO_MCP_CONFIG`; the list form doesn't. To let it use
 the CLI instead, allow `"Bash(ordo:*)"`. Add `"Bash(git:*)"` and the like for what else it should run.
+
+### Live output
+
+While the command works, the runner sends what it prints (stdout and stderr, without the `ORDO_…=` lines above) to
+Ordo every two seconds, and the run's page shows the last 200 lines as they come. Terminal colours are stripped and
+long lines cut at 1,000 characters. Claude Code's `--output-format json` prints nothing until it's done; with
+`--output-format stream-json --verbose` the page follows along, and each event is shown as what the agent said and
+the tools it called (`→ Bash: pnpm test`) rather than as JSON. Usage and the summary are read from its last line.
+
+Output can hold secrets the command printed, so Ordo keeps little of it and not for long: only the last 200 lines
+(64 KB) of the latest pickup, readable by whoever can see the issue, like the rest of the run, and deleted a week
+after the last line came in. A new pickup (after a question, or another runner taking over) starts over. To send
+none, set `output: false` for an agent in its runner file, or run with `--no-output`.
 
 ### Runner files
 
@@ -276,7 +303,8 @@ your `ordo login`.
   worktree, or in an empty directory with `cwd: tmp`). Only the list form resolves `./`, so a script next to the file
   goes in a list, like `factory` above.
 - Per agent: `key`, `command`, `repos`, `concurrency`, `timeout` (`90s`, `30m`, `2h`), `env`, `cwd` (`worktree` or
-  `tmp`), `checkout` (`true` or `false`), `prune` (`true` or `false`) and `instructions`. Unknown fields are errors.
+  `tmp`), `checkout` (`true` or `false`), `prune` (`true` or `false`), `output` (`true` or `false`, see
+  [Live output](#live-output)) and `instructions`. Unknown fields are errors.
 - `instructions` add up instead of replacing each other: the top level's, then `defaults`', then the agent's own,
   followed by the agent's instructions from Ordo. They go into the run's prompt (and `agent.instructions` in the run
   file), so a runner can describe its machine or its tools without changing the agent for everyone else. Ordo
@@ -285,13 +313,18 @@ your `ordo login`.
 
 ## Writing your own runner
 
-The runner protocol is three calls with the agent's key (see [api.md](api.md#agents-and-repositories)):
+The runner protocol is three calls with the agent's key (see [api.md](api.md#agents-and-repositories)), and a
+fourth if you want [live output](#live-output):
 
 ```text
 POST  /api/w/<ws>/agent/claim?wait=30&runner=<name>   → 200 AgentRunContext, or 204 when there's nothing
 POST  /api/w/<ws>/agent/runs/<id>/heartbeat          → { cancelled } — at least every 5 minutes
-PATCH /api/w/<ws>/agent/runs/<id>                    { status: running | waiting | succeeded | failed, question?, resume?, sessionUrl?, summary?, error? }
+PATCH /api/w/<ws>/agent/runs/<id>                    { status: running | waiting | succeeded | failed, question? | plan?, resume?, sessionUrl?, summary?, error? }
+POST  /api/w/<ws>/agent/runs/<id>/output             { lines: [...] } → { accepted } — new lines, every few seconds
 ```
+
+Send output in batches (at most 1,000 lines, two calls a second per run); send the last batch before the final
+report, since a run that no longer works takes none (`accepted: false`).
 
 `claim` takes an optional body `{ "instructions": "…" }`: the runner's own instructions, put before the agent's in
 the run's prompt and `agent.instructions`, and not stored. `claim` long-polls: it answers as soon as a run is queued for the agent, or with `204` after `wait` seconds. Each
@@ -429,6 +462,42 @@ if [ "$code" -ne 0 ] || [ "$(printf '%s' "$out" | jq -r '.is_error' 2>/dev/null)
 fi
 printf '%s' "$out" | jq -r .result
 ```
+
+## Plan approval
+
+For a risky issue, make the agent post its plan and wait for a person to approve it before it changes code. There
+are two switches:
+
+- **Approve the plan first** in an agent's settings turns it on for every issue the agent is assigned (off by
+  default).
+- **Plan** in an issue's properties overrides that for the issue: _Approve first_, _No approval_, or _Agent's
+  default_. It shows while an agent has the issue. Changes show in the issue's activity, and only people can make
+  them: an agent trying to change it (over the API or MCP) gets a 403.
+
+When approval applies, the run's prompt has a "Plan approval" section asking the agent to look into the issue,
+post its plan, and stop. Any of these posts it:
+
+- the MCP tool `propose_plan` (with the agent's key),
+- `ordo agent plan "<plan>"` (`-` reads stdin),
+- the protocol: `PATCH …/agent/runs/<id> { "status": "waiting", "plan": "…" }`.
+
+Like a [question](#questions), the plan is posted on the issue as a comment by the agent, mentioning whoever asked
+for the run, and the run waits, holding no lease. It shows **waiting for approval**, with the plan and an
+**Approve** button, on the issue and on Agent runs.
+
+- **Approve** puts the run back in the queue. Its next prompt has the plan under "Your plan", marked approved, and
+  the agent carries it out. The approval is recorded on the run (who and when) and in the audit log
+  (`agent.plan_approved`). Only people who can see the issue can approve.
+- **A reply** on the issue is feedback: the run resumes, and its prompt says the plan isn't approved yet and asks
+  for a revised plan. A new plan needs a new approval.
+
+Approval applies to runs of the assigned agent, until one of its plans for the issue is approved. Later runs (Run
+again after a review, failing checks) don't ask again. Runs for a mention on someone else's issue don't ask at all.
+
+**Ordo can't enforce the gate.** The agent works on your runner, and Ordo can't stop it from editing files there.
+The gate is the prompt plus the tool: an agent that follows its prompt stops after planning, but nothing on the
+server prevents an agent from pushing code before approval. Keep branch protection and pull request reviews in
+place for anything that has to be safe.
 
 ## From an assistant, over MCP
 
