@@ -15,6 +15,7 @@
     "build": "pnpm --filter @ordo/web build && pnpm --filter @ordo/cli build && pnpm --filter @ordo/api build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
+    "e2e": "pnpm --filter @ordo/web e2e",
     "lint": "biome check .",
     "format": "biome check --write .",
     "db:generate": "pnpm --filter @ordo/api db:generate",

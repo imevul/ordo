@@ -37,6 +37,7 @@ Open <http://localhost:5173>. Load demo data with `pnpm db:seed` and sign in as 
 | `pnpm dev:preview [--ttl 30m]`     | API + web on free ports, throwaway seeded database   |
 | `pnpm typecheck`                   | TypeScript (v7) across packages                      |
 | `pnpm test`                        | Vitest — shared unit tests and API integration tests |
+| `pnpm e2e`                         | Browser smoke tests (Playwright) against a preview   |
 | `pnpm lint` / `pnpm format`        | Biome check / fix                                    |
 | `pnpm build`                       | Production bundles                                   |
 | `pnpm db:generate --name <change>` | New migration from `schema.ts`                       |
@@ -53,6 +54,25 @@ API tests (`apps/api/test`) build the real Fastify app against a fresh `ordo_tes
 make dev-db
 pnpm --filter @ordo/api test
 ```
+
+### End-to-end tests
+
+`apps/web/e2e` holds a few Playwright smoke tests over the flows where UI wiring matters most: sign-in and creating
+an issue with `c`, offline edits and handing sync between tabs, board drag and drop, the rich editor's Markdown,
+moving an issue to another team, and keyboard scopes. Each runs at desktop width and at 375px, and fails on console
+errors (a spec can allow expected ones with `test.use({ allowConsoleErrors: /…/ })`). They're not part of
+`pnpm test`; CI runs them in their own job.
+
+```bash
+make dev-db
+pnpm --filter @ordo/web exec playwright install chromium   # once
+pnpm e2e                                                    # starts and stops its own pnpm dev:preview
+E2E_BASE_URL=http://localhost:5173 pnpm e2e                 # or against one already running (seeded demo)
+pnpm e2e --project desktop --ui                             # Playwright's flags pass through
+```
+
+Keep them few: a new spec is for a flow that unit and API tests can't see breaking. Set up data through the `api`
+fixture (`e2e/fixtures.ts`) and give it `unique()` titles, so specs run in parallel and against a reused preview.
 
 ## Making changes
 

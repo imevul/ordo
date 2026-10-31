@@ -36,6 +36,48 @@ jobs:
       - run: pnpm test
       - run: ./scripts/check-bundle.sh
 
+  # Browser smoke tests (apps/web/e2e) against `pnpm dev:preview`, at desktop width and at 375px.
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: ordo
+          POSTGRES_PASSWORD: ordo
+          POSTGRES_DB: ordo
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ordo" --health-interval 2s --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+      - run: npm install -g pnpm@12.15.0
+      - run: pnpm install --frozen-lockfile
+      - id: playwright
+        run: echo "version=$(pnpm --filter @ordo/web exec playwright --version | cut -d' ' -f2)" >> "$GITHUB_OUTPUT"
+      - id: browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+      # The browser comes from the cache; the system libraries it needs don't.
+      - if: steps.browsers.outputs.cache-hit != 'true'
+        run: pnpm --filter @ordo/web exec playwright install --with-deps chromium
+      - if: steps.browsers.outputs.cache-hit == 'true'
+        run: pnpm --filter @ordo/web exec playwright install-deps chromium
+      - run: pnpm e2e
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-results
+          path: apps/web/test-results/
+          retention-days: 7
+
   # Builds the production image (not pushed), so Dockerfile drift fails here and not on release.
   docker:
     runs-on: ubuntu-latest

@@ -7,7 +7,10 @@
       "!**/node_modules",
       "!apps/api/drizzle",
       "!pnpm-lock.yaml",
-      "!.claude"
+      "!.claude",
+      "!apps/web/e2e/.auth",
+      "!apps/web/test-results",
+      "!apps/web/playwright-report"
     ]
   },
   "formatter": {
@@ -47,7 +50,11 @@
   "overrides": [
     {
       "includes": ["apps/web/**"],
-      "linter": { "domains": { "react": "recommended" } }
+      "linter": { "domains": { "react": "recommended", "playwright": "none" } }
+    },
+    {
+      "includes": ["apps/web/e2e/**"],
+      "linter": { "domains": { "react": "none", "playwright": "recommended" } }
     }
   ]
 }
