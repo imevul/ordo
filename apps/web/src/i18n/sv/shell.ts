@@ -16,6 +16,7 @@ export default {
     main: 'Huvudnavigering',
     workspaceMenu: 'Arbetsytans meny',
     createWorkspace: 'Skapa arbetsyta',
+    workspaceSettings: 'Inställningar för arbetsytan',
     inviteMembers: 'Bjud in medlemmar',
     instanceAdmin: 'Instansadmin',
     newIssue: 'Nytt ärende',

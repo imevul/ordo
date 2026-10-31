@@ -15,6 +15,7 @@ export default {
     main: 'Main',
     workspaceMenu: 'Workspace menu',
     createWorkspace: 'Create workspace',
+    workspaceSettings: 'Workspace settings',
     inviteMembers: 'Invite members',
     instanceAdmin: 'Instance admin',
     newIssue: 'New issue',
