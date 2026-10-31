@@ -13,6 +13,7 @@ import { AgentsSection, RepositoriesSection } from './agents/index.tsx';
 import { AiSection } from './ai.tsx';
 import { AuditSection } from './audit.tsx';
 import { ChatAccountsCard } from './chat/index.tsx';
+import { CustomFieldsSection } from './customFields.tsx';
 import { ExportsCard, PlaceholdersCard } from './exports.tsx';
 import { ImportsSection } from './imports.tsx';
 import { GitAccountsCard, IntegrationsSection } from './integrations/index.tsx';
@@ -43,6 +44,7 @@ const SECTIONS: {
     { key: 'members', message: 'members', group: 'workspace' },
     { key: 'teams', message: 'teams', group: 'workspace' },
     { key: 'labels', message: 'labels', group: 'workspace' },
+    { key: 'custom-fields', message: 'customFields', group: 'workspace' },
     { key: 'templates', message: 'templates', group: 'workspace' },
     // Invitations, domains and joining: who gets in. (The key predates the name.)
     { key: 'org-security', message: 'access', group: 'workspace', admin: true },
@@ -187,6 +189,8 @@ export function SettingsPage() {
       <AuditSection />
     ) : section === 'labels' ? (
       <LabelsSection />
+    ) : section === 'custom-fields' ? (
+      <CustomFieldsSection />
     ) : section === 'templates' ? (
       <TemplatesSection />
     ) : section === 'teams' ? (

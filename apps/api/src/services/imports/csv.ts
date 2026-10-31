@@ -8,8 +8,14 @@ import {
   parsePriority,
 } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
-import { files } from '../../db/schema.ts';
-import { ImportAbort, type ImportAdapter, type SourceContext, type SourceIssue } from './types.ts';
+import { customFields, files } from '../../db/schema.ts';
+import {
+  ImportAbort,
+  type ImportAdapter,
+  type SourceContext,
+  type SourceFieldValue,
+  type SourceIssue,
+} from './types.ts';
 
 const MAX_ROWS = 50_000;
 const PAGE_SIZE = 250;
@@ -46,7 +52,8 @@ const columnsOf = (sctx: SourceContext) =>
   (sctx.row.config.columns as CsvColumns | undefined) ?? null;
 
 async function parsed(sctx: SourceContext): Promise<Parsed> {
-  const key = `${sctx.row.id}:${sctx.row.fileId}:${JSON.stringify(columnsOf(sctx))}`;
+  const fields = await fieldNames(sctx);
+  const key = `${sctx.row.id}:${sctx.row.fileId}:${JSON.stringify(columnsOf(sctx))}:${JSON.stringify([...fields])}`;
   if (cache?.key === key) return cache.parsed;
   const rows = parseCsv(await readFile(sctx));
   const [headers = [], ...data] = rows;
@@ -56,9 +63,23 @@ async function parsed(sctx: SourceContext): Promise<Parsed> {
     );
   }
   const columns = columnsOf(sctx) ?? detectCsvColumns(headers);
-  const result = convert(sctx.row.name, headers, data, columns);
+  const result = convert(sctx.row.name, headers, data, columns, fields);
   cache = { key, parsed: result };
   return result;
+}
+
+/**
+ * The workspace's custom field names (lowercased), and whether one of that name is a person
+ * field. Columns named like one feed it.
+ */
+async function fieldNames(sctx: SourceContext) {
+  const rows = await sctx.app.db
+    .select({ name: customFields.name, type: customFields.type })
+    .from(customFields)
+    .where(eq(customFields.workspaceId, sctx.row.workspaceId));
+  const names = new Map<string, boolean>();
+  for (const r of rows) names.set(lower(r.name), names.get(lower(r.name)) || r.type === 'person');
+  return names;
 }
 
 const lower = (s: string) => s.trim().toLowerCase();
@@ -86,7 +107,25 @@ export function calendarDate(value: string) {
 }
 
 /** Turns rows into source issues and a summary of what they refer to. */
-function convert(name: string, headers: string[], data: string[][], columns: CsvColumns): Parsed {
+function convert(
+  name: string,
+  headers: string[],
+  data: string[][],
+  columns: CsvColumns,
+  fieldNames: Map<string, boolean>,
+): Parsed {
+  // Columns no Ordo field reads, named like a custom field, feed it.
+  const used = new Set(Object.values(columns).filter(Boolean));
+  const fieldColumns = headers
+    .map((header, i) => ({ header, i, id: lower(header) }))
+    .filter(
+      (c, i) =>
+        c.id &&
+        !used.has(c.header) &&
+        fieldNames.has(c.id) &&
+        headers.findIndex((h) => lower(h) === c.id) === i,
+    )
+    .map((c) => ({ ...c, person: fieldNames.get(c.id)!, count: 0 }));
   const index = Object.fromEntries(
     Object.entries(columns).map(([field, header]) => [
       field,
@@ -179,6 +218,16 @@ function convert(name: string, headers: string[], data: string[][], columns: Csv
 
     const labelText = cell(r, 'labels');
     const projectText = cell(r, 'project');
+    const values: Record<string, SourceFieldValue> = {};
+    for (const c of fieldColumns) {
+      const v = (r[c.i] ?? '').trim();
+      if (!v) continue;
+      // People in person columns are mapped like assignees.
+      const value = c.person ? person(v) : v;
+      if (!value) continue;
+      values[c.id] = value;
+      c.count++;
+    }
     return {
       id,
       ref: rawId || line,
@@ -206,6 +255,7 @@ function convert(name: string, headers: string[], data: string[][], columns: Csv
       dueDate: due,
       ...dates,
       url: /^https?:\/\//.test(cell(r, 'url')) ? cell(r, 'url') : undefined,
+      customFields: Object.keys(values).length ? values : undefined,
       warnings,
     };
   });
@@ -231,6 +281,7 @@ function convert(name: string, headers: string[], data: string[][], columns: Csv
       users: [...users].map(([id, u]) => ({ id, ...u })),
       labels: [...labels].map(([id, l]) => ({ id, ...l })),
       projects: [...projects].map(([id, p]) => ({ id, ...p })),
+      fields: fieldColumns.map((c) => ({ id: c.id, name: c.header.trim(), count: c.count })),
       counts: { issues: data.length, comments: 0 },
       warnings: summaryWarnings,
       csv: { headers, columns, preview: data.slice(0, 5) },

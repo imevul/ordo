@@ -8,6 +8,7 @@ import type {
   Comment,
   CreateCommentInput,
   CreateIssueInput,
+  CustomField,
   Cycle,
   HistoryEntry,
   Issue,
@@ -161,6 +162,11 @@ export class WorkspaceClient {
 
   labels() {
     return this.bootstrap().then((b): Label[] => b.labels);
+  }
+
+  /** Workspace custom fields and those of teams the key's owner can see. */
+  customFields() {
+    return this.request<CustomField[]>('GET', '/custom-fields');
   }
 
   /** Issues and projects matching words or an identifier, best first. */

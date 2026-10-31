@@ -171,7 +171,7 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 
 | Method         | Path                            |                                                                                                                                                                                                                                                                                                                                                                                                          |
 | -------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| GET            | `/bootstrap`                    | Workspace, your role, members, teams (with statuses), labels, projects, cycles, views, favorites, unread count                                                                                                                                                                                                                                                                                           |
+| GET            | `/bootstrap`                    | Workspace, your role, members, teams (with statuses), labels, custom fields, projects, cycles, views, favorites, unread count                                                                                                                                                                                                                                                                            |
 | PATCH          | `/`                             | _Admin._ `{ name?, slug?, defaultTeamId?, settings?: { invitePolicy?, domainAutoJoin?, autoJoinRole?, requireSso?, ssoSessionMaxAgeHours?, allowApiKeysUnderSso? } }`                                                                                                                                                                                                                                    |
 | DELETE         | `/`                             | _Owner._ `{ confirmSlug }` — deletes the workspace                                                                                                                                                                                                                                                                                                                                                       |
 | POST / DELETE  | `/logo`                         | _Admin._ Upload (multipart `file`) / remove the logo                                                                                                                                                                                                                                                                                                                                                     |
@@ -287,6 +287,7 @@ from the bytes — are served inline; everything else downloads as `application/
 | `assigneeIds`                            | (uuid \| `"me"` \| `"none"`)[]                                           |                                                  |
 | `creatorIds`                             | (uuid \| `"me"`)[]                                                       |                                                  |
 | `labelIds`                               | uuid[]                                                                   | has any of                                       |
+| `customFields`                           | { fieldId: string[] }                                                    | per field, any of the values (see below)         |
 | `projectIds`, `milestoneIds`, `cycleIds` | (uuid \| `"none"`)[]                                                     |                                                  |
 | `parentId`                               | uuid                                                                     | sub-issues of                                    |
 | `subscribedBy`                           | `"me"`                                                                   |                                                  |
@@ -300,9 +301,38 @@ curl -X POST "$ORDO/w/acme/issues/query" -H "Authorization: Bearer $KEY" \
   -d '{"filter":{"assigneeIds":["me"],"stateTypes":["unstarted","started"]}}'
 ```
 
+A `customFields` filter gives, per field id, the values wanted: option ids (a multi-select matches when it has any
+of them), user ids or `me`, numbers and dates written out (`"2.5"`, `"2026-12-01"`), text, or `none` for issues
+without a value. `{"customFields":{"<tier id>":["<gold id>","none"]}}` finds Gold issues and those with no tier.
+
 Without `after` you get up to `limit` issues (default 2 000, at most 5 000) in board order. To read everything, page
 with `after`: send `"after": null` for the first page, then the last issue's `id`; pages come in id order and a page
 shorter than `limit` is the last. The web app loads big views this way, 1 000 at a time.
+
+### Custom fields
+
+| Method | Path                 |                                                                                                                                                                                                          |
+| ------ | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/custom-fields`     | Workspace fields and those of teams you can see (also in `/bootstrap` as `customFields`), in order                                                                                                       |
+| POST   | `/custom-fields`     | `{ name, type, teamId?, description?, options?: [{ name, color? }], position? }` — `type` is `select`, `multi_select`, `number`, `date`, `text` or `person`. _Admin_, or _team admin_ for a team's field |
+| PATCH  | `/custom-fields/:id` | `{ name?, description?, options?, position? }` — keep an option's `id` to rename it; options left out are taken off the issues that had them. The type and team can't change                             |
+| DELETE | `/custom-fields/:id` | Removes the field and its values                                                                                                                                                                         |
+
+A field is `{ id, teamId, name, description, type, options: [{ id, name, color }], position }`; `teamId` is `null`
+for fields every team's issues have. Names are unique among the fields one issue can have (case-insensitively).
+
+Issues carry their values in `customFields`, an object of field id → value, leaving out fields without one: an
+option id (select), a list of option ids (multi-select), a number, a `YYYY-MM-DD` date, text, or a user id
+(person). `POST /issues`, `PATCH /issues/:id` and `POST /issues/batch` take `customFields` the same way and set only
+the fields given; `null` clears one. Values must fit the field: known options, a person who can see the issue's team,
+a real date. Fields of other teams are refused, and moving an issue to another team drops the values of the old
+team's own fields. Changes show in the issue's history as `customField:<id>`.
+
+```bash
+curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"customFields":{"<tier id>":"<gold option id>","<release id>":"2026-12-01","<notes id>":null}}'
+```
 
 ### Projects, cycles, labels, views
 
@@ -589,10 +619,13 @@ The credentials are checked first and never returned.
 
 `status` goes `analyzing` → `ready` → (`dry_running` → `ready`) → `running` → `completed`, or `failed` / `canceled`;
 undoing goes `undoing` → `undone`.
-`mapping` is `{ teams, statuses, users, labels, projects, keepNumbers }`, keyed by the source's ids from `summary`:
-a team maps to `{ teamId }`, `{ create: { name, key } }` or `{ skip: true }`; a status to a status id or a status
-type; a person to a member's or placeholder's id, `"placeholder"` for a new placeholder, or `null`; a label or
-project to an id, `"create"` or `"skip"`.
+`mapping` is `{ teams, statuses, users, labels, projects, fields?, keepNumbers }`, keyed by the source's ids from
+`summary`: a team maps to `{ teamId }`, `{ create: { name, key } }` or `{ skip: true }`; a status to a status id or a
+status type; a person to a member's or placeholder's id, `"placeholder"` for a new placeholder, or `null`; a label or
+project to an id, `"create"` or `"skip"`. `fields` maps the source's custom fields (`summary.fields`: `{ id, name,
+type?, options?, count }`, from Jira or CSV columns named like a field) to a custom field id, `"create"` (a new
+workspace field; only for fields with a `type`) or `"skip"`. Issues of a team the chosen field isn't for go into that
+team's field of the same name, if it has one. The report counts new fields in `created.fields`.
 
 ### Placeholders
 

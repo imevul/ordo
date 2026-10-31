@@ -1,4 +1,4 @@
-import type { Bootstrap, Import, IssueDetail } from '@ordo/shared';
+import type { Bootstrap, CustomField, Import, IssueDetail } from '@ordo/shared';
 import { and, eq, inArray, ne, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -310,6 +310,94 @@ describe('CSV import into an existing team', () => {
     const again = (await owner.get(`${ws}/imports/${imp.id}`)).data as Import;
     expect(again.summary!.csv!.columns.title).toBe('Body');
     expect(again.status).toBe('ready');
+  });
+});
+
+describe('CSV custom field columns', () => {
+  it('import into the fields of the same name, adding options and reporting bad values', async () => {
+    const boot = (await owner.get(`${ws}/bootstrap`)).data as Bootstrap;
+    const alpha = boot.teams.find((t) => t.key === 'ALP')!;
+    const make = async (body: object) => {
+      const res = await owner.post(`${ws}/custom-fields`, body);
+      expect(res.statusCode, res.body).toBe(200);
+      return res.data as CustomField;
+    };
+    const tier = await make({
+      name: 'Tier',
+      type: 'select',
+      teamId: alpha.id,
+      options: [{ name: 'Gold' }],
+    });
+    const size = await make({ name: 'Size', type: 'number' });
+    const reviewer = await make({ name: 'Reviewer', type: 'person' });
+    const start = await make({ name: 'Kickoff', type: 'date' });
+    const areas = await make({ name: 'Areas', type: 'multi_select', options: [{ name: 'Web' }] });
+
+    let imp = await analyzed(
+      'fields.csv',
+      [
+        'Title,tier,SIZE,Reviewer,Kickoff,Areas,Unrelated',
+        `Field one,gold,3,${memberEmail},2026-02-01,"web, cli",x`,
+        'Field two,Silver,lots,Rita Reviewer,someday,,y',
+      ].join('\n'),
+    );
+    expect(imp.summary!.fields!.map((f) => [f.name, f.count])).toEqual([
+      ['tier', 2],
+      ['SIZE', 2],
+      ['Reviewer', 2],
+      ['Kickoff', 2],
+      ['Areas', 1],
+    ]);
+    expect(imp.mapping!.fields).toEqual({
+      tier: tier.id,
+      size: size.id,
+      reviewer: reviewer.id,
+      kickoff: start.id,
+      areas: areas.id,
+    });
+    // Reviewers are people to map, like assignees.
+    expect(imp.mapping!.users[memberEmail.toLowerCase()]).toBe(memberId);
+    expect(imp.mapping!.users['rita reviewer']).toBe('placeholder');
+
+    await owner.patch(`${ws}/imports/${imp.id}`, {
+      mapping: { ...imp.mapping!, teams: { '*': { teamId: alpha.id } } },
+    });
+    imp = await run(imp.id, 'run');
+    expect(imp.status, imp.error ?? '').toBe('completed');
+    expect(imp.report!.created.issues).toBe(2);
+    expect(imp.report!.warnings.map((w) => [w.item, w.message])).toEqual(
+      expect.arrayContaining([
+        ['row 3', 'Couldn\'t read the Size "lots"'],
+        ['row 3', 'Couldn\'t read the Kickoff "someday"'],
+      ]),
+    );
+
+    const fields = Object.fromEntries(
+      ((await owner.get(`${ws}/custom-fields`)).data as CustomField[]).map((f) => [f.id, f]),
+    );
+    const names = (fieldId: string, ids: string[]) =>
+      ids.map((id) => fields[fieldId]!.options.find((o) => o.id === id)!.name);
+    const rows = await app.db
+      .select({ id: issues.id, title: issues.title })
+      .from(issues)
+      .where(and(eq(issues.teamId, alpha.id), inArray(issues.title, ['Field one', 'Field two'])));
+    const byTitle = Object.fromEntries(rows.map((r) => [r.title, r.id]));
+    const first = await issue(byTitle['Field one']!);
+    expect(names(tier.id, [first.customFields[tier.id] as string])).toEqual(['Gold']);
+    expect(first.customFields[size.id]).toBe(3);
+    expect(first.customFields[reviewer.id]).toBe(memberId);
+    expect(first.customFields[start.id]).toBe('2026-02-01');
+    expect(names(areas.id, first.customFields[areas.id] as string[])).toEqual(['Web', 'cli']);
+
+    const second = await issue(byTitle['Field two']!);
+    // A new option, made on the way.
+    expect(names(tier.id, [second.customFields[tier.id] as string])).toEqual(['Silver']);
+    expect(second.customFields[size.id]).toBeUndefined();
+    expect(second.customFields[start.id]).toBeUndefined();
+    const rita = ((await owner.get(`${ws}/bootstrap`)).data as Bootstrap).placeholders.find(
+      (p) => p.name === 'Rita Reviewer',
+    );
+    expect(second.customFields[reviewer.id]).toBe(rita!.id);
   });
 });
 

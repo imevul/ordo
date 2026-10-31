@@ -1,4 +1,4 @@
-import type { Bootstrap, Import, IssueDetail } from '@ordo/shared';
+import type { Bootstrap, CustomField, Import, IssueDetail } from '@ordo/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -11,6 +11,7 @@ let mock: Awaited<ReturnType<typeof startMockForge>>;
 let owner: Client;
 let bobEmail: string;
 let bobId: string;
+let severity: CustomField;
 const slug = `jira-${Date.now()}`;
 const ws = `/api/w/${slug}`;
 const EMAIL = 'admin@acme.test';
@@ -99,6 +100,13 @@ function data() {
       components: [{ name: 'Web' }],
       parent: epic,
       customfield_10016: 5,
+      customfield_10020: [{ id: 7, name: 'Sprint 7' }],
+      customfield_10100: { id: '1', value: 'High' },
+      customfield_10101: [{ value: 'Acme' }, { value: 'Globex' }],
+      customfield_10102: 1200.5,
+      customfield_10103: '2024-04-30T23:30:00.000-0700',
+      customfield_10104: 'Needs legal review',
+      customfield_10105: carol,
       duedate: '2024-03-01',
       created: '2024-01-05T10:00:00.000+0000',
       comment: {
@@ -121,6 +129,9 @@ function data() {
       issuetype: type('Bug'),
       status: status("Won't Do", 'done'),
       resolutiondate: '2024-01-21T10:00:00.000+0000',
+      customfield_10100: { id: '2', value: 'Low' },
+      customfield_10101: [],
+      customfield_10106: null,
       issuelinks: [
         { id: 'L1', type: { name: 'Blocks' }, outwardIssue: { key: 'ENG-2' } },
         { id: 'L2', type: { name: 'Duplicate' }, outwardIssue: { key: 'ENG-3' } },
@@ -132,6 +143,19 @@ function data() {
     jiraIssue('OPS-3', { summary: 'Ops 3' }),
   ];
 }
+
+const cf = (id: string, name: string, type: string, custom: string, items?: string) => ({
+  id,
+  name,
+  custom: true,
+  schema: {
+    type,
+    ...(items && { items }),
+    custom: custom.includes(':')
+      ? custom
+      : `com.atlassian.jira.plugin.system.customfieldtypes:${custom}`,
+  },
+});
 
 /** Two issues a page: token paging on Cloud's /search/jql, offsets on Data Center's /search. */
 function jira(req: ForgeRequest) {
@@ -156,6 +180,16 @@ function jira(req: ForgeRequest) {
         { id: 'customfield_10016', name: 'Story point estimate' },
         { id: 'customfield_10014', name: 'Epic Link' },
         { id: 'summary', name: 'Summary' },
+        { id: 'labels', name: 'Labels', custom: false, schema: { type: 'array', items: 'string' } },
+        cf('customfield_10020', 'Sprint', 'array', 'com.pyxis.greenhopper.jira:gh-sprint', 'json'),
+        cf('customfield_10100', 'Severity', 'option', 'select'),
+        cf('customfield_10101', 'Customers', 'array', 'multiselect', 'option'),
+        cf('customfield_10102', 'Budget', 'number', 'float'),
+        cf('customfield_10103', 'Go-live', 'datetime', 'datetime'),
+        cf('customfield_10104', 'Notes', 'string', 'textarea'),
+        cf('customfield_10105', 'Reviewer', 'user', 'userpicker'),
+        // No issue has a value: no field is made for it.
+        cf('customfield_10106', 'Unused', 'string', 'textfield'),
       ],
     };
   }
@@ -193,6 +227,14 @@ beforeAll(async () => {
   app = await testApp({ settingsFromEnv: { allowPrivateNetworkTargets: true } });
   owner = (await signup(app, 'Olive Owner')).client;
   await owner.post('/api/workspaces', { name: 'Jira', slug, teamName: 'Alpha', teamKey: 'ALP' });
+  // Jira's Severity goes into this one rather than a new field.
+  severity = (
+    await owner.post(`${ws}/custom-fields`, {
+      name: 'severity',
+      type: 'select',
+      options: [{ name: 'Low' }],
+    })
+  ).data;
   const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0];
   const b = await signup(app, 'Bob Member', { inviteToken: invite.token });
   bobEmail = b.email;
@@ -243,6 +285,35 @@ describe('Jira Cloud import', () => {
     expect(s.users.map((u) => u.id).sort()).toEqual(['acc-alice', 'acc-bob', 'acc-carol']);
     expect(imp.mapping!.users['acc-bob']).toBe(bobId);
     expect(imp.mapping!.users['acc-carol']).toBe('placeholder');
+    // Custom fields with values, but not those Ordo has its own fields for (sprint, story points).
+    expect(s.fields).toEqual([
+      {
+        id: 'customfield_10100',
+        name: 'Severity',
+        type: 'select',
+        count: 2,
+        options: ['High', 'Low'],
+      },
+      {
+        id: 'customfield_10101',
+        name: 'Customers',
+        type: 'multi_select',
+        count: 1,
+        options: ['Acme', 'Globex'],
+      },
+      { id: 'customfield_10102', name: 'Budget', type: 'number', count: 1 },
+      { id: 'customfield_10103', name: 'Go-live', type: 'date', count: 1 },
+      { id: 'customfield_10104', name: 'Notes', type: 'text', count: 1 },
+      { id: 'customfield_10105', name: 'Reviewer', type: 'person', count: 1 },
+    ]);
+    expect(imp.mapping!.fields).toEqual({
+      customfield_10100: severity.id,
+      customfield_10101: 'create',
+      customfield_10102: 'create',
+      customfield_10103: 'create',
+      customfield_10104: 'create',
+      customfield_10105: 'create',
+    });
   });
 
   it('imports issues, sub-tasks, epics, links and comments', async () => {
@@ -256,6 +327,7 @@ describe('Jira Cloud import', () => {
       issues: 3,
       comments: 3,
       relations: 2,
+      fields: 5,
     });
 
     const boot = (await owner.get(`${ws}/bootstrap`)).data as Bootstrap;
@@ -276,6 +348,34 @@ describe('Jira Cloud import', () => {
       'frontend',
     ]);
     expect(story.links.map((l) => l.url)).toEqual([`${mock.url}/browse/ENG-2`]);
+
+    const fields = Object.fromEntries(
+      ((await owner.get(`${ws}/custom-fields`)).data as CustomField[]).map((f) => [f.name, f]),
+    );
+    expect(Object.keys(fields).sort()).toEqual([
+      'Budget',
+      'Customers',
+      'Go-live',
+      'Notes',
+      'Reviewer',
+      'severity',
+    ]);
+    expect(fields['Go-live']!.type).toBe('date');
+    const option = (name: string, id: unknown) =>
+      fields[name]!.options.find((o) => o.id === id)?.name;
+    // The existing field got the option it lacked.
+    expect(fields.severity!.options.map((o) => o.name)).toEqual(['Low', 'High']);
+    expect(option('severity', story.customFields[severity.id])).toBe('High');
+    expect(
+      (story.customFields[fields.Customers!.id] as string[]).map((id) => option('Customers', id)),
+    ).toEqual(['Acme', 'Globex']);
+    expect(story.customFields[fields.Budget!.id]).toBe(1200.5);
+    expect(story.customFields[fields['Go-live']!.id]).toBe('2024-04-30');
+    expect(story.customFields[fields.Notes!.id]).toBe('Needs legal review');
+    // People fields get placeholders, like assignees.
+    expect(story.customFields[fields.Reviewer!.id]).toBe(
+      boot.placeholders.find((p) => p.name === 'Carol Commenter')!.id,
+    );
     const [epic] = await app.db.select().from(projects).where(eq(projects.id, story.projectId!));
     expect(epic).toMatchObject({ name: 'Q1 launch', status: 'started', leadId: bobId });
     expect((await owner.get(`${ws}/issues/ENG-1`)).statusCode).toBe(404);

@@ -1008,6 +1008,7 @@ export const importMappingSchema = z.object({
   users: z.record(z.string(), z.union([id, z.literal('placeholder')]).nullable()),
   labels: z.record(z.string(), z.union([id, z.enum(['create', 'skip'])])),
   projects: z.record(z.string(), z.union([id, z.enum(['create', 'skip'])])),
+  fields: z.record(z.string(), z.union([id, z.enum(['create', 'skip'])])).optional(),
   keepNumbers: z.boolean(),
 });
 

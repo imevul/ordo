@@ -15,6 +15,10 @@ Workspace admins can bring issues in from other tools: **CSV files**, **Linear**
    - **People** are matched to members by email, then by name or username. Anyone else gets a
      [placeholder](#placeholders), or you can leave their issues unassigned.
    - **Labels** and **projects** are matched by name; the rest are created.
+   - **[Custom fields](user-guide.md#custom-fields)** (Jira's, or CSV columns) go into the field of the same name
+     (case doesn't matter). Jira fields without one get a new workspace field; CSV columns only feed fields that
+     exist. Options a field lacks are added to it. Values that don't fit the field (a word in a number field, a
+     date Ordo can't read) are left off, with a warning in the report.
    - **Keep numbers**: issues keep their source numbers (`ENG-42` stays `ENG-42`) in teams that are new or have no
      issues yet. Elsewhere they're numbered from the team's counter.
 3. **Dry run** (optional, repeatable). Reports what the import would create, what it would skip and why, and any
@@ -22,7 +26,7 @@ Workspace admins can bring issues in from other tools: **CSV files**, **Linear**
 4. **Run.** Issues are created in pages by background jobs. You can cancel; what's imported so far stays.
 
 What an import keeps: titles, descriptions, statuses, priorities, assignees, creators, labels, projects,
-estimates, due dates, sub-issues, and when issues were created, updated and completed. From sources that have them
+estimates, due dates, custom fields (CSV and Jira), sub-issues, and when issues were created, updated and completed. From sources that have them
 it also keeps comments (with their authors, dates and threads), relations (blocks, related, duplicate — a
 duplicate keeps the status it had), cycles and links. Each issue links back to where it came from. Imports are
 silent: nobody is notified and no webhooks fire.
@@ -31,7 +35,7 @@ Running an import again (after a failure, a cancel, or to be sure) skips everyth
 **Forgetting** an import only deletes it and its file; the imported issues stay.
 
 **Undo** moves every issue an import created to the trash, where each can still be restored. Teams, labels,
-projects and placeholders it made stay (removing them would take them off the trashed issues too); delete them by
+projects, custom fields and placeholders it made stay (removing them would take them off the trashed issues too); delete them by
 hand if you don't need them. An undone import can't be run again: start a new one.
 
 ## Linear
@@ -132,6 +136,20 @@ keeps the token encrypted until you delete the import, and then:
   issue's parent on Cloud, or the "Epic Link" field on Data Center.
 - Makes sub-tasks sub-issues, and issue types (Bug, Story, Task…) and components labels.
 - Keeps story points as estimates, and blocks, duplicates and other issue links as relations.
+- Imports custom fields that have values on the imported issues into Ordo custom fields of the same name, making
+  workspace fields for those that are missing:
+
+  | Jira field                                                 | Ordo field                     |
+  | ---------------------------------------------------------- | ------------------------------ |
+  | Select list, radio buttons, cascading list (first level)   | Select                         |
+  | Multi-select, checkboxes, labels, version/component picker | Multi-select                   |
+  | Number                                                     | Number                         |
+  | Date picker, date time picker                              | Date (the day as written)      |
+  | Text field, paragraph, URL                                 | Text (as written, no Markdown) |
+  | User picker (single user)                                  | Person, mapped like assignees  |
+
+  Jira Software's own fields (sprint, story points, epic link, rank) are left out, as are kinds Ordo has nothing
+  like (multi-user and group pickers, for instance).
 - Converts descriptions and comments from Jira's wiki markup to Markdown: headings, emphasis, links, lists,
   quotes, code and tables. Mentions become `@name`, or `@someone` where Jira only gives an account id.
 - Doesn't import sprints, attachments or worklogs; each issue links back to Jira.
@@ -173,6 +191,12 @@ which field:
 | Dates       | Created, Updated, Completed, Resolved  | Any format JavaScript's `Date` reads           |
 | URL         | URL, Link                              | Becomes a link on the issue                    |
 
+Any other column named like one of the workspace's [custom fields](user-guide.md#custom-fields) (case doesn't
+matter) feeds that field, for issues of teams that have it: write options by name (several separated by commas,
+semicolons or `|`; options the field doesn't have yet are added), numbers, dates in any format the date columns
+take, text, and people by email or name like the assignee. Create the fields before uploading the file. Values that
+don't fit are left off and listed as warnings.
+
 Files can be up to 25 MB and 50 000 rows.
 
 ## Exporting
@@ -182,10 +206,13 @@ file, and a download link appears when it's ready. Exports are kept for a week, 
 each is recorded in the audit log.
 
 - **JSON** holds everything that belongs to the workspace as a whole: members (with emails), placeholders, teams with
-  their statuses and members, labels, issue templates, projects and their updates, cycles, shared views, and every
-  issue (private teams' and trashed ones too) with comments and their reactions, history, relations and links.
-- **CSV** holds the issues that aren't in the trash, in the columns the CSV import reads: an export imports into
-  another workspace or instance as it is, sub-issues and labels included.
+  their statuses and members, labels, custom fields (`customFields`, with their options), issue templates, projects
+  and their updates, cycles, shared views, and every issue (private teams' and trashed ones too) with its custom
+  field values (`customFields`, by field id), comments and their reactions, history, relations and links.
+- **CSV** holds the issues that aren't in the trash, in the columns the CSV import reads, plus a column per custom
+  field headed by its name: option names (several joined with `, `, like labels), numbers, `YYYY-MM-DD` dates, text,
+  and people by email (by name for placeholders), like the assignee. An export imports into another workspace or
+  instance as it is, sub-issues, labels and (once fields of the same names exist there) custom fields included.
 
 Personal things (private views, favourites, notifications) aren't exported, nor is anything secret (integrations,
 webhooks, SSO settings, passwords).

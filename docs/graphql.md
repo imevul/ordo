@@ -26,6 +26,7 @@ curl -s https://ordo.example.com/api/w/acme/graphql \
 | `viewer`, `workspace`                                               | You; the workspace (with its `url`)                                  |
 | `teams`, `team(key:)`                                               | Teams you can see (key or id), with `states`, `members` and `issues` |
 | `members`, `labels`, `projects`, `project(id:)`, `cycles(teamKey:)` | The rest of the workspace                                            |
+| `customFields(teamKey:)`                                            | Custom fields (with `teamKey`: the ones that team's issues have)     |
 | `issue(id:)`                                                        | An issue by id or identifier, or `null`                              |
 | `issues(filter:, first:, after:)`                                   | A page of issues (`IssueConnection`)                                 |
 | `search(query:, first:)`                                            | Issues by relevance (titles, descriptions, comments)                 |
@@ -33,8 +34,29 @@ curl -s https://ordo.example.com/api/w/acme/graphql \
 An `Issue` has its scalar fields (`identifier`, `title`, `description` in Markdown, `priority` 0–4 and
 `priorityLabel`, `estimate`, `dueDate`, timestamps such as `startedAt`, `completedAt`, `archivedAt`, `trashedAt`,
 `slaBreachesAt`) plus `team`, `state`, `assignee`, `creator`, `labels`, `project`, `milestone`, `cycle`, `parent`,
-`children`, `comments`, `url` and `branchName` (the workspace's git branch format, for you). Timestamps are ISO-8601
-strings and calendar dates `YYYY-MM-DD`.
+`children`, `comments`, `customFieldValues`, `url` and `branchName` (the workspace's git branch format, for you).
+Timestamps are ISO-8601 strings and calendar dates `YYYY-MM-DD`.
+
+### Custom fields
+
+A `CustomField` has `name`, `description`, `type` (`select`, `multi_select`, `number`, `date`, `text`, `person`),
+`team` (`null` for workspace fields) and `options` (`id`, `name`, `color`). `Team.customFields` lists the fields its
+issues have. `Issue.customFieldValues` holds the fields the issue has a value for, in field order; each has the `field`
+and the part for its type: `options` (select, multi-select), `number`, `date`, `text` or `user` (person), plus
+`display`, the value written out (option names, the number, date or text, or a username).
+
+```graphql
+{
+  issue(id: "ENG-42") {
+    customFieldValues {
+      field {
+        name
+      }
+      display
+    }
+  }
+}
+```
 
 ### Pages
 
@@ -72,7 +94,8 @@ query Mine($after: String) {
 
 `IssueFilter` mirrors the REST filter: `teamId`, `stateIds`, `stateTypes`, `priorities`, `assigneeIds` (ids, `me`
 or `none`), `creatorIds` (ids or `me`), `labelIds` (has any), `projectIds`, `milestoneIds`, `cycleIds` (ids or
-`none`), `parentId`, `query` (words as prefixes, or an identifier), `subscribedByMe` and `archived` (`include` or
+`none`), `parentId`, `customFields` (a list of `{ fieldId, values }`: option ids, user ids or `me`, a number or date
+written out, or `none`), `query` (words as prefixes, or an identifier), `subscribedByMe` and `archived` (`include` or
 `only`). Fields combine with AND; lists are OR.
 
 ## Changing
@@ -96,6 +119,20 @@ mutation Start($id: ID!, $state: ID!, $me: ID!) {
   }
   commentCreate(issueId: $id, body: "On it.") {
     id
+  }
+}
+```
+
+Both inputs take `customFields`, a list of `CustomFieldValueInput`: the `fieldId` and the part for the field's type,
+`optionId` (select), `optionIds` (multi-select), `number`, `date`, `text` or `userId` (person). An entry with none of
+them clears the field; fields left out keep their value.
+
+```graphql
+mutation Tier($id: ID!, $tier: ID!, $gold: ID!) {
+  issueUpdate(id: $id, input: { customFields: [{ fieldId: $tier, optionId: $gold }] }) {
+    customFieldValues {
+      display
+    }
   }
 }
 ```

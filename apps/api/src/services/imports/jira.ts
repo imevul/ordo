@@ -1,4 +1,11 @@
-import { guessStateType, type ImportSummary, parsePriority, type StateType } from '@ordo/shared';
+import {
+  type CustomFieldType,
+  guessStateType,
+  type ImportSourceField,
+  type ImportSummary,
+  parsePriority,
+  type StateType,
+} from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { ApiCallError, callApi, trimUrl } from '../../integrations/http.ts';
 import { jiraToMarkdown } from './jira-markup.ts';
@@ -10,6 +17,7 @@ import {
   type Page,
   type SourceComment,
   type SourceContext,
+  type SourceFieldValue,
   type SourceIssue,
   type SourceRelation,
 } from './types.ts';
@@ -18,6 +26,8 @@ import {
  * Jira, Cloud or Data Center, read through REST API v2 (which both have). Projects become source
  * teams; epics become projects, and their issues belong to them; sub-tasks become sub-issues;
  * issue types (Bug, Story…) and components become labels; issue links become relations.
+ * Custom fields that have values go into Ordo custom fields of the same name (made if missing),
+ * except those Ordo has its own field for (story points, epic link, sprint, rank).
  * Descriptions and comments are turned from Jira's wiki markup into Markdown.
  *
  * Cloud signs in with an account's email and an API token; Data Center with a personal access
@@ -31,6 +41,8 @@ interface JiraConfig {
   cloud: boolean;
   /** Custom fields found during analysis. */
   fields?: { estimate?: string; epicLink?: string };
+  /** Other custom fields with values, imported into Ordo custom fields. */
+  customFields?: { id: string; type: CustomFieldType }[];
 }
 
 interface JiraSecrets extends Record<string, string> {
@@ -218,6 +230,92 @@ function labelsOf(f: JiraIssue['fields']) {
   ];
 }
 
+/** A field as `/rest/api/2/field` lists it. */
+export interface JiraField {
+  id: string;
+  name: string;
+  custom?: boolean;
+  schema?: { type: string; items?: string; custom?: string };
+}
+
+/** Jira Software's own fields, which Ordo has native fields for or doesn't need (rank, colour). */
+const NATIVE_FIELD = /:(gh-|jsw-|jpo-)/;
+
+/** The Ordo type for a Jira custom field, or null for kinds Ordo has nothing like. */
+export function fieldType(f: JiraField): CustomFieldType | null {
+  const s = f.schema;
+  if (!(f.custom || f.id.startsWith('customfield_')) || !s || NATIVE_FIELD.test(s.custom ?? ''))
+    return null;
+  switch (s.type) {
+    case 'option':
+    case 'option-with-child':
+      return 'select';
+    case 'array':
+      return ['option', 'string', 'version', 'component'].includes(s.items ?? '')
+        ? 'multi_select'
+        : null;
+    case 'number':
+      return 'number';
+    case 'date':
+    case 'datetime':
+      return 'date';
+    case 'string':
+      return 'text';
+    case 'user':
+      return 'person';
+    default:
+      return null;
+  }
+}
+
+/** An option, version or component by its name; strings as they are. */
+const optionName = (v: unknown) => {
+  const name =
+    typeof v === 'string'
+      ? v
+      : v && typeof v === 'object'
+        ? ((v as { value?: unknown; name?: unknown }).value ?? (v as { name?: unknown }).name)
+        : undefined;
+  return typeof name === 'string' && name.trim() ? name.trim() : undefined;
+};
+
+/** A custom field's value as the import reads it (people as their source ids), if it has one. */
+export function fieldValue(type: CustomFieldType, raw: unknown): SourceFieldValue | undefined {
+  if (raw == null || raw === '') return undefined;
+  switch (type) {
+    case 'select':
+      return optionName(raw);
+    case 'multi_select': {
+      const names = (Array.isArray(raw) ? raw : [raw]).map(optionName).filter((n) => !!n);
+      return names.length ? (names as string[]) : undefined;
+    }
+    case 'number': {
+      const n = typeof raw === 'number' ? raw : Number(raw);
+      return Number.isFinite(n) ? n : undefined;
+    }
+    case 'date':
+      // The day as written: a datetime's own offset, not the server's.
+      return typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}/.test(raw)
+        ? raw.slice(0, 10)
+        : undefined;
+    case 'text':
+      return typeof raw === 'string' || typeof raw === 'number'
+        ? String(raw).trim() || undefined
+        : undefined;
+    case 'person':
+      return userId(raw as JiraUser) ?? undefined;
+  }
+}
+
+function customValues(config: JiraConfig, f: JiraIssue['fields']) {
+  const out: Record<string, SourceFieldValue> = {};
+  for (const field of config.customFields ?? []) {
+    const value = fieldValue(field.type, f[field.id]);
+    if (value !== undefined) out[field.id] = value;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 function toIssue(config: JiraConfig, i: JiraIssue): SourceIssue | null {
   const f = i.fields;
   if (isEpic(f.issuetype)) return null;
@@ -250,6 +348,7 @@ function toIssue(config: JiraConfig, i: JiraIssue): SourceIssue | null {
     completedAt: type === 'completed' ? resolved : undefined,
     canceledAt: type === 'canceled' ? resolved : undefined,
     url: `${config.siteUrl}/browse/${i.key}`,
+    customFields: customValues(config, f),
   };
 }
 
@@ -308,13 +407,25 @@ export const jiraSource: ImportAdapter = {
 
   async analyze(sctx) {
     const config = cfg(sctx);
-    const fieldList = await call<{ id: string; name: string }[]>(sctx, '/rest/api/2/field');
+    const fieldList = await call<JiraField[]>(sctx, '/rest/api/2/field');
     const fieldNamed = (...names: string[]) =>
       fieldList.find((f) => names.includes(f.name.toLowerCase()))?.id;
     const fields = {
       estimate: fieldNamed('story points', 'story point estimate'),
       epicLink: fieldNamed('epic link'),
     };
+    // Other custom fields of kinds Ordo has; only those with values on the issues are kept.
+    const candidates = new Map<
+      string,
+      { name: string; type: CustomFieldType; count: number; options: Set<string> }
+    >();
+    for (const f of fieldList) {
+      const type = fieldType(f);
+      if (!type || f.id === fields.estimate || f.id === fields.epicLink) continue;
+      if (/^(story points?|story point estimate|epic link|sprint|rank)$/i.test(f.name.trim()))
+        continue;
+      candidates.set(f.id, { name: f.name, type, count: 0, options: new Set() });
+    }
 
     const teams = new Map(
       config.projects.map((key) => [
@@ -352,6 +463,7 @@ export const jiraSource: ImportAdapter = {
       ...ISSUE_FIELDS,
       'comment',
       ...(fields.epicLink ? [fields.epicLink] : []),
+      ...candidates.keys(),
     ]);
     const epicIssues = new Map<string, number>();
     for (const i of scanned) {
@@ -392,6 +504,14 @@ export const jiraSource: ImportAdapter = {
         entry.count++;
         labels.set(id, entry);
       }
+      for (const [id, c] of candidates) {
+        const value = fieldValue(c.type, f[id]);
+        if (value === undefined) continue;
+        c.count++;
+        if (c.type === 'person') person(f[id] as JiraUser);
+        if (c.type === 'select') c.options.add(value as string);
+        if (c.type === 'multi_select') for (const o of value as string[]) c.options.add(o);
+      }
       const epic = isEpic(f.parent?.fields?.issuetype)
         ? f.parent!.key
         : fields.epicLink
@@ -417,14 +537,27 @@ export const jiraSource: ImportAdapter = {
     for (const p of summary.projects) p.count = epicIssues.get(p.id) ?? 0;
     summary.users = [...users].map(([id, u]) => ({ id, ...u }));
     summary.labels = [...labels].map(([id, l]) => ({ id, ...l }));
-    return { summary, config: { ...sctx.row.config, fields } };
+    const used = [...candidates].filter(([, c]) => c.count > 0);
+    summary.fields = used.map(
+      ([id, c]): ImportSourceField => ({
+        id,
+        name: c.name,
+        type: c.type,
+        count: c.count,
+        ...(c.options.size && { options: [...c.options] }),
+      }),
+    );
+    const customFields = used.map(([id, c]) => ({ id, type: c.type }));
+    return { summary, config: { ...sctx.row.config, fields, customFields } };
   },
 
   async issues(sctx, cursor) {
     const config = cfg(sctx);
-    const extra = [config.fields?.estimate, config.fields?.epicLink].filter(
-      (f): f is string => !!f,
-    );
+    const extra = [
+      config.fields?.estimate,
+      config.fields?.epicLink,
+      ...(config.customFields ?? []).map((f) => f.id),
+    ].filter((f): f is string => !!f);
     const page = await search(sctx, cursor, [...ISSUE_FIELDS, ...extra]);
     return {
       items: page.issues.map((i) => toIssue(config, i)).filter((i): i is SourceIssue => !!i),

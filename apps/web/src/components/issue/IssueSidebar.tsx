@@ -1,4 +1,4 @@
-import type { IssueDetail, Team, UpdateIssueInput } from '@ordo/shared';
+import { fieldsForTeam, type IssueDetail, type Team, type UpdateIssueInput } from '@ordo/shared';
 import { X } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { toast } from 'sonner';
@@ -12,6 +12,7 @@ import { IssueSearchPicker } from '../IssueSearchPicker.tsx';
 import { TeamIcon } from '../icons.tsx';
 import {
   AssigneeProp,
+  CustomFieldProp,
   CycleProp,
   DueDateProp,
   EstimateProp,
@@ -31,7 +32,9 @@ const k = (s: ReactNode) => <span className="text-muted">{s}</span>;
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="grid grid-cols-[88px_1fr] items-center gap-2 py-0.5">
-      <span className="text-[12px] text-index">{label}</span>
+      <span className="truncate text-[12px] text-index" title={label}>
+        {label}
+      </span>
       <div className="min-w-0">{children}</div>
     </div>
   );
@@ -125,6 +128,11 @@ export function IssueProperties({
           done={!!issue.completedAt || !!issue.canceledAt}
         />
       </Field>
+      {fieldsForTeam(ws.customFields, issue.teamId).map((field) => (
+        <Field key={field.id} label={field.name}>
+          <CustomFieldProp field={field} issue={issue} onPatch={onPatch} />
+        </Field>
+      ))}
       <Field label={t('common.team')}>
         <Picker
           placeholder={t('issue.detail.moveToTeam')}

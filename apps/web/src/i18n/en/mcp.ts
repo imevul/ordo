@@ -105,6 +105,7 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
       list_statuses: "A team's workflow statuses in order, with their type.",
       list_members: 'People in the workspace: name, username and role.',
       list_labels: 'Workspace labels and team labels.',
+      list_custom_fields: 'The custom fields issues can have, with their types and options.',
       list_projects: 'Projects with status, lead, teams, dates, progress and milestones.',
       list_cycles: 'Current and upcoming cycles (sprints) per team.',
       create_cycle: "Plan a cycle for a team; it gets the team's next number.",

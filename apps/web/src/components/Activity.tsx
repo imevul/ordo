@@ -1,4 +1,10 @@
-import type { Comment, HistoryChange, HistoryEntry, IssueDetail } from '@ordo/shared';
+import type {
+  Comment,
+  CustomFieldValue,
+  HistoryChange,
+  HistoryEntry,
+  IssueDetail,
+} from '@ordo/shared';
 import { MoreHorizontal, Reply } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
@@ -11,6 +17,7 @@ import {
 } from '../api/queries.ts';
 import { getLocale, INTL_TAG, t, tx } from '../i18n/index.ts';
 import { estimateLabel, priorityLabel } from '../i18n/labels.ts';
+import { optionName, valueText } from '../lib/customFields.ts';
 import { longDate, relativeTime, shortDate } from '../lib/format.ts';
 import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 import { useSyncEngine } from '../sync/context.tsx';
@@ -25,6 +32,57 @@ import { Popover } from './ui/Popover.tsx';
 /** "Ada, Bo and Cy" in the reader's language. */
 const list = (items: string[]) =>
   new Intl.ListFormat(INTL_TAG[getLocale()], { type: 'conjunction' }).format(items);
+
+/** History entries for custom field values are `customField:<fieldId>`. */
+const FIELD_CHANGE = 'customField:';
+
+/** A custom field value change: set, cleared, or options added and removed. */
+function FieldChangeText({
+  c,
+  actor,
+  strong,
+}: {
+  c: HistoryChange;
+  actor: ReactNode;
+  strong: (x: ReactNode) => ReactNode;
+}) {
+  const ws = useWorkspace();
+  const field = ws.customFieldById.get(c.field.slice(FIELD_CHANGE.length));
+  // Without the field there is no telling what its values meant.
+  if (!field)
+    return tx('issue.activity.changed', {
+      actor,
+      field: strong(t('customFields.activity.deletedField')),
+    });
+  const name = strong(field.name);
+  if (c.to == null || (Array.isArray(c.to) && c.to.length === 0))
+    return tx('customFields.activity.cleared', { actor, field: name });
+  if (field.type === 'multi_select' && Array.isArray(c.to)) {
+    const from = Array.isArray(c.from) ? (c.from as string[]) : [];
+    const to = c.to as string[];
+    const added = to.filter((o) => !from.includes(o)).map((o) => optionName(field, o));
+    const removed = from.filter((o) => !to.includes(o)).map((o) => optionName(field, o));
+    if (added.length && removed.length)
+      return tx('customFields.activity.changed', {
+        actor,
+        field: name,
+        added: strong(list(added)),
+        removed: strong(list(removed)),
+      });
+    if (removed.length)
+      return tx('customFields.activity.removed', {
+        actor,
+        field: name,
+        values: strong(list(removed)),
+      });
+    return tx('customFields.activity.added', { actor, field: name, values: strong(list(added)) });
+  }
+  return tx('customFields.activity.set', {
+    actor,
+    field: name,
+    value: strong(valueText(ws, field, c.to as CustomFieldValue)),
+  });
+}
 
 /** One history line: who did what, as a single message so translations can order the words. */
 function ChangeText({
@@ -44,6 +102,8 @@ function ChangeText({
       ? (ws.memberById.get(id)?.name ?? t('issue.activity.fallback.someone'))
       : t('issue.activity.fallback.nobody');
   const strong = (x: ReactNode) => <span className="text-text">{x}</span>;
+  if (c.field.startsWith(FIELD_CHANGE))
+    return <FieldChangeText c={c} actor={actor} strong={strong} />;
   switch (c.field) {
     case 'created':
       return tx('issue.activity.created', { actor });

@@ -8,6 +8,7 @@ import {
   domainEvents,
   files,
   importItems,
+  issueFieldValues,
   issueHistory,
   issueLinks,
   issueRelations,
@@ -131,6 +132,7 @@ export const MERGED_COLUMNS = [
   domainEvents.actorId,
   files.ownerId,
   attachments.uploaderId,
+  issueFieldValues.userId,
 ];
 
 /**

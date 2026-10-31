@@ -307,6 +307,78 @@ describe('cli', () => {
     expect((await ordo(['issues', '--bogus'])).code).toBe(2);
   });
 
+  it('sets, shows and filters custom fields by name', async () => {
+    const add = (body: Record<string, unknown>) => ada.post('/api/w/kit/custom-fields', body);
+    await add({
+      name: 'Customer tier',
+      type: 'select',
+      options: [{ name: 'Gold' }, { name: 'Silver' }],
+    });
+    await add({
+      name: 'Areas',
+      type: 'multi_select',
+      options: [{ name: 'API' }, { name: 'Web' }],
+    });
+    await add({ name: 'Points', type: 'number' });
+    await add({ name: 'Reviewer', type: 'person' });
+
+    const created = await ordo([
+      'issue',
+      'create',
+      'Fielded',
+      '--team',
+      'ENG',
+      '--field',
+      'customer tier=gold',
+      '--field',
+      'Areas=web, api',
+      '--field',
+      'Points=5',
+    ]);
+    expect(created.code, created.stderr).toBe(0);
+    const id = /Created (ENG-\d+)/.exec(created.stdout)![1]!;
+    const edited = await ordo([
+      'issue',
+      'update',
+      id,
+      '--field',
+      'Reviewer=me',
+      '--field',
+      'Points=none',
+    ]);
+    expect(edited.code, edited.stderr).toBe(0);
+
+    const view = await ordo(['issue', 'view', id]);
+    expect(view.stdout).toMatch(/Customer tier\s+Gold/);
+    expect(view.stdout).toMatch(/Areas\s+API, Web/);
+    expect(view.stdout).toMatch(/Reviewer\s+@cli-ada/);
+    expect(view.stdout).not.toContain('Points');
+
+    const listed = await ordo(['issues', '--field', 'Customer tier=Gold,Silver']);
+    expect(
+      listed.stdout
+        .trim()
+        .split('\n')
+        .map((l) => l.split(/\s+/)[0]),
+    ).toEqual([id]);
+    expect((await ordo(['issues', '--field', 'Customer tier=none'])).stdout).not.toContain(id);
+
+    const option = await ordo(['issue', 'edit', id, '--field', 'Customer tier=Bronze']);
+    expect(option.code).toBe(1);
+    expect(option.stderr).toContain('No option "Bronze" for Customer tier. Options: Gold, Silver');
+    const field = await ordo(['issue', 'edit', id, '--field', 'Severity=High']);
+    expect(field.stderr).toContain('No field "Severity" in ENG. Fields: Customer tier, Areas');
+    expect((await ordo(['issue', 'edit', id, '--field', 'Gold'])).code).toBe(2);
+
+    // The SDK resolves the same way.
+    const me = await new Ordo({ url, token }).me();
+    const names = new Names((await ada.get('/api/w/kit/bootstrap')).data, me.id);
+    const tier = names.field('customer TIER', names.team('ENG'));
+    expect(names.fieldText(tier, names.fieldValue(tier, 'silver')!)).toBe('Silver');
+    expect(names.fieldValue(names.field('Points'), ' 2.5 ')).toBe(2.5);
+    expect(names.fieldValue(tier, 'none')).toBeNull();
+  });
+
   it('switches workspaces and takes the environment over the saved login', async () => {
     expect((await ordo(['use', 'missing'])).code).toBe(1);
     const res = await ordo(['whoami'], { env: { ORDO_TOKEN: 'ordo_bad' } });

@@ -149,6 +149,7 @@ export default {
       labels: 'labels',
       projects: 'projects',
       cycles: 'cycles',
+      fields: 'custom fields',
     },
     existing: {
       one: '{count} already imported by an earlier run, so left as it is.',

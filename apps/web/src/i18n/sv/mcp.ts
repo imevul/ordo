@@ -102,6 +102,7 @@ Ordos verktyg agerar som mig, med mina behörigheter. Fråga mig innan du skapar
       list_statuses: 'Ett teams statusar i ordning, med typ.',
       list_members: 'Personer i arbetsytan: namn, användarnamn och roll.',
       list_labels: 'Arbetsytans etiketter och teamens etiketter.',
+      list_custom_fields: 'De anpassade fält ärenden kan ha, med typer och alternativ.',
       list_projects: 'Projekt med status, ansvarig, team, datum och framsteg.',
       list_cycles: 'Pågående och kommande cykler (sprintar) per team.',
       search_issues:
