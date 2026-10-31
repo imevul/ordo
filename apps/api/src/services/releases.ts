@@ -13,7 +13,7 @@ import { serverT, userLocale } from '../i18n/index.ts';
 import { badRequest, forbidden, notFound, one } from '../lib/errors.ts';
 import { type Access, assertTeamAccess, canReadTeam } from './access.ts';
 import { type Ctx, emit, record } from './context.ts';
-import { bulkUpdateIssues, queryIssues } from './issues.ts';
+import { baseQuery, bulkUpdateIssues, filterConditions, queryIssues, toIssue } from './issues.ts';
 import { emptyProgress, progressBy } from './progress.ts';
 
 type ReleaseRow = typeof releases.$inferSelect;
@@ -76,8 +76,13 @@ async function findRelease(db: DbOrTx, access: Access, id: string): Promise<Rele
 export async function getRelease(db: DbOrTx, access: Access, id: string): Promise<Release> {
   const row = await findRelease(db, access, id);
   const progress = await progressBy(db, 'release_id', access);
-  if (access.isGuest && !row.teamId && !progress.has(id)) throw notFound('Release');
+  assertGuestSees(access, row, progress);
   return toRelease(row, progress.get(id), true);
+}
+
+/** Guests only see a workspace-wide release that holds one of their issues, as in `listReleases`. */
+function assertGuestSees(access: Access, row: ReleaseRow, progress: Map<string, Progress>) {
+  if (access.isGuest && !row.teamId && !progress.has(row.id)) throw notFound('Release');
 }
 
 /** A release the caller may manage. */
@@ -234,6 +239,8 @@ export async function releaseSuggestions(
   limit = 500,
 ): Promise<Issue[]> {
   const release = await findRelease(db, access, id);
+  if (access.isGuest && !release.teamId)
+    assertGuestSees(access, release, await progressBy(db, 'release_id', access));
   const sameScope = release.teamId ? eq(releases.teamId, release.teamId) : isNull(releases.teamId);
   const [previous] = await db
     .select({ at: sql<string | null>`max(${releases.releasedAt})` })
@@ -248,21 +255,27 @@ export async function releaseSuggestions(
         release.releasedAt ? sql`${releases.releasedAt} < ${release.releasedAt}` : undefined,
       ),
     );
-  const list = await queryIssues(
-    db,
-    access,
-    {
-      stateTypes: ['completed'],
-      releaseIds: ['none'],
-      archived: 'include',
-      ...(release.teamId && { teamId: release.teamId }),
-    },
-    5000,
-    'recent',
-  );
-  const since = previous?.at ? new Date(previous.at).getTime() : null;
-  return list
-    .filter((i) => since === null || (i.completedAt && new Date(i.completedAt).getTime() > since))
-    .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
-    .slice(0, limit);
+  const conds = filterConditions(access, {
+    stateTypes: ['completed'],
+    releaseIds: ['none'],
+    archived: 'include',
+    ...(release.teamId && { teamId: release.teamId }),
+  });
+  if (previous?.at) conds.push(sql`${issues.completedAt} > ${previous.at}::timestamptz`);
+  const rows = await baseQuery(db)
+    .where(and(...conds))
+    .orderBy(sql`${issues.completedAt} desc nulls last`, desc(issues.createdAt))
+    .limit(limit);
+  return rows.map(toIssue);
+}
+
+/**
+ * Adds issues to a release that isn't out yet, in one go: a release's suggestions can be more
+ * than a batch edit takes. Issues the caller can't see are skipped. Returns the ids that changed.
+ */
+export async function addReleaseIssues(ctx: Ctx, id: string, ids: string[]): Promise<string[]> {
+  const release = await loadRelease(ctx, id);
+  if (release.releasedAt)
+    throw badRequest('That release is out; reopen it first').as('release_frozen');
+  return bulkUpdateIssues(ctx, ids, { releaseId: id });
 }

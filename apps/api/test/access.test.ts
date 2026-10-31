@@ -651,7 +651,9 @@ describe('route inventory', () => {
     'PATCH /releases/:id': "loadRelease checks the release's team (releases.test.ts)",
     'DELETE /releases/:id': "loadRelease checks the release's team (releases.test.ts)",
     'GET /releases/:id/suggestions':
-      "findRelease, then issues with the caller's access (releases.test.ts)",
+      "findRelease and the guest rule, then issues with the caller's access (releases.test.ts)",
+    'POST /releases/:id/issues':
+      "loadRelease, then bulkUpdateIssues within the caller's teams (releases.test.ts)",
     'POST /releases/:id/draft': "loadRelease, then issues with the caller's access",
     'POST /releases/:id/release': "loadRelease checks the release's team (releases.test.ts)",
     'POST /releases/:id/reopen': "loadRelease checks the release's team (releases.test.ts)",

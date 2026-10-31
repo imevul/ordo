@@ -5,7 +5,7 @@ import { Copy, Download, Package, Plus, Trash2 } from 'lucide-react';
 import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
-import { useBatchUpdateIssues, useWsMutation } from '../api/queries.ts';
+import { useWsMutation } from '../api/queries.ts';
 import { ClickToEdit } from '../components/ClickToEdit.tsx';
 import { IssuesView } from '../components/IssuesView.tsx';
 import { TeamIcon } from '../components/icons.tsx';
@@ -565,7 +565,19 @@ function Suggestions({ release: r }: { release: Release }) {
     queryFn: () => api.get<Issue[]>(wsPath(ws.slug, `/releases/${r.id}/suggestions`)),
   });
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
-  const batch = useBatchUpdateIssues(ws.slug);
+  // One request for all of them: a first release can suggest more than a batch edit takes.
+  const add = useWsMutation(
+    ws.slug,
+    (ids: string[]) =>
+      api.post<{ ids: string[] }>(wsPath(ws.slug, `/releases/${r.id}/issues`), { ids }),
+    {
+      invalidate: [
+        suggestionsKey(ws.slug, r.id),
+        releaseKey(ws.slug, r.id),
+        ['ws', ws.slug, 'issues'],
+      ],
+    },
+  );
   if (!list) return null;
   const picked = list.filter((i) => !skipped.has(i.id));
   const toggle = (id: string) =>
@@ -597,10 +609,10 @@ function Suggestions({ release: r }: { release: Release }) {
             <button
               type="button"
               className="btn btn-primary btn-sm"
-              disabled={picked.length === 0 || batch.isPending}
+              disabled={picked.length === 0 || add.isPending}
               onClick={() =>
-                batch.mutate(
-                  { ids: picked.map((i) => i.id), patch: { releaseId: r.id } },
+                add.mutate(
+                  picked.map((i) => i.id),
                   {
                     onSuccess: () => {
                       toast.success(t('releases.suggested.added', { count: picked.length }));

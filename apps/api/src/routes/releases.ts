@@ -1,4 +1,5 @@
 import {
+  addReleaseIssuesSchema,
   createReleaseSchema,
   releaseMarkdown,
   releaseReleaseSchema,
@@ -9,6 +10,7 @@ import { requireAccess } from '../lib/auth.ts';
 import { parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import {
+  addReleaseIssues,
   createRelease,
   deleteRelease,
   draftNotes,
@@ -51,6 +53,13 @@ export async function releaseRoutes(app: FastifyInstance) {
   app.get('/releases/:id/suggestions', async (req) => {
     const { id } = req.params as { id: string };
     return releaseSuggestions(app.db, requireAccess(req), id);
+  });
+
+  /** Adds issues to the release, as many as its suggestions in one request. */
+  app.post('/releases/:id/issues', async (req) => {
+    const { id } = req.params as { id: string };
+    const { ids } = parse(addReleaseIssuesSchema, req.body);
+    return mutate(app, req, async (ctx) => ({ ids: await addReleaseIssues(ctx, id, ids) }));
   });
 
   /** Notes drafted from the release's issues, without saving them. */

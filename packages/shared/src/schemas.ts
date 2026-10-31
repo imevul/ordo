@@ -836,6 +836,8 @@ export const updateReleaseSchema = createReleaseSchema.omit({ teamId: true }).pa
 export type UpdateReleaseInput = z.infer<typeof updateReleaseSchema>;
 /** Releasing drafts notes from its issues when it has none yet, unless `draft` is false. */
 export const releaseReleaseSchema = z.object({ draft: z.boolean().optional() });
+/** Issues to add to a release; room for all of its suggestions at once. */
+export const addReleaseIssuesSchema = z.object({ ids: z.array(id).min(1).max(1000) });
 
 export const createCycleSchema = z
   .object({

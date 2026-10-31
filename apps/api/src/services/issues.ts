@@ -140,7 +140,7 @@ export function toIssue(r: IssueRow): Issue {
   };
 }
 
-function baseQuery(db: DbOrTx) {
+export function baseQuery(db: DbOrTx) {
   return db.select(issueSelect).from(issues).innerJoin(teams, eq(teams.id, issues.teamId));
 }
 
@@ -1248,8 +1248,11 @@ export interface BulkIssuePatch {
   stateId?: string;
   cycleId?: string | null;
   assigneeId?: string | null;
-  /** Only clearing: a deleted release lets go of its issues. */
-  releaseId?: null;
+  /**
+   * Joining a release checks it as `updateIssue` does. Clearing doesn't: a deleted release lets go
+   * of its issues even when it's out.
+   */
+  releaseId?: string | null;
 }
 
 /**
@@ -1258,7 +1261,8 @@ export interface BulkIssuePatch {
  * `updateIssue`. Meant for rewrites the system does on someone's behalf (deleting a cycle or
  * status, cycle rollover, placeholder merges): it notifies nobody, runs no assignee hooks and does
  * no cycle automation (an issue moved to a started status doesn't join the active cycle), since
- * nobody changed these issues' progress. A person's own edits still go through `updateIssue`.
+ * nobody changed these issues' progress. A person's own edits still go through `updateIssue`,
+ * except adding many issues to a release, which has none of those side effects anyway.
  * Trashed and archived issues are updated too. Returns the ids that changed.
  */
 export async function bulkUpdateIssues(
@@ -1295,6 +1299,11 @@ export async function bulkUpdateIssues(
     if (patch.stateId) state = await stateOf(ctx, teamId, patch.stateId);
     if (patch.cycleId) await assertCycle(ctx, teamId, patch.cycleId);
     if (patch.assigneeId) await assertAssignee(ctx, teamId, patch.assigneeId);
+    if (patch.releaseId) await assertRelease(ctx, teamId, patch.releaseId);
+  }
+  if (patch.releaseId) {
+    const leaving = new Set(rows.map((r) => r.releaseId).filter((r) => r && r !== patch.releaseId));
+    for (const releaseId of leaving) await assertLeavesRelease(ctx, releaseId);
   }
   const closed = state?.type === 'completed' || state?.type === 'canceled';
 

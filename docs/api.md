@@ -392,6 +392,7 @@ curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
 | GET / POST           | `/releases`                     | List (without `notes`, with `progress`) / create `{ name, teamId?, notes?, targetDate? }`; without a team it's workspace-wide         |
 | GET / PATCH / DELETE | `/releases/:id`                 | `PATCH { name?, notes?, targetDate? }`; deleting takes its issues out. Not for guests. Issues join one with `releaseId`               |
 | GET                  | `/releases/:id/suggestions`     | Done issues in no release, completed after the previous release of the same scope went out                                            |
+| POST                 | `/releases/:id/issues`          | `{ ids }` (up to 1000) — adds them to a release that isn't out; returns `{ ids }` of those that changed                               |
 | POST                 | `/releases/:id/draft`           | `{ notes }` drafted from its issues, grouped by label (not saved)                                                                     |
 | POST                 | `/releases/:id/release`         | `{ draft? }` — puts it out: freezes its issue list and drafts notes if it has none (unless `draft: false`)                            |
 | POST                 | `/releases/:id/reopen`          | Unfreezes its issue list                                                                                                              |

@@ -197,4 +197,58 @@ describe('releases', () => {
     expect(moved.statusCode).toBe(200);
     expect(moved.data.releaseId).toBeNull();
   });
+
+  it("hide a workspace-wide release's suggestions from a guest it holds nothing of", async () => {
+    const empty = (await owner.post(`${ws}/releases`, { name: 'Empty' })).data as Release;
+    ids.empty = empty.id;
+    expect((await guest.get(`${ws}/releases/${empty.id}`)).statusCode).toBe(404);
+    expect((await guest.get(`${ws}/releases/${empty.id}/suggestions`)).statusCode).toBe(404);
+    expect((await member.get(`${ws}/releases/${empty.id}/suggestions`)).statusCode).toBe(200);
+  });
+
+  it('add more issues at once than a batch edit takes', async () => {
+    const created: Issue[] = [];
+    for (let i = 0; i < 260; i += 20) {
+      created.push(
+        ...(await Promise.all(
+          Array.from({ length: 20 }, (_, j) => create(`Bulk ${i + j}`, { stateId: ids.done })),
+        )),
+      );
+    }
+    const suggested = (await owner.get(`${ws}/releases/${ids.empty}/suggestions`)).data as Issue[];
+    expect(suggested.length).toBeGreaterThan(250);
+    // Newest completed first.
+    const completed = suggested.map((i) => i.completedAt ?? '');
+    expect(completed).toEqual([...completed].sort().reverse());
+
+    const res = await owner.post(`${ws}/releases/${ids.empty}/issues`, {
+      ids: suggested.map((i) => i.id),
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.data.ids).toHaveLength(suggested.length);
+    const release = (await owner.get(`${ws}/releases/${ids.empty}`)).data as Release;
+    expect(release.progress.total).toBe(suggested.length);
+    expect((await owner.get(`${ws}/releases/${ids.empty}/suggestions`)).data).toEqual([]);
+    ids.bulk0 = created[0]!.id;
+    const history = (await owner.get(`${ws}/issues/${ids.bulk0}/history`)).data as HistoryEntry[];
+    expect(history.some((h) => h.changes.some((c) => c.field === 'release'))).toBe(true);
+  });
+
+  it('only add issues to a release that is open, of its team, by a non-guest', async () => {
+    const issue = await create('Late addition', { stateId: ids.done });
+    const body = { ids: [issue.id] };
+    expect((await guest.post(`${ws}/releases/${ids.empty}/issues`, body)).statusCode).toBe(403);
+    // A PRV release can't take a PUB issue.
+    expect((await owner.post(`${ws}/releases/${ids.prvRelease}/issues`, body)).statusCode).toBe(
+      400,
+    );
+    await owner.post(`${ws}/releases/${ids.empty}/release`, { draft: false });
+    expect((await owner.post(`${ws}/releases/${ids.empty}/issues`, body)).statusCode).toBe(400);
+    // Nor can an issue leave a release that's out for another one.
+    const next = (await owner.post(`${ws}/releases`, { name: 'Next' })).data as Release;
+    const shipped = { ids: [ids.bulk0] };
+    expect((await owner.post(`${ws}/releases/${next.id}/issues`, shipped)).statusCode).toBe(400);
+    expect((await owner.get(`${ws}/issues/${ids.bulk0}`)).data.releaseId).toBe(ids.empty);
+    expect((await owner.post(`${ws}/releases/${next.id}/issues`, body)).statusCode).toBe(200);
+  });
 });
