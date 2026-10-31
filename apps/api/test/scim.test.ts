@@ -258,6 +258,50 @@ describe('users', () => {
     expect(logged!.data).toMatchObject({ from: email, via: 'scim' });
   });
 
+  it('signs a released account out and suspends it from its workspaces', async () => {
+    const email = `armed-${++n}@${domain}`;
+    const squatter = await signup(app, 'Armed Squatter');
+    const squatterId = (await squatter.client.get('/api/auth/me')).data.id;
+    const theirSlug = `own-${slug}-${n}`;
+    await squatter.client.post('/api/workspaces', {
+      name: 'Own',
+      slug: theirSlug,
+      teamName: 'Own',
+      teamKey: 'OWN',
+    });
+    await squatter.client.post('/api/me/email', { email, password: 'correct horse battery' });
+    const key = (await squatter.client.post('/api/me/api-keys', { name: 'cli' })).data.token;
+
+    const res = await scim('POST', '/Users', {
+      ...oktaUser('x'),
+      userName: email,
+      emails: [{ value: email, primary: true }],
+    });
+    expect(res.statusCode).toBe(201);
+
+    expect((await squatter.client.get('/api/auth/me')).statusCode).toBe(401);
+    const viaKey = await app.inject({
+      method: 'GET',
+      url: '/api/auth/me',
+      headers: { authorization: `Bearer ${key}` },
+    });
+    expect(viaKey.statusCode).toBe(401);
+    const memberships = await app.db
+      .select()
+      .from(workspaceMembers)
+      .where(eq(workspaceMembers.userId, squatterId));
+    expect(memberships).toHaveLength(1);
+    expect(memberships[0]!.suspendedAt).not.toBeNull();
+    const [suspended] = await app.db
+      .select()
+      .from(auditLog)
+      .where(and(eq(auditLog.action, 'member.suspended'), eq(auditLog.targetId, squatterId)));
+    expect(suspended).toMatchObject({
+      workspaceId: memberships[0]!.workspaceId,
+      data: { via: 'scim', reason: 'unverified_address_claimed' },
+    });
+  });
+
   it('moves a provisioned user onto an address an unverified account squats', async () => {
     const { user } = await provision('mover');
     const email = `moved-${++n}@${domain}`;

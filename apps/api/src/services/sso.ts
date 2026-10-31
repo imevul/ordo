@@ -1,10 +1,13 @@
-import { AVATAR_COLORS, isOwnerRole, type MemberRole } from '@ordo/shared';
-import { and, eq, isNotNull, lt, sql } from 'drizzle-orm';
+import { AVATAR_COLORS, isOwnerRole, type MemberRole, type RealtimeEvent } from '@ordo/shared';
+import { and, eq, isNotNull, isNull, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import {
   authProviders,
   authStates,
+  authTokens,
+  passkeys,
+  sessions,
   userIdentities,
   users,
   workspaceDomains,
@@ -17,6 +20,7 @@ import { escapeHtml as esc } from '../lib/html.ts';
 import { requestMeta } from '../lib/mutate.ts';
 import { audit } from './audit.ts';
 import type { RequestMeta } from './context.ts';
+import { revokeCredentials } from './credentials.ts';
 import { publishChanges } from './sync.ts';
 import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 
@@ -136,11 +140,19 @@ export async function uniqueUsername(tx: DbOrTx, base: string) {
  * an open invite or an email change without mail, to sit there until the real person arrives. So
  * it isn't linked; it moves to an address of its own (and can't sign in by email any more) and the
  * caller creates a fresh account. Bots and placeholders come back as they are, for the caller to refuse.
+ * The released account is also signed out everywhere and suspended from its workspaces
+ * (`releaseUnverified`); the member events for that land in `entry.events`, to publish after
+ * commit, which also closes its open sockets.
  */
 export async function claimableUser(
   tx: DbOrTx,
   email: string,
-  entry: { workspaceId: string; actorId: string | null; via: 'sso' | 'scim' },
+  entry: {
+    workspaceId: string;
+    actorId: string | null;
+    via: 'sso' | 'scim';
+    events: RealtimeEvent[];
+  },
   meta: RequestMeta | null,
 ) {
   const [existing] = await tx
@@ -153,6 +165,7 @@ export async function claimableUser(
     .update(users)
     .set({ email: released, updatedAt: new Date().toISOString() })
     .where(eq(users.id, existing.id));
+  const revoked = await releaseUnverified(tx, existing.id, entry, meta);
   await audit(
     tx,
     {
@@ -161,11 +174,79 @@ export async function claimableUser(
       actorId: entry.actorId,
       targetType: 'user',
       targetId: existing.id,
-      data: { from: email, to: released, via: entry.via, reason: 'unverified_address_claimed' },
+      data: {
+        from: email,
+        to: released,
+        via: entry.via,
+        reason: 'unverified_address_claimed',
+        revoked,
+      },
     },
     meta,
   );
   return null;
+}
+
+/**
+ * Whoever held a released account may be the squatter `claimableUser` guards against: signed in,
+ * with keys and passkeys, a member of the workspace they joined with the borrowed address. This
+ * takes away every way to sign in or act as the account, and its pending email links, and suspends
+ * its memberships: that keeps its history and lets an admin restore an honest mistake.
+ */
+async function releaseUnverified(
+  tx: DbOrTx,
+  userId: string,
+  entry: { actorId: string | null; via: 'sso' | 'scim'; events: RealtimeEvent[] },
+  meta: RequestMeta | null,
+) {
+  const signedOut = await tx
+    .delete(sessions)
+    .where(eq(sessions.userId, userId))
+    .returning({ id: sessions.id });
+  const keys = await tx
+    .delete(passkeys)
+    .where(eq(passkeys.userId, userId))
+    .returning({ id: passkeys.id });
+  const identities = await tx
+    .delete(userIdentities)
+    .where(eq(userIdentities.userId, userId))
+    .returning({ id: userIdentities.id });
+  await tx.delete(authTokens).where(eq(authTokens.userId, userId));
+  const credentials = await revokeCredentials(tx, userId, 'released', meta);
+
+  const suspended = await tx
+    .update(workspaceMembers)
+    .set({ suspendedAt: new Date().toISOString() })
+    .where(and(eq(workspaceMembers.userId, userId), isNull(workspaceMembers.suspendedAt)))
+    .returning({ workspaceId: workspaceMembers.workspaceId });
+  for (const { workspaceId } of suspended) {
+    await audit(
+      tx,
+      {
+        action: 'member.suspended',
+        workspaceId,
+        actorId: entry.actorId,
+        targetType: 'user',
+        targetId: userId,
+        data: { via: entry.via, reason: 'unverified_address_claimed' },
+      },
+      meta,
+    );
+    entry.events.push({
+      kind: 'member',
+      action: 'updated',
+      id: userId,
+      workspaceId,
+      actorId: entry.actorId ?? undefined,
+    });
+  }
+  return {
+    sessions: signedOut.length,
+    passkeys: keys.length,
+    identities: identities.length,
+    ...credentials,
+    memberships: suspended.length,
+  };
 }
 
 export class SsoError extends Error {}
@@ -182,6 +263,7 @@ export async function resolveSsoUser(
   emailTrusted: boolean,
 ) {
   let membershipChanged = false;
+  const released: RealtimeEvent[] = [];
   const user = await app.db.transaction(async (tx) => {
     const now = new Date().toISOString();
     const [identity] = await tx
@@ -204,7 +286,7 @@ export async function resolveSsoUser(
       const existing = await claimableUser(
         tx,
         email!,
-        { workspaceId: provider.workspaceId, actorId: null, via: 'sso' },
+        { workspaceId: provider.workspaceId, actorId: null, via: 'sso', events: released },
         { ip, userAgent: null },
       );
       if (existing) userId = existing.id;
@@ -304,16 +386,16 @@ export async function resolveSsoUser(
     }
     return user;
   });
+  const events = [...released];
   if (membershipChanged)
-    await publishChanges(app, [
-      {
-        kind: 'member',
-        action: 'updated',
-        id: user.id,
-        workspaceId: provider.workspaceId,
-        actorId: user.id,
-      },
-    ]);
+    events.push({
+      kind: 'member',
+      action: 'updated',
+      id: user.id,
+      workspaceId: provider.workspaceId,
+      actorId: user.id,
+    });
+  if (events.length) await publishChanges(app, events);
   return user;
 }
 
