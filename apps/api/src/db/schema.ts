@@ -919,8 +919,11 @@ export const calendarFeeds = pgTable(
   },
   (t) => [
     index('calendar_feeds_user_idx').on(t.userId, t.workspaceId),
-    // One feed per user and view; the personal feed (no view) is kept unique by the service.
+    // One feed per user and view, and one personal feed (no view) per user and workspace.
     uniqueIndex('calendar_feeds_user_view_idx').on(t.userId, t.viewId),
+    uniqueIndex('calendar_feeds_user_personal_idx')
+      .on(t.userId, t.workspaceId)
+      .where(sql`${t.viewId} is null`),
   ],
 );
 

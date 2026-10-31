@@ -573,6 +573,15 @@ describe('require SSO', () => {
     expect(rows.length).toBeGreaterThan(0);
   });
 
+  it('refuses calendar feeds unless API keys are allowed', async () => {
+    const res = await ssoMember.post(`${ws}/calendar-feeds`, {});
+    expect(res.statusCode).toBe(403);
+    expect(res.data.error).toBe('sso_required');
+    expect((await ssoMember.get(`${ws}/calendar-feeds`)).data).toEqual([]);
+    // Owners keep their break-glass, so their feeds work.
+    expect((await owner.post(`${ws}/calendar-feeds`, {})).statusCode).toBe(200);
+  });
+
   it('rejects API keys unless allowed', async () => {
     const key = (await ssoMember.post('/api/me/api-keys', { name: 'cli' })).data.token;
     const call = () =>
@@ -584,6 +593,11 @@ describe('require SSO', () => {
     expect((await call()).statusCode).toBe(403);
     await owner.patch(`${ws}/`, { settings: { allowApiKeysUnderSso: true } });
     expect((await call()).statusCode).toBe(200);
+    const feed = await ssoMember.post(`${ws}/calendar-feeds`, {});
+    expect(feed.statusCode).toBe(200);
+    expect(
+      (await app.inject({ method: 'GET', url: new URL(feed.data.url).pathname })).statusCode,
+    ).toBe(200);
   });
 
   it('ends SSO sessions after the max age', async () => {

@@ -2,7 +2,7 @@ import { createCalendarFeedSchema } from '@ordo/shared';
 import { and, asc, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { calendarFeeds } from '../db/schema.ts';
-import { requireAccess, requireUser } from '../lib/auth.ts';
+import { authorizeWorkspace, requireAccess, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { sha256 } from '../lib/crypto.ts';
 import { forbidden, notFound, one, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
@@ -54,9 +54,16 @@ export async function calendarRoutes(app: FastifyInstance) {
 
   // Tokens are stored hashed, so a lost URL can't be shown again: creating replaces it.
   app.post('/calendar-feeds', async (req) => {
-    if (requireUser(req).kind !== 'human')
-      throw forbidden('Only people can subscribe to calendars');
+    const user = requireUser(req);
+    if (user.kind !== 'human') throw forbidden('Only people can subscribe to calendars');
     const { viewId } = parse(createCalendarFeedSchema, req.body);
+    // Fetches are checked like API keys; refuse now rather than hand out a URL that stays empty.
+    await authorizeWorkspace(
+      app.db,
+      user,
+      { id: requireWorkspace(req).id },
+      { method: 'api_key', sso: null },
+    );
     return mutate(app, req, async (ctx) => {
       if (viewId) await visibleView(ctx.tx, ctx.access, viewId);
       const replaced = await deleteFeedsFor(ctx.tx, ctx.userId, ctx.workspaceId, viewId);

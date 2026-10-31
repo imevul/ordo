@@ -405,16 +405,16 @@ curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
 | PATCH / DELETE       | `/templates/:id`                | Same fields except `teamId` (`null` clears a default)                                                                                                                                                  |
 | POST                 | `/views`                        | `{ name, filters, display?, shared?, teamId? }`                                                                                                                                                        |
 | PATCH / DELETE       | `/views/:id`                    | Owner or admin                                                                                                                                                                                         |
-| GET / POST           | `/calendar-feeds`               | Your iCal feeds here / create `{ viewId? }` → `{ feed, url }`. The `url` is shown once; creating again replaces that feed                                                            |
-| DELETE               | `/calendar-feeds/:id`           | Revoke one of your feeds                                                                                                                                                             |
+| GET / POST           | `/calendar-feeds`               | Your iCal feeds here / create `{ viewId? }` → `{ feed, url }`. The `url` is shown once; creating again replaces that feed                                                                              |
+| DELETE               | `/calendar-feeds/:id`           | Revoke one of your feeds                                                                                                                                                                               |
 
 **Calendar feeds.** `GET /api/calendar/<token>.ics` (no session, no header: the token in the URL is the
 credential) answers `text/calendar` with all-day events. Without a view: the due dates of your open issues, the
 cycles of teams you've joined (from 180 days back) and the dated milestones of their open projects. With a view:
 the due dates of the issues the view shows to you. The feed is built with your access when it's fetched, so it
 follows team changes; it's `404` once revoked, when the view is deleted or no longer visible, when your account is
-disabled or your membership suspended, and when the workspace requires SSO without allowing API keys. Only a hash
-of the token is stored. Resetting your password revokes your feeds along with your API keys.
+disabled or your membership suspended, and when the workspace requires SSO without allowing API keys (creating one
+there is refused with `403 sso_required`, except for owners). Only a hash of the token is stored. Resetting your password revokes your feeds along with your API keys.
 
 ### Notifications & search
 

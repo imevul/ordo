@@ -118,6 +118,15 @@ describe('calendar feeds', () => {
       .where(eq(calendarFeeds.id, list[0]!.id));
     expect(row!.tokenHash).toMatch(/^[0-9a-f]{64}$/);
     expect(personal).not.toContain(row!.tokenHash);
+    // The database keeps one personal feed per user and workspace, even for racing requests.
+    await expect(
+      app.db.insert(calendarFeeds).values({
+        workspaceId: row!.workspaceId,
+        userId: row!.userId,
+        tokenHash: 'f'.repeat(64),
+        prefix: 'ordo_cal_xxxx',
+      }),
+    ).rejects.toThrow();
   });
 
   it('serves my due dates, my teams’ cycles and milestones without a session', async () => {

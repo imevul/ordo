@@ -83,7 +83,12 @@ function FeedRow({ feed, label }: { feed: CalendarFeed; label: string }) {
       }))
     )
       return;
-    await api.del(wsPath(ws.slug, `/calendar-feeds/${feed.id}`));
+    try {
+      await api.del(wsPath(ws.slug, `/calendar-feeds/${feed.id}`));
+    } catch (err) {
+      toast.error(errMsg(err));
+    }
+    // Refetch either way: a 404 means it was already revoked elsewhere.
     qc.invalidateQueries({ queryKey: keys.calendarFeeds(ws.slug) });
   };
   return (
