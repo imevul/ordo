@@ -192,9 +192,12 @@ A single-agent file puts `key` and `command` at the top level instead of `agents
 your `ordo login`.
 
 - `${VAR}` and `${VAR:-default}` expand from the environment, then `env_file`, then a sibling `.env`. An unset
-  variable without a default is an error naming it. Plain `$VAR` is left alone, for the shell. `command` and
-  `instructions` aren't expanded at all, so `"${ORDO_MCP_CONFIG}"` and the rest of the launch contract work there:
-  the string form's shell expands them when the run starts (the list form passes them on as written).
+  variable without a default is an error naming it. Plain `$VAR` is left alone, for the shell. In `command` and
+  `instructions`, only variables set when the file loads are expanded; the rest, and every `${ORDO_…}`, are kept as
+  written, without an error. So `claude --model ${MODEL} --mcp-config "${ORDO_MCP_CONFIG}"` gets `MODEL` from `.env`
+  and the launch contract's MCP config from the run: the string form's shell expands what's left when the run
+  starts (the list form passes it on as written). Values from `env_file` and `.env` don't reach the command's
+  environment; put what it reads itself in `env:`.
 - `command` is a list (run directly; a leading `./` is relative to the file) or a string (run with `sh -c` in the
   worktree).
 - Per agent: `key`, `command`, `repos`, `concurrency`, `timeout` (`90s`, `30m`, `2h`), `env`, `cwd` (`worktree` or

@@ -181,33 +181,36 @@ describe('runner files', () => {
     expect(b!.instructions).toBe('Keep pull requests small.\n\nOnly touch docs/.\n');
   });
 
-  it('leave ${VAR} in command and instructions for the run', async () => {
+  it('leave unknown ${VAR} and the launch contract in command and instructions for the run', async () => {
     const file = write(
       'later.yaml',
       [
         'url: https://ordo.example.com',
         'workspace: acme',
-        'instructions: Top ${NOPE}.',
+        'env_file: later.env',
+        'instructions: Top ${NOPE} ${NOPE:-x}, by ${WHO}.',
         'defaults:',
-        '  command: claude --mcp-config "${ORDO_MCP_CONFIG}"',
+        '  command: claude --model ${MODEL} --mcp-config "${ORDO_MCP_CONFIG}" ${EXTRA:-}',
         'agents:',
         '  a:',
         '    key: ${A_KEY}',
         '    instructions: Read ${ORDO_RUN_FILE}.',
         '  b:',
         '    key: ${A_KEY}',
-        '    command: [run, "${ORDO_ISSUE}"]',
+        '    command: [run, "${ORDO_ISSUE}", "${MODEL}"]',
       ].join('\n'),
     );
+    write('later.env', 'MODEL=opus\nWHO=ops\n');
+    // The runner's own ORDO_* variables don't stand in for the run's.
     const {
       agents: [a, b],
-    } = await loadRunnerFile(file, { A_KEY: 'k' });
+    } = await loadRunnerFile(file, { A_KEY: 'k', ORDO_MCP_CONFIG: '/outer/mcp.json' });
     expect(a).toMatchObject({
       key: 'k',
-      command: 'claude --mcp-config "${ORDO_MCP_CONFIG}"',
-      instructions: 'Top ${NOPE}.\n\nRead ${ORDO_RUN_FILE}.',
+      command: 'claude --model opus --mcp-config "${ORDO_MCP_CONFIG}" ${EXTRA:-}',
+      instructions: 'Top ${NOPE} ${NOPE:-x}, by ops.\n\nRead ${ORDO_RUN_FILE}.',
     });
-    expect(b!.command).toEqual(['run', '${ORDO_ISSUE}']);
+    expect(b!.command).toEqual(['run', '${ORDO_ISSUE}', 'opus']);
     // Everything else still expands when the file loads.
     await expect(loadRunnerFile(file, {})).rejects.toThrow('agents.a.key: ${A_KEY} is not set');
   });
