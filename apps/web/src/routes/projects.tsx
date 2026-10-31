@@ -12,6 +12,7 @@ import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys, useIssues, useProjectUpdates, useWsMutation } from '../api/queries.ts';
 import { LineChart } from '../components/Charts.tsx';
+import { ClickToEdit } from '../components/ClickToEdit.tsx';
 import { IssuesView } from '../components/IssuesView.tsx';
 import { ProjectIcon, ProjectStatusIcon, TeamIcon } from '../components/icons.tsx';
 import { Markdown } from '../components/Markdown.tsx';
@@ -450,48 +451,51 @@ function ProjectOverview({ project }: { project: Project }) {
           aria-label={t('projects.overview.nameLabel')}
         />
         <div className="mt-4">
-          {editingDesc ? (
-            <>
-              <MarkdownEditor
-                value={desc}
-                onChange={setDesc}
-                autoFocus
-                minRows={5}
-                onSubmit={() => {
-                  save.mutate({ description: desc });
-                  setEditingDesc(false);
-                }}
-                onCancel={() => setEditingDesc(false)}
-              />
-              <div className="mt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  className="btn btn-ghost btn-sm"
-                  onClick={() => setEditingDesc(false)}
-                >
-                  {t('common.cancel')}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-primary btn-sm"
-                  onClick={() => {
+          <ClickToEdit
+            editing={editingDesc}
+            onEdit={() => setEditingDesc(true)}
+            className="min-h-10"
+            editor={
+              <>
+                <MarkdownEditor
+                  value={desc}
+                  onChange={setDesc}
+                  autoFocus
+                  minRows={5}
+                  onSubmit={() => {
                     save.mutate({ description: desc });
                     setEditingDesc(false);
                   }}
-                >
-                  {t('common.save')}
-                </button>
-              </div>
-            </>
-          ) : (
-            <div className="min-h-10 cursor-text" onClick={() => setEditingDesc(true)}>
-              {project.description?.trim() ? (
-                <Markdown source={project.description} />
-              ) : (
-                <p className="text-index">{t('projects.overview.addBrief')}</p>
-              )}
-            </div>
-          )}
+                  onCancel={() => setEditingDesc(false)}
+                />
+                <div className="mt-2 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    onClick={() => setEditingDesc(false)}
+                  >
+                    {t('common.cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      save.mutate({ description: desc });
+                      setEditingDesc(false);
+                    }}
+                  >
+                    {t('common.save')}
+                  </button>
+                </div>
+              </>
+            }
+          >
+            {project.description?.trim() ? (
+              <Markdown source={project.description} />
+            ) : (
+              <p className="text-index">{t('projects.overview.addBrief')}</p>
+            )}
+          </ClickToEdit>
         </div>
 
         <div className="mt-8">

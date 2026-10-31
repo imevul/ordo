@@ -61,11 +61,18 @@ These apply to the selected issues, or the focused one if nothing is selected, o
 
 ## Editing
 
-| Keys        | Action                                          |
-| ----------- | ----------------------------------------------- |
-| `Mod Enter` | Submit (new issue, comment, description)        |
-| `Esc`       | Cancel editing                                  |
-| `@`         | Mention someone (↑/↓, `Enter` or `Tab` to pick) |
+| Keys        | Action                                                        |
+| ----------- | ------------------------------------------------------------- |
+| `D`         | Edit the description of the open issue, project or initiative |
+| `Mod Enter` | Submit (new issue, comment, description)                      |
+| `Esc`       | Cancel editing                                                |
+| `@`         | Mention someone (↑/↓, `Enter` or `Tab` to pick)               |
+
+A description is also a button: `Tab` to it and press `Enter` or `Space` to start editing. When you save or
+cancel, focus goes back to it.
+
+On a narrow screen the navigation drawer works like a dialog: `Tab` stays inside it, `Esc` closes it and puts
+focus back on the menu button, and page shortcuts are paused while it's open.
 
 In the rich text editor, Markdown typed at the start of a line or around a word formats as you go:
 

@@ -9,6 +9,7 @@ import { Goal, Plus, Trash2, X } from 'lucide-react';
 import { type FormEvent, useEffect, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
+import { ClickToEdit } from '../components/ClickToEdit.tsx';
 import { ProjectIcon, ProjectStatusIcon } from '../components/icons.tsx';
 import { Markdown } from '../components/Markdown.tsx';
 import { MarkdownEditor } from '../components/MarkdownEditor.tsx';
@@ -271,53 +272,54 @@ export function InitiativePage() {
               aria-label={t('initiatives.detail.nameLabel')}
             />
             <div className="mt-4">
-              {editingDesc ? (
-                <>
-                  <MarkdownEditor
-                    value={desc}
-                    onChange={setDesc}
-                    autoFocus
-                    minRows={4}
-                    onSubmit={() => {
-                      save.mutate({ description: desc });
-                      setEditingDesc(false);
-                    }}
-                    onCancel={() => setEditingDesc(false)}
-                  />
-                  <div className="mt-2 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      className="btn btn-ghost btn-sm"
-                      onClick={() => setEditingDesc(false)}
-                    >
-                      {t('common.cancel')}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-primary btn-sm"
-                      onClick={() => {
+              <ClickToEdit
+                editing={editingDesc}
+                onEdit={() => setEditingDesc(true)}
+                disabled={readOnly}
+                className="min-h-10"
+                editor={
+                  <>
+                    <MarkdownEditor
+                      value={desc}
+                      onChange={setDesc}
+                      autoFocus
+                      minRows={4}
+                      onSubmit={() => {
                         save.mutate({ description: desc });
                         setEditingDesc(false);
                       }}
-                    >
-                      {t('common.save')}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <div
-                  className={`min-h-10 ${readOnly ? '' : 'cursor-text'}`}
-                  onClick={() => !readOnly && setEditingDesc(true)}
-                >
-                  {initiative.description?.trim() ? (
-                    <Markdown source={initiative.description} />
-                  ) : (
-                    <p className="text-index">
-                      {readOnly ? '' : t('initiatives.detail.descriptionPlaceholder')}
-                    </p>
-                  )}
-                </div>
-              )}
+                      onCancel={() => setEditingDesc(false)}
+                    />
+                    <div className="mt-2 flex justify-end gap-2">
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={() => setEditingDesc(false)}
+                      >
+                        {t('common.cancel')}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          save.mutate({ description: desc });
+                          setEditingDesc(false);
+                        }}
+                      >
+                        {t('common.save')}
+                      </button>
+                    </div>
+                  </>
+                }
+              >
+                {initiative.description?.trim() ? (
+                  <Markdown source={initiative.description} />
+                ) : (
+                  <p className="text-index">
+                    {readOnly ? '' : t('initiatives.detail.descriptionPlaceholder')}
+                  </p>
+                )}
+              </ClickToEdit>
             </div>
 
             <div className="mt-8">
