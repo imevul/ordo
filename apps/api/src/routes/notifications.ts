@@ -102,6 +102,8 @@ export async function notificationRoutes(app: FastifyInstance) {
         snoozed
           ? asc(notifications.snoozedUntil)
           : desc(sql`coalesce(${notifications.wokeAt}, ${notifications.createdAt})`),
+        // A stable order lets the web inbox put back the ones it keeps (`withKept`).
+        desc(notifications.id),
       )
       .limit(200);
     return rows.map(({ n, issue, teamKey }) => ({
