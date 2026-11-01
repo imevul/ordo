@@ -125,6 +125,13 @@ export default {
     waitingOn: 'Waiting on {issues}',
     /** On a queued run held until its issue's cycle starts. {cycle} is its name. */
     waitingForCycle: 'Waiting for {cycle} · starts {date}',
+    /** The same, for a cycle that starts after another. {cycle} is the earlier cycle's name. */
+    waitingForEarlierCycle: {
+      one: 'Waiting for {cycle} · {open} of {count} issue open',
+      other: 'Waiting for {cycle} · {open} of {count} issues open',
+    },
+    /** The earlier cycle has nothing open, but hasn't started or has nothing in it yet. */
+    waitingForEmptyCycle: 'Waiting for {cycle}',
     runAnyway: 'Run anyway',
     runAnywayHint: "Start this run without waiting for its issue's blockers or cycle.",
     /** Why a run failed, next to its status. */

@@ -18,6 +18,7 @@ export const toCycle = (c: typeof cycles.$inferSelect, progress?: Progress): Cyc
   description: c.description,
   startsAt: c.startsAt,
   endsAt: c.endsAt,
+  startsAfterId: c.startsAfterId,
   progress: progress ?? emptyProgress(),
 });
 

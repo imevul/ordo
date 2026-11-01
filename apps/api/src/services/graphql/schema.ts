@@ -208,6 +208,8 @@ type Cycle {
   description: String
   startsAt: String!
   endsAt: String!
+  "Agents start on this cycle once that one is finished, whatever the dates say."
+  startsAfterId: ID
   team: Team!
   progress: Progress!
 }

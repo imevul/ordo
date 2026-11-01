@@ -602,30 +602,40 @@ function handlers(c: McpCaller): Handlers {
       const teamId = team ? (await dir.team(team)).id : undefined;
       const today = await dir.today();
       const teams = await dir.teams();
-      return (await dir.cycles())
+      const all = await dir.cycles();
+      return all
         .filter((x) => (!teamId || x.teamId === teamId) && (includePast || x.endsAt > today))
         .map((x) =>
           cycleResult(
             teams.find((t) => t.id === x.teamId),
             x,
             today,
+            all,
           ),
         );
     },
 
-    create_cycle: async ({ team, ...input }) => {
+    create_cycle: async ({ team, startsAfter, ...input }) => {
       const t = await dir.team(team);
-      const cycle = await c.run((ctx) => createCycle(ctx, t.id, parse(createCycleSchema, input)));
-      return cycleResult(t, cycle, await dir.today());
+      const startsAfterId = startsAfter ? await dir.cycle(startsAfter, t.id) : undefined;
+      const cycle = await c.run((ctx) =>
+        createCycle(ctx, t.id, parse(createCycleSchema, { ...input, startsAfterId })),
+      );
+      return cycleResult(t, cycle, await dir.today(), await dir.cycles());
     },
 
-    update_cycle: async ({ team, cycle, ...input }) => {
+    update_cycle: async ({ team, cycle, startsAfter, ...input }) => {
       const t = await dir.team(team);
       const id = await dir.cycle(cycle, t.id);
-      const patch = parse(updateCycleSchema, input);
+      const patch = parse(updateCycleSchema, {
+        ...input,
+        ...(startsAfter !== undefined && {
+          startsAfterId: startsAfter && (await dir.cycle(startsAfter, t.id)),
+        }),
+      });
       if (Object.keys(patch).length === 0) throw badRequest('Nothing to change');
       const saved = await c.run((ctx) => updateCycle(ctx, id, patch));
-      return cycleResult(t, saved, await dir.today());
+      return cycleResult(t, saved, await dir.today(), await dir.cycles());
     },
 
     create_milestone: async ({ project, ...input }) => {
@@ -979,13 +989,14 @@ async function relationsResult(c: McpReader, issueId: string) {
   };
 }
 
-function cycleResult(team: Team | undefined, x: Cycle, today: string) {
+function cycleResult(team: Team | undefined, x: Cycle, today: string, all: Cycle[]) {
   return {
     team: team?.key ?? null,
     number: x.number,
     name: x.name,
     startsAt: x.startsAt,
     endsAt: x.endsAt,
+    startsAfter: all.find((c) => c.id === x.startsAfterId)?.number,
     current: isCycleCurrent(x, today),
     progress: x.progress,
   };

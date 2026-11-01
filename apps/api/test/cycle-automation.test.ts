@@ -110,6 +110,40 @@ describe('cycle automation', () => {
     expect(((await owner.get(`${ws}/issues/${open.id}`)).data as Issue).cycleId).toBe(third.id);
   });
 
+  it("doesn't roll over a cycle that another starts after", async () => {
+    // A team of its own, so the cycles planned above stay out of it.
+    const own = (await owner.post(`${ws}/teams`, { name: 'Phases', key: 'PHS' })).data as Team;
+    await owner.patch(`${ws}/teams/${own.id}`, {
+      cyclesEnabled: true,
+      cycleAutomation: { enabled: true, rollOver: true, upcoming: 0 },
+    });
+    const plan = async (startsAt: string, endsAt: string, startsAfterId?: string) =>
+      (await owner.post(`${ws}/teams/${own.id}/cycles`, { startsAt, endsAt, startsAfterId }))
+        .data as Cycle;
+    const phase = await plan('2020-01-06', '2020-01-20');
+    const nextPhase = await plan('2020-01-20', '2020-02-03', phase.id);
+    const unfinished = (
+      await owner.post(`${ws}/issues`, { teamId: own.id, title: 'Open', cycleId: phase.id })
+    ).data as Issue;
+    const plain = (
+      await owner.post(`${ws}/issues`, { teamId: own.id, title: 'Rolls', cycleId: nextPhase.id })
+    ).data as Issue;
+    const last = await plan('2020-02-03', '2020-02-17');
+
+    const [row] = await app.db.select().from(teams).where(eq(teams.id, own.id));
+    await runAutomation(app, boot.workspace.id, (ctx) =>
+      automateTeamCycles(ctx, own.id, cycleAutomationOf(row!.cycleAutomation), '2020-02-04'),
+    );
+    // Stays put, so the next phase still waits for it, though the cycle is closed.
+    expect(((await owner.get(`${ws}/issues/${unfinished.id}`)).data as Issue).cycleId).toBe(
+      phase.id,
+    );
+    const [closed] = await app.db.select().from(cycles).where(eq(cycles.id, phase.id));
+    expect(closed!.completedAt).not.toBeNull();
+    // Nothing starts after this one, so it rolls over as usual.
+    expect(((await owner.get(`${ws}/issues/${plain.id}`)).data as Issue).cycleId).toBe(last.id);
+  });
+
   it('puts started work into the active cycle when asked to', async () => {
     // A team of its own: the cycles planned above would overlap a cycle around today's date.
     const own = (await owner.post(`${ws}/teams`, { name: 'Act', key: 'ACT' })).data as Team;

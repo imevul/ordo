@@ -679,6 +679,10 @@ export const cycles = pgTable(
     description: text('description'),
     startsAt: date('starts_at', { mode: 'string' }).notNull(),
     endsAt: date('ends_at', { mode: 'string' }).notNull(),
+    /** Agents start on this cycle once that one (same team) is finished, whatever the dates say. */
+    startsAfterId: uuid('starts_after_id').references((): AnyPgColumn => cycles.id, {
+      onDelete: 'set null',
+    }),
     /** Set once cycle automation has handled the end of the cycle (rolled its open issues over). */
     completedAt: ts('completed_at'),
     createdAt: createdAt(),

@@ -16,6 +16,23 @@ import { addDays, shortDate } from '../lib/format.ts';
 import { readPref, writePref } from '../lib/store.ts';
 import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 
+/** Whether a cycle is `target`, or waits for it somewhere up its chain. */
+function leadsTo(cycles: Cycle[], from: Cycle, target?: string) {
+  let at: Cycle | undefined = from;
+  for (let guard = 0; at && guard < cycles.length; guard++) {
+    if (at.id === target) return true;
+    at = cycles.find((c) => c.id === at?.startsAfterId);
+  }
+  return false;
+}
+
+/** " · after P1", for a cycle that starts after another. */
+function useStartsAfter(cycle: Cycle) {
+  const ws = useWorkspace();
+  const after = ws.cycles.find((c) => c.id === cycle.startsAfterId);
+  return after ? ` · ${t('cycles.startsAfter', { cycle: cycleName(after) })}` : '';
+}
+
 function CycleModal({
   open,
   onClose,
@@ -34,6 +51,8 @@ function CycleModal({
   const [name, setName] = useState(cycle?.name ?? '');
   const [startsAt, setStartsAt] = useState(cycle?.startsAt ?? defaultStart);
   const [endsAt, setEndsAt] = useState(cycle?.endsAt ?? addDays(defaultStart, 14));
+  const [startsAfterId, setStartsAfterId] = useState(cycle?.startsAfterId ?? '');
+  const others = ws.cycles.filter((c) => c.teamId === teamId && !leadsTo(ws.cycles, c, cycle?.id));
   const save = useWsMutation(
     ws.slug,
     (body: object) =>
@@ -44,7 +63,10 @@ function CycleModal({
   );
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    save.mutate({ name: name || null, startsAt, endsAt }, { onSuccess: onClose });
+    save.mutate(
+      { name: name || null, startsAt, endsAt, startsAfterId: startsAfterId || null },
+      { onSuccess: onClose },
+    );
   };
   return (
     <Modal open={open} onClose={onClose} width={440} label={t('common.cycle')} align="center">
@@ -85,6 +107,24 @@ function CycleModal({
             />
           </label>
         </div>
+        <label className="mt-4 block text-[12px] text-muted">
+          {t('cycles.modal.startsAfter')}
+          <select
+            className="input mt-1"
+            value={startsAfterId}
+            onChange={(e) => setStartsAfterId(e.target.value)}
+          >
+            <option value="">{t('cycles.modal.onItsDate')}</option>
+            {others.map((c) => (
+              <option key={c.id} value={c.id}>
+                {cycleName(c)}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block text-[11.5px] text-index">
+            {t('cycles.modal.startsAfterHint')}
+          </span>
+        </label>
         <div className="mt-6 flex justify-end gap-2">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             {t('common.cancel')}
@@ -100,6 +140,7 @@ function CycleModal({
 
 function CycleRow({ cycle, teamKey, badge }: { cycle: Cycle; teamKey: string; badge?: string }) {
   const ws = useWorkspace();
+  const after = useStartsAfter(cycle);
   return (
     <Link
       to="/$slug/team/$key/cycle/$number"
@@ -113,6 +154,7 @@ function CycleRow({ cycle, teamKey, badge }: { cycle: Cycle; teamKey: string; ba
         </div>
         <div className="mt-0.5 font-mono text-[11px] text-index">
           {shortDate(cycle.startsAt)} → {shortDate(cycle.endsAt)}
+          {after}
         </div>
       </div>
       <div className="hidden font-mono text-[11.5px] text-muted md:block">
@@ -233,6 +275,7 @@ export function CycleDetailPage() {
   const cycle = ws.cycles.find((c) => c.teamId === team?.id && c.number === Number(number));
   const [edit, setEdit] = useState(false);
   const [workload, setWorkload] = useState(() => readPref('cycleWorkload', false));
+  const after = ws.cycles.find((c) => c.id === cycle?.startsAfterId);
   const toggleWorkload = (open: boolean) => {
     setWorkload(open);
     writePref('cycleWorkload', open);
@@ -248,6 +291,12 @@ export function CycleDetailPage() {
             {team.key}
             <Sep />
             {shortDate(cycle.startsAt)} → {shortDate(cycle.endsAt)}
+            {after && (
+              <>
+                <Sep />
+                {t('cycles.startsAfter', { cycle: cycleName(after) })}
+              </>
+            )}
           </span>
         }
         title={cycleName(cycle)}

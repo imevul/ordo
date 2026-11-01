@@ -947,6 +947,7 @@ export const createCycleSchema = z
     description: z.string().max(5000).nullish(),
     startsAt: isoDate,
     endsAt: isoDate,
+    startsAfterId: id.nullish(),
   })
   .refine((c) => c.endsAt > c.startsAt, {
     message: 'End date must be after start date',
@@ -959,6 +960,7 @@ export const updateCycleSchema = z.object({
   description: z.string().max(5000).nullish(),
   startsAt: isoDate.optional(),
   endsAt: isoDate.optional(),
+  startsAfterId: id.nullish(),
 });
 export type UpdateCycleInput = z.infer<typeof updateCycleSchema>;
 

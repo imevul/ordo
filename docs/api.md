@@ -391,8 +391,8 @@ curl -X PATCH "$ORDO/w/acme/issues/ENG-42" -H "Authorization: Bearer $KEY" \
 | PATCH / DELETE       | `/milestones/:id`               | `{ name?, description?, targetDate?, sortOrder? }` → the project; deleting keeps its issues in the project                                                                                             |
 | DELETE               | `/project-updates/:id`          |                                                                                                                                                                                                        |
 | GET                  | `/cycles`                       | All cycles with progress                                                                                                                                                                               |
-| POST                 | `/teams/:id/cycles`             | `{ startsAt, endsAt, name?, description? }` — numbered per team                                                                                                                                        |
-| PATCH / DELETE       | `/cycles/:id`                   | Deleting unassigns its issues                                                                                                                                                                          |
+| POST                 | `/teams/:id/cycles`             | `{ startsAt, endsAt, name?, description?, startsAfterId? }` — numbered per team                                                                                                                        |
+| PATCH / DELETE       | `/cycles/:id`                   | `startsAfterId`: a cycle of the same team agents wait for (no loops). Deleting unassigns its issues                                                                                                    |
 | GET                  | `/cycles/:id/workload`          | `{ unit: 'points' \| 'issues', entries: [{ userId, load, completed, issueCount, unestimated, capacity, capacitySource, outsideTeam, issues }] }` — team members, then other assignees, then unassigned |
 | PUT                  | `/cycles/:id/capacity/:userId`  | _Not guests._ `{ capacity }` — a team member's capacity in this cycle; `null` goes back to their default                                                                                               |
 | GET / POST           | `/releases`                     | List (without `notes`, with `progress`) / create `{ name, teamId?, notes?, targetDate? }`; without a team it's workspace-wide                                                                          |
@@ -632,7 +632,8 @@ can see, `{ id, identifier, title }`; empty when the run doesn't wait.
 
 A queued run of an agent with `waitForCycle`, queued by an assignment or a schedule, isn't handed out while its issue
 hasn't started and the issue's cycle hasn't opened, unless `ignoreBlockers` is set. Listed runs carry `waitingForCycle`:
-`{ id, number, name, startsAt }`, or `null`. See [agents.md](agents.md#work-planned-for-a-later-cycle).
+`{ id, number, name, startsAt, startsAfter }`, or `null`; `startsAfter` is the cycle it waits for,
+`{ id, number, name, open, total }`, or `null` when it waits for its date. See [agents.md](agents.md#work-planned-for-a-later-cycle).
 
 A report's `usage` is what that pickup used: `{ inputTokens?, outputTokens?, cacheReadTokens?, cacheWriteTokens?,
 costUsd?, durationMs? }`. It's added to the run's `usage` (each field `null` until reported), so send it once per

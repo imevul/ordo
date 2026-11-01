@@ -296,6 +296,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
     `ordo agent plan`) and waits; a person approves (or replies with changes) before it goes on
   - [x] ✅ Work planned for a later cycle waits: "Wait for the issue's cycle" per agent holds runs on unstarted issues
     until their cycle starts, so triage can run early and coding on time
+  - [x] ✅ _Starts after_ on a cycle: its agent runs wait until an earlier cycle is finished, early or late
   - [ ] ⬜ Live output: the runner streams the output tail while a run works
   - [x] ✅ Scheduled agent tasks (nightly dependency check, weekly review) on top of recurring issues
   - [ ] ⬜ Concurrency per repository, so two runs don't work in one repo at once

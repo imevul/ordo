@@ -498,15 +498,25 @@ export interface Cycle {
   description: string | null;
   startsAt: string;
   endsAt: string;
+  /** Agents start on this cycle once that one is finished, whatever the dates say. */
+  startsAfterId: string | null;
   progress: Progress;
 }
 
-/** A cycle that isn't open to agents yet, and when it will be. */
+/** A cycle that isn't open to agents yet, and what it waits for. */
 export interface CycleHold {
   id: string;
   number: number;
   name: string | null;
   startsAt: string;
+  /** The cycle it starts after, if any, with how far along that one is; its dates then don't count. */
+  startsAfter: {
+    id: string;
+    number: number;
+    name: string | null;
+    open: number;
+    total: number;
+  } | null;
 }
 
 /** An issue on someone's plate in a cycle. */

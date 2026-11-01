@@ -89,7 +89,7 @@ A run waits for its cycle when:
 - its agent has _Wait for the issue's cycle_ on,
 - it was queued by assigning the issue, or by a schedule,
 - the issue hasn't started (it's in a triage, backlog or todo status), and
-- the issue's cycle hasn't started, on a team with cycles turned on.
+- the issue's cycle hasn't opened, on a team with cycles turned on.
 
 So these don't wait:
 
@@ -98,7 +98,21 @@ So these don't wait:
 - **A mention, Run again or a pull request follow-up**, since those ask for the agent now.
 - **Run anyway** on the run, which skips both its blockers and its cycle.
 
-To start a whole cycle early, move its start date. Waiting runs are listed last under **Open** on the Agent runs page,
+**One cycle after another.** When the order matters more than the dates, set _Starts after_ on a cycle (its form, or
+`startsAfter` over [MCP](mcp.md)) to an earlier cycle of the same team. It then opens when that cycle is finished,
+whether that's early or late, and its own dates become estimates. The run shows "Waiting for P1 · 6 of 20 issues open".
+With P2 after P1 and P3 after P2, agents work through the phases in order, with no person needed in between.
+
+- Finished means every issue in the earlier cycle is done, cancelled or trashed, and that cycle is open itself. A
+  cycle with no issues isn't finished until its end date, so the next can't start while it's still being filed.
+- Reopening an issue in the earlier cycle holds the next cycle's runs again. Runs already working finish.
+- A cycle that another starts after keeps its unfinished issues when it ends, even with _Roll over unfinished issues_
+  on: rolling them over would make it look finished. Dates don't move by themselves.
+- Deleting the earlier cycle, or clearing _Starts after_, puts the cycle back on its own start date.
+
+For a precise link between two issues, across cycles too, use a blocking relation. Those apply as well.
+
+To start a whole cycle early, move its start date or clear _Starts after_. Waiting runs are listed last under **Open** on the Agent runs page,
 in a collapsed group, and don't count towards the number in the sidebar. The prompt and the run file name the issue's
 cycle (`cycle` in `AgentRunContext`), so tell a triage agent to keep a cycle that's already set.
 

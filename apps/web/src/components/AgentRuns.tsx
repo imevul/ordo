@@ -195,12 +195,21 @@ export function RunBlocked({ run, className = '' }: { run: AgentRun; className?:
 export function RunWaitingForCycle({ run, className = '' }: { run: AgentRun; className?: string }) {
   const cycle = run.waitingForCycle;
   if (!cycle) return null;
+  const after = cycle.startsAfter;
   return (
     <div className={`truncate font-mono text-[11px] text-warning ${className}`}>
-      {t('agents.runs.waitingForCycle', {
-        cycle: cycleName(cycle),
-        date: shortDate(cycle.startsAt),
-      })}
+      {!after
+        ? t('agents.runs.waitingForCycle', {
+            cycle: cycleName(cycle),
+            date: shortDate(cycle.startsAt),
+          })
+        : after.open
+          ? t('agents.runs.waitingForEarlierCycle', {
+              cycle: cycleName(after),
+              open: after.open,
+              count: after.total,
+            })
+          : t('agents.runs.waitingForEmptyCycle', { cycle: cycleName(after) })}
     </div>
   );
 }

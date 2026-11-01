@@ -274,7 +274,8 @@ brings one back right away.
 Cycles are a team's time-boxed iterations (usually 1–2 weeks). Turn them on per team, create them under
 **Cycles** (dates default to the two weeks after the last cycle), and assign issues with the _Cycle_ property
 or `Shift C`. A cycle page shows scope, started, completed and remaining counts, with points when you use
-estimates.
+estimates. Agents hold off on an issue until its cycle opens: on its start date, or, with _Starts after_ set, when the
+earlier cycle is finished (see [agents](agents.md#work-planned-for-a-later-cycle)).
 
 **Workload** (the _Workload_ button on a cycle page) lists each team member, agents included, with what they have in
 the cycle against their capacity. Load is the sum of estimates once any issue in the cycle has one, otherwise the
@@ -289,7 +290,8 @@ set the person and team defaults; anyone but guests can set a cycle's.
 
 **Cycle automation** (team settings → _Cycle automation_) lets cycles run themselves. Pick a length (1–8 weeks), an
 optional cooldown, the weekday they start on and how many to plan ahead; Ordo then keeps that many cycles on the
-calendar. When a cycle ends, its unfinished issues move to the next one (_Roll over unfinished issues_), and with
+calendar. When a cycle ends, its unfinished issues move to the next one (_Roll over unfinished issues_), unless another
+cycle starts after it, and with
 _Add started issues to the active cycle_, issues join the current cycle as soon as work on them starts. These changes
 are made by a bot called **Ordo**, without notifications, and show in each issue's history. Cycles that had already
 ended when you turned automation on keep their issues. "Today" is the date in the workspace's time zone
