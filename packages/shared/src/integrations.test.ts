@@ -27,11 +27,12 @@ describe('integration settings schemas', () => {
     });
   });
 
-  it('keeps an app installation to its preferences', () => {
+  it('keeps an app installation to its preferences and repositories', () => {
     const app = {
       mode: 'app',
       apiUrl: 'https://api.github.com',
       webUrl: 'https://github.com',
+      repos: ['acme/app'],
       commentOnPullRequests: true,
     };
     expect(githubSettingsSchema.parse({ config: app, secrets: {} })).toEqual({

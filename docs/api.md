@@ -661,7 +661,9 @@ triage are left alone.
 | GET        | `/integrations/:id/repositories`        | _Admin._ GitHub/Forgejo repos it can see (`?q=` filters): `[{ fullName, cloneUrl, sshUrl, … }]`            |
 | GET        | `/integrations/github/app`              | _Admin._ The instance's GitHub App, if any                                                                 |
 | POST       | `/integrations/github/manifest`         | _Instance admin._ `{ org? }` → `{ action, manifest }` to POST to GitHub                                    |
-| POST       | `/integrations/github/install`          | _Admin._ `{ url }` to install the GitHub App for this workspace                                            |
+| POST       | `/integrations/github/install`          | _Admin._ `{ fresh? }` → `{ url }`: GitHub sign-in to connect an installation (`fresh`: install it anew)    |
+| GET        | `/integrations/github/choices`          | _Admin._ `?state=` → `{ installations }` the sign-in found, each with `connected`                          |
+| POST       | `/integrations/github/connect`          | _Admin._ `{ state, installationId }` connects one of those installations to this workspace                 |
 | GET        | `/integrations/slack/app`               | _Admin._ The instance's Slack app, if any, and (for instance admins) manifest links to create it           |
 | PUT        | `/integrations/slack/app`               | _Instance admin._ `{ delivery, clientId, clientSecret?, signingSecret?, appToken? }` saves its credentials |
 | POST       | `/integrations/slack/install`           | _Admin._ `{ url }` to Slack's consent screen ("Add to Slack") for this workspace                           |
@@ -681,7 +683,8 @@ verified per provider. Integrations that hold their own connection (Socket Mode,
 sync) accept no webhooks.
 
 GitHub and Slack send the browser back to `GET /api/integrations/github/callback` (after creating the GitHub App),
-`GET /api/integrations/github/setup` (after installing it) and `GET /api/integrations/slack/callback` (after "Add to
+`GET /api/integrations/github/setup` (after installing it), `GET /api/integrations/github/authorized` (after
+signing in to GitHub) and `GET /api/integrations/slack/callback` (after "Add to
 Slack"). These are steps of the setup flows above, not endpoints to call yourself.
 
 OAuth for MCP clients uses `/.well-known/oauth-authorization-server`,

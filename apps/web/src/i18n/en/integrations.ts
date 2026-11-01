@@ -57,7 +57,8 @@ export default {
   edit: {
     label: '{name} settings',
     webhookUrl: 'Webhook URL',
-    appRepos: "Choose repositories on GitHub, in the app's installation settings.",
+    appRepos:
+      "Which of the installation's repositories this workspace uses. Leave empty to use all of them; GitHub decides which ones the installation can see.",
   },
   /** Forges connected with a token: GitHub, GitLab, Forgejo. */
   forge: {
@@ -93,10 +94,19 @@ export default {
   githubApp: {
     intro:
       'The GitHub App is the smoothest way: install it on your account or organisation, pick the repositories, done. GitHub needs to reach {url}.',
-    install: 'Install {app} on GitHub',
+    install: 'Connect GitHub',
+    installElsewhere: 'Install {app} on another GitHub account',
+    makePublic:
+      'If GitHub says the app can’t be installed there, it is private: its owner can make it public on GitHub, under the app’s Advanced settings.',
+    chooseTitle: 'Choose a GitHub installation',
+    chooseIntro:
+      'Your GitHub account can see these installations of {app}. Pick the one to connect to this workspace.',
+    connected: 'Connected',
+    organisation: 'Organisation',
+    user: 'Personal account',
     org: 'GitHub organisation (optional)',
     orgHint:
-      "Owns the app. Leave empty to create it under your personal account. The app is private: it can only be installed where it's owned.",
+      'Owns the app. Leave empty to create it under your personal account. The app is public, so any account can install it, and several workspaces can share one installation.',
     create: 'Create the GitHub App',
     needsInstanceAdmin:
       'An instance admin has to create the GitHub App once. Until then, connect with a token.',

@@ -37,8 +37,9 @@ import {
 /**
  * GitHub (and GitHub Enterprise Server via `apiUrl`/`webUrl`).
  *
- * - App mode: an instance-wide GitHub App (created in one click from its manifest), installed per
- *   workspace. One webhook URL for the app: /api/hooks/github/app-<appId>.
+ * - App mode: an instance-wide, public GitHub App (created in one click from its manifest). Any
+ *   number of workspaces can connect to one installation, each optionally narrowed to some of its
+ *   repositories. One webhook URL for the app: /api/hooks/github/app-<appId>, fanned out to them.
  * - Token mode: a personal access token and a list of repositories, receiving webhooks Ordo
  *   creates on each repository, or polling when GitHub can't reach this instance.
  */
@@ -68,10 +69,27 @@ async function appRow(app: FastifyInstance, id: string) {
   return row;
 }
 
+/** The repositories an app installation is narrowed to in this workspace; empty is all of them. */
+const scopedRepos = (row: IntegrationRow) => {
+  const c = cfg(row);
+  return c.mode === 'app' ? (c.repos ?? []) : [];
+};
+
+/** Repository names are case-insensitive on GitHub. */
+export function inScope(row: IntegrationRow, repo: string | undefined) {
+  const repos = scopedRepos(row);
+  if (!repos.length || !repo) return true;
+  const name = repo.toLowerCase();
+  return repos.some((r) => r.toLowerCase() === name);
+}
+
 async function token(ictx: IntegrationContext): Promise<string> {
   const row = ictx.integration;
   if (cfg(row).mode !== 'app') return ictx.secrets.token!;
-  const cached = installationTokens.get(row.id);
+  const repos = scopedRepos(row);
+  // Keyed by the scope too, so narrowing the repositories takes effect with the next call.
+  const key = `${row.id}:${repos.join(',')}`;
+  const cached = installationTokens.get(key);
   if (cached && cached.expires > Date.now() + 300_000) return cached.token;
   const appInfo = await appRow(ictx.app, row.appId!);
   const appConfig = appInfo.config as { appId: string; apiUrl?: string };
@@ -82,9 +100,12 @@ async function token(ictx: IntegrationContext): Promise<string> {
     {
       method: 'POST',
       headers: { authorization: `Bearer ${jwt}`, accept: 'application/vnd.github+json' },
+      // The token can then reach only this workspace's repositories, not the whole installation.
+      // An installation belongs to one account, so the names go without their owner.
+      ...(repos.length && { body: { repositories: repos.map((r) => r.split('/').pop()) } }),
     },
   );
-  installationTokens.set(row.id, {
+  installationTokens.set(key, {
     token: data.token,
     expires: new Date(data.expires_at).getTime(),
   });
@@ -367,6 +388,8 @@ export const github: IntegrationProvider = {
   async handleInbound(ictx, req: InboundRequest) {
     const event = req.headers['x-github-event'];
     const body = JSON.parse(req.body);
+    // Another workspace on the same installation may use this repository; this one doesn't.
+    if (!inScope(ictx.integration, body.repository?.full_name)) return;
     if (event === 'pull_request' || event === 'pull_request_review') {
       const pr = body.pull_request as GhPull;
       let state = pullState(pr, body.action);

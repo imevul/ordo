@@ -1,5 +1,6 @@
 import type { Integration, IntegrationProviderInfo } from '@ordo/shared';
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { api, wsPath } from '../../../api/client.ts';
 import { Modal } from '../../../components/ui/Modal.tsx';
 import { t } from '../../../i18n/index.ts';
@@ -7,7 +8,9 @@ import { useWorkspace } from '../../../lib/workspace.tsx';
 import { ChatForm, chatForms, SlackAppPanel } from '../chat/index.tsx';
 import { EmailForm } from '../email-intake.tsx';
 import { JiraForm } from '../jira.tsx';
+import { FormRow } from '../ui.tsx';
 import { GithubAppPanel } from './github-app.tsx';
+import { errMsg } from './shared.ts';
 import { TokenForm, tokenForms } from './token-form.tsx';
 
 export function ConnectModal({
@@ -93,10 +96,11 @@ export function EditModal({
 }) {
   const ws = useWorkspace();
   const [comment, setComment] = useState(false);
+  const [repos, setRepos] = useState('');
   useEffect(() => {
-    setComment(
-      (integration?.config as { commentOnPullRequests?: boolean })?.commentOnPullRequests === true,
-    );
+    const c = integration?.config as { commentOnPullRequests?: boolean; repos?: string[] };
+    setComment(c?.commentOnPullRequests === true);
+    setRepos((c?.repos ?? []).join('\n'));
   }, [integration]);
   if (!integration) return null;
   const app = (integration.config as { mode?: string }).mode === 'app';
@@ -135,13 +139,27 @@ export function EditModal({
           <form
             onSubmit={async (e) => {
               e.preventDefault();
-              await api.patch(wsPath(ws.slug, `/integrations/${integration.id}`), {
-                config: { commentOnPullRequests: comment },
-              });
-              onDone();
+              try {
+                await api.patch(wsPath(ws.slug, `/integrations/${integration.id}`), {
+                  config: { commentOnPullRequests: comment, repos },
+                });
+                onDone();
+              } catch (err) {
+                toast.error(errMsg(err));
+              }
             }}
           >
-            <p className="mb-4 text-[12.5px] text-muted">{t('integrations.edit.appRepos')}</p>
+            <FormRow
+              label={t('integrations.forge.repositories')}
+              hint={t('integrations.edit.appRepos')}
+            >
+              <textarea
+                className="input min-h-20 font-mono"
+                placeholder="acme/app"
+                value={repos}
+                onChange={(e) => setRepos(e.target.value)}
+              />
+            </FormRow>
             <label className="flex items-center gap-2 text-[13px]">
               <input
                 type="checkbox"

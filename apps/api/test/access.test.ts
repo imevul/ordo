@@ -779,6 +779,8 @@ describe('route inventory', () => {
     'GET /integrations/github/app': 'workspace admins only',
     'POST /integrations/github/manifest': 'instance admins only',
     'POST /integrations/github/install': 'workspace admins only',
+    'GET /integrations/github/choices': 'workspace admins only',
+    'POST /integrations/github/connect': 'workspace admins only',
     'GET /integrations/slack/app': 'workspace admins only',
     'PUT /integrations/slack/app': 'instance admins only',
     'POST /integrations/slack/install': 'workspace admins only',

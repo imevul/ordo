@@ -20,6 +20,7 @@ import { relativeTime } from '../../../lib/format.ts';
 import { useWorkspace } from '../../../lib/workspace.tsx';
 import { chatForms } from '../chat/index.tsx';
 import { SettingsCard } from '../ui.tsx';
+import { GithubInstallationChooser } from './github-app.tsx';
 import { ConnectModal, EditModal } from './modals.tsx';
 import { providerText } from './shared.ts';
 
@@ -40,6 +41,17 @@ export function IntegrationsSection() {
   const [connecting, setConnecting] = useState<IntegrationProviderInfo | null>(null);
   const [editing, setEditing] = useState<Integration | null>(null);
   const reload = () => qc.invalidateQueries({ queryKey: key });
+
+  // Signing in to GitHub found several installations: ?github=<state> to pick one.
+  const [choosing, setChoosing] = useState(
+    () => new URL(window.location.href).searchParams.get('github') ?? '',
+  );
+  const closeChooser = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('github');
+    window.history.replaceState(null, '', url);
+    setChoosing('');
+  };
 
   useEffect(() => {
     // The GitHub App flow comes back with ?error= when something went wrong.
@@ -184,6 +196,16 @@ export function IntegrationsSection() {
           reload();
         }}
       />
+      {choosing && (
+        <GithubInstallationChooser
+          state={choosing}
+          onClose={closeChooser}
+          onDone={() => {
+            closeChooser();
+            reload();
+          }}
+        />
+      )}
       <EditModal
         integration={editing}
         onClose={() => setEditing(null)}
@@ -225,7 +247,11 @@ function describe(i: Integration) {
     baseUrl?: string;
     channels?: unknown[];
   };
-  if (c.mode === 'app') return t('integrations.summary.githubApp');
+  if (c.mode === 'app')
+    return [
+      t('integrations.summary.githubApp'),
+      ...(c.repos?.length ? [c.repos.join(', ')] : []),
+    ].join(' · ');
   if (i.provider === 'email') {
     const e = i.config as { address?: string; host?: string };
     return `${e.address ?? t('integrations.summary.email')} · ${c.delivery === 'imap' ? `IMAP ${e.host}` : t('integrations.summary.webhook')}`;
