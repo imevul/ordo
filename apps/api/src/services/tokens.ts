@@ -62,6 +62,23 @@ export async function consumeToken(db: DbOrTx, kind: TokenKind, token: string) {
   return row;
 }
 
+/** Reads a token without using it up (a page showing what the next step will act on). */
+export async function peekToken(db: DbOrTx, kind: TokenKind, token: string) {
+  const [row] = await db
+    .select()
+    .from(authTokens)
+    .where(
+      and(
+        eq(authTokens.tokenHash, sha256(token)),
+        eq(authTokens.kind, kind),
+        isNull(authTokens.usedAt),
+        gt(authTokens.expiresAt, new Date().toISOString()),
+      ),
+    );
+  if (!row) throw badRequest('This link is invalid or has expired').as('link_invalid');
+  return row;
+}
+
 export async function purgeExpiredTokens(db: DbOrTx) {
   const dayAgo = new Date(Date.now() - 86_400_000).toISOString();
   await db

@@ -55,7 +55,8 @@ export default {
   edit: {
     label: 'Innstillinger for {name}',
     webhookUrl: 'Webhook-URL',
-    appRepos: 'Velg repoer på GitHub, i appens installasjonsinnstillinger.',
+    appRepos:
+      'Hvilke av installasjonens repoer dette arbeidsområdet bruker. La stå tomt for å bruke alle; GitHub bestemmer hvilke installasjonen kan se.',
   },
   forge: {
     deliveryHeading: 'Slik får Ordo vite om endringer',
@@ -89,10 +90,19 @@ export default {
   githubApp: {
     intro:
       'GitHub-appen er den enkleste veien: installer den på kontoen eller organisasjonen din, velg repoer, ferdig. GitHub må kunne nå {url}.',
-    install: 'Installer {app} på GitHub',
+    install: 'Koble til GitHub',
+    installElsewhere: 'Installer {app} på en annen GitHub-konto',
+    makePublic:
+      'Hvis GitHub sier at appen ikke kan installeres der, er den privat: eieren kan gjøre den offentlig på GitHub, under appens avanserte innstillinger.',
+    chooseTitle: 'Velg en GitHub-installasjon',
+    chooseIntro:
+      'GitHub-kontoen din kan se disse installasjonene av {app}. Velg den du vil koble til arbeidsområdet.',
+    connected: 'Tilkoblet',
+    organisation: 'Organisasjon',
+    user: 'Personlig konto',
     org: 'GitHub-organisasjon (valgfritt)',
     orgHint:
-      'Eier appen. La stå tomt for å opprette den under din personlige konto. Appen er privat: den kan bare installeres der den eies.',
+      'Eier appen. La stå tomt for å opprette den under din personlige konto. Appen er offentlig, så hvilken som helst konto kan installere den, og flere arbeidsområder kan dele én installasjon.',
     create: 'Opprett GitHub-appen',
     needsInstanceAdmin:
       'En instansadmin må opprette GitHub-appen én gang. Inntil da kan du koble til med et token.',

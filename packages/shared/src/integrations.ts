@@ -73,9 +73,18 @@ const forgeDelivery = choice(['webhook', 'poll'], 'webhook');
 export const GITHUB_API_URL = 'https://api.github.com';
 export const GITHUB_WEB_URL = 'https://github.com';
 
-/** `app`: installed through the instance's GitHub App; `token`: a personal access token. */
+/**
+ * `app`: installed through the instance's GitHub App (`repos` narrows the installation's
+ * repositories for this workspace; empty means all of them); `token`: a personal access token.
+ */
 export type GithubConfig =
-  | { mode: 'app'; apiUrl?: string; webUrl?: string; commentOnPullRequests: boolean }
+  | {
+      mode: 'app';
+      apiUrl?: string;
+      webUrl?: string;
+      repos: string[];
+      commentOnPullRequests: boolean;
+    }
   | {
       mode: 'token';
       apiUrl: string;
@@ -98,7 +107,7 @@ export const githubSettingsSchema = z
     secrets: z.object({ token: optionalToken, webhookSecret: optionalToken }),
   })
   .superRefine(({ config, secrets }, ctx) => {
-    // Installed through the GitHub App: only the preferences are editable.
+    // Installed through the GitHub App: only the preferences and the repositories are editable.
     if (config.mode === 'app') return;
     if (!secrets.token) need(ctx, ['secrets', 'token'], 'A personal access token is required');
     if (!config.repos.length)
@@ -111,6 +120,7 @@ export const githubSettingsSchema = z
             mode: 'app',
             apiUrl: config.apiUrl,
             webUrl: config.webUrl,
+            repos: config.repos,
             commentOnPullRequests: config.commentOnPullRequests,
           },
           secrets: {},

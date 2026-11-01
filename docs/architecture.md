@@ -226,7 +226,8 @@ through team keys and `team_key_aliases`, upsert `issue_links`, and call `automa
 status further along (by status type, then position). Each provider supports webhooks (hooks it creates on install
 and removes on uninstall; `install` reconciles, so it reruns after settings change) and polling with cursors kept in
 `integrations.state`. The GitHub App lives in `integration_apps`: its private key signs a JWT for short-lived
-installation tokens, and its single webhook URL resolves to integrations by installation id.
+installation tokens, and its single webhook URL resolves to integrations by installation id: every workspace that
+connected that installation gets the event, and each skips repositories outside its `config.repos`.
 
 ### Chat and long-lived connections
 

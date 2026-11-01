@@ -57,6 +57,7 @@ describe('integration callbacks', () => {
     for (const path of [
       '/api/integrations/github/callback?code=a&code=b&state=s',
       '/api/integrations/github/setup?installation_id=1&installation_id=2&state=s',
+      '/api/integrations/github/setup?installation_id=1&setup_action=a&setup_action=b&state=s',
       '/api/integrations/github/authorized?code=c&state=s&state=t',
     ]) {
       const res = await user.get(path);

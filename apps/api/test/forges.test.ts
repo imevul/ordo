@@ -731,30 +731,50 @@ describe('GitHub App', () => {
     expect(parsed.default_permissions).toMatchObject({ checks: 'read', statuses: 'read' });
     expect(parsed.default_events).toEqual(expect.arrayContaining(['check_suite', 'status']));
 
-    /** GitHub's setup redirect, then the sign-in that proves access, then the way back. */
-    const connect = async (installState: string, installationId: string, visible: number[]) => {
-      const setup = await owner.get(
-        `/api/integrations/github/setup?installation_id=${installationId}&setup_action=install&state=${installState}`,
-      );
-      const authorize = new URL(setup.headers.location as string);
+    // Public, so any account can install it and several workspaces can share an installation.
+    expect(parsed).toMatchObject({ public: true, setup_on_update: true });
+
+    /** The user's installations as GitHub lists them, with one of some other app among them. */
+    const installationsVisible = (visible: number[]) =>
+      forge.on('GET', '/user/installations', {
+        installations: [
+          { id: 77, app_id: 999, account: { login: 'elsewhere', type: 'User' } },
+          ...visible.map((id) => ({
+            id,
+            app_id: 4242,
+            account: { login: `acct${id}`, type: 'Organization', avatar_url: null },
+          })),
+        ],
+      });
+    /** The GitHub sign-in coming back, seeing `visible`; returns where Ordo sends the browser. */
+    const signIn = async (authorizeUrl: string, visible: number[]) => {
+      const authorize = new URL(authorizeUrl);
       expect(authorize.pathname).toBe('/login/oauth/authorize');
       expect(authorize.searchParams.get('client_id')).toBe('Iv1.x');
       forge.on('POST', '/login/oauth/access_token', { access_token: 'ghu_user' });
-      forge.on('GET', '/user/installations', {
-        installations: visible.map((id) => ({ id })),
-      });
+      installationsVisible(visible);
       const back = await owner.get(
         `/api/integrations/github/authorized?code=user-code&state=${authorize.searchParams.get('state')}`,
       );
       return decodeURIComponent(String(back.headers.location));
     };
+    /** GitHub's setup redirect after an install, then the sign-in that proves access. */
+    const connect = async (installState: string, installationId: string, visible: number[]) => {
+      const setup = await owner.get(
+        `/api/integrations/github/setup?installation_id=${installationId}&setup_action=install&state=${installState}`,
+      );
+      return signIn(setup.headers.location as string, visible);
+    };
     const installState = async (path: string) =>
       new URL(
-        (await owner.post(`${path}/integrations/github/install`, {})).data.url,
+        (await owner.post(`${path}/integrations/github/install`, { fresh: true })).data.url,
       ).searchParams.get('state')!;
+    const rowsFor = (externalId: string) =>
+      app.db.select().from(integrations).where(eq(integrations.externalId, externalId));
 
     // The installation id in the setup redirect is the user's word; GitHub has to confirm it.
-    expect(await connect(install.searchParams.get('state')!, '42', [7])).toContain(
+    // An installation of another app with that id doesn't count either.
+    expect(await connect(install.searchParams.get('state')!, '77', [7])).toContain(
       "can't access that installation",
     );
     expect(await connect(await installState(ws), '42', [7, 42])).toBe(
@@ -768,18 +788,35 @@ describe('GitHub App', () => {
     expect(forge.calls('GET', '/user/installations').at(-1)!.headers.authorization).toBe(
       'Bearer ghu_user',
     );
-    // Another workspace can't take over an installation that is already connected.
+    expect((await rowsFor('42')).map((r) => r.name)).toEqual(['GitHub · acct42']);
+    // Connecting it again changes nothing.
+    await connect(await installState(ws), '42', [42]);
+    expect(await rowsFor('42')).toHaveLength(1);
+
+    // A member asking an organisation owner to approve the install has nothing to connect yet.
+    const requested = await owner.get(
+      `/api/integrations/github/setup?setup_action=request&state=${await installState(ws)}`,
+    );
+    expect(decodeURIComponent(String(requested.headers.location))).toContain('approve');
+
+    // Another workspace can connect the same installation; both hear its webhooks.
     const otherSlug = `${slug}-other`;
+    const other = `/api/w/${otherSlug}`;
     await owner.post('/api/workspaces', {
       name: 'Other',
       slug: otherSlug,
       teamName: 'B',
       teamKey: 'BBB',
     });
-    expect(await connect(await installState(`/api/w/${otherSlug}`), '42', [42])).toContain(
-      'already connected to another Ordo workspace',
+    expect(await connect(await installState(other), '42', [42])).toBe(
+      `/${otherSlug}/settings/integrations`,
     );
+    expect(await rowsFor('42')).toHaveLength(2);
     await app.db.update(users).set({ isInstanceAdmin: false }).where(eq(users.id, ownerId));
+    const otherBoot = (await owner.get(`${other}/bootstrap`)).data as Bootstrap;
+    const otherIssue = (
+      await owner.post(`${other}/issues`, { teamId: otherBoot.teams[0]!.id, title: 'Over there' })
+    ).data as { id: string; identifier: string };
 
     forge.on('POST', '/app/installations/42/access_tokens', {
       token: 'ghs_installation',
@@ -798,7 +835,7 @@ describe('GitHub App', () => {
       pull_request: {
         number: 21,
         html_url: 'https://github.example/acme/app/pull/21',
-        title: `${issue.identifier} via app`,
+        title: `${issue.identifier} and ${otherIssue.identifier} via app`,
         body: '',
         state: 'open',
         updated_at: new Date().toISOString(),
@@ -820,6 +857,9 @@ describe('GitHub App', () => {
     expect(res.statusCode).toBe(202);
     await settle();
     expect((await detail(issue.id)).links).toMatchObject([{ provider: 'github', state: 'open' }]);
+    const otherLinks = async () =>
+      ((await owner.get(`${other}/issues/${otherIssue.id}`)).data as IssueDetail).links;
+    expect(await otherLinks()).toMatchObject([{ provider: 'github', state: 'open' }]);
 
     // The installation token came from a JWT signed with the app's key.
     const tokenCall = forge.calls('POST', '/app/installations/42/access_tokens')[0]!;
@@ -850,6 +890,7 @@ describe('GitHub App', () => {
       integrations: { id: string; config: { mode?: string } }[];
     };
     const installed = list.find((i) => i.config.mode === 'app')!;
+    expect(list.filter((i) => i.config.mode === 'app')).toHaveLength(1);
     // An installation talks to the app's server; a workspace can't point it elsewhere.
     await owner.patch(`${ws}/integrations/${installed.id}`, {
       config: { apiUrl: 'https://evil.test', commentOnPullRequests: false },
@@ -864,5 +905,77 @@ describe('GitHub App', () => {
     expect(forge.calls('GET', '/installation/repositories')[0]!.headers.authorization).toBe(
       'Bearer ghs_installation',
     );
+
+    // A workspace can narrow a shared installation to some of its repositories: it then ignores
+    // the others, and its installation token reaches only its own.
+    const { integrations: otherList } = (await owner.get(`${other}/integrations`)).data as {
+      integrations: { id: string }[];
+    };
+    await owner.patch(`${other}/integrations/${otherList[0]!.id}`, {
+      config: { repos: 'acme/api' },
+    });
+    const pr22 = JSON.stringify({
+      ...JSON.parse(raw),
+      pull_request: {
+        ...JSON.parse(raw).pull_request,
+        number: 22,
+        html_url: 'https://github.example/acme/app/pull/22',
+      },
+    });
+    forge.on('POST', '/repos/acme/app/issues/22/comments', { id: 3 });
+    await app.inject({
+      method: 'POST',
+      url: `/api/hooks/github/app-${appRowId}`,
+      payload: pr22,
+      headers: {
+        'content-type': 'application/json',
+        'x-github-event': 'pull_request',
+        'x-github-delivery': 'app-2',
+        'x-hub-signature-256': `sha256=${createHmac('sha256', 'app-hook-secret').update(pr22).digest('hex')}`,
+      },
+    });
+    await settle();
+    expect((await detail(issue.id)).links).toHaveLength(2);
+    expect(await otherLinks()).toHaveLength(1);
+    await owner.get(`${other}/integrations/${otherList[0]!.id}/repositories`);
+    expect(forge.calls('POST', '/app/installations/42/access_tokens').at(-1)!.body).toEqual({
+      repositories: ['api'],
+    });
+
+    // Signing in first: one installation to connect connects it; several are for the admin to
+    // pick from, and only the ones GitHub listed can be picked.
+    const start = async (path: string) =>
+      (await owner.post(`${path}/integrations/github/install`, {})).data.url as string;
+    expect(await signIn(await start(ws), [])).toContain('/apps/ordo-test/installations/new');
+    const chooser = new URL(await signIn(await start(ws), [42, 43, 44]), app.env.publicUrl);
+    expect(chooser.pathname).toBe(`/${slug}/settings/integrations`);
+    const choose = chooser.searchParams.get('github')!;
+    expect(
+      (await owner.get(`${other}/integrations/github/choices?state=${choose}`)).statusCode,
+    ).toBe(400);
+    const choices = await owner.get(`${ws}/integrations/github/choices?state=${choose}`);
+    expect(choices.data.installations).toEqual([
+      expect.objectContaining({ id: '42', account: 'acct42', connected: true }),
+      expect.objectContaining({ id: '43', connected: false }),
+      expect.objectContaining({ id: '44', connected: false }),
+    ]);
+    expect(
+      (
+        await owner.post(`${ws}/integrations/github/connect`, {
+          state: choose,
+          installationId: '77',
+        })
+      ).statusCode,
+    ).toBe(400);
+    const again = new URL(await signIn(await start(ws), [42, 43, 44]), app.env.publicUrl);
+    const connected = await owner.post(`${ws}/integrations/github/connect`, {
+      state: again.searchParams.get('github'),
+      installationId: '43',
+    });
+    expect(connected.statusCode).toBe(200);
+    expect((await rowsFor('43')).map((r) => r.name)).toEqual(['GitHub · acct43']);
+    // With 43 connected, 44 is the only one left: it connects without asking.
+    expect(await signIn(await start(ws), [42, 43, 44])).toBe(`/${slug}/settings/integrations`);
+    expect(await rowsFor('44')).toHaveLength(1);
   });
 });

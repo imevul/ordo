@@ -5,7 +5,8 @@ token** (works anywhere, including behind NAT with polling).
 
 ## GitHub App
 
-An instance admin creates the app once; afterwards workspace admins install it.
+An instance admin creates the app once; afterwards workspace admins connect it. The app is public, so it can be
+installed on any GitHub account or organisation, and several Ordo workspaces can share one installation.
 
 1. **Settings → Integrations → GitHub → Connect → GitHub App → Create the GitHub App.** Optionally name the
    GitHub organisation that should own it. GitHub shows the app it's about to create (from Ordo's manifest:
@@ -16,11 +17,23 @@ An instance admin creates the app once; afterwards workspace admins install it.
    installation you just made, so nobody can connect someone else's.
 4. You land back in Ordo with GitHub connected.
 
-Other workspaces on the same instance use **Install … on GitHub** to add their own installation. An installation
-belongs to one workspace. The app is private, so it can only be installed on the account that owns it; create it
-under the organisation your teams use, or make it public (GitHub → the app → Advanced) to install it on several
-accounts. Installing it doesn't connect anything by itself: only a workspace admin who can access the installation
-can.
+After that, **Connect GitHub** signs you in to GitHub and looks at the installations of the app your account can
+see. If there's one, it's connected straight away; if there are several, you pick one; if there are none, GitHub
+asks you to install the app. **Install … on another GitHub account** goes straight to installing it somewhere new.
+Installing the app doesn't connect anything by itself. Only a workspace admin whose GitHub account can access the
+installation can connect it.
+
+**Sharing an installation.** Two workspaces can connect the same installation: each gets its own integration, and
+events from GitHub go to both. By default a workspace uses every repository the installation can see. Under the
+integration's settings, **Repositories** narrows that to some of them (`owner/name`, one per line). The workspace
+then ignores events from the other repositories, and its access token only reaches the ones listed. Narrow the
+repositories when the workspaces share team keys: otherwise a pull request that mentions `ENG-12` links to `ENG-12`
+in both. Disconnecting GitHub in one workspace leaves the installation and the other workspaces alone.
+
+**Apps created before 1 November 2026** are private, so they can only be installed on the account that owns them.
+To install one elsewhere, its owner makes it public on GitHub: Settings → Developer settings → GitHub Apps → the
+app → **Advanced → Make public**. In the same settings, also turn on **Redirect on update** under **Post
+installation**, so changing an installation on GitHub brings you back to Ordo.
 
 **Apps created before 30 October 2026** don't have the authorisation callback yet. Add
 `https://<ordo>/api/integrations/github/authorized` under the app's **Callback URL** on GitHub (Settings → Developer
