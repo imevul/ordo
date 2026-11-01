@@ -19,6 +19,7 @@ export default {
   done: 'Ferdig',
   loading: 'Laster',
   retry: 'Prøv igjen',
+  reload: 'Last inn på nytt',
   search: 'Søk',
   none: 'Ingen',
   all: 'Alle',

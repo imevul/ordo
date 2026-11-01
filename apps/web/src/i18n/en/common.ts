@@ -18,6 +18,7 @@ export default {
   done: 'Done',
   loading: 'Loading',
   retry: 'Try again',
+  reload: 'Reload',
   search: 'Search',
   none: 'None',
   all: 'All',

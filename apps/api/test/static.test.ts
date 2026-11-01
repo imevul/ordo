@@ -24,6 +24,33 @@ afterAll(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+describe('files of earlier builds', () => {
+  // A tab left open across a deploy asks for these; the page in their place would be run as a script.
+  it.each(['/assets/gone-abc.js', '/assets/gone-abc.css', '/assets/gone-abc.js?v=1'])(
+    'answers 404 for %s',
+    async (url) => {
+      const res = await app.inject({ url });
+      expect(res.statusCode).toBe(404);
+      expect(res.headers['content-type']).toContain('application/json');
+      expect(res.json().error).toBe('not_found');
+    },
+  );
+
+  // Workspace slugs aren't reserved, so a workspace can be called "assets".
+  it.each([
+    '/haxnet/settings/agents',
+    '/assets',
+    '/assets/',
+    '/assets/inbox',
+    '/assets/team/ENG/all',
+    '/assets/issue/ENG-1?comment=abc.def',
+  ])('still serves the page for the client-side route %s', async (url) => {
+    const res = await app.inject({ url });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toBe(PAGE);
+  });
+});
+
 describe('web client caching', () => {
   // A browser that reuses the page keeps running the old bundle after a deploy.
   it.each(['/', '/index.html', '/haxnet/settings/agents'])(

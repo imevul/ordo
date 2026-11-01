@@ -2,8 +2,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { toast } from 'sonner';
 import { ApiError } from './api/client.ts';
-import { setLocale, storedLocale } from './i18n/index.ts';
+import { setLocale, storedLocale, t } from './i18n/index.ts';
 import { makeRouter } from './router.tsx';
 import './styles/app.css';
 
@@ -28,6 +29,17 @@ const router = makeRouter(queryClient);
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// A tab left open across a deploy asks for chunks the new build no longer has. Only a reload gets
+// it onto the new build, and that can wait until the person has saved what they're writing.
+window.addEventListener('vite:preloadError', () => {
+  if (!navigator.onLine) return;
+  toast(t('errors.staleBuild'), {
+    id: 'stale-build',
+    duration: Number.POSITIVE_INFINITY,
+    action: { label: t('common.reload'), onClick: () => location.reload() },
+  });
+});
 
 // The language this browser used last, so the first paint is already in it; if the signed-in
 // person's own choice (from /auth/me) differs, WorkspaceLayout switches to it.
