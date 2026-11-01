@@ -313,7 +313,9 @@ export async function buildApp(
       },
     });
     app.setNotFoundHandler((req, reply) => {
-      if (req.url.startsWith('/api/') || req.method !== 'GET') {
+      // A built file that isn't here belongs to an earlier build. Answered with the page, it would
+      // be run as a script, and the service worker would keep the page under that file's name.
+      if (req.url.startsWith('/api/') || req.method !== 'GET' || BUILT_FILE.test(req.url)) {
         return reply.status(404).send({ error: 'not_found', message: 'Not found' });
       }
       return reply.sendFile('index.html');
@@ -327,6 +329,8 @@ export async function buildApp(
   return app;
 }
 
+/** `/assets/<name>.<ext>`. Only files: a workspace called "assets" has pages at `/assets/inbox`. */
+const BUILT_FILE = /^\/assets\/[^/?]+\.\w+(?:\?|$)/;
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const WORKSPACE_PREFIX = '/api/w/:ws/';
 const isAgentRoute = (req: FastifyRequest) =>

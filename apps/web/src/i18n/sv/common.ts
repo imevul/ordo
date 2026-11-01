@@ -19,6 +19,7 @@ export default {
   done: 'Klar',
   loading: 'Laddar',
   retry: 'Försök igen',
+  reload: 'Ladda om',
   search: 'Sök',
   none: 'Ingen',
   all: 'Alla',

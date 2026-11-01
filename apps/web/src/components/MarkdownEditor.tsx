@@ -1,6 +1,8 @@
 import { type Attachment, attachmentMarkdown } from '@ordo/shared';
 import { Paperclip } from 'lucide-react';
 import {
+  type ComponentProps,
+  type ComponentType,
   type KeyboardEvent,
   lazy,
   type Ref,
@@ -37,13 +39,19 @@ interface Props {
 }
 
 type Mode = 'rich' | 'markdown';
+type RichTextEditorProps = ComponentProps<typeof import('./RichTextEditor.tsx').RichTextEditor>;
 
 // TipTap is about a third of the app's code; load it on first use (and soon after start-up).
 const loadRichTextEditor = () => import('./RichTextEditor.tsx');
-const RichTextEditor = lazy(() =>
-  loadRichTextEditor().then((m) => ({ default: m.RichTextEditor })),
+const RichTextEditor = lazy<ComponentType<RichTextEditorProps>>(() =>
+  loadRichTextEditor().then(
+    (m) => ({ default: m.RichTextEditor }),
+    // A tab left open across a deploy can't load it any more (main.tsx offers the reload). The source
+    // view edits the same text, so whatever is being written survives.
+    () => ({ default: (props) => <MarkdownSource {...props} preview={false} /> }),
+  ),
 );
-if (typeof window !== 'undefined') setTimeout(loadRichTextEditor, 3000);
+if (typeof window !== 'undefined') setTimeout(() => loadRichTextEditor().catch(() => {}), 3000);
 
 /**
  * Text editor for descriptions, comments and updates. Rich text by default; people who prefer

@@ -4,6 +4,8 @@ export default {
   network: 'Det går inte att nå Ordo. Kontrollera anslutningen och försök igen.',
   server: 'Något gick fel på servern. Försök igen om en stund.',
   rateLimited: 'För många försök. Vänta en minut och försök igen.',
+  staleBuild:
+    'En del av Ordo kunde inte laddas, troligen för att en ny version har kommit. Ladda om när du har sparat ditt arbete.',
   api: {
     not_signed_in: 'Du är inte inloggad',
     no_access: 'Du har inte åtkomst till det här',

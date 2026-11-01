@@ -6,6 +6,8 @@ export default {
   network: "Can't reach Ordo. Check your connection and try again.",
   server: 'Something went wrong on the server. Try again in a moment.',
   rateLimited: 'Too many tries. Wait a minute and try again.',
+  staleBuild:
+    "Part of Ordo couldn't load, probably because a new version is out. Reload when you've saved your work.",
   api: {
     not_signed_in: 'Not signed in',
     no_access: 'You do not have access to this',
