@@ -453,13 +453,21 @@ export const saveRequestFormSchema = z.object({
 });
 export type SaveRequestFormInput = z.infer<typeof saveRequestFormSchema>;
 
+/** Postgres can't store a NUL byte in text, and anyone can send this form one. */
+const noNul = (text: string) => !text.includes('\0');
+
 /** `POST /api/forms/:token`, as JSON or as the `payload` part of a multipart body with the files. */
 export const submitRequestFormSchema = z.object({
-  name: z.string().trim().min(1).max(200),
+  name: z.string().trim().min(1).max(200).refine(noNul, 'Invalid characters'),
   email: z.string().trim().toLowerCase().email().max(320),
-  title: z.string().trim().min(1).max(500),
-  description: z.string().trim().max(50_000).default(''),
-  answers: z.record(z.string(), z.union([z.string().max(5000), z.boolean()])).default({}),
+  title: z.string().trim().min(1).max(500).refine(noNul, 'Invalid characters'),
+  description: z.string().trim().max(50_000).refine(noNul, 'Invalid characters').default(''),
+  answers: z
+    .record(
+      z.string(),
+      z.union([z.string().max(5000).refine(noNul, 'Invalid characters'), z.boolean()]),
+    )
+    .default({}),
   /** The honeypot: hidden from people, so only a bot fills it in. */
   website: z.string().max(2000).optional(),
   captchaToken: z.string().max(4096).optional(),

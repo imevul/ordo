@@ -40,6 +40,7 @@ export default {
     fieldsHint:
       'Name, email, title and description are always asked. Answers are added to the issue’s description.',
     fieldLabel: 'Question',
+    fieldType: 'Answer type',
     optionsPlaceholder: 'One choice per line',
     required: 'Required',
     addField: 'Add question',

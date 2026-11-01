@@ -62,7 +62,8 @@ async function readSubmission(req: FastifyRequest, maxMb: number, allowFiles: bo
           { maxMb },
         );
       }
-      if (body.length) files.push({ filename: part.filename, body });
+      // A part can count as a file without a filename, whatever the types say.
+      if (body.length) files.push({ filename: part.filename ?? '', body });
     } else if (part.fieldname === 'payload') {
       try {
         payload = JSON.parse(String(part.value));

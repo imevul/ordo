@@ -1,9 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import type { Bootstrap, IssueDetail, RequestForm, Team } from '@ordo/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { issues, requestForms } from '../src/db/schema.ts';
 import { runAutomation } from '../src/services/automation.ts';
+import { saveFile } from '../src/services/files.ts';
 import { bulkUpdateIssues } from '../src/services/issues.ts';
 import { requestFormCaptchaSecretAad } from '../src/services/secretKey.ts';
 import { Client, captureMail, signup, testApp } from './helpers.ts';
@@ -33,7 +35,7 @@ const valid = {
 const submit = (body: object = {}, c = visitor()) => c.post(url(), { ...valid, ...body });
 
 /** A multipart submission, as the public page sends it. */
-function multipart(body: object, files: { filename: string; body: Buffer }[], c = visitor()) {
+function multipart(body: object, files: { filename?: string; body: Buffer }[], c = visitor()) {
   const boundary = '----ordo-test-form';
   const payload = Buffer.concat([
     Buffer.from(
@@ -41,7 +43,7 @@ function multipart(body: object, files: { filename: string; body: Buffer }[], c 
     ),
     ...files.flatMap((f) => [
       Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${f.filename}"\r\nContent-Type: application/octet-stream\r\n\r\n`,
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"${f.filename === undefined ? '' : `; filename="${f.filename}"`}\r\nContent-Type: application/octet-stream\r\n\r\n`,
       ),
       f.body,
       Buffer.from('\r\n'),
@@ -432,6 +434,73 @@ describe('attachments', () => {
     const before = await count();
     await multipart({ title: 'Trap', website: 'filled' }, [file]);
     expect(await count()).toBe(before);
+  });
+
+  it('keep a usable name whatever the filename holds', async () => {
+    await save({ allowAttachments: true });
+    const res = await multipart({ title: 'Odd names' }, [
+      { filename: 'no\0tes.txt', body: Buffer.from('a') },
+      { filename: '\0', body: Buffer.from('b') },
+      { body: Buffer.from('c') },
+    ]);
+    expect(res.statusCode).toBe(200);
+    const names = (await detail('Odd names')).attachments.map((a) => a.filename).sort();
+    expect(names).toEqual(['file', 'file', 'notes.txt']);
+  });
+
+  it('leave nothing in storage when the file cannot be recorded', async () => {
+    const put = vi.spyOn(app.storage, 'put');
+    await expect(
+      saveFile(app, {
+        // No such workspace, so the insert fails after the bytes are stored.
+        workspaceId: randomUUID(),
+        ownerId: randomUUID(),
+        kind: 'attachment',
+        filename: 'notes.txt',
+        body: Buffer.from('x'),
+      }),
+    ).rejects.toThrow();
+    const key = put.mock.calls[0]![0];
+    put.mockRestore();
+    expect(await app.storage.get(key)).toBeNull();
+  });
+});
+
+describe('NUL bytes, which Postgres cannot store', () => {
+  it('make a token look like any other wrong link', async () => {
+    const wrong = await visitor().get('/api/forms/nope');
+    for (const res of [
+      await visitor().get('/api/forms/%00'),
+      await visitor().post('/api/forms/%00', valid),
+      await visitor().get(`${url()}%00`),
+    ]) {
+      expect(res.statusCode).toBe(404);
+      expect(res.data).toEqual(wrong.data);
+    }
+  });
+
+  it('are turned down in the text of a submission', async () => {
+    for (const field of ['name', 'title', 'description']) {
+      const res = await submit({ title: `NUL in ${field}`, [field]: 'a\0b' });
+      expect(res.statusCode, field).toBe(400);
+      expect(await titled(`NUL in ${field}`)).toBeUndefined();
+    }
+  });
+
+  it('are turned down in answers to real questions', async () => {
+    form = (
+      await save({
+        fields: [
+          { id: 'plan', label: 'Plan', type: 'text', required: false },
+          { id: 'why', label: 'Why', type: 'textarea', required: false },
+        ],
+      })
+    ).data;
+    for (const id of ['plan', 'why']) {
+      const res = await submit({ title: `NUL in ${id}`, answers: { [id]: 'a\0b' } });
+      expect(res.statusCode, id).toBe(400);
+      expect(await titled(`NUL in ${id}`)).toBeUndefined();
+    }
   });
 });
 

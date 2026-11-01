@@ -159,10 +159,13 @@ export async function rotateRequestFormLink(ctx: Ctx, teamId: string) {
 
 /** The form behind a public link. Switched off looks exactly like a link that never existed. */
 export async function loadOpenForm(db: DbOrTx, token: string) {
-  const [row] = await db
-    .select()
-    .from(requestForms)
-    .where(and(eq(requestForms.token, token), eq(requestForms.enabled, true)));
+  // Checked first: anything can come in here, and Postgres errors on some of it (a NUL byte).
+  const [row] = /^[\w-]+$/.test(token)
+    ? await db
+        .select()
+        .from(requestForms)
+        .where(and(eq(requestForms.token, token), eq(requestForms.enabled, true)))
+    : [];
   if (!row) throw notFound('Form');
   return row;
 }

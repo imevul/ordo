@@ -75,7 +75,7 @@ function FieldRow({
         />
         <select
           className="input w-auto"
-          aria-label={t('requestForm.settings.fieldLabel')}
+          aria-label={t('requestForm.settings.fieldType')}
           value={field.type}
           onChange={(e) => onChange({ type: e.target.value as RequestFormFieldType })}
         >

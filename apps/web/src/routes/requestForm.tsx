@@ -13,6 +13,7 @@ interface CaptchaApi {
     opts: { sitekey: string; callback: (token: string) => void; 'expired-callback': () => void },
   ) => string;
   reset: (id: string) => void;
+  remove: (id: string) => void;
 }
 
 // Both providers load the same way and have the same render/reset calls.
@@ -81,6 +82,9 @@ function Captcha({
       .catch(() => setFailed(true));
     return () => {
       gone = true;
+      // The form goes away after a submit; a widget left behind keeps looking for its element.
+      widget.current?.api.remove(widget.current.id);
+      widget.current = null;
     };
   }, [provider, siteKey, onToken]);
 
@@ -264,14 +268,21 @@ export function RequestFormPage() {
       </Shell>
     );
 
-  const pickFiles = (picked: File[]) => {
+  const pickFiles = (input: HTMLInputElement) => {
     if (!limits) return;
+    const picked = [...(input.files ?? [])];
+    // A refused pick empties the input too, so what it shows is what gets sent.
+    const refuse = (reason: string) => {
+      input.value = '';
+      setFiles([]);
+      setError(reason);
+    };
     setError(null);
     if (picked.length > limits.maxFiles)
-      return setError(t('requestForm.public.tooManyFiles', { maxFiles: limits.maxFiles }));
+      return refuse(t('requestForm.public.tooManyFiles', { maxFiles: limits.maxFiles }));
     const big = picked.find((f) => f.size > limits.maxFileMb * 1024 * 1024);
     if (big)
-      return setError(
+      return refuse(
         t('requestForm.public.fileTooLarge', { name: big.name, maxFileMb: limits.maxFileMb }),
       );
     setFiles(picked);
@@ -362,12 +373,7 @@ export function RequestFormPage() {
         ))}
         {limits && (
           <Label text={t('requestForm.public.files')}>
-            <input
-              className="input"
-              type="file"
-              multiple
-              onChange={(e) => pickFiles([...(e.target.files ?? [])])}
-            />
+            <input className="input" type="file" multiple onChange={(e) => pickFiles(e.target)} />
             <span className="mt-1 block text-[11.5px] text-index">
               {t('requestForm.public.filesHint', limits)}
             </span>
