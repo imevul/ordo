@@ -64,7 +64,7 @@ export const Markdown = memo(function Markdown({
                   href={href}
                   onClick={(e) => {
                     e.preventDefault();
-                    navigate({ to: href });
+                    navigate({ href });
                   }}
                 >
                   {children}

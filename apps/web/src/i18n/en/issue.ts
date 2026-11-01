@@ -165,6 +165,7 @@ export default {
     edited: 'edited',
     reply: 'Reply',
     actions: 'Comment actions',
+    copyLink: 'Copy link to comment',
     replyPlaceholder: 'Leave a reply…',
     placeholder: 'Leave a comment…  (⌘/Ctrl+Enter to send)',
     send: 'Comment',

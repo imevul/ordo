@@ -150,6 +150,7 @@ export default {
     edited: 'redigert',
     reply: 'Svar',
     actions: 'Handlinger for kommentaren',
+    copyLink: 'Kopier lenke til kommentaren',
     replyPlaceholder: 'Skriv et svar…',
     placeholder: 'Skriv en kommentar…  (⌘/Ctrl+Enter for å sende)',
     send: 'Kommenter',
