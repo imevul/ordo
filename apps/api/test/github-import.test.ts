@@ -213,7 +213,7 @@ describe('GitHub Issues import', () => {
     expect(imp.status, imp.error ?? '').toBe('completed');
     expect(imp.report!.created).toMatchObject({
       teams: 2,
-      labels: 2,
+      labels: 1, // "bug" matches the default "Bug" label
       projects: 1,
       issues: 4,
       comments: 2,
@@ -239,7 +239,7 @@ describe('GitHub Issues import', () => {
     expect((await owner.get(`${ws}/issues/APP-2`)).statusCode).toBe(404);
 
     const site = await get('SITE-1');
-    expect(site.labelIds).toEqual([boot.labels.find((l) => l.name === 'bug')!.id]);
+    expect(site.labelIds).toEqual([boot.labels.find((l) => l.name === 'Bug')!.id]);
 
     const thread = await app.db.select().from(comments).where(eq(comments.issueId, app1.id));
     const carol = boot.placeholders.find((p) => p.name === 'carol')!;

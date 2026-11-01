@@ -1,7 +1,8 @@
-import type { CreateLabelInput, Label } from '@ordo/shared';
+import { type CreateLabelInput, DEFAULT_LABELS, type Label, type Locale } from '@ordo/shared';
 import { and, asc, eq, isNull, or } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { labels, teams } from '../db/schema.ts';
+import { serverT } from '../i18n/index.ts';
 import { badRequest, one } from '../lib/errors.ts';
 import { type Access, assertCan, canReadTeam, teamScope } from './access.ts';
 import { type Ctx, emit } from './context.ts';
@@ -47,4 +48,20 @@ export async function createLabel(ctx: Ctx, input: CreateLabelInput): Promise<La
   );
   emit(ctx, { kind: 'label', action: 'created', id: row.id });
   return toLabel(row);
+}
+
+/** Gives a new workspace its starter labels, named in `locale`. */
+export async function createDefaultLabels(ctx: Ctx, locale: Locale) {
+  const t = serverT(locale);
+  const rows = await ctx.tx
+    .insert(labels)
+    .values(
+      DEFAULT_LABELS.map((l) => ({
+        workspaceId: ctx.workspaceId,
+        name: t(`defaultLabels.${l.key}`),
+        color: l.color,
+      })),
+    )
+    .returning({ id: labels.id });
+  for (const row of rows) emit(ctx, { kind: 'label', action: 'created', id: row.id });
 }

@@ -471,7 +471,9 @@ describe('sdk resources', () => {
         [eng.id, 2],
       ]),
     );
-    expect((await ws.labels()).map((l) => l.name).sort()).toEqual(['Bug', 'Infra']);
+    expect((await ws.labels()).map((l) => l.name)).toEqual(
+      expect.arrayContaining(['Bug', 'Infra']),
+    );
     const found = await ws.search('widget');
     expect(found.issues.map((i) => i.id)).toContain(widget.id);
     expect(found.projects.map((p) => p.name)).toEqual(['Widget launch']);

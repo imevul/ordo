@@ -288,7 +288,7 @@ describe('Linear import', () => {
       created: {
         teams: 2,
         people: 1,
-        labels: 2,
+        labels: 1, // Bug matches the default label
         projects: 1,
         cycles: 2,
         issues: 4,
