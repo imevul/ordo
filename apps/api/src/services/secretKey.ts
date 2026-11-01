@@ -11,6 +11,7 @@ import {
   integrations,
   invites,
   matrixCryptoStores,
+  requestForms,
   users,
   webhooks,
   workspaceAiProviders,
@@ -35,6 +36,7 @@ export const workspaceAiKeyAad = (workspaceId: string) =>
 export const importSecretsAad = (importId: string) => `imports:${importId}:secrets`;
 export const instanceKeyAad = (key: string) => `instance_keys:${key}:value`;
 export const inviteTokenAad = (inviteId: string) => `invites:${inviteId}:token`;
+export const requestFormCaptchaSecretAad = (id: string) => `request_forms:${id}:captcha_secret`;
 export const SMTP_URL_AAD = 'instance_settings:smtp:url';
 export const AI_API_KEY_AAD = 'instance_settings:ai:apiKey';
 
@@ -84,6 +86,12 @@ export const ENCRYPTED_COLUMNS: {
   },
   { table: imports, id: imports.id, column: imports.secrets, aad: importSecretsAad },
   { table: invites, id: invites.id, column: invites.tokenEncrypted, aad: inviteTokenAad },
+  {
+    table: requestForms,
+    id: requestForms.id,
+    column: requestForms.captchaSecret,
+    aad: requestFormCaptchaSecretAad,
+  },
   { table: instanceKeys, id: instanceKeys.key, column: instanceKeys.value, aad: instanceKeyAad },
 ];
 

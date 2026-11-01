@@ -169,6 +169,42 @@ export function securityEmail(
   };
 }
 
+/**
+ * The address on a request form isn't verified, so this can reach someone who never asked. It says
+ * nothing a submitter typed, which keeps it useless for sending messages to strangers.
+ */
+export function requestReceivedEmail(locale: Locale, form: string): Email {
+  const t = serverT(locale);
+  const title = form || t('email.requestReceived.title');
+  const body = t('email.requestReceived.body');
+  const ignore = t('email.requestReceived.ignore');
+  return {
+    subject: t('email.requestReceived.subject'),
+    html: layout({
+      kicker: t('email.requestReceived.kicker'),
+      title: esc(title),
+      body: p(esc(body)) + p(esc(ignore)),
+      footer: t('email.footer'),
+    }),
+    text: `${title}\n\n${body}\n\n${ignore}`,
+  };
+}
+
+/** Sent when a team finishes the work, with the title the person gave it themselves. */
+export function requestDoneEmail(locale: Locale, title: string): Email {
+  const t = serverT(locale);
+  return {
+    subject: t('email.requestDone.subject'),
+    html: layout({
+      kicker: t('email.requestDone.kicker'),
+      title: esc(t('email.requestDone.subject')),
+      body: p(rich(t('email.requestDone.body', { title: esc(title) }))),
+      footer: t('email.footer'),
+    }),
+    text: t('email.requestDone.text', { title }),
+  };
+}
+
 export interface DigestItem {
   identifier: string;
   title: string;

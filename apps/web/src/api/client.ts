@@ -79,12 +79,16 @@ export const api = {
   del: <T>(path: string, body?: unknown) => request<T>('DELETE', path, body),
 };
 
-/** Multipart upload (the one non-JSON request). */
-export async function upload<T>(path: string, file: Blob, filename: string): Promise<T> {
-  const form = new FormData();
-  form.append('file', file, filename);
+/** A multipart body (the one non-JSON kind of request). */
+export async function postForm<T>(path: string, form: FormData): Promise<T> {
   const { data } = await send(path, { method: 'POST', body: form });
   return data as T;
+}
+
+export function upload<T>(path: string, file: Blob, filename: string): Promise<T> {
+  const form = new FormData();
+  form.append('file', file, filename);
+  return postForm<T>(path, form);
 }
 
 /** Shorthand for workspace-scoped paths. */

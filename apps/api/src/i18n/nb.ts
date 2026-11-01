@@ -79,6 +79,19 @@ export default {
         body: 'Kontoen din bruker nå {email}.',
       },
     },
+    requestReceived: {
+      subject: 'Vi har mottatt forespørselen din',
+      kicker: 'forespørsel mottatt',
+      title: 'Takk for at du tok kontakt',
+      body: 'Forespørselen din har nådd teamet, og de ser på den snart.',
+      ignore: 'Hvis du ikke har sendt noen forespørsel, kan du se bort fra denne e-posten.',
+    },
+    requestDone: {
+      subject: 'Forespørselen din er ferdig',
+      kicker: 'forespørsel ferdig',
+      body: 'Teamet er ferdig med forespørselen din <b>{title}</b>.',
+      text: 'Teamet er ferdig med forespørselen din "{title}".',
+    },
     digest: {
       kicker: 'innboks',
       updates: {

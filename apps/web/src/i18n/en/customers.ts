@@ -38,6 +38,7 @@ export default {
       manual: 'manual',
       email: 'email',
       api: 'api',
+      form: 'request form',
     },
     details: 'Details',
     domains: 'Domains',

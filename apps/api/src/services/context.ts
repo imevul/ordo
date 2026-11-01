@@ -10,6 +10,7 @@ export type ActorSource =
   | 'system'
   | 'import'
   | 'scim'
+  | 'form'
   | `integration:${string}`;
 
 /** Request metadata recorded in the audit log. */

@@ -16,6 +16,7 @@ import type { Env } from './env.ts';
 import { registerBuiltinProviders } from './integrations/index.ts';
 import { registerJobs } from './jobs.ts';
 import { authInfo, authorizeWorkspace, resolveUser } from './lib/auth.ts';
+import { type CaptchaVerifier, verifyCaptcha } from './lib/captcha.ts';
 import { HttpError, validationError } from './lib/errors.ts';
 import { JobQueue, Leases } from './lib/jobs/index.ts';
 import { redactUrl } from './lib/redact.ts';
@@ -58,6 +59,7 @@ import { pushRoutes } from './routes/push.ts';
 import { realtimeRoutes } from './routes/realtime.ts';
 import { releaseRoutes } from './routes/releases.ts';
 import { repositoryRoutes } from './routes/repositories.ts';
+import { publicRequestFormRoutes, requestFormRoutes } from './routes/requestForms.ts';
 import { scimAdminRoutes, scimRoutes } from './routes/scim.ts';
 import { searchRoutes } from './routes/search.ts';
 import { slackCallbackRoutes, slackWorkspaceRoutes } from './routes/slack.ts';
@@ -88,6 +90,8 @@ declare module 'fastify' {
     mailer: Mailer;
     /** DNS TXT lookup (domain verification); replaced in tests. */
     resolveTxt: (name: string) => Promise<string[][]>;
+    /** Asks a CAPTCHA provider about a token (request forms); replaced in tests. */
+    verifyCaptcha: CaptchaVerifier;
     /** Every registered route; tests use it to make sure each one is covered by access checks. */
     routeList: { method: string; url: string }[];
   }
@@ -141,6 +145,7 @@ export async function buildApp(
   app.decorate('storage', createStorage(env.storage));
   app.decorate('mailer', new Mailer(app));
   app.decorate('resolveTxt', resolveTxt);
+  app.decorate('verifyCaptcha', verifyCaptcha);
   registerBuiltinProviders();
   registerJobs(app);
   if (!env.secretKey)
@@ -230,6 +235,7 @@ export async function buildApp(
   await app.register(fileRoutes, { prefix: '/api' });
   await app.register(attachmentDownloadRoutes, { prefix: '/api' });
   await app.register(calendarFeedRoutes, { prefix: '/api' });
+  await app.register(publicRequestFormRoutes, { prefix: '/api' });
   await app.register(joiningRoutes, { prefix: '/api' });
   await app.register(ssoRoutes, { prefix: '/api' });
   await app.register(scimRoutes, { prefix: '/api/scim/v2' });
@@ -287,6 +293,7 @@ export async function buildApp(
       await w.register(aiRoutes);
       await w.register(agentRoutes);
       await w.register(repositoryRoutes);
+      await w.register(requestFormRoutes);
     },
     { prefix: '/api/w/:ws' },
   );

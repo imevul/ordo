@@ -16,6 +16,7 @@ export default {
     mcp: 'AI agents',
     integration: 'integrations',
     email: 'email',
+    form: 'request forms',
   },
   editor: {
     edit: 'Edit triage rule',
