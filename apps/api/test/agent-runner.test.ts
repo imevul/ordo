@@ -675,7 +675,8 @@ describe('ordo agent', () => {
     expect(lines).toContain('Checking out');
     expect(lines).toContain('warn: careful');
     expect(lines).toContain('→ Bash: pnpm test');
-    expect(lines.at(-1)).toBe('done');
+    // Stderr has its own pipe, so its line can land anywhere among stdout's.
+    expect(lines.filter((line) => line !== 'warn: careful').at(-1)).toBe('done');
     expect(lines.join('\n')).not.toContain('ORDO_SESSION_URL');
 
     const quiet = await assign('Keep it to yourself', 'Docs');
