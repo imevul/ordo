@@ -304,16 +304,19 @@ export async function buildApp(
       root: env.staticDir,
       wildcard: false,
       maxAge: '1h',
-      // A new service worker should take over on the next visit, not an hour later.
+      // The page and the service worker should take over on the next visit, not an hour later: an
+      // old page keeps running the old bundle and can ask for files the new build no longer has.
+      // This is the only place to set it: sendFile overwrites headers set on the reply beforehand.
       setHeaders: (res, path) => {
-        if (path.endsWith('sw.js')) res.header('cache-control', 'no-cache');
+        if (path.endsWith('.html') || path.endsWith('sw.js'))
+          res.header('cache-control', 'no-cache');
       },
     });
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api/') || req.method !== 'GET') {
         return reply.status(404).send({ error: 'not_found', message: 'Not found' });
       }
-      return reply.header('cache-control', 'no-cache').sendFile('index.html');
+      return reply.sendFile('index.html');
     });
   } else {
     app.setNotFoundHandler((_req, reply) =>
