@@ -42,6 +42,13 @@ export function newerIdentifier(asked: string, issue: Pick<Issue, 'identifier'>)
   return asked.toUpperCase() === issue.identifier.toUpperCase() ? null : issue.identifier;
 }
 
+/** The URL fragment (no `#`) of a link to a comment; also the id of the comment's element. */
+export const commentAnchor = (commentId: string) => `comment-${commentId}`;
+
+/** The comment a URL fragment points at, if any. */
+export const commentIdFromHash = (hash: string): string | null =>
+  hash.match(/^#?comment-(.+)$/)?.[1] ?? null;
+
 export function sortIssues(issues: Issue[], orderBy: OrderBy): Issue[] {
   const list = [...issues];
   const cmp: Record<OrderBy, (a: Issue, b: Issue) => number> = {

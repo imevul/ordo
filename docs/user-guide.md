@@ -122,7 +122,8 @@ in a list row, by dragging on the board, or with the keyboard (`S`, `P`, `A`, `L
 - **Relations** — _blocks_, _blocked by_, _related to_, _duplicate of_. Marking an issue as a duplicate moves it to
   the team's _Duplicate_ (or first canceled) status.
 - **Comments** — rich text, replies, edits, `@username` mentions (with autocomplete). Mentioned people are notified
-  and subscribed. Issue identifiers like `ENG-12` in text become links.
+  and subscribed. Issue identifiers like `ENG-12` in text become links. The link icon on a comment copies a link that
+  opens the issue scrolled to that comment, outlined.
 - **Reactions** — the smiley on a comment adds an emoji; click a reaction to add or take back yours, hover it to see
   who reacted. The comment's author finds reactions in their Inbox (not emailed unless they turn it on).
 - **Attachments** — paste or drop files into a description or comment (or use the paperclip), or drop them on the

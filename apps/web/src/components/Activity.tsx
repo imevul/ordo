@@ -5,8 +5,9 @@ import type {
   HistoryEntry,
   IssueDetail,
 } from '@ordo/shared';
-import { MoreHorizontal, Reply } from 'lucide-react';
+import { Link2, MoreHorizontal, Reply } from 'lucide-react';
 import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { api, wsPath } from '../api/client.ts';
 import {
   keys,
@@ -19,6 +20,7 @@ import { getLocale, INTL_TAG, t, tx } from '../i18n/index.ts';
 import { estimateLabel, priorityLabel } from '../i18n/labels.ts';
 import { optionName, valueText } from '../lib/customFields.ts';
 import { longDate, relativeTime, shortDate } from '../lib/format.ts';
+import { commentAnchor } from '../lib/issues.ts';
 import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 import { useSyncEngine } from '../sync/context.tsx';
 import { PriorityIcon, StatusIcon } from './icons.tsx';
@@ -268,11 +270,13 @@ function CommentItem({
   comment,
   replies,
   issueId,
+  identifier,
   focusId,
 }: {
   comment: Comment;
   replies: Comment[];
   issueId: string;
+  identifier: string;
   focusId?: string | null;
 }) {
   const ws = useWorkspace();
@@ -319,7 +323,7 @@ function CommentItem({
 
   return (
     <div
-      id={`comment-${comment.id}`}
+      id={commentAnchor(comment.id)}
       className="panel panel-sm comment my-2"
       data-focused={focusId === comment.id || undefined}
     >
@@ -355,6 +359,19 @@ function CommentItem({
                 <Reply size={13} />
               </button>
             )}
+            <button
+              type="button"
+              className="flex h-6 w-6 items-center justify-center text-index hover:text-text"
+              onClick={() => {
+                navigator.clipboard?.writeText(
+                  `${location.origin}/${ws.slug}/issue/${identifier}#${commentAnchor(comment.id)}`,
+                );
+                toast.success(t('issue.detail.linkCopied'));
+              }}
+              aria-label={t('issue.comments.copyLink')}
+            >
+              <Link2 size={13} />
+            </button>
             {(mine || ws.isAdmin) && (
               <Popover
                 placement="bottom-end"
@@ -447,7 +464,14 @@ function CommentItem({
       {(replies.length > 0 || replying) && (
         <div className="border-t border-border-soft px-3.5 pb-2">
           {replies.map((r) => (
-            <CommentItem key={r.id} comment={r} replies={[]} issueId={issueId} focusId={focusId} />
+            <CommentItem
+              key={r.id}
+              comment={r}
+              replies={[]}
+              issueId={issueId}
+              identifier={identifier}
+              focusId={focusId}
+            />
           ))}
           {replying && (
             <div className="pt-2">
@@ -479,7 +503,7 @@ export function Activity({
   focusCommentId,
 }: {
   issue: IssueDetail;
-  /** A comment to scroll to and outline, e.g. the one an inbox notification is about. */
+  /** A comment to scroll to and outline: the one an inbox notification or a link is about. */
   focusCommentId?: string | null;
 }) {
   const ws = useWorkspace();
@@ -522,7 +546,7 @@ export function Activity({
   useEffect(() => {
     if (!focusCommentId || !focusReady) return;
     document
-      .getElementById(`comment-${focusCommentId}`)
+      .getElementById(commentAnchor(focusCommentId))
       ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }, [focusCommentId, focusReady]);
 
@@ -544,6 +568,7 @@ export function Activity({
             comment={it.c}
             replies={comments.filter((r) => r.parentId === it.c.id)}
             issueId={issue.id}
+            identifier={issue.identifier}
             focusId={focusCommentId}
           />
         ),

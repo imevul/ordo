@@ -15,7 +15,9 @@ export function WorkspaceLayout() {
   const navigate = useNavigate();
   // Captured once: during the redirect `useLocation()` already reports /login?redirect=…, and
   // re-deriving the target from it would nest redirects forever and hang the tab.
-  const [returnTo] = useState(() => window.location.pathname + window.location.search);
+  const [returnTo] = useState(
+    () => window.location.pathname + window.location.search + window.location.hash,
+  );
   const me = useMe();
   const config = useConfig();
   const signedOut = !me.isLoading && !me.data;

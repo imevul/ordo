@@ -8,6 +8,8 @@ import {
 import { describe, expect, it } from 'vitest';
 import {
   canDropOnGroups,
+  commentAnchor,
+  commentIdFromHash,
   groupIssues,
   isDone,
   newerIdentifier,
@@ -16,6 +18,19 @@ import {
   visibleIssues,
 } from './issues.ts';
 import type { WorkspaceData } from './workspace.tsx';
+
+describe('comment links', () => {
+  it('reads back the comment an anchor points at', () => {
+    expect(commentIdFromHash(commentAnchor('abc-123'))).toBe('abc-123');
+    expect(commentIdFromHash(`#${commentAnchor('abc-123')}`)).toBe('abc-123');
+  });
+
+  it('ignores fragments that are not comment links', () => {
+    expect(commentIdFromHash('')).toBeNull();
+    expect(commentIdFromHash('comment-')).toBeNull();
+    expect(commentIdFromHash('section-1')).toBeNull();
+  });
+});
 
 let seq = 0;
 const issue = (over: Partial<Issue> = {}): Issue =>

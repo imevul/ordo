@@ -1,6 +1,6 @@
 import type { Issue, IssueFilter } from '@ordo/shared';
 import { useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from '@tanstack/react-router';
+import { Link, useLocation, useNavigate, useParams } from '@tanstack/react-router';
 import { RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -20,7 +20,7 @@ import { Avatar } from '../components/ui/Avatar.tsx';
 import { confirmDialog } from '../components/ui/Modal.tsx';
 import { t } from '../i18n/index.ts';
 import { relativeTime, shortDate } from '../lib/format.ts';
-import { newerIdentifier } from '../lib/issues.ts';
+import { commentIdFromHash, newerIdentifier } from '../lib/issues.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
 function Tabs({
@@ -151,6 +151,7 @@ export function IssuePage() {
   const ws = useWorkspace();
   const { identifier } = useParams({ from: '/$slug/issue/$identifier' });
   const { data, error, isLoading } = useIssue(ws.slug, identifier);
+  const focusCommentId = useLocation({ select: (l) => commentIdFromHash(l.hash) });
   const navigate = useNavigate();
   // A move sent later (queued offline or by another tab) renumbers the issue under this page,
   // and old links resolve to the moved issue: keep the URL (and so copied links) current.
@@ -160,6 +161,7 @@ export function IssuePage() {
       navigate({
         to: '/$slug/issue/$identifier',
         params: { slug: ws.slug, identifier: newer },
+        hash: true,
         replace: true,
       });
   }, [newer, navigate, ws.slug]);
@@ -171,7 +173,7 @@ export function IssuePage() {
         body={t('issues.issuePage.notFoundBody', { id: identifier })}
       />
     );
-  return <IssueDetailView key={data.id} issue={data} />;
+  return <IssueDetailView key={data.id} issue={data} focusCommentId={focusCommentId} />;
 }
 
 function PlainIssueRow({ issue, right }: { issue: Issue; right?: React.ReactNode }) {
