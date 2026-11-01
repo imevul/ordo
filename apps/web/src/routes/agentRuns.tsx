@@ -1,7 +1,7 @@
 import type { AgentPause, AgentRunWithIssue, AgentUsageTotal } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { ExternalLink, Pause, Play, RotateCcw, Square, X } from 'lucide-react';
+import { ChevronRight, ExternalLink, Pause, Play, RotateCcw, Square, X } from 'lucide-react';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys, useWsMutation } from '../api/queries.ts';
@@ -17,6 +17,7 @@ import {
   RunProgress,
   RunStatusLink,
   RunUsage,
+  RunWaitingForCycle,
   RunWaitingForSlot,
   runDetail,
   triggerLabel,
@@ -155,9 +156,12 @@ export function AgentRunsPage() {
               <span>{t('agents.runsPage.columns.updated')}</span>
               <span />
             </div>
-            {runs.map((r) => (
-              <RunRow key={r.id} run={r} />
-            ))}
+            {runs
+              .filter((r) => status !== 'open' || !r.waitingForCycle)
+              .map((r) => (
+                <RunRow key={r.id} run={r} />
+              ))}
+            {status === 'open' && <HeldRuns runs={runs.filter((r) => r.waitingForCycle)} />}
           </div>
         )}
       </div>
@@ -265,6 +269,26 @@ function UsageTotals({ totals }: { totals: AgentUsageTotal[] }) {
         );
       })}
     </div>
+  );
+}
+
+/** Runs held for a later cycle: work that's planned, so out of the way until asked for. */
+function HeldRuns({ runs }: { runs: AgentRunWithIssue[] }) {
+  const [open, setOpen] = useState(false);
+  if (!runs.length) return null;
+  return (
+    <>
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 border-b border-border-soft px-4 py-2 font-mono text-[10.5px] tracking-[0.16em] text-index uppercase hover:text-text"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        <ChevronRight size={12} className={open ? 'rotate-90' : ''} />
+        {t('agents.runsPage.waitingForCycles', { count: runs.length })}
+      </button>
+      {open && runs.map((r) => <RunRow key={r.id} run={r} />)}
+    </>
   );
 }
 
@@ -417,6 +441,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
       </div>
       <RunProgress run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
       <RunBlocked run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
+      <RunWaitingForCycle run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
       <RunWaitingForSlot run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
       {open && detail && (
         <div className="pb-3 pl-[11.5rem] pr-4 text-[13px]">

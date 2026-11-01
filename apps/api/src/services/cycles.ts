@@ -1,5 +1,5 @@
-import type { CreateCycleInput, Cycle, UpdateCycleInput } from '@ordo/shared';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import type { CreateCycleInput, Cycle, CycleHold, UpdateCycleInput } from '@ordo/shared';
+import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { cycles, teams } from '../db/schema.ts';
 import { badRequest, forbidden, notFound, one } from '../lib/errors.ts';
@@ -62,6 +62,30 @@ export async function updateCycle(ctx: Ctx, id: string, input: UpdateCycleInput)
   emit(ctx, { kind: 'cycle', action: 'updated', id, teamId: cycle.teamId });
   record(ctx, 'cycle.updated', toCycle(row), { teamIds: [cycle.teamId] });
   return toCycle(row);
+}
+
+/**
+ * The workspace's cycles that aren't open to agents on `today`: those that haven't started. Worked
+ * out when asked, not stored, so changing a date takes effect by itself.
+ */
+export async function heldCycles(db: DbOrTx, workspaceId: string, today: string) {
+  const rows = await db
+    .select({
+      id: cycles.id,
+      number: cycles.number,
+      name: cycles.name,
+      startsAt: cycles.startsAt,
+    })
+    .from(cycles)
+    .innerJoin(teams, eq(teams.id, cycles.teamId))
+    .where(
+      and(
+        eq(teams.workspaceId, workspaceId),
+        eq(teams.cyclesEnabled, true),
+        gt(cycles.startsAt, today),
+      ),
+    );
+  return new Map<string, CycleHold>(rows.map((c) => [c.id, c]));
 }
 
 /** Cycles of the teams `access` can see. */

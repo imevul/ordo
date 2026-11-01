@@ -190,7 +190,8 @@ export function defaultAssigneeOf(ws: WorkspaceData, teamId: string, projectId: 
   return !needsMembership || isAdmin || team.memberIds.includes(member.id) ? member.id : null;
 }
 
-export const cycleName = (c: Cycle) => c.name || t('common.cycleNumber', { number: c.number });
+export const cycleName = (c: Pick<Cycle, 'name' | 'number'>) =>
+  c.name || t('common.cycleNumber', { number: c.number });
 
 /**
  * Puts the workspace's accent on the document while it's open; leaving restores Hotline Pink

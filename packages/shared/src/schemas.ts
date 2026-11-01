@@ -1400,6 +1400,7 @@ const agentFields = {
   concurrency: z.number().int().min(1).max(20),
   followPullRequests: z.boolean(),
   waitForBlockers: z.boolean(),
+  waitForCycle: z.boolean(),
   /** What its runs may cost in a calendar month (UTC) before it pauses; null for no cap. */
   monthlyBudgetUsd: z.number().positive().max(1_000_000).nullable(),
   requirePlanApproval: z.boolean(),
@@ -1412,6 +1413,7 @@ export const createAgentSchema = z.object({
   concurrency: agentFields.concurrency.default(1),
   followPullRequests: agentFields.followPullRequests.default(true),
   waitForBlockers: agentFields.waitForBlockers.default(true),
+  waitForCycle: agentFields.waitForCycle.default(true),
   monthlyBudgetUsd: agentFields.monthlyBudgetUsd.default(null),
   requirePlanApproval: agentFields.requirePlanApproval.default(false),
 });

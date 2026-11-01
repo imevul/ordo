@@ -1208,6 +1208,177 @@ describe('blocked issues', () => {
   });
 });
 
+describe('cycles', () => {
+  let planner: string;
+  let plannerKey: string;
+  const as = (method: string, url: string, body?: unknown) => bearer(plannerKey, method, url, body);
+  const take = () =>
+    as('POST', `${ws}/agent/claim?runner=hped2`) as Promise<{
+      statusCode: number;
+      data: AgentRunContext;
+    }>;
+  const day = (offset: number) =>
+    new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  const stateOfType = (type: string) =>
+    boot.teams.find((t) => t.id === eng)!.states.find((s) => s.type === type)!.id;
+  const cycle = async (from: number, to: number, name?: string) =>
+    (
+      await owner.post(`${ws}/teams/${eng}/cycles`, {
+        name,
+        startsAt: day(from),
+        endsAt: day(to),
+      })
+    ).data as { id: string; number: number };
+  const assigned = async (title: string, cycleId?: string, extra: Record<string, unknown> = {}) =>
+    issue(title, { assigneeId: planner, cycleId, ...extra });
+  const finish = (runId: string) =>
+    as('PATCH', `${ws}/agent/runs/${runId}`, { status: 'succeeded' });
+  const activeCount = async () => (await owner.get(`${ws}/agent-runs/active-count`)).data.count;
+
+  beforeAll(async () => {
+    await owner.patch(`${ws}/teams/${eng}`, { cyclesEnabled: true });
+    planner = (await owner.post(`${ws}/agents`, { name: 'Planner', teamIds: [eng] })).data.id;
+    plannerKey = (await owner.post(`${ws}/agents/${planner}/keys`, { name: 'k' })).data.token;
+  });
+
+  it('hold a run until its cycle starts', async () => {
+    const later = await cycle(30, 44, 'Later');
+    const before = await activeCount();
+    const planned = await assigned('Planned', later.id);
+    const [run] = await runsOf(planned.id);
+    expect(run).toMatchObject({
+      status: 'queued',
+      waitingForCycle: { id: later.id, name: 'Later', startsAt: day(30) },
+    });
+    expect((await take()).statusCode).toBe(204);
+    // It's listed, but planned work doesn't count as active.
+    const open = (await owner.get(`${ws}/agent-runs?status=open&agentId=${planner}`)).data;
+    expect(open[0].waitingForCycle.id).toBe(later.id);
+    expect(await activeCount()).toBe(before);
+
+    // Moving the date is all it takes.
+    await owner.patch(`${ws}/cycles/${later.id}`, { startsAt: day(-1) });
+    expect((await runsOf(planned.id))[0]!.waitingForCycle).toBeNull();
+    expect(await activeCount()).toBe(before + 1);
+    const claimed = await take();
+    expect(claimed.data.run.id).toBe(run!.id);
+    expect(claimed.data.cycle).toMatchObject({ id: later.id, name: 'Later' });
+    expect(claimed.data.prompt).toContain(`- Cycle: Later (${day(-1)} to ${day(44)})`);
+    await finish(run!.id);
+  });
+
+  it("don't hold issues without a cycle or in a cycle that has started", async () => {
+    const free = await assigned('No cycle');
+    expect((await runsOf(free.id))[0]!.waitingForCycle).toBeNull();
+    const claimed = await take();
+    expect(claimed.data.issue.identifier).toBe(free.identifier);
+    expect(claimed.data.cycle).toBeNull();
+    await finish(claimed.data.run.id);
+
+    const now = await cycle(0, 7);
+    const current = await assigned('In the current cycle', now.id);
+    const next = await take();
+    expect(next.data.issue.identifier).toBe(current.identifier);
+    await finish(next.data.run.id);
+  });
+
+  it("don't hold an issue that has started", async () => {
+    const later = await cycle(30, 44);
+    const held = await assigned('Moved by hand', later.id);
+    expect((await take()).statusCode).toBe(204);
+    await owner.patch(`${ws}/issues/${held.id}`, { stateId: stateOfType('started') });
+    const claimed = await take();
+    expect(claimed.data.issue.identifier).toBe(held.identifier);
+    await finish(claimed.data.run.id);
+
+    // Handed on after work began, as to a reviewer.
+    const started = await issue('Under review', {
+      cycleId: later.id,
+      stateId: stateOfType('started'),
+    });
+    await owner.patch(`${ws}/issues/${started.id}`, { assigneeId: planner });
+    const review = await take();
+    expect(review.data.issue.identifier).toBe(started.identifier);
+    await finish(review.data.run.id);
+  });
+
+  it("don't hold a run someone asked for directly", async () => {
+    const later = await cycle(30, 44);
+    const mentioned = await issue('Have a look', { cycleId: later.id });
+    await owner.post(`${ws}/issues/${mentioned.id}/comments`, {
+      body: '@planner can you look at this?',
+    });
+    const mention = await take();
+    expect(mention.data.run).toMatchObject({ trigger: 'mention', waitingForCycle: null });
+    await finish(mention.data.run.id);
+
+    const again = await assigned('Run it now', later.id);
+    const [held] = await runsOf(again.id);
+    await owner.post(`${ws}/agent-runs/${held!.id}/cancel`);
+    await owner.post(`${ws}/issues/${again.id}/agent-runs`);
+    const rerun = await take();
+    expect(rerun.data.run.trigger).toBe('rerun');
+    await finish(rerun.data.run.id);
+  });
+
+  it('runs anyway when someone says so', async () => {
+    const later = await cycle(30, 44);
+    const eager = await assigned('Go ahead', later.id);
+    expect((await take()).statusCode).toBe(204);
+    const [run] = await runsOf(eager.id);
+    const anyway = await member.post(`${ws}/agent-runs/${run!.id}/run-anyway`);
+    expect(anyway.data).toMatchObject({ ignoreBlockers: true, status: 'queued' });
+    expect((await runsOf(eager.id))[0]!.waitingForCycle).toBeNull();
+    const claimed = await take();
+    expect(claimed.data.run.id).toBe(run!.id);
+    await finish(run!.id);
+  });
+
+  it("don't hold agents that don't wait for cycles, while others on the issue wait", async () => {
+    const later = await cycle(30, 44);
+    const triager = (
+      await owner.post(`${ws}/agents`, {
+        name: 'Early Triager',
+        teamIds: [eng],
+        waitForCycle: false,
+      })
+    ).data;
+    expect(triager.waitForCycle).toBe(false);
+    const triagerKey = (await owner.post(`${ws}/agents/${triager.id}/keys`, { name: 'k' })).data
+      .token;
+    const early = await issue('Triage me early', { assigneeId: triager.id, cycleId: later.id });
+    expect((await runsOf(early.id))[0]!.waitingForCycle).toBeNull();
+    const claimed = await bearer(triagerKey, 'POST', `${ws}/agent/claim?runner=t`);
+    expect(claimed.data.issue.identifier).toBe(early.identifier);
+
+    // Triage hands it on, and the next agent waits.
+    await bearer(triagerKey, 'PATCH', `${ws}/issues/${early.id}`, { assigneeId: planner });
+    await bearer(triagerKey, 'PATCH', `${ws}/agent/runs/${claimed.data.run.id}`, {
+      status: 'succeeded',
+    });
+    expect((await take()).statusCode).toBe(204);
+    const runs = await runsOf(early.id);
+    expect(runs.find((r) => r.agentId === planner)!.waitingForCycle?.id).toBe(later.id);
+
+    await owner.patch(`${ws}/agents/${planner}`, { waitForCycle: false });
+    const next = await take();
+    expect(next.data.issue.identifier).toBe(early.identifier);
+    await finish(next.data.run.id);
+    await owner.patch(`${ws}/agents/${planner}`, { waitForCycle: true });
+  });
+
+  it("don't hold anything on a team with cycles turned off", async () => {
+    const later = await cycle(30, 44);
+    const held = await assigned('Cycles go away', later.id);
+    expect((await take()).statusCode).toBe(204);
+    await owner.patch(`${ws}/teams/${eng}`, { cyclesEnabled: false });
+    const claimed = await take();
+    expect(claimed.data.issue.identifier).toBe(held.identifier);
+    await finish(claimed.data.run.id);
+    await owner.patch(`${ws}/teams/${eng}`, { cyclesEnabled: true });
+  });
+});
+
 describe('cost and budgets', () => {
   let spender: string;
   let spenderKey: string;

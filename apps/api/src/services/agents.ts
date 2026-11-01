@@ -26,6 +26,7 @@ import {
   classifyFailure,
   type createAgentSchema,
   DEFAULT_LIMIT_PAUSE_MS,
+  dayInZone,
   monthOf,
   monthRange,
   parseLimitReset,
@@ -61,6 +62,7 @@ import {
   agents,
   apiKeys,
   comments,
+  cycles,
   issueLinks,
   issueRelations,
   issues,
@@ -81,6 +83,8 @@ import { auditCtx } from './audit.ts';
 import { forEachIsolated } from './automation.ts';
 import { createComment } from './comments.ts';
 import { type Ctx, emit, record } from './context.ts';
+import { workspaceToday } from './cycle-automation.ts';
+import { heldCycles } from './cycles.ts';
 import { getIssue, getIssueDetail } from './issues.ts';
 import { fullRepositories, issueRepositoryIds, repositoriesForIssue } from './repositories.ts';
 import { joinWorkspace, workspaceSettings } from './workspaces.ts';
@@ -133,6 +137,7 @@ export async function listAgents(db: DbOrTx, workspaceId: string): Promise<Agent
       concurrency: agents.concurrency,
       followPullRequests: agents.followPullRequests,
       waitForBlockers: agents.waitForBlockers,
+      waitForCycle: agents.waitForCycle,
       requirePlanApproval: agents.requirePlanApproval,
       pausedUntil: agents.pausedUntil,
       pauseReason: agents.pauseReason,
@@ -218,6 +223,7 @@ export async function createAgent(ctx: Ctx, input: CreateAgentInput): Promise<Ag
     concurrency: input.concurrency,
     followPullRequests: input.followPullRequests,
     waitForBlockers: input.waitForBlockers,
+    waitForCycle: input.waitForCycle,
     monthlyBudgetUsd: input.monthlyBudgetUsd,
     requirePlanApproval: input.requirePlanApproval,
     createdById: ctx.userId,
@@ -253,6 +259,7 @@ export async function updateAgent(ctx: Ctx, agentId: string, input: UpdateAgentI
     input.concurrency !== undefined ||
     input.followPullRequests !== undefined ||
     input.waitForBlockers !== undefined ||
+    input.waitForCycle !== undefined ||
     input.requirePlanApproval !== undefined ||
     budgetChanged
   )
@@ -265,6 +272,7 @@ export async function updateAgent(ctx: Ctx, agentId: string, input: UpdateAgentI
           followPullRequests: input.followPullRequests,
         }),
         ...(input.waitForBlockers !== undefined && { waitForBlockers: input.waitForBlockers }),
+        ...(input.waitForCycle !== undefined && { waitForCycle: input.waitForCycle }),
         // A new budget holds from now on, whatever "Resume now" waived under the old one.
         ...(budgetChanged && { monthlyBudgetUsd: input.monthlyBudgetUsd, budgetWaivedUntil: null }),
         ...(input.requirePlanApproval !== undefined && {
@@ -400,8 +408,9 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
       ? { step: r.progressStep, percent: r.progressPercent, at: r.progressAt }
       : null,
   ignoreBlockers: r.ignoreBlockers,
-  // Filled in by withBlockers where runs are listed for people.
+  // Filled in by withHolds where runs are listed for people.
   blockedBy: [],
+  waitingForCycle: null,
   usage: r.usageAt
     ? {
         inputTokens: r.inputTokens,
@@ -757,6 +766,65 @@ const blockedNow = sql`exists (
 )`;
 
 /**
+ * True while this run is held for its issue's cycle, one of `held` (see `heldCycles`). Only work
+ * that hasn't begun waits for its cycle: an issue already started carries on through hand-offs and
+ * lapsed leases, and a mention, Run again or a pull request asks for the agent now.
+ */
+function heldByCycle(held: Iterable<string>): SQL {
+  const ids = [...held];
+  if (!ids.length) return sql`false`;
+  return sql`("agent_runs"."status" = 'queued'
+    and not "agent_runs"."ignore_blockers"
+    and "agent_runs"."trigger" in ('assigned', 'scheduled')
+    and exists (select 1 from agents a where a.user_id = "agent_runs"."agent_id" and a.wait_for_cycle)
+    and exists (
+      select 1 from issues i join workflow_states s on s.id = i.state_id
+      where i.id = "agent_runs"."issue_id"
+        and s.type in ('triage', 'backlog', 'unstarted')
+        and i.cycle_id in (${sql.join(
+          ids.map((id) => sql`${id}`),
+          sql`, `,
+        )})
+    ))`;
+}
+
+/** Adds `waitingForCycle` to the runs held for their issue's cycle. */
+async function withCycleHolds<T extends AgentRun>(
+  db: DbOrTx,
+  access: Access,
+  runs: T[],
+): Promise<T[]> {
+  const queued = runs.filter((r) => r.status === 'queued' && !r.ignoreBlockers);
+  if (!queued.length) return runs;
+  const held = await heldCycles(
+    db,
+    access.workspaceId,
+    await workspaceToday(db, access.workspaceId),
+  );
+  if (!held.size) return runs;
+  const rows = await db
+    .select({ id: agentRuns.id, cycleId: issues.cycleId })
+    .from(agentRuns)
+    .innerJoin(issues, eq(issues.id, agentRuns.issueId))
+    .where(
+      and(
+        inArray(
+          agentRuns.id,
+          queued.map((r) => r.id),
+        ),
+        heldByCycle(held.keys()),
+      ),
+    );
+  const byRun = new Map(rows.map((r) => [r.id, held.get(r.cycleId!) ?? null]));
+  return runs.map((r) => ({ ...r, waitingForCycle: byRun.get(r.id) ?? null }));
+}
+
+/** What holds these runs back, for people to read. */
+async function withHolds<T extends AgentRun>(db: DbOrTx, access: Access, runs: T[]): Promise<T[]> {
+  return withCycleHolds(db, access, await withBlockers(db, access, runs));
+}
+
+/**
  * Adds `blockedBy` to queued runs that wait for their issue's blockers: the open blocking issues
  * `access` can see. Runs of agents that don't wait, or that someone told to run anyway, get none.
  */
@@ -833,7 +901,7 @@ async function loadRun(ctx: Ctx, runId: string) {
   return row.run;
 }
 
-/** "Run anyway": a queued run stops waiting for its issue's blockers. */
+/** "Run anyway": a queued run stops waiting for its issue's blockers and cycle. */
 export async function runAnyway(ctx: Ctx, runId: string): Promise<AgentRun> {
   const run = await loadRun(ctx, runId);
   if (run.status !== 'queued') throw conflict(`This run is ${run.status}`);
@@ -1032,7 +1100,7 @@ export async function listRuns(db: DbOrTx, access: Access, issueIdOrIdentifier: 
     .where(eq(agentRuns.issueId, issue.id))
     .orderBy(desc(agentRuns.createdAt))
     .limit(50);
-  return withBlockers(db, access, rows.map(toAgentRun));
+  return withHolds(db, access, rows.map(toAgentRun));
 }
 
 /** One run of an issue `access` can read, with its timeline and restarts: the run's page. */
@@ -1063,7 +1131,7 @@ export async function getRunDetail(
   if (!row) throw notFound('Run');
   const { run } = row;
   const [[withBlocked], events, restartedBy, [triggerComment], held] = await Promise.all([
-    withBlockers(db, access, [toAgentRun(run)]),
+    withHolds(db, access, [toAgentRun(run)]),
     db
       .select()
       .from(agentRunEvents)
@@ -1129,6 +1197,11 @@ export async function listWorkspaceRuns(
     finished: not(open),
     all: undefined,
   }[opts.status];
+  const closed = await heldCycles(
+    db,
+    access.workspaceId,
+    await workspaceToday(db, access.workspaceId),
+  );
   const rows = await db
     .select({
       run: agentRuns,
@@ -1149,14 +1222,15 @@ export async function listWorkspaceRuns(
         status,
       ),
     )
-    .orderBy(desc(agentRuns.updatedAt))
+    // Runs held for a later cycle can be many, and last: they mustn't crowd out the rest.
+    .orderBy(...(closed.size ? [heldByCycle(closed.keys())] : []), desc(agentRuns.updatedAt))
     .limit(opts.limit);
   const held = await heldByRepository(
     db,
     access.workspaceId,
     rows.filter((r) => r.run.status === 'queued').map((r) => r.run.issueId),
   );
-  return withBlockers(
+  return withHolds(
     db,
     access,
     rows.map((r) => ({
@@ -1195,8 +1269,16 @@ async function heldByRepository(db: DbOrTx, workspaceId: string, issueIds: strin
   return held;
 }
 
-/** How many runs `listWorkspaceRuns` would call active: the sidebar's Agent runs chip. */
+/**
+ * How many runs `listWorkspaceRuns` would call active, less those held for a later cycle: the
+ * sidebar's Agent runs chip, which shouldn't count work planned for next month.
+ */
 export async function countActiveRuns(db: DbOrTx, access: Access): Promise<number> {
+  const held = await heldCycles(
+    db,
+    access.workspaceId,
+    await workspaceToday(db, access.workspaceId),
+  );
   const [row] = await db
     .select({ n: count() })
     .from(agentRuns)
@@ -1206,6 +1288,7 @@ export async function countActiveRuns(db: DbOrTx, access: Access): Promise<numbe
         eq(agentRuns.workspaceId, access.workspaceId),
         teamScope(access, issues.teamId),
         inArray(agentRuns.status, [...AGENT_RUN_OPEN]),
+        not(heldByCycle(held.keys())),
       ),
     );
   return row?.n ?? 0;
@@ -1233,6 +1316,7 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
       concurrency: agents.concurrency,
       pausedUntil: agents.pausedUntil,
       waitForBlockers: agents.waitForBlockers,
+      waitForCycle: agents.waitForCycle,
     })
     .from(agents)
     .where(eq(agents.userId, ctx.userId))
@@ -1248,6 +1332,9 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
   if (busy >= agent.concurrency) return null;
   // Runs in a repository at its limit wait, so agents don't work over each other's files.
   const full = await fullRepositories(ctx.tx, ctx.workspaceId, { lock: true });
+  const held = agent.waitForCycle
+    ? await heldCycles(ctx.tx, ctx.workspaceId, dayInZone(workspaceSettings(ws!).timezone))
+    : new Map();
   const [next] = await ctx.tx
     .select({ id: agentRuns.id })
     .from(agentRuns)
@@ -1259,6 +1346,8 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
         sql`not exists (select 1 from agent_runs busy where busy.issue_id = "agent_runs"."issue_id" and busy.agent_id = "agent_runs"."agent_id" and busy.status in ('claimed', 'running'))`,
         // A blocked issue waits for its blockers, unless someone said to run anyway.
         agent.waitForBlockers ? or(eq(agentRuns.ignoreBlockers, true), not(blockedNow)) : undefined,
+        // Work planned for a cycle that isn't open yet waits for it, unless told to run anyway.
+        not(heldByCycle(held.keys())),
         full.length
           ? sql`not exists (select 1 from (${issueRepositoryIds(sql`"agent_runs"."issue_id"`)}) repo where repo.repository_id in (${sql.join(
               full.map((r) => sql`${r.id}`),
@@ -1875,10 +1964,12 @@ export function waitForRuns(
       send: (data) => {
         const e = JSON.parse(data) as RealtimeEvent;
         // A workspace change, or one to the agent itself, may be a pause lifting; an issue
-        // change may be a blocker finishing, and a repository change a run limit going up.
+        // change may be a blocker finishing, a cycle change a start date moving closer, and a
+        // repository change a run limit going up.
         if (
           e.kind === 'agentRun' ||
           e.kind === 'issue' ||
+          e.kind === 'cycle' ||
           e.kind === 'workspace' ||
           e.kind === 'repository' ||
           (e.kind === 'member' && e.id === access.userId)
@@ -1955,6 +2046,18 @@ async function runContext(
         .from(projects)
         .where(eq(projects.id, detail.projectId))
     : [];
+  const [cycle] = detail.cycleId
+    ? await ctx.tx
+        .select({
+          id: cycles.id,
+          number: cycles.number,
+          name: cycles.name,
+          startsAt: cycles.startsAt,
+          endsAt: cycles.endsAt,
+        })
+        .from(cycles)
+        .where(eq(cycles.id, detail.cycleId))
+    : [];
   const branch = branchName(AGENT_BRANCH_FORMAT, {
     identifier: detail.identifier,
     title: detail.title,
@@ -2024,6 +2127,7 @@ async function runContext(
     issue: { ...detail, url, team: team! },
     comments: commentRows.map((c) => ({ ...c, reactions: [] })),
     project: project ?? null,
+    cycle: cycle ?? null,
     repositories,
     pullRequests,
     states,
@@ -2091,6 +2195,9 @@ export function renderPrompt(
     `Priority: ${PRIORITY_NAMES[issue.priority] ?? issue.priority}`,
     extra.labels.length ? `Labels: ${extra.labels.join(', ')}` : null,
     c.project ? `Project: ${c.project.name}` : null,
+    c.cycle
+      ? `Cycle: ${c.cycle.name ?? `Cycle ${c.cycle.number}`} (${c.cycle.startsAt} to ${c.cycle.endsAt})`
+      : null,
     issue.dueDate ? `Due: ${issue.dueDate}` : null,
     `Link: ${issue.url}`,
   ].filter(Boolean);

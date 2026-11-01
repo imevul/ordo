@@ -501,6 +501,14 @@ export interface Cycle {
   progress: Progress;
 }
 
+/** A cycle that isn't open to agents yet, and when it will be. */
+export interface CycleHold {
+  id: string;
+  number: number;
+  name: string | null;
+  startsAt: string;
+}
+
 /** An issue on someone's plate in a cycle. */
 export interface WorkloadIssue {
   id: string;
@@ -1470,6 +1478,8 @@ export interface Agent {
   followPullRequests: boolean;
   /** Whether its runs wait while their issue is blocked by an open issue. */
   waitForBlockers: boolean;
+  /** Whether its runs on unstarted issues wait until the issue's cycle has started. */
+  waitForCycle: boolean;
   /** Whether its runs post a plan for approval before changing code, unless the issue says otherwise. */
   requirePlanApproval: boolean;
   /** Claims hand out nothing until then (e.g. its runner hit a usage limit); null when not paused. */
@@ -1526,13 +1536,15 @@ export interface AgentRun {
   dismissedAt: string | null;
   /** What the agent last said it is doing, with a rough percentage if it gave one. */
   progress: AgentRunProgress | null;
-  /** Someone chose "Run anyway": the run doesn't wait for the issue's blockers. */
+  /** Someone chose "Run anyway": the run doesn't wait for the issue's blockers or cycle. */
   ignoreBlockers: boolean;
   /**
    * For a queued run that waits for blockers: the open issues blocking its issue (that the
    * caller can see). Empty otherwise.
    */
   blockedBy: { id: string; identifier: string; title: string }[];
+  /** For a queued run held until its issue's cycle opens: that cycle. Null otherwise. */
+  waitingForCycle: CycleHold | null;
   /** What it used, as its runner reported; null when it reported nothing. */
   usage: AgentRunUsage | null;
   requestedById: string | null;
@@ -1655,6 +1667,14 @@ export interface AgentRunContext {
   issue: IssueDetail & { url: string; team: { id: string; key: string; name: string } };
   comments: (Comment & { author: string | null })[];
   project: { id: string; name: string; description: string | null } | null;
+  /** The issue's cycle, if it's in one. */
+  cycle: {
+    id: string;
+    number: number;
+    name: string | null;
+    startsAt: string;
+    endsAt: string;
+  } | null;
   repositories: AgentRunRepository[];
   /** The issue's linked pull requests, newest first. */
   pullRequests: (PullRequestInfo & { url: string; title: string; state: string | null })[];

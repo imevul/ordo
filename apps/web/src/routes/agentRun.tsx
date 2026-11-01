@@ -14,6 +14,7 @@ import { useWsMutation } from '../api/queries.ts';
 import {
   agentRunKey,
   FailureTags,
+  isHeldBack,
   isOpenRun,
   isPlanPending,
   isRestartable,
@@ -22,6 +23,7 @@ import {
   RUN_STATUS_COLOR,
   RunBlocked,
   RunProgress,
+  RunWaitingForCycle,
   RunWaitingForSlot,
   runStatusLabel,
   triggerLabel,
@@ -92,6 +94,7 @@ export function AgentRunPage() {
               </span>
             </Link>
             <RunBlocked run={run} className="mt-3 text-[12px] whitespace-normal" />
+            <RunWaitingForCycle run={run} className="mt-3 text-[12px] whitespace-normal" />
             <RunWaitingForSlot run={run} className="mt-3 text-[12px] whitespace-normal" />
             <Restarts run={run} />
             {isPlanPending(run) && (
@@ -150,7 +153,7 @@ function RunActions({ run }: { run: AgentRunDetail }) {
   );
   return (
     <>
-      {run.status === 'queued' && run.blockedBy.length > 0 && (
+      {isHeldBack(run) && (
         <button
           type="button"
           className="btn btn-ghost btn-sm"

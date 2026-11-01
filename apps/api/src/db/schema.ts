@@ -1961,6 +1961,8 @@ export const agents = pgTable('agents', {
   followPullRequests: boolean('follow_pull_requests').notNull().default(true),
   /** Whether its runs wait while their issue is blocked by an open issue. */
   waitForBlockers: boolean('wait_for_blockers').notNull().default(true),
+  /** Whether its runs on unstarted issues wait until the issue's cycle has started. */
+  waitForCycle: boolean('wait_for_cycle').notNull().default(true),
   /** Whether its runs post a plan for approval before changing code, unless the issue says otherwise. */
   requirePlanApproval: boolean('require_plan_approval').notNull().default(false),
   /** Claims hand out nothing until then, e.g. after its runner hit a usage limit. */
@@ -2014,7 +2016,7 @@ export const agentRuns = pgTable(
     progressStep: text('progress_step'),
     progressPercent: integer('progress_percent'),
     progressAt: ts('progress_at'),
-    /** Someone chose "Run anyway": the run doesn't wait for the issue's blockers. */
+    /** Someone chose "Run anyway": the run doesn't wait for the issue's blockers or cycle. */
     ignoreBlockers: boolean('ignore_blockers').notNull().default(false),
     /** What it used, as its runner reported, added up over its pickups; null until reported. */
     inputTokens: bigint('input_tokens', { mode: 'number' }),

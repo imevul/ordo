@@ -294,6 +294,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
     budget that pauses the agent like a usage limit does
   - [x] ✅ Plan approval: "Approve the plan first" per agent and per issue; the agent posts a plan (`propose_plan`,
     `ordo agent plan`) and waits; a person approves (or replies with changes) before it goes on
+  - [x] ✅ Work planned for a later cycle waits: "Wait for the issue's cycle" per agent holds runs on unstarted issues
+    until their cycle starts, so triage can run early and coding on time
   - [ ] ⬜ Live output: the runner streams the output tail while a run works
   - [x] ✅ Scheduled agent tasks (nightly dependency check, weekly review) on top of recurring issues
   - [ ] ⬜ Concurrency per repository, so two runs don't work in one repo at once

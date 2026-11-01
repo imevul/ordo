@@ -6,8 +6,8 @@ import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
 import { t, tx } from '../i18n/index.ts';
-import { compactCount, duration, longDate, relativeTime, usd } from '../lib/format.ts';
-import { useWorkspace } from '../lib/workspace.tsx';
+import { compactCount, duration, longDate, relativeTime, shortDate, usd } from '../lib/format.ts';
+import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 import { Markdown } from './Markdown.tsx';
 
 export const agentRunsKey = (slug: string, issueId: string) =>
@@ -191,6 +191,20 @@ export function RunBlocked({ run, className = '' }: { run: AgentRun; className?:
   );
 }
 
+/** A queued run held until its issue's cycle opens. */
+export function RunWaitingForCycle({ run, className = '' }: { run: AgentRun; className?: string }) {
+  const cycle = run.waitingForCycle;
+  if (!cycle) return null;
+  return (
+    <div className={`truncate font-mono text-[11px] text-warning ${className}`}>
+      {t('agents.runs.waitingForCycle', {
+        cycle: cycleName(cycle),
+        date: shortDate(cycle.startsAt),
+      })}
+    </div>
+  );
+}
+
 /** A queued run held back by a repository at its run limit. */
 export function RunWaitingForSlot({
   run,
@@ -209,9 +223,13 @@ export function RunWaitingForSlot({
   );
 }
 
-/** "Run anyway" for a queued run that waits for blockers. */
+/** Whether "Run anyway" means anything: the run waits for its blockers or its cycle. */
+export const isHeldBack = (run: AgentRun) =>
+  run.status === 'queued' && (run.blockedBy.length > 0 || !!run.waitingForCycle);
+
+/** "Run anyway" for a queued run that waits for blockers or its cycle. */
 export function RunAnywayButton({ run, onClick }: { run: AgentRun; onClick: () => void }) {
-  if (run.status !== 'queued' || !run.blockedBy.length) return null;
+  if (!isHeldBack(run)) return null;
   return (
     <button
       type="button"
@@ -477,6 +495,7 @@ function RunRow({
       </div>
       <RunProgress run={run} className="-mt-1 px-8 pb-2" />
       <RunBlocked run={run} className="-mt-1 px-8 pb-2" />
+      <RunWaitingForCycle run={run} className="-mt-1 px-8 pb-2" />
       {open && detail && (
         <div className="px-8 pb-3 text-[13px]">
           <RunDetail run={run} />
