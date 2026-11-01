@@ -21,6 +21,17 @@ function folderUpTo(count: number) {
   return dir;
 }
 
+/** Copies the migrations folder with these entries left out of the journal. */
+function folderWithout(tags: string[]) {
+  const dir = mkdtempSync(join(tmpdir(), 'ordo-migrations-'));
+  cpSync(migrationsFolder(), dir, { recursive: true });
+  const journalPath = join(dir, 'meta/_journal.json');
+  const journal = JSON.parse(readFileSync(journalPath, 'utf8'));
+  journal.entries = journal.entries.filter((e: { tag: string }) => !tags.includes(e.tag));
+  writeFileSync(journalPath, JSON.stringify(journal));
+  return dir;
+}
+
 const entryIndex = (tag: string) => {
   const journal = JSON.parse(readFileSync(join(migrationsFolder(), 'meta/_journal.json'), 'utf8'));
   return journal.entries.findIndex((e: { tag: string }) => e.tag === tag);
@@ -166,6 +177,43 @@ describe('migrations', { timeout: 60_000 }, () => {
     expect(keyring.decrypt(row!.token_encrypted, `invites:${invite!.id}:token`)).toBe(
       'legacy-token',
     );
+  });
+
+  it('creates what an instance skipped when it ran later migrations before request forms', async () => {
+    const url = await freshDatabase('migrations_forms');
+    const { db, sql } = createDb(url);
+    cleanup.push(() => sql.end());
+    const shape = async (client: typeof sql) => [
+      await client`select table_name, column_name, data_type, is_nullable, column_default
+        from information_schema.columns where table_name in ('request_forms', 'request_form_submissions')
+        order by table_name, column_name`,
+      await client`select conrelid::regclass::text as tbl, conname, pg_get_constraintdef(oid) as def
+        from pg_constraint where conrelid in ('request_forms'::regclass, 'request_form_submissions'::regclass)
+        order by conname`,
+      await client`select indexname, indexdef from pg_indexes
+        where tablename in ('request_forms', 'request_form_submissions') order by indexname`,
+    ];
+
+    const ahead = folderWithout(['0070_request_forms', '0073_request_forms_catch_up']);
+    cleanup.push(() => rmSync(ahead, { recursive: true, force: true }));
+    await migrate(db, { migrationsFolder: ahead });
+    const [before] = await sql`select to_regclass('request_forms') as forms`;
+    expect(before!.forms).toBeNull();
+    const [flag] = await sql`select 1 from information_schema.columns
+      where table_name = 'agents' and column_name = 'wait_for_cycle'`;
+    expect(flag).toBeDefined();
+
+    await migrate(db, { migrationsFolder: migrationsFolder() });
+    const repaired = await shape(sql);
+    expect(repaired[0]!.length).toBeGreaterThan(0);
+    // Applied once: a second boot has nothing left to do.
+    await migrate(db, { migrationsFolder: migrationsFolder() });
+
+    // The same as on an instance that took the usual road, where the catch-up does nothing.
+    const usual = createDb(await freshDatabase('migrations_forms_usual'));
+    cleanup.push(() => usual.sql.end());
+    await migrate(usual.db, { migrationsFolder: migrationsFolder() });
+    expect(repaired).toEqual(await shape(usual.sql));
   });
 
   it('lets instances booting together migrate one at a time', async () => {

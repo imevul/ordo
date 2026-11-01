@@ -88,6 +88,37 @@ export interface EngineOptions {
   onError?: (err: unknown) => void;
 }
 
+type ListKey<T> = { [K in keyof T]-?: T[K] extends unknown[] ? K : never }[keyof T];
+
+/** Every list in a bootstrap: one added to `Bootstrap` without being named here doesn't compile. */
+const BOOTSTRAP_LISTS: Record<ListKey<Bootstrap>, true> = {
+  members: true,
+  bots: true,
+  placeholders: true,
+  formerMembers: true,
+  repositories: true,
+  teams: true,
+  labels: true,
+  customFields: true,
+  templates: true,
+  recurring: true,
+  customers: true,
+  initiatives: true,
+  projects: true,
+  cycles: true,
+  releases: true,
+  views: true,
+  dashboards: true,
+  favorites: true,
+};
+
+/**
+ * A copy saved by an earlier version lacks the lists added since, and only a bootstrap change on
+ * the server would replace it. The app can't render without them, so it isn't shown.
+ */
+const isWhole = (bootstrap: Bootstrap) =>
+  Object.keys(BOOTSTRAP_LISTS).every((k) => Array.isArray(bootstrap[k as ListKey<Bootstrap>]));
+
 /** How many issues that left the copy are kept to be restored. */
 const GONE_KEPT = 200;
 
@@ -162,11 +193,13 @@ export class Engine {
   async open() {
     const { store, userId } = this.opts;
     const [{ meta, bootstrap, issues }, outbox] = await Promise.all([store.read(), store.outbox()]);
-    this.meta = meta;
+    const whole = bootstrap && isWhole(bootstrap) ? bootstrap : null;
+    // Without a position, the next sync loads everything. The outbox stays.
+    this.meta = whole ? meta : null;
     this.base = new Map(issues.map((i) => [i.id, i]));
     this.pending = outbox.filter((p) => p.userId === userId).sort((a, b) => a.key - b.key);
     this.comments.clear();
-    this.show({ ready: !!meta && !!bootstrap, bootstrap });
+    this.show({ ready: !!meta && !!whole, bootstrap: whole });
   }
 
   /**

@@ -57,6 +57,9 @@ export default {
     waitForBlockers: 'Wait for blocking issues',
     waitForBlockersHint:
       'A run on a blocked issue waits until the issues blocking it are done or cancelled. Turn off for agents that only triage.',
+    waitForCycle: "Wait for the issue's cycle",
+    waitForCycleHint:
+      "A run on an issue that hasn't started waits until the issue's cycle opens. Turn off for agents that only triage.",
     requirePlanApproval: 'Approve the plan first',
     requirePlanApprovalHint:
       'Its runs post a plan and wait for someone to approve it before changing code. Each issue can turn this on or off.',
@@ -120,8 +123,17 @@ export default {
     progress: 'Progress',
     /** On a queued run held back by its issue's blockers. */
     waitingOn: 'Waiting on {issues}',
+    /** On a queued run held until its issue's cycle starts. {cycle} is its name. */
+    waitingForCycle: 'Waiting for {cycle} · starts {date}',
+    /** The same, for a cycle that starts after another. {cycle} is the earlier cycle's name. */
+    waitingForEarlierCycle: {
+      one: 'Waiting for {cycle} · {open} of {count} issue open',
+      other: 'Waiting for {cycle} · {open} of {count} issues open',
+    },
+    /** The earlier cycle has nothing open, but hasn't started or has nothing in it yet. */
+    waitingForEmptyCycle: 'Waiting for {cycle}',
     runAnyway: 'Run anyway',
-    runAnywayHint: 'Start this run without waiting for the issues that block it.',
+    runAnywayHint: "Start this run without waiting for its issue's blockers or cycle.",
     /** Why a run failed, next to its status. */
     failure: {
       usage_limit: 'usage limit',
@@ -200,6 +212,8 @@ export default {
     waitingForSlot: 'waiting for a free slot',
     /** {repository} is a repository's name. */
     waitingForSlotHint: '{repository} already has as many runs as it allows.',
+    /** A collapsed group at the bottom of the open runs. */
+    waitingForCycles: 'Waiting for a cycle ({count})',
     emptyOpen: 'Nothing running, and no failed runs waiting for you',
     emptyTitle: 'No runs yet',
     emptyBody: 'Assign an issue to an agent and its run shows up here.',

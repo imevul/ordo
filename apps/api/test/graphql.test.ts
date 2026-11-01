@@ -111,6 +111,19 @@ describe('queries', () => {
     expect(issue.team.states[0].type).toBe('triage');
   });
 
+  it('says which cycle a cycle starts after', async () => {
+    const team = (await owner.get(`${ws}/teams`)).data[0];
+    await owner.patch(`${ws}/teams/${team.id}`, { cyclesEnabled: true });
+    const plan = async (startsAt: string, endsAt: string, startsAfterId?: string) =>
+      (await owner.post(`${ws}/teams/${team.id}/cycles`, { startsAt, endsAt, startsAfterId })).data;
+    const first = await plan('2031-01-06', '2031-01-20');
+    const second = await plan('2031-01-20', '2031-02-03', first.id);
+    const res = await gql(`{ cycles(teamKey: "${team.key}") { id startsAfterId } }`);
+    const cycles = res.json().data.cycles as { id: string; startsAfterId: string | null }[];
+    expect(cycles.find((c) => c.id === first.id)!.startsAfterId).toBeNull();
+    expect(cycles.find((c) => c.id === second.id)!.startsAfterId).toBe(first.id);
+  });
+
   it('pages issue connections with cursors', async () => {
     const page = `query($after: String) {
       issues(first: 2, after: $after) { nodes { identifier } pageInfo { hasNextPage endCursor } }

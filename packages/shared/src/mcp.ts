@@ -96,6 +96,9 @@ export const mcpToolSchemas = {
     endsAt: isoDate.describe('Day after the last day (the next cycle starts here)'),
     name: z.string().trim().min(1).max(120).optional(),
     description: z.string().max(5000).optional(),
+    startsAfter: cycle
+      .optional()
+      .describe("A cycle of team: agents start on this one once that one's issues are closed"),
   }),
   update_cycle: z.object({
     team,
@@ -104,6 +107,10 @@ export const mcpToolSchemas = {
     endsAt: isoDate.optional(),
     name: z.string().trim().min(1).max(120).nullable().optional(),
     description: z.string().max(5000).nullable().optional(),
+    startsAfter: cycle
+      .nullable()
+      .optional()
+      .describe("A cycle of team: agents start on this one once that one's issues are closed"),
   }),
   create_milestone: z.object({
     project,

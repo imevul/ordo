@@ -34,6 +34,7 @@ export function AgentModal({
   const [concurrency, setConcurrency] = useState(1);
   const [followPullRequests, setFollowPullRequests] = useState(true);
   const [waitForBlockers, setWaitForBlockers] = useState(true);
+  const [waitForCycle, setWaitForCycle] = useState(true);
   // As typed; empty is no budget.
   const [budget, setBudget] = useState('');
   const [requirePlanApproval, setRequirePlanApproval] = useState(false);
@@ -49,6 +50,7 @@ export function AgentModal({
     setConcurrency(existing?.concurrency ?? 1);
     setFollowPullRequests(existing?.followPullRequests ?? true);
     setWaitForBlockers(existing?.waitForBlockers ?? true);
+    setWaitForCycle(existing?.waitForCycle ?? true);
     setBudget(existing?.monthlyBudgetUsd != null ? String(existing.monthlyBudgetUsd) : '');
     setRequirePlanApproval(existing?.requirePlanApproval ?? false);
   }, [agent, existing, ws.teams]);
@@ -73,6 +75,7 @@ export function AgentModal({
       concurrency,
       followPullRequests,
       waitForBlockers,
+      waitForCycle,
       monthlyBudgetUsd,
       requirePlanApproval,
     };
@@ -201,6 +204,20 @@ export function AgentModal({
             {t('agents.form.waitForBlockers')}
             <span className="block text-[11.5px] text-index">
               {t('agents.form.waitForBlockersHint')}
+            </span>
+          </span>
+        </label>
+        <label className="mt-3 flex items-start gap-2 text-[13px]">
+          <input
+            type="checkbox"
+            className="mt-0.5 accent-primary"
+            checked={waitForCycle}
+            onChange={(e) => setWaitForCycle(e.target.checked)}
+          />
+          <span>
+            {t('agents.form.waitForCycle')}
+            <span className="block text-[11.5px] text-index">
+              {t('agents.form.waitForCycleHint')}
             </span>
           </span>
         </label>

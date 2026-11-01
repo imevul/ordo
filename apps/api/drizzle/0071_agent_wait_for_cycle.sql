@@ -1,0 +1,1 @@
+ALTER TABLE "agents" ADD COLUMN "wait_for_cycle" boolean DEFAULT true NOT NULL;

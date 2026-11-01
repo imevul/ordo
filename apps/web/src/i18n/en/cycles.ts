@@ -16,6 +16,8 @@ export default {
   /** Badge on the cycle that is running now. */
   active: 'active',
   /** Completed out of all issues in the cycle. */
+  /** After a cycle's dates: the cycle it starts after. */
+  startsAfter: 'after {cycle}',
   issueProgress: { one: '{completed}/{count} issue', other: '{completed}/{count} issues' },
   /** Completed out of all estimate points. */
   pointProgress: { one: '{completed}/{count} pts', other: '{completed}/{count} pts' },
@@ -59,6 +61,10 @@ export default {
     name: 'Name (optional)',
     starts: 'Starts',
     ends: 'Ends',
+    startsAfter: 'Starts after',
+    onItsDate: 'Nothing, starts on its date',
+    startsAfterHint:
+      'Agents start on this cycle once that one is finished, early or late. The dates here become estimates.',
     create: 'Create cycle',
     created: 'Cycle created',
     updated: 'Cycle updated',

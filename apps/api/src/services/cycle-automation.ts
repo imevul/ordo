@@ -106,7 +106,8 @@ export async function automateTeamCycles(
     .where(and(eq(cycles.teamId, teamId), lte(cycles.endsAt, today), isNull(cycles.completedAt)))
     .orderBy(asc(cycles.endsAt));
   for (const cycle of ended) {
-    if (auto.rollOver) {
+    // A cycle that another starts after keeps its issues: emptied, it would count as finished.
+    if (auto.rollOver && !list.some((c) => c.startsAfterId === cycle.id)) {
       const [next] = await ctx.tx
         .select({ id: cycles.id })
         .from(cycles)

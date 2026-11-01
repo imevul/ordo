@@ -30,7 +30,9 @@ There are three parts:
    assigned issues there (agents are guests of those teams, who may also plan cycles and milestones). _Instructions_ are added to every run's prompt, for
    example "Run `pnpm test` before opening a pull request. Never push to main." _Runs at once_ caps how many of its
    runs are worked on at the same time, across all its runners. _Wait for blocking issues_ (on by default) holds a
-   run while its issue is blocked by an open one; turn it off for an agent that only triages.
+   run while its issue is blocked by an open one; turn it off for an agent that only triages. _Wait for the issue's
+   cycle_ (on by default) does the same for [work planned for a later cycle](#work-planned-for-a-later-cycle); turn
+   that off for triage too, so issues are triaged as they come in.
 3. **A key** for the agent, shown once. A key only works for the agent's workspace, can't sign in to the web app, and
    stops working when the agent is disabled.
 4. **A runner**, wherever the work should happen (see below).
@@ -47,7 +49,7 @@ There are three parts:
 4. To ask for changes, comment on the issue and click **Run again**. The next run sees the whole thread.
 5. **Blocked issues wait.** If the issue is blocked by another that isn't done or cancelled yet, its run stays queued
    and shows "Waiting on ENG-2". It starts by itself when the last blocker closes. **Run anyway** (on the queued
-   run) starts it without waiting.
+   run) starts it without waiting. Issues in a [later cycle](#work-planned-for-a-later-cycle) wait the same way.
 6. **Cancel** stops a run: its runner hears about it on its next heartbeat and stops the command. Unassigning the
    agent cancels its open runs too.
 7. **Agent runs** in the sidebar (shown once the workspace has an agent) lists what every agent is doing across the
@@ -71,6 +73,51 @@ There are three parts:
 10. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
     while it's paused: queued runs wait, and runs already going finish. **Resume runs** picks up the queue again. (It's
     the workspace setting `agentRunsPaused`.)
+
+## Work planned for a later cycle
+
+Assignment says who does the work, and the cycle says when it may start. So you can file next month's issues today,
+let automation rules and default assignees do their thing, and nothing gets coded before its time.
+
+A typical set-up has a triage agent with _Wait for the issue's cycle_ turned off and a coder with it on. An issue filed
+into a cycle that starts on Nov 6 is triaged right away and handed to the coder, whose run stays queued and shows
+"Waiting for P1 · starts Nov 6". On Nov 6 the cycle's runs start, oldest first, within the agent's _Runs at once_.
+Blocking issues still apply inside the cycle.
+
+A run waits for its cycle when:
+
+- its agent has _Wait for the issue's cycle_ on,
+- it was queued by assigning the issue, or by a schedule,
+- the issue hasn't started (it's in a triage, backlog or todo status), and
+- the issue's cycle hasn't opened, on a team with cycles turned on.
+
+So these don't wait:
+
+- **An issue that's already started**, which keeps moving through hand-offs from coder to reviewer. Moving an issue to
+  a started status by hand also releases its run.
+- **A mention, Run again or a pull request follow-up**, since those ask for the agent now.
+- **Run anyway** on the run, which skips both its blockers and its cycle.
+
+**One cycle after another.** When the order matters more than the dates, set _Starts after_ on a cycle (its form, or
+`startsAfter` over [MCP](mcp.md)) to an earlier cycle of the same team. It then opens when that cycle is finished,
+whether that's early or late, and its own dates become estimates. The run shows "Waiting for P1 · 6 of 20 issues open".
+With P2 after P1 and P3 after P2, agents work through the phases in order, with no person needed in between.
+
+- Finished means every issue in the earlier cycle is done, cancelled or trashed, and that cycle is open itself. A
+  cycle with no issues isn't finished until its end date, so the next can't start while it's still being filed.
+- Reopening an issue in the earlier cycle holds the next cycle's runs again. Runs already working finish.
+- A cycle that another starts after keeps its unfinished issues when it ends, even with _Roll over unfinished issues_
+  on: rolling them over would make it look finished. Dates don't move by themselves.
+- Deleting the earlier cycle, or clearing _Starts after_, puts the cycle back on its own start date.
+
+For a precise link between two issues, across cycles too, use a blocking relation. Those apply as well.
+
+To start a whole cycle early, move its start date or clear _Starts after_. Waiting runs are listed last under **Open** on the Agent runs page,
+in a collapsed group, and don't count towards the number in the sidebar. The prompt and the run file name the issue's
+cycle (`cycle` in `AgentRunContext`), so tell a triage agent to keep a cycle that's already set.
+
+An agent's key may plan cycles, so an agent could move a date and let itself in. Like
+[plan approval](#plan-approval), this guides agents rather than enforcing anything.
 
 ## When a run fails
 

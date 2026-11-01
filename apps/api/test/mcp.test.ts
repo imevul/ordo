@@ -830,6 +830,25 @@ describe('planning', () => {
       name: null,
     });
     expect(updated).toMatchObject({ number: created.number, endsAt: '2030-01-28', name: null });
+    const next = await tool('create_cycle', {
+      team: 'ENG',
+      startsAt: '2030-01-28',
+      endsAt: '2030-02-11',
+      startsAfter: String(created.number),
+    });
+    expect(next.startsAfter).toBe(created.number);
+    const cleared = await tool('update_cycle', {
+      team: 'ENG',
+      cycle: String(next.number),
+      startsAfter: null,
+    });
+    expect(cleared.startsAfter).toBeUndefined();
+    const again = await tool('update_cycle', {
+      team: 'ENG',
+      cycle: String(next.number),
+      startsAfter: String(created.number),
+    });
+    expect(again.startsAfter).toBe(created.number);
     expect(
       (
         await tool('update_cycle', {

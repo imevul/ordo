@@ -1,0 +1,2 @@
+ALTER TABLE "cycles" ADD COLUMN "starts_after_id" uuid;--> statement-breakpoint
+ALTER TABLE "cycles" ADD CONSTRAINT "cycles_starts_after_id_cycles_id_fk" FOREIGN KEY ("starts_after_id") REFERENCES "public"."cycles"("id") ON DELETE set null ON UPDATE no action;
