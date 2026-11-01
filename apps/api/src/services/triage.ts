@@ -1,7 +1,14 @@
 import type { TriageActions, TriageConditions, TriageRule, TriageSource } from '@ordo/shared';
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
-import { integrations, issueLabels, issues, triageRules } from '../db/schema.ts';
+import {
+  integrations,
+  issueLabels,
+  issues,
+  teams,
+  triageRules,
+  workflowStates,
+} from '../db/schema.ts';
 import { badRequest } from '../lib/errors.ts';
 import { systemAccess } from './access.ts';
 import { automationBot } from './automation.ts';
@@ -41,6 +48,21 @@ export async function assertTriageRule(
     const state = await stateOf(ctx, teamId, a.stateId);
     if (state.type === 'triage') throw badRequest('Accept into a status outside triage');
   }
+}
+
+/** A team's triage status if it has triage, else its default. */
+export async function landingState(ctx: Ctx, teamId: string) {
+  const [team] = await ctx.tx
+    .select({ triage: teams.triageEnabled })
+    .from(teams)
+    .where(and(eq(teams.id, teamId), eq(teams.workspaceId, ctx.workspaceId)));
+  if (!team) throw new Error('The intake team no longer exists; pick another in the settings');
+  if (!team.triage) return undefined;
+  const [triage] = await ctx.tx
+    .select({ id: workflowStates.id })
+    .from(workflowStates)
+    .where(and(eq(workflowStates.teamId, teamId), eq(workflowStates.type, 'triage')));
+  return triage?.id;
 }
 
 /** Where an issue came from, as rules name it: email intake is its own source. */

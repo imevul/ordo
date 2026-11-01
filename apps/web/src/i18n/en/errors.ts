@@ -117,5 +117,7 @@ export default {
     own_time_entries: 'You can only change your own time entries',
     no_timer: 'No timer is running',
     timer_conflict: 'Your timer was just started elsewhere. Try again.',
+    captcha_failed: "We couldn't verify that you're not a robot. Try again.",
+    request_form_busy: 'This form is getting a lot of requests right now. Try again later.',
   },
 };

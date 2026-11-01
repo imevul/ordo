@@ -8,6 +8,8 @@ describe('redactUrl', () => {
     expect(redactUrl('/api/calendar/ordo_cal_s3cret.ics')).toBe('/api/calendar/….ics');
     expect(redactUrl('/api/hooks/gitlab/inbound-key')).toBe('/api/hooks/gitlab/…');
     expect(redactUrl('/api/hooks/github/app-1234')).toBe('/api/hooks/github/app-1234');
+    expect(redactUrl('/api/forms/form-token')).toBe('/api/forms/…');
+    expect(redactUrl('/request-form/form-token')).toBe('/request-form/…');
     expect(redactUrl('/api/files/f1?exp=99&sig=s3cret')).toBe('/api/files/f1?exp=99&sig=…');
     expect(redactUrl('/api/auth/oidc/callback?code=c&state=s&iss=x')).toBe(
       '/api/auth/oidc/callback?code=…&state=…&iss=x',

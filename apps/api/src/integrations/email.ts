@@ -3,15 +3,15 @@ import { type EmailConfig, emailSettingsSchema } from '@ordo/shared';
 import { and, eq, inArray } from 'drizzle-orm';
 import { ImapFlow } from 'imapflow';
 import { type AddressObject, simpleParser } from 'mailparser';
-import { issueLinks, issues, teams, workflowStates } from '../db/schema.ts';
+import { issueLinks, issues } from '../db/schema.ts';
 import { BlockedTargetError, isPrivateAddress } from '../lib/safeFetch.ts';
 import { createAttachment } from '../services/attachments.ts';
 import { createComment } from '../services/comments.ts';
-import type { Ctx } from '../services/context.ts';
 import { addCustomerRequest, customerForEmail } from '../services/customers.ts';
 import { saveFile } from '../services/files.ts';
 import { createIssue } from '../services/issues.ts';
 import { upsertIssueLink } from '../services/links.ts';
+import { landingState } from '../services/triage.ts';
 import { configOf, type IntegrationContext, type IntegrationProvider } from './types.ts';
 
 /**
@@ -45,21 +45,6 @@ function isAutomatic(headers: Map<string, unknown>, from: string) {
     headers.has('x-autorespond') ||
     /^(mailer-daemon|postmaster|no-?reply)@/i.test(from)
   );
-}
-
-/** A team's triage status if it has triage, else its default. */
-async function landingState(ctx: Ctx, teamId: string) {
-  const [team] = await ctx.tx
-    .select({ triage: teams.triageEnabled })
-    .from(teams)
-    .where(and(eq(teams.id, teamId), eq(teams.workspaceId, ctx.workspaceId)));
-  if (!team) throw new Error('The intake team no longer exists; pick another in the settings');
-  if (!team.triage) return undefined;
-  const [triage] = await ctx.tx
-    .select({ id: workflowStates.id })
-    .from(workflowStates)
-    .where(and(eq(workflowStates.teamId, teamId), eq(workflowStates.type, 'triage')));
-  return triage?.id;
 }
 
 /** Turns one raw message into an issue (or a comment on the issue its thread started). */

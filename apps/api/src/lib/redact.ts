@@ -1,7 +1,7 @@
 /**
  * Request URLs as they go into the logs, minus the secrets some of them carry: invite tokens,
- * inbound webhook keys, calendar feed tokens, file signatures and sign-in codes. Anyone who can read the logs could
- * otherwise use them.
+ * inbound webhook keys, calendar feed tokens, request form links, file signatures and sign-in codes. Anyone who can
+ * read the logs could otherwise use them.
  */
 const SECRET_PARAMS = new Set(['sig', 'code', 'state', 'token', 'access_token', 'key']);
 
@@ -10,6 +10,8 @@ export function redactUrl(url: string) {
   const safePath = path
     .replace(/^(\/api\/invites\/)[^/]+/, '$1…')
     .replace(/^(\/api\/calendar\/)[^/]+/, '$1….ics')
+    // Both the form's API and its page, which this server hands out too.
+    .replace(/^(\/api\/forms\/|\/request-form\/)[^/]+/, '$1…')
     // Each integration's own webhook URL ends in its key; app-wide ones (app-<id>) are public.
     .replace(/^(\/api\/hooks\/[^/]+\/)(?!app-)[^/]+/, '$1…');
   if (query === undefined) return safePath;

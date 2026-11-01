@@ -79,6 +79,19 @@ export default {
         body: 'Ditt konto använder nu {email}.',
       },
     },
+    requestReceived: {
+      subject: 'Vi har tagit emot din förfrågan',
+      kicker: 'förfrågan mottagen',
+      title: 'Tack för att du hörde av dig',
+      body: 'Din förfrågan har nått teamet, och de tittar på den snart.',
+      ignore: 'Om du inte har skickat någon förfrågan kan du bortse från det här mejlet.',
+    },
+    requestDone: {
+      subject: 'Din förfrågan är klar',
+      kicker: 'förfrågan klar',
+      body: 'Teamet är klart med din förfrågan <b>{title}</b>.',
+      text: 'Teamet är klart med din förfrågan "{title}".',
+    },
     digest: {
       kicker: 'inkorg',
       updates: {

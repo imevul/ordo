@@ -25,6 +25,10 @@ export function sniffImage(body: Buffer): string | null {
 
 export const isImageType = (type: string) => type in IMAGE_TYPES;
 
+// Filenames come from the client, and Postgres can't store a NUL byte in text.
+// biome-ignore lint/suspicious/noControlCharactersInRegex: control characters are the point
+const FILENAME_CONTROLS = /[\x00-\x1f\x7f]/g;
+
 export async function saveFile(
   app: FastifyInstance,
   input: {
@@ -42,21 +46,30 @@ export async function saveFile(
   const contentType = image ?? 'application/octet-stream';
   const id = randomUUID();
   const key = storageKey(input.kind, new Date().toISOString().slice(0, 7), id);
+  const filename = input.filename.replace(FILENAME_CONTROLS, '').slice(0, 255) || 'file';
   await app.storage.put(key, input.body, contentType);
-  const [row] = await app.db
-    .insert(files)
-    .values({
-      id,
-      workspaceId: input.workspaceId,
-      ownerId: input.ownerId,
-      kind: input.kind,
-      storageKey: key,
-      filename: input.filename.slice(0, 255) || 'file',
-      contentType,
-      size: input.body.length,
-    })
-    .returning();
-  return row!;
+  try {
+    const [row] = await app.db
+      .insert(files)
+      .values({
+        id,
+        workspaceId: input.workspaceId,
+        ownerId: input.ownerId,
+        kind: input.kind,
+        storageKey: key,
+        filename,
+        contentType,
+        size: input.body.length,
+      })
+      .returning();
+    return row!;
+  } catch (err) {
+    // Without a row, nothing could ever find these bytes to clean them up.
+    await app.storage
+      .delete(key)
+      .catch((cause) => app.log.warn({ err: cause }, 'deleting stored file failed'));
+    throw err;
+  }
 }
 
 export async function deleteFile(app: FastifyInstance, id: string) {
