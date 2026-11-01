@@ -80,6 +80,19 @@ export default {
         body: 'Your account now uses {email}.',
       },
     },
+    requestReceived: {
+      subject: 'We received your request',
+      kicker: 'request received',
+      title: 'Thanks for getting in touch',
+      body: 'Your request has reached the team, and they will look at it soon.',
+      ignore: "If you didn't send a request, you can ignore this email.",
+    },
+    requestDone: {
+      subject: 'Your request is done',
+      kicker: 'request done',
+      body: 'The team has finished your request <b>{title}</b>.',
+      text: 'The team has finished your request "{title}".',
+    },
     digest: {
       kicker: 'inbox',
       updates: { one: '{count} update in {workspace}', other: '{count} updates in {workspace}' },

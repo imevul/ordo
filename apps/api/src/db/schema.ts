@@ -29,6 +29,7 @@ import type {
   IssueDisplay,
   IssueFilter,
   IssueLinkKind,
+  Locale,
   MemberRole,
   NotificationType,
   NotifyPauseMode,
@@ -37,6 +38,8 @@ import type {
   PullRequestScope,
   RecurrenceUnit,
   RelationType,
+  RequestFormCaptchaProvider,
+  RequestFormField,
   SamlSettings,
   SlaHours,
   StateType,
@@ -473,13 +476,75 @@ export const customerRequests = pgTable(
       .references((): AnyPgColumn => issues.id, { onDelete: 'cascade' }),
     body: text('body').notNull().default(''),
     contact: text('contact'),
-    source: text('source').$type<'manual' | 'email' | 'api'>().notNull().default('manual'),
+    source: text('source').$type<'manual' | 'email' | 'api' | 'form'>().notNull().default('manual'),
     createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: createdAt(),
   },
   (t) => [
     index('customer_requests_issue_idx').on(t.issueId),
     index('customer_requests_customer_idx').on(t.customerId),
+  ],
+);
+
+/**
+ * A team's public request form: anyone with the link can file a triage issue without an account.
+ * The token is the only thing that points here from outside, so nothing about the team or workspace
+ * shows in the URL.
+ */
+export const requestForms = pgTable('request_forms', {
+  id: pk(),
+  workspaceId: uuid('workspace_id')
+    .notNull()
+    .references(() => workspaces.id, { onDelete: 'cascade' }),
+  teamId: uuid('team_id')
+    .notNull()
+    .unique()
+    .references(() => teams.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(),
+  enabled: boolean('enabled').notNull().default(false),
+  title: text('title').notNull().default(''),
+  intro: text('intro').notNull().default(''),
+  fields: jsonb('fields').$type<RequestFormField[]>().notNull().default([]),
+  /** Defaults for the issues it files. */
+  templateId: uuid('template_id').references(() => issueTemplates.id, { onDelete: 'set null' }),
+  allowAttachments: boolean('allow_attachments').notNull().default(false),
+  confirmationEmail: boolean('confirmation_email').notNull().default(true),
+  doneEmail: boolean('done_email').notNull().default(false),
+  captchaProvider: text('captcha_provider').$type<RequestFormCaptchaProvider>(),
+  captchaSiteKey: text('captcha_site_key'),
+  /** Encrypted. */
+  captchaSecret: text('captcha_secret'),
+  createdAt: createdAt(),
+  updatedAt: updatedAt(),
+});
+
+/**
+ * Who filed which issue through a form: where the notice goes when it's done, what they called it
+ * (the issue's title may have changed to something internal since), and the count behind the limits.
+ */
+export const requestFormSubmissions = pgTable(
+  'request_form_submissions',
+  {
+    id: pk(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => workspaces.id, { onDelete: 'cascade' }),
+    formId: uuid('form_id')
+      .notNull()
+      .references(() => requestForms.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references((): AnyPgColumn => issues.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    title: text('title').notNull(),
+    locale: text('locale').$type<Locale>().notNull(),
+    doneNotifiedAt: ts('done_notified_at'),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index('request_form_submissions_form_idx').on(t.formId, t.createdAt),
+    index('request_form_submissions_issue_idx').on(t.issueId),
+    index('request_form_submissions_email_idx').on(t.workspaceId, t.email, t.createdAt),
   ],
 );
 

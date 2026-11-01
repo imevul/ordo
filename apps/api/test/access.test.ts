@@ -858,6 +858,9 @@ describe('route inventory', () => {
     'POST /repositories': 'workspace admins only (agents.test.ts)',
     'PATCH /repositories/:id': 'workspace admins only',
     'DELETE /repositories/:id': 'workspace admins only',
+    'GET /teams/:teamId/request-form': 'team admins only (request-forms.test.ts)',
+    'PUT /teams/:teamId/request-form': 'team admins only (request-forms.test.ts)',
+    'POST /teams/:teamId/request-form/rotate-link': 'team admins only (request-forms.test.ts)',
   };
 
   it('accounts for every workspace route', () => {

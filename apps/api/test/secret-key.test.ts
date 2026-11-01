@@ -111,6 +111,7 @@ describe('the list of encrypted columns', () => {
       importSecretsAad: 'imports:X:secrets',
       instanceKeyAad: 'instance_keys:X:value',
       inviteTokenAad: 'invites:X:token',
+      requestFormCaptchaSecretAad: 'request_forms:X:captcha_secret',
       SMTP_URL_AAD: 'instance_settings:smtp:url',
       AI_API_KEY_AAD: 'instance_settings:ai:apiKey',
     });
@@ -342,6 +343,8 @@ describe('rotate-key, for every registered secret', () => {
       .values({ workspaceId, provider: 'openai', model: 'm' });
     await app.db.insert(imports).values({ workspaceId, source: 'csv', name: 'x.csv' });
     await app.db.insert(instanceKeys).values({ key: 'registry', value: 'placeholder' });
+    const boot = await tess.client.get(`/api/w/${slug}/bootstrap`);
+    await tess.client.put(`/api/w/${slug}/teams/${boot.data.teams[0].id}/request-form`, {});
 
     // Every value written under the old key, the way the app would, with the entry's own AAD.
     const oldKey = new Keyring(KEY_A);

@@ -16,6 +16,8 @@ import {
   PROJECT_HEALTH,
   PROJECT_STATUSES,
   RECURRENCE_UNITS,
+  REQUEST_FORM_CAPTCHA_PROVIDERS,
+  REQUEST_FORM_FIELD_TYPES,
   SLUG_PATTERN,
   STATE_TYPES,
   TEAM_KEY_PATTERN,
@@ -415,13 +417,71 @@ export const createTemplateSchema = z.object({
 });
 export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 
+const requestFormFieldSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9_-]{1,40}$/),
+    label: z.string().trim().min(1).max(200),
+    type: z.enum(REQUEST_FORM_FIELD_TYPES),
+    required: z.boolean().default(false),
+    options: z.array(z.string().trim().min(1).max(200)).max(50).optional(),
+  })
+  .refine((f) => f.type !== 'select' || (f.options?.length ?? 0) > 0, {
+    message: 'A select needs at least one option',
+    path: ['options'],
+  });
+
+/** `PUT /teams/:id/request-form`. What's left out stays as it is. */
+export const saveRequestFormSchema = z.object({
+  enabled: z.boolean().optional(),
+  title: z.string().trim().max(200).optional(),
+  intro: z.string().trim().max(2000).optional(),
+  fields: z
+    .array(requestFormFieldSchema)
+    .max(20)
+    .refine((fields) => new Set(fields.map((f) => f.id)).size === fields.length, {
+      message: 'Field ids must be unique',
+    })
+    .optional(),
+  templateId: id.nullable().optional(),
+  allowAttachments: z.boolean().optional(),
+  confirmationEmail: z.boolean().optional(),
+  doneEmail: z.boolean().optional(),
+  captchaProvider: z.enum(REQUEST_FORM_CAPTCHA_PROVIDERS).nullable().optional(),
+  captchaSiteKey: z.string().trim().min(1).max(200).nullable().optional(),
+  /** Write-only; left out, the stored one stays. */
+  captchaSecret: z.string().trim().min(1).max(500).optional(),
+});
+export type SaveRequestFormInput = z.infer<typeof saveRequestFormSchema>;
+
+/** Postgres can't store a NUL byte in text, and anyone can send this form one. */
+const noNul = (text: string) => !text.includes('\0');
+
+/** `POST /api/forms/:token`, as JSON or as the `payload` part of a multipart body with the files. */
+export const submitRequestFormSchema = z.object({
+  name: z.string().trim().min(1).max(200).refine(noNul, 'Invalid characters'),
+  email: z.string().trim().toLowerCase().email().max(320),
+  title: z.string().trim().min(1).max(500).refine(noNul, 'Invalid characters'),
+  description: z.string().trim().max(50_000).refine(noNul, 'Invalid characters').default(''),
+  answers: z
+    .record(
+      z.string(),
+      z.union([z.string().max(5000).refine(noNul, 'Invalid characters'), z.boolean()]),
+    )
+    .default({}),
+  /** The honeypot: hidden from people, so only a bot fills it in. */
+  website: z.string().max(2000).optional(),
+  captchaToken: z.string().max(4096).optional(),
+  locale: z.enum(LOCALES).optional(),
+});
+export type SubmitRequestFormInput = z.infer<typeof submitRequestFormSchema>;
+
 const triageRuleFields = {
   name: z.string().trim().min(1).max(80),
   enabled: z.boolean(),
   conditions: z.object({
     sources: z
-      .array(z.enum(['web', 'api', 'mcp', 'integration', 'email']))
-      .max(5)
+      .array(z.enum(['web', 'api', 'mcp', 'integration', 'email', 'form']))
+      .max(6)
       .optional(),
     text: z.string().trim().max(200).optional(),
     labelIds: z.array(id).max(20).optional(),

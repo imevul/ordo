@@ -19,6 +19,8 @@ import type {
   ProjectHealth,
   ProjectStatus,
   RecurrenceUnit,
+  RequestFormCaptchaProvider,
+  RequestFormFieldType,
   StateType,
   TeamRole,
   UserKind,
@@ -159,7 +161,7 @@ export interface Team {
   defaultRepositoryId: string | null;
 }
 
-export const TRIAGE_SOURCES = ['web', 'api', 'mcp', 'integration', 'email'] as const;
+export const TRIAGE_SOURCES = ['web', 'api', 'mcp', 'integration', 'email', 'form'] as const;
 export type TriageSource = (typeof TRIAGE_SOURCES)[number];
 
 /** What an incoming triage issue must match; empty matches everything. All given parts must hold. */
@@ -421,9 +423,46 @@ export interface CustomerRequest {
   body: string;
   /** Who asked: "Ada Lovelace <ada@acme.com>". */
   contact: string | null;
-  source: 'manual' | 'email' | 'api';
+  source: 'manual' | 'email' | 'api' | 'form';
   createdById: string | null;
   createdAt: string;
+}
+
+/** A question a team adds to its form, beyond name, email, title and description. */
+export interface RequestFormField {
+  id: string;
+  label: string;
+  type: RequestFormFieldType;
+  required: boolean;
+  /** The choices of a `select`. */
+  options?: string[];
+}
+
+/** A team's form as its admins see it. The CAPTCHA secret never leaves the server. */
+export interface RequestForm {
+  id: string;
+  teamId: string;
+  token: string;
+  enabled: boolean;
+  title: string;
+  intro: string;
+  fields: RequestFormField[];
+  templateId: string | null;
+  allowAttachments: boolean;
+  confirmationEmail: boolean;
+  doneEmail: boolean;
+  captchaProvider: RequestFormCaptchaProvider | null;
+  captchaSiteKey: string | null;
+  captchaSecretSet: boolean;
+}
+
+/** What anyone with the link sees: nothing that names the team or the workspace. */
+export interface PublicRequestForm {
+  title: string;
+  intro: string;
+  fields: RequestFormField[];
+  attachments: { maxFiles: number; maxFileMb: number } | null;
+  captcha: { provider: RequestFormCaptchaProvider; siteKey: string } | null;
 }
 
 /** A request as listed on its customer: with the issue it's about. */

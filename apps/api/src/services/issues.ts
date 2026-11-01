@@ -76,6 +76,7 @@ import { cycleForStartedIssue } from './cycle-automation.ts';
 import { listIssueLinks } from './links.ts';
 import { notify, subscribe, subscriberIds } from './notifications.ts';
 import { isWorkspacePlaceholder } from './placeholders.ts';
+import { queueRequestDoneEmails } from './requestForms.ts';
 import { anyWordQuery, matchingIssueIds, textQuery, textRank } from './search.ts';
 import { toProject } from './serialize.ts';
 import { applyTriageRules } from './triage.ts';
@@ -1113,6 +1114,7 @@ export async function updateIssue(
     set.stateId = state.id;
     Object.assign(set, stateTimestamps(state.type, current));
     changes.push({ field: 'state', from: current.stateId, to: state.id });
+    if (state.type === 'completed') await queueRequestDoneEmails(ctx, [issueId]);
     // Cycle automation: work that starts joins the active cycle, unless it's in one already.
     if (state.type === 'started' && cycleId === undefined && !current.cycleId) {
       cycleId = (await cycleForStartedIssue(ctx, teamId)) ?? undefined;
@@ -1349,6 +1351,7 @@ export async function bulkUpdateIssues(
   }
   if (changed.length === 0) return [];
   const changedIds = changed.map((c) => c.row.id);
+  if (state?.type === 'completed') await queueRequestDoneEmails(ctx, changedIds);
 
   // Per-issue values are CASEs on the old row (Postgres evaluates them before the update), so
   // issues already in the target status keep their timestamps.

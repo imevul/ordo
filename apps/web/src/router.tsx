@@ -33,6 +33,7 @@ import {
 } from './routes/issues.tsx';
 import { ProjectDetailPage, ProjectsPage } from './routes/projects/index.tsx';
 import { ReleasePage, ReleasesPage } from './routes/releases.tsx';
+import { RequestFormPage } from './routes/requestForm.tsx';
 import { RoadmapPage } from './routes/roadmap.tsx';
 import { SettingsPage, TeamSettingsPage } from './routes/settings/index.tsx';
 import { TimeReportPage } from './routes/time.tsx';
@@ -90,6 +91,11 @@ const inviteRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/invite/$token',
   component: InvitePage,
+});
+const requestFormRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/request-form/$token',
+  component: RequestFormPage,
 });
 const forgotRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -294,6 +300,7 @@ const routeTree = rootRoute.addChildren([
   oauthAuthorizeRoute,
   signupRoute,
   inviteRoute,
+  requestFormRoute,
   forgotRoute,
   resetRoute,
   verifyEmailRoute,
