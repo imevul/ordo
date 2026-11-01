@@ -59,6 +59,33 @@ describe('engine', () => {
     expect(engine.getState().online).toBe(true);
   });
 
+  it("doesn't show a copy saved before a list existed, and loads it again", async () => {
+    const server = new FakeServer();
+    server.put(issue('a'));
+    const store = new MemoryStore();
+    await setup(server, store).engine.sync();
+    const saved = await store.read();
+    const { dashboards: _, ...old } = saved.bootstrap!;
+    await store.write({ bootstrap: old as typeof saved.bootstrap & object });
+
+    const { engine, errors } = setup(server, store);
+    await engine.open();
+    expect(engine.getState()).toMatchObject({ ready: false, bootstrap: null });
+    server.calls.length = 0;
+    await engine.sync();
+    expect(errors).toEqual([]);
+    expect(server.calls).toContain('issues');
+    expect(engine.getState()).toMatchObject({ ready: true });
+    expect(engine.getState().bootstrap!.dashboards).toEqual([]);
+    expect((await store.read()).bootstrap!.dashboards).toEqual([]);
+    expect(ids(engine)).toEqual(['a']);
+
+    // What it saved is whole, so the next start shows it at once.
+    const next = setup(server, store).engine;
+    await next.open();
+    expect(next.getState().ready).toBe(true);
+  });
+
   it('follows the change log: updates, deletions, comments', async () => {
     const { server, engine } = setup();
     server.put(issue('a'));

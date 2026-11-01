@@ -64,7 +64,23 @@ const bootstrapFor = (teams: string[]) =>
   ({
     workspace: { id: 'ws-1', name: 'W', slug: 'w' },
     teams: teams.map((id) => ({ id, name: id, key: id.toUpperCase() })),
+    members: [],
+    bots: [],
+    placeholders: [],
+    formerMembers: [],
+    repositories: [],
     labels: [],
+    customFields: [],
+    templates: [],
+    recurring: [],
+    customers: [],
+    initiatives: [],
+    projects: [],
+    cycles: [],
+    releases: [],
+    views: [],
+    dashboards: [],
+    favorites: [],
   }) as unknown as Bootstrap;
 
 export class FakeServer {
