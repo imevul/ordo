@@ -182,14 +182,24 @@ export const AUDIT_ACTIONS = [
   'repository.deleted',
   'time_entry.updated',
   'time_entry.deleted',
+  'request_form.updated',
+  'request_form.link_rotated',
 ] as const;
 export type AuditAction = (typeof AUDIT_ACTIONS)[number];
+
+export const REQUEST_FORM_FIELD_TYPES = ['text', 'textarea', 'select', 'checkbox'] as const;
+export type RequestFormFieldType = (typeof REQUEST_FORM_FIELD_TYPES)[number];
+export const REQUEST_FORM_CAPTCHA_PROVIDERS = ['turnstile', 'hcaptcha'] as const;
+export type RequestFormCaptchaProvider = (typeof REQUEST_FORM_CAPTCHA_PROVIDERS)[number];
+/** How many files one submission can carry, and the most each can be whatever the instance allows. */
+export const REQUEST_FORM_MAX_FILES = 5;
+export const REQUEST_FORM_MAX_FILE_MB = 10;
 
 /** Groups of audit actions, by prefix, for filtering the audit log. */
 export const AUDIT_CATEGORIES = {
   security: ['auth.', 'sso.', 'scim.', 'api_key.', 'calendar_feed.', 'oauth.', 'domain.'],
   members: ['member.', 'invite.', 'placeholder.', 'admin.'],
-  teams: ['team.'],
+  teams: ['team.', 'request_form.'],
   workspace: ['workspace.', 'settings.', 'time_entry.'],
   integrations: ['integration.', 'webhook.', 'chat_account.', 'agent.', 'repository.'],
   imports: ['import.'],
@@ -590,6 +600,8 @@ export const API_MESSAGE_KEYS = [
   'own_time_entries',
   'no_timer',
   'timer_conflict',
+  'captcha_failed',
+  'request_form_busy',
 ] as const;
 export type ApiMessageKey = (typeof API_MESSAGE_KEYS)[number];
 

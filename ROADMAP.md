@@ -319,7 +319,7 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
   - [ ] ⬜ Releases: group done issues into a version and write its release notes (optionally AI-drafted)
   - [x] ✅ Calendar feeds: an iCal URL with due dates, cycles and milestones, per person or per view
 - [ ] ⬜ Intake
-  - [ ] ⬜ Public request forms per team: no sign-in, a triage issue linked to a customer
+  - [x] ✅ Public request forms per team: no sign-in, a triage issue linked to a customer
 
 ### Phase 12 — Desktop and mobile apps
 

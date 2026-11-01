@@ -208,6 +208,21 @@ Everything below is prefixed with `/w/:workspace` (the workspace URL slug), e.g.
 | PATCH          | `/states/:id`                  | `{ name?, color?, description?, position? }`                                                                                                                                                                                                                                  |
 | DELETE         | `/states/:id?moveTo=<stateId>` | Issues move to `moveTo` or another status of the same type                                                                                                                                                                                                                    |
 
+The team's public request form, for team admins:
+
+| Method | Path                                  | Notes                                                                                                                                                                                                                                                                                      |
+| ------ | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/teams/:id/request-form`             | `{ form }`, null until first saved. The CAPTCHA secret only shows as `captchaSecretSet`                                                                                                                                                                                                    |
+| PUT    | `/teams/:id/request-form`             | `{ enabled?, title?, intro?, fields?: [{ id, label, type: text\|textarea\|select\|checkbox, required?, options? }], templateId?, allowAttachments?, confirmationEmail?, doneEmail?, captchaProvider?: turnstile\|hcaptcha\|null, captchaSiteKey?, captchaSecret? }`; what's left out stays |
+| POST   | `/teams/:id/request-form/rotate-link` | A new token; the old link stops working                                                                                                                                                                                                                                                    |
+
+Public, without authentication. A wrong token and a form that's off get the same 404:
+
+| Method | Path                | Notes                                                                                                                                                                                                                                                                                               |
+| ------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/api/forms/:token` | `{ title, intro, fields, attachments, captcha }`. 60 per minute per address                                                                                                                                                                                                                         |
+| POST   | `/api/forms/:token` | `{ name, email, title, description?, answers?: { <fieldId>: string\|boolean }, captchaToken?, locale? }` as JSON, or as the `payload` part of a multipart body with the files. `{ ok: true }`. 5 per 10 minutes per address, 100 per hour per form. Browsers can only post from the form's own page |
+
 ### Issues
 
 | Method | Path                                |                                                                                              |

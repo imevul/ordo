@@ -348,6 +348,24 @@ the customer), or let [email intake](integrations/email.md) add them as mail com
 requests and the issues behind them, and the customer list shows how many requests and still-open issues each has, so
 you can see who's waiting on what. Guests don't see customers.
 
+A **request form** lets people ask for things without an account. A team admin turns it on under **Settings → the team
+→ Request form** and shares its link, or embeds it with the iframe code from the same place. People fill in their name,
+email, a title and a description, plus any extra questions you add (short or long text, a choice, a checkbox) and files
+if you allow them. Each request becomes an issue in the team's triage, as a customer request under the customer behind
+the email address. Triage rules can match them with the source _request forms_. Pick an issue template to set the
+priority, labels, project, assignee and estimate, and to add text after the request; the status stays triage. Without a
+template nobody is assigned, even on a team with a default assignee.
+
+They can get a confirmation email, and a notice when the issue reaches a completed status (each is a setting). The
+confirmation repeats nothing they typed, and neither the emails nor the form name your team or workspace: use the heading
+for what people should see. The email address isn't verified, so treat it as who they say they are. Requests stay in
+the customer request and in the record used for the notice until the issue is deleted for good.
+
+Spam protection is always on: each address can send 5 requests per 10 minutes, a form takes 100 per hour, an address
+gets 3 confirmations per hour, and a hidden field catches simple bots. For more, choose Cloudflare Turnstile or hCaptcha
+and enter the keys from that provider. Files can be up to 10 MB each (less if your instance's attachment limit is
+lower), 5 per request. _New link_ makes the old link and its embeds stop working.
+
 ## Time tracking
 
 Time tracking is off until a workspace admin turns it on (**Settings → Workspace → Time tracking**). Then every issue
