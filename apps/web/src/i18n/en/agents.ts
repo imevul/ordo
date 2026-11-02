@@ -301,11 +301,26 @@ export default {
     /** Tag next to Output while the run works: it updates as the command prints. */
     outputLive: 'Live',
     outputHint:
-      "The end of what the agent's command printed in its latest pickup, as its runner sent it. Anyone who can see the issue can read it, and it's deleted a week after the last line.",
-    outputWaiting: 'Nothing printed yet.',
+      "The end of what the agent's command printed, as its runner sent it. Anyone who can see the issue can read it, and it's deleted a week after the last line.",
+    outputWaiting:
+      'Nothing printed yet. A command that prints only when it ends stays blank: run Claude Code with --output-format stream-json --verbose.',
+    /** A divider in the output, where a later pickup of the same run begins. */
+    outputPickup: 'Picked up again',
     outputNone: 'No output: the runner sent none, or it has been deleted.',
     /** Above the lines when older ones were dropped; {shown} and {total} are numbers. */
     outputTail: 'The last {shown} of {total} lines',
+    /** The box under Output for telling a working agent something. */
+    steer: 'Tell the agent',
+    /** {name} is the agent, {identifier} the issue. */
+    steerStops:
+      'Posts a comment on {identifier} mentioning {name}, which stops the agent and continues its session with your comment.',
+    steerLater:
+      "Posts a comment on {identifier} mentioning {name}. This run can't be stopped for it, so the agent keeps working and gets your comment in a new run when this one ends.",
+    steerOnItsWay: 'A mention is on its way to the agent.',
+    steerAtTheEnd: 'A mention is waiting for this run to end.',
+    steerPlaceholder: 'What should it do differently?',
+    steerSend: 'Send',
+    steerSent: 'Your comment on the issue',
     timeline: 'Timeline',
     noTimeline: 'This run is from before Ordo kept timelines; only its times are known.',
     prompt: 'Prompt',
@@ -330,6 +345,8 @@ export default {
       plan_approved: 'Approved the plan',
       resumed: 'Resumed after a reply',
       resumedNoAnswer: 'Resumed without an answer',
+      steer_requested: 'Mentioned while working',
+      steered: 'Stopped to continue with the mention',
       /** {runner} like jonas-laptop/claude */
       lapsed: '{runner} stopped responding; back in the queue',
       lapsedFailed: '{runner} stopped responding on the last attempt',

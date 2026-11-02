@@ -301,19 +301,25 @@ export class WorkspaceClient {
       );
     },
 
-    /** Extends the lease (5 minutes). `cancelled`: someone stopped the run; stop working on it. */
+    /**
+     * Extends the lease (5 minutes). `cancelled`: someone stopped the run; stop working on it.
+     * `steer`: a person's @mention is waiting; stop and report `steered` to continue with it.
+     */
     heartbeat: (runId: string) =>
-      this.request<{ cancelled: boolean; waiting?: boolean; status: AgentRun['status'] }>(
-        'POST',
-        `/agent/runs/${encodeURIComponent(runId)}/heartbeat`,
-      ),
+      this.request<{
+        cancelled: boolean;
+        waiting?: boolean;
+        status: AgentRun['status'];
+        steer?: string | null;
+      }>('POST', `/agent/runs/${encodeURIComponent(runId)}/heartbeat`),
 
     /**
      * Live output: lines the command printed since the last call, for the run's page. Ordo keeps
-     * the last 200; `accepted` is false once the run no longer works (cancelled, waiting).
+     * the last 500; `accepted` is false once the run no longer works (cancelled, waiting), and
+     * `steer` says a person's @mention is waiting, as on the heartbeat.
      */
     output: (runId: string, lines: string[]) =>
-      this.request<{ accepted: boolean }>(
+      this.request<{ accepted: boolean; steer?: string | null }>(
         'POST',
         `/agent/runs/${encodeURIComponent(runId)}/output`,
         { lines },
@@ -336,6 +342,10 @@ export class WorkspaceClient {
         question?: string;
         plan?: string;
         resume?: string | null;
+        /** This pickup can be stopped for a person's @mention and continue its session. */
+        steerable?: true;
+        /** The command was stopped for such a mention: the run goes back in the queue. */
+        steered?: true;
         /** What this pickup used; added to the run's totals, so send it once per pickup. */
         usage?: AgentRunUsageReport;
       },

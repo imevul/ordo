@@ -1,5 +1,6 @@
 import {
   AGENT_OUTPUT_LINES,
+  AGENT_OUTPUT_PICKUP,
   AGENT_OUTPUT_RETENTION_MS,
   type Agent,
   type AgentIdentity,
@@ -18,6 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { agentRunOutput, agentRuns, domainEvents } from '../src/db/schema.ts';
 import { runInWorkspace } from '../src/lib/mutate.ts';
 import {
+  MAX_ATTEMPTS,
   pruneRunOutput,
   reapLeases,
   reportProgress,
@@ -820,10 +822,11 @@ describe('mentions', () => {
     expect(first.prompt).toContain("## Why you're here\nMax Member mentioned you in a comment:");
     expect(first.prompt).toContain('> @helper can you find out why this is slow?');
 
-    // A mention while it's working queues one follow-up, which waits for this run to end.
+    // A mention while it's working waits for the run; a runner that doesn't stop for it (this
+    // one) finishes first, and one follow-up then acts on the latest.
     await member.post(`${ws}/issues/${i.id}/comments`, { body: '@helper also check the API' });
     await member.post(`${ws}/issues/${i.id}/comments`, { body: '@helper and the database' });
-    expect((await runsOf(i.id)).map((r) => r.status)).toEqual(['queued', 'claimed']);
+    expect((await runsOf(i.id)).map((r) => r.status)).toEqual(['claimed']);
     expect((await as('POST', `${ws}/agent/claim`)).statusCode).toBe(204);
     await as('PATCH', `${ws}/agent/runs/${first.run.id}`, {
       status: 'succeeded',
@@ -831,10 +834,12 @@ describe('mentions', () => {
     });
     const second = (await as('POST', `${ws}/agent/claim`)).data as AgentRunContext;
     expect(second.issue.id).toBe(i.id);
-    expect(second.trigger.comment?.body).toBe('@helper also check the API');
+    expect(second.trigger.comment?.body).toBe('@helper and the database');
+    // Asked for by whoever wrote it, though the agent's report queued it.
+    expect(second.run.requestedById).toBe(asked.authorId);
     // It sees everything said meanwhile, including the mention that didn't need its own run.
     expect(second.comments.map((c) => c.body)).toEqual(
-      expect.arrayContaining(['@helper and the database', 'Found it.']),
+      expect.arrayContaining(['@helper also check the API', 'Found it.']),
     );
     await as('PATCH', `${ws}/agent/runs/${second.run.id}`, { status: 'succeeded' });
 
@@ -1967,6 +1972,172 @@ describe('a run’s page', () => {
   });
 });
 
+describe('steering a run', () => {
+  let pilot: string;
+  let pilotKey: string;
+  let pilotName: string;
+  const as = (method: string, url: string, body?: unknown) => bearer(pilotKey, method, url, body);
+  const claim = async () =>
+    ((await as('POST', `${ws}/agent/claim?runner=pilot-host`)) as { data: AgentRunContext }).data;
+  const runRow = async (id: string) =>
+    (await owner.get(`${ws}/agent-runs/${id}`)).data as AgentRunDetail;
+  const mention = async (issueId: string, words: string, who: Client = member) =>
+    (await who.post(`${ws}/issues/${issueId}/comments`, { body: `@${pilotName} ${words}` })).data;
+  const start = async (title: string) => {
+    const i = (await owner.post(`${ws}/issues`, { teamId: eng, title, assigneeId: pilot })).data;
+    const context = await claim();
+    expect(context.issue.id).toBe(i.id);
+    return { issueId: i.id as string, runId: context.run.id };
+  };
+  const runsOn = async (issueId: string) => {
+    const rows = await app.db.select().from(agentRuns).where(eq(agentRuns.issueId, issueId));
+    return rows.map((r) => r.status).sort();
+  };
+
+  beforeAll(async () => {
+    pilotName = `pilot-${Date.now().toString(36)}`;
+    pilot = (
+      await owner.post(`${ws}/agents`, {
+        name: 'Pilot',
+        username: pilotName,
+        teamIds: [eng],
+        concurrency: 5,
+      })
+    ).data.id;
+    pilotKey = (await owner.post(`${ws}/agents/${pilot}/keys`, { name: 'p' })).data.token;
+  });
+
+  it('tells the runner of a mention, and continues the same run with it', async () => {
+    const { issueId, runId } = await start('Steer me');
+    const beat = async () => (await as('POST', `${ws}/agent/runs/${runId}/heartbeat`)).data;
+    const print = async () =>
+      (await as('POST', `${ws}/agent/runs/${runId}/output`, { lines: ['working'] })).data;
+    expect(await beat()).toMatchObject({ cancelled: false, steer: null });
+    expect(await print()).toEqual({ accepted: true, steer: null });
+
+    await as('PATCH', `${ws}/agent/runs/${runId}`, {
+      status: 'running',
+      resume: 'session-1',
+      steerable: true,
+    });
+    expect((await runRow(runId)).steerable).toBe(true);
+
+    await mention(issueId, 'first thought');
+    const c = await mention(issueId, 'look at the lease code instead');
+    // No follow-up: the mention is for the run that's working.
+    expect(await runsOn(issueId)).toEqual(['running']);
+    expect((await runRow(runId)).steerCommentId).toBe(c.id);
+    expect(await beat()).toMatchObject({ cancelled: false, steer: c.id });
+    expect(await print()).toEqual({ accepted: true, steer: c.id });
+
+    // What the stopped pickup used still counts, and no summary goes on the issue.
+    const comments = (await owner.get(`${ws}/issues/${issueId}/comments`)).data.length;
+    const stopped = await as('PATCH', `${ws}/agent/runs/${runId}`, {
+      steered: true,
+      usage: { durationMs: 1000 },
+    });
+    expect(stopped.data).toMatchObject({ status: 'queued', attempts: 0, resume: 'session-1' });
+    expect((await owner.get(`${ws}/issues/${issueId}/comments`)).data.length).toBe(comments);
+
+    const next = await claim();
+    expect(next.run).toMatchObject({
+      id: runId,
+      status: 'claimed',
+      attempts: 1,
+      resume: 'session-1',
+      steerCommentId: null,
+      steerable: false,
+    });
+    expect(next.steerComment).toMatchObject({ id: c.id, author: 'Max Member' });
+    expect(next.prompt).toContain('## You were interrupted\nMax Member mentioned you');
+    expect(next.prompt).toContain(`> @${pilotName} look at the lease code instead`);
+    expect((await as('POST', `${ws}/agent/runs/${runId}/heartbeat`)).data.steer).toBeNull();
+
+    const { events } = await runRow(runId);
+    expect(events.filter((e) => e.kind.startsWith('steer')).map((e) => e.kind)).toEqual([
+      'steer_requested',
+      'steer_requested',
+      'steered',
+    ]);
+    await as('PATCH', `${ws}/agent/runs/${runId}`, { status: 'succeeded' });
+    // The mention was acted on, so nothing follows.
+    expect(await runsOn(issueId)).toEqual(['succeeded']);
+    expect((await claim()) as unknown).toBeFalsy();
+  });
+
+  it('refuses a steered report with a status, or for a run that is not working', async () => {
+    const { runId } = await start('Not both');
+    const url = `${ws}/agent/runs/${runId}`;
+    expect((await as('PATCH', url, { steered: true, status: 'failed' })).statusCode).toBe(400);
+    await as('PATCH', url, { status: 'succeeded' });
+    expect((await as('PATCH', url, { steered: true })).statusCode).toBe(409);
+  });
+
+  it('leaves plain comments and agents out of it', async () => {
+    const { issueId, runId } = await start('Just talking');
+    await member.post(`${ws}/issues/${issueId}/comments`, { body: 'Nice progress' });
+    await as('POST', `${ws}/issues/${issueId}/comments`, { body: `@${pilotName} note to self` });
+    expect((await runRow(runId)).steerCommentId).toBeNull();
+    await as('PATCH', `${ws}/agent/runs/${runId}`, { status: 'succeeded' });
+    expect(await runsOn(issueId)).toEqual(['succeeded']);
+  });
+
+  it('resumes a run that asks with a mention waiting, and drops it when cancelled', async () => {
+    const asks = await start('Ask meanwhile');
+    await mention(asks.issueId, 'one more thing');
+    const asked = await as('PATCH', `${ws}/agent/runs/${asks.runId}`, {
+      status: 'waiting',
+      question: 'Which one?',
+    });
+    expect(asked.statusCode).toBe(200);
+    expect((await runRow(asks.runId)).status).toBe('queued');
+    const next = await claim();
+    expect(next.run.id).toBe(asks.runId);
+    expect(next.steerComment?.body).toContain('one more thing');
+    await as('PATCH', `${ws}/agent/runs/${asks.runId}`, { status: 'succeeded' });
+
+    const stopped = await start('Cancelled meanwhile');
+    await mention(stopped.issueId, 'never mind');
+    await owner.post(`${ws}/agent-runs/${stopped.runId}/cancel`);
+    expect((await runRow(stopped.runId)).steerCommentId).toBeNull();
+    expect(await runsOn(stopped.issueId)).toEqual(['cancelled']);
+  });
+
+  it('queues the follow-up when the run fails or its runner is lost', async () => {
+    const fails = await start('Fails meanwhile');
+    await mention(fails.issueId, 'try again differently');
+    await as('PATCH', `${ws}/agent/runs/${fails.runId}`, { status: 'failed', error: 'Boom' });
+    expect(await runsOn(fails.issueId)).toEqual(['failed', 'queued']);
+    const followUp = await claim();
+    expect(followUp.trigger.comment?.body).toContain('try again differently');
+    await as('PATCH', `${ws}/agent/runs/${followUp.run.id}`, { status: 'succeeded' });
+
+    const lost = await start('Lost meanwhile');
+    await mention(lost.issueId, 'still there?');
+    await app.db
+      .update(agentRuns)
+      .set({ attempts: MAX_ATTEMPTS, leaseExpiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(eq(agentRuns.id, lost.runId));
+    await reapLeases(app);
+    expect(await runsOn(lost.issueId)).toEqual(['failed', 'queued']);
+    const afterLost = await claim();
+    await as('PATCH', `${ws}/agent/runs/${afterLost.run.id}`, { status: 'succeeded' });
+
+    // A lapsed lease that's only requeued keeps the mention for the next pickup.
+    const lapsed = await start('Lapses meanwhile');
+    await mention(lapsed.issueId, 'for the next one');
+    await app.db
+      .update(agentRuns)
+      .set({ leaseExpiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(eq(agentRuns.id, lapsed.runId));
+    await reapLeases(app);
+    const again = await claim();
+    expect(again.run.id).toBe(lapsed.runId);
+    expect(again.steerComment?.body).toContain('for the next one');
+    await as('PATCH', `${ws}/agent/runs/${lapsed.runId}`, { status: 'succeeded' });
+  });
+});
+
 describe('live output', () => {
   let scribe: string;
   let scribeKey: string;
@@ -2006,8 +2177,9 @@ describe('live output', () => {
     expect((await read(owner, runId)).data).toEqual({ lines: [], total: 0, updatedAt: null });
     expect((await send(runId, ['\x1b[32mok\x1b[0m one', 'two'])).data).toEqual({
       accepted: true,
+      steer: null,
     });
-    expect((await send(runId, ['three'])).data).toEqual({ accepted: true });
+    expect((await send(runId, ['three'])).data).toEqual({ accepted: true, steer: null });
     const { data } = await read(member, runId);
     expect(data.lines).toEqual(['ok one', 'two', 'three']);
     expect(data.total).toBe(3);
@@ -2052,7 +2224,7 @@ describe('live output', () => {
     expect((await send(runId, ['too late'])).data).toEqual({ accepted: false });
     expect((await read(owner, runId)).data.lines).toEqual(['first pickup']);
 
-    // The runner goes quiet; the next pickup prints its own output.
+    // The runner goes quiet; the next pickup's output follows the last one's, under a marker.
     const again = await start('Lapse');
     await send(again, ['attempt one']);
     await app.db
@@ -2061,7 +2233,16 @@ describe('live output', () => {
       .where(eq(agentRuns.id, again));
     await reapLeases(app);
     expect((await take()).run.id).toBe(again);
-    expect((await read(owner, again)).data).toMatchObject({ lines: [], total: 0 });
+    expect((await read(owner, again)).data).toMatchObject({
+      lines: ['attempt one', AGENT_OUTPUT_PICKUP],
+      total: 2,
+    });
+    await send(again, ['attempt two']);
+    expect((await read(owner, again)).data.lines).toEqual([
+      'attempt one',
+      AGENT_OUTPUT_PICKUP,
+      'attempt two',
+    ]);
     await owner.post(`${ws}/agent-runs/${again}/cancel`);
   });
 

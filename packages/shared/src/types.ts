@@ -1581,6 +1581,10 @@ export interface AgentRun {
   planApprovedById: string | null;
   /** Opaque to Ordo: what the runner needs to continue the agent's session on the next pickup. */
   resume: string | null;
+  /** A person's @mention while the run works, not yet in front of the agent. */
+  steerCommentId: string | null;
+  /** The runner said it can stop this pickup for a mention and continue the session. */
+  steerable: boolean;
   error: string | null;
   /** For a failed run: what went wrong, as far as Ordo can tell. */
   failureReason: AgentRunFailureReason | null;
@@ -1678,6 +1682,7 @@ export interface AgentRunPage {
 /**
  * One step in a run's timeline. `data` by kind: claimed `{ runner, attempt }`, progress
  * `{ step, percent }`, asked `{ question }`, resumed `{ commentId? }` (the reply that answered),
+ * steer_requested and steered `{ commentId }` (the mention),
  * lapsed `{ runner, attempt, failed }`, failed `{ reason, error }`, cancelled `{ reason }`,
  * queued `{ retryOfId? }`.
  */
@@ -1705,12 +1710,12 @@ export interface AgentRunDetail extends AgentRunWithIssue {
 }
 
 /**
- * `GET /agent-runs/:id/output`: the tail of what the run's command printed in its latest pickup,
- * as its runner sent it, oldest line first.
+ * `GET /agent-runs/:id/output`: the tail of what the run's command printed, as its runner sent it,
+ * oldest line first. `AGENT_OUTPUT_PICKUP` lines mark where a later pickup begins.
  */
 export interface AgentRunOutput {
   lines: string[];
-  /** Lines received in all this pickup; more than `lines.length` when older ones were dropped. */
+  /** Lines received in all; more than `lines.length` when older ones were dropped. */
   total: number;
   /** When the runner last sent some; null when it sent none, or it has since been deleted. */
   updatedAt: string | null;
@@ -1750,6 +1755,8 @@ export interface AgentRunContext {
     comment: { id: string; author: string | null; body: string } | null;
     pullRequest: AgentRunPullRequest | null;
   };
+  /** The @mention that stopped the agent's last pickup; this one is to act on it. */
+  steerComment: { id: string; author: string | null; body: string } | null;
   /** Whether the issue is the agent's (assigned to it), or it was only asked to help. */
   assigned: boolean;
   /**
