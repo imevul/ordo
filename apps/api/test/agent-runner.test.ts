@@ -1022,6 +1022,41 @@ describe('steering', () => {
     ]);
   }, 30_000);
 
+  it("counts only what a resumed session added to the run's cost", async () => {
+    const result = (session: string) =>
+      `echo '${JSON.stringify({ type: 'result', result: 'Done', session_id: session, total_cost_usd: 0.5, usage: { input_tokens: 2 } })}'`;
+    const spec = {
+      env: {},
+      timeoutMs: 0,
+      url: 'http://127.0.0.1:9',
+      workspace: 'x',
+      key: 'k',
+      baseDir: dir,
+    };
+    const cost = async (session: string, run: Partial<AgentRun>) => {
+      const context = {
+        prompt: 'Do it',
+        run: { id: 'run-1', question: null, ...run },
+        issue: { identifier: 'ENG-1', url: 'https://ordo.example.com/x/issue/ENG-1' },
+      } as unknown as AgentRunContext;
+      const done = await launch({ ...spec, command: result(session) }, context, {
+        workdir: null,
+        repoPaths: [],
+      });
+      return done.usage.costUsd;
+    };
+    const paid = { usage: { costUsd: 0.2 } } as Partial<AgentRun>;
+    // Its session's total, less what the run has counted.
+    expect(await cost('s1', { resume: 's1', ...paid })).toBeCloseTo(0.3);
+    // A stopped pickup reported nothing, so all of it is new.
+    expect(await cost('s1', { resume: 's1', usage: null })).toBe(0.5);
+    // A session of its own (a new pickup, or a token of the command's making) is all new too.
+    expect(await cost('s2', { resume: 's1', ...paid })).toBe(0.5);
+    expect(await cost('s1', { resume: null, ...paid })).toBe(0.5);
+    // Never below nothing, if the run counted more than this session cost.
+    expect(await cost('s1', { resume: 's1', usage: { costUsd: 9 } } as Partial<AgentRun>)).toBe(0);
+  });
+
   it('fails a run whose result says it failed, whatever the exit code', async () => {
     const result = JSON.stringify({
       type: 'result',

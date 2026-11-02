@@ -482,18 +482,36 @@ function resultOf(stdout: string): {
   usage: AgentRunUsageReport | null;
   text: string | null;
   isError: boolean;
+  sessionId: string | null;
 } {
   const trimmed = stdout.trim();
-  if (!trimmed.endsWith('}')) return { usage: null, text: null, isError: false };
+  if (!trimmed.endsWith('}')) return { usage: null, text: null, isError: false, sessionId: null };
   const value =
     parseJson(trimmed) ?? parseJson(trimmed.slice(trimmed.lastIndexOf('\n') + 1).trim());
-  const result = value as { type?: unknown; result?: unknown; is_error?: unknown } | undefined;
+  const result = value as
+    | { type?: unknown; result?: unknown; is_error?: unknown; session_id?: unknown }
+    | undefined;
   const named = result?.type === 'result';
   return {
     usage: parseUsage(value),
     text: named && typeof result.result === 'string' ? result.result : null,
     isError: named && result.is_error === true,
+    sessionId: named && typeof result.session_id === 'string' ? result.session_id : null,
   };
+}
+
+/**
+ * What this pickup added to the run. Claude Code's `total_cost_usd` covers the whole session, so on
+ * a resumed one it includes what earlier pickups cost, which the run already counts. A pickup that
+ * was stopped never reported its cost, so it's counted here, by the pickup that continues it.
+ */
+function sinceLastPickup(
+  usage: AgentRunUsageReport | null,
+  sessionId: string | null,
+  run: AgentRunContext['run'],
+): AgentRunUsageReport | null {
+  if (usage?.costUsd === undefined || !sessionId || sessionId !== run.resume) return usage;
+  return { ...usage, costUsd: Math.max(0, usage.costUsd - (run.usage?.costUsd ?? 0)) };
 }
 
 // Commands run in their own process group (POSIX), so the terminal's Ctrl-C reaches only the
@@ -698,7 +716,7 @@ export async function launch(
     const result = resultOf(stdout);
     const usage: AgentRunUsageReport = {
       durationMs: Date.now() - started,
-      ...(reported ?? result.usage),
+      ...(reported ?? sinceLastPickup(result.usage, result.sessionId, context.run)),
     };
     let summary: string | null = null;
     try {

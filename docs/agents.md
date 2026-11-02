@@ -318,8 +318,9 @@ which will happen before you send. Plain comments without a mention never stop a
 
 Some limits:
 
-- A stopped pickup prints no final result, so its cost isn't counted, and an agent's budget undercounts by that much.
-  Its duration still counts.
+- A stopped pickup prints no final result, so its tokens aren't counted. Its cost is, once the session continues:
+  Claude Code's `total_cost_usd` covers the whole session, and the runner counts what the run hasn't yet. If the run is
+  cancelled before then, that cost is lost.
 - An agent served by several runners can resume on a machine that doesn't have the session. Claude Code then fails,
   and so does the run. Questions have the same limit.
 

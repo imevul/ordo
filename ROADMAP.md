@@ -305,8 +305,8 @@ Each phase ships on its own. The detailed design lives in the planning notes beh
     across pickups
   - [x] ✅ Steering: a person's @mention reaches a working agent, which stops and continues its session with the comment
     (`steer: true` per agent), with _Tell the agent_ on the run's page; otherwise a follow-up run when it ends
-  - [ ] ⬜ Steering over stdin (Claude Code's `--input-format stream-json`): no stop and no lost cost. First test whether
-    a message lands between tool calls or only after the whole run
+  - [ ] ⬜ Steering over stdin (Claude Code's `--input-format stream-json`): no stop, and no lost tokens. First test
+    whether a message lands between tool calls or only after the whole run
   - [x] ✅ Scheduled agent tasks (nightly dependency check, weekly review) on top of recurring issues
   - [ ] ⬜ Concurrency per repository, so two runs don't work in one repo at once
 - [ ] ⬜ Everyday tracking
