@@ -1,0 +1,1 @@
+ALTER TABLE "views" ADD COLUMN "kind" text DEFAULT 'issues' NOT NULL;

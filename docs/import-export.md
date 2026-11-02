@@ -207,7 +207,7 @@ each is recorded in the audit log.
 
 - **JSON** holds everything that belongs to the workspace as a whole: members (with emails), placeholders, teams with
   their statuses and members, labels, custom fields (`customFields`, with their options), issue templates, projects
-  and their updates, cycles, shared views, and every issue (private teams' and trashed ones too) with its custom
+  and their updates, cycles, shared views (of issues and agent runs), and every issue (private teams' and trashed ones too) with its custom
   field values (`customFields`, by field id), comments and their reactions, history, relations and links.
 - **CSV** holds the issues that aren't in the trash, in the columns the CSV import reads, plus a column per custom
   field headed by its name: option names (several joined with `, `, like labels), numbers, `YYYY-MM-DD` dates, text,

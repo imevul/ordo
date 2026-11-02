@@ -94,7 +94,9 @@ function CountWidget({ widget }: { widget: Of<'count'> }) {
 
 function ViewWidget({ widget }: { widget: Of<'view'> }) {
   const ws = useWorkspace();
-  const view = ws.viewById.get(widget.viewId);
+  const found = ws.viewById.get(widget.viewId);
+  // A view of agent runs lists no issues, and an issue list of its filter would mislead.
+  const view = found?.kind === 'agentRuns' ? undefined : found;
   const filter = useMemo<IssueFilter>(
     () => (view ? { ...view.filters, ...(view.teamId ? { teamId: view.teamId } : {}) } : {}),
     [view],

@@ -56,7 +56,8 @@ There are three parts:
    workspace. It opens on **Open**: runs that are queued, working or waiting for an answer, plus failed runs nobody
    has dealt with yet. **Waiting** leaves out what's being worked on, and every row says
    [what it's waiting on](#what-a-run-is-waiting-on). **Finished** and **All** show the rest. Filter by what a run is
-   doing and by its issue's properties; the URL keeps the filters, so a link shows the same list. Rows have Resume,
+   doing and by its issue's properties; the URL keeps the filters, so a link shows the same list, and **Save view** names
+   them. Rows have Resume,
    Cancel, and for failed runs **Restart** and **Dismiss** (see [When a run fails](#when-a-run-fails)).
 8. A run's status (on the Agent runs page or the issue) opens **its page**, the whole story in one place: the issue,
    agent, why it ran and who asked; a timeline of when it was queued, picked up (by which runner, which attempt),

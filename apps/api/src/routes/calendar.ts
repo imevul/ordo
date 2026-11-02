@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import { calendarFeeds } from '../db/schema.ts';
 import { authorizeWorkspace, requireAccess, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { sha256 } from '../lib/crypto.ts';
-import { forbidden, notFound, one, parse } from '../lib/errors.ts';
+import { badRequest, forbidden, notFound, one, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { auditCtx } from '../services/audit.ts';
 import {
@@ -65,7 +65,11 @@ export async function calendarRoutes(app: FastifyInstance) {
       { method: 'api_key', sso: null },
     );
     return mutate(app, req, async (ctx) => {
-      if (viewId) await visibleView(ctx.tx, ctx.access, viewId);
+      if (viewId) {
+        const view = await visibleView(ctx.tx, ctx.access, viewId);
+        // A view of agent runs has no due dates to subscribe to.
+        if (view.kind === 'agentRuns') throw badRequest('This view lists agent runs, not issues');
+      }
       const replaced = await deleteFeedsFor(ctx.tx, ctx.userId, ctx.workspaceId, viewId);
       const token = newCalendarToken();
       const row = one(

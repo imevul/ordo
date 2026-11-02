@@ -1,4 +1,10 @@
-import { createViewSchema, DEFAULT_ISSUE_DISPLAY, updateViewSchema } from '@ordo/shared';
+import {
+  agentRunFilterSchema,
+  createViewSchema,
+  DEFAULT_ISSUE_DISPLAY,
+  updateViewSchema,
+  type ViewKind,
+} from '@ordo/shared';
 import { and, eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { views } from '../db/schema.ts';
@@ -21,10 +27,16 @@ async function loadEditableView(ctx: Ctx, id: string) {
   return view;
 }
 
+/** A view of runs takes what a run list does: a text search or the trash mean nothing there. */
+function assertFiltersFit(kind: ViewKind, filters: unknown) {
+  if (kind === 'agentRuns') parse(agentRunFilterSchema, filters);
+}
+
 export async function viewRoutes(app: FastifyInstance) {
   app.post('/views', async (req) => {
     assertCan(requireAccess(req), 'views.create', 'Guests cannot create views');
     const input = parse(createViewSchema, req.body);
+    assertFiltersFit(input.kind, input.filters);
     return mutate(app, req, async (ctx) => {
       if (input.teamId) assertTeamAccess(ctx.access, input.teamId);
       const row = one(
@@ -35,6 +47,7 @@ export async function viewRoutes(app: FastifyInstance) {
             ownerId: ctx.userId,
             name: input.name,
             description: input.description ?? null,
+            kind: input.kind,
             teamId: input.teamId ?? null,
             shared: input.shared,
             filters: input.filters,
@@ -51,7 +64,9 @@ export async function viewRoutes(app: FastifyInstance) {
     const { id } = req.params as { id: string };
     const input = parse(updateViewSchema, req.body);
     return mutate(app, req, async (ctx) => {
-      await loadEditableView(ctx, id);
+      const view = await loadEditableView(ctx, id);
+      if (input.filters) assertFiltersFit(view.kind, input.filters);
+      if (input.teamId) assertTeamAccess(ctx.access, input.teamId);
       const row = one(
         await ctx.tx
           .update(views)

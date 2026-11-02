@@ -1,4 +1,4 @@
-import type { IssueDisplay, IssueFilter, View } from '@ordo/shared';
+import type { IssueDisplay, IssueFilter, View, ViewKind } from '@ordo/shared';
 import { useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
@@ -13,12 +13,14 @@ export function SaveViewModal({
   filters,
   display,
   teamId,
+  kind = 'issues',
 }: {
   open: boolean;
   onClose: () => void;
   filters: IssueFilter;
   display: IssueDisplay;
   teamId?: string;
+  kind?: ViewKind;
 }) {
   const ws = useWorkspace();
   const navigate = useNavigate();
@@ -34,7 +36,7 @@ export function SaveViewModal({
     e.preventDefault();
     if (!name.trim()) return;
     create.mutate(
-      { name, shared, filters, display, teamId: teamId ?? null },
+      { name, shared, kind, filters, display, teamId: teamId ?? null },
       {
         onSuccess: (view) => {
           onClose();

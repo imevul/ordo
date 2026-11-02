@@ -50,6 +50,7 @@ import type {
   UserKind,
   UserPreferences,
   UserStatusKind,
+  ViewKind,
   WebhookPayload,
   WorkspaceSettings,
 } from '@ordo/shared';
@@ -1014,6 +1015,7 @@ export const views = pgTable(
     teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     description: text('description'),
+    kind: text('kind').$type<ViewKind>().notNull().default('issues'),
     shared: boolean('shared').notNull().default(true),
     filters: jsonb('filters').$type<IssueFilter>().notNull(),
     display: jsonb('display').$type<IssueDisplay>().notNull(),

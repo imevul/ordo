@@ -115,6 +115,22 @@ test('a filter the local copy can’t answer says it needs a connection', async 
   await expect(page.getByText('No issues match these filters.')).toBeVisible();
 });
 
+test('the agent runs page says it can’t load, and recovers', async ({ page, context }) => {
+  const cantLoad = page.getByText('can’t load this list');
+  await page.goto('/demo/agent-runs');
+  await expect(page.getByRole('button', { name: 'Waiting', exact: true })).toBeVisible();
+
+  // A list it hasn't loaded yet: run lists are never in the local copy.
+  await context.setOffline(true);
+  await expect(banner(page)).toBeVisible();
+  await page.getByRole('button', { name: 'Finished', exact: true }).click();
+  await expect(cantLoad).toBeVisible();
+
+  await context.setOffline(false);
+  await expect(banner(page)).toBeHidden({ timeout: 20_000 });
+  await expect(cantLoad).toBeHidden();
+});
+
 test('trash and dashboard widgets say so too', async ({ page, context, api }) => {
   const res = await api.request.post('/api/w/demo/dashboards', {
     data: {

@@ -386,6 +386,10 @@ export const AGENT_RUN_STATUSES = [
   'cancelled',
 ] as const;
 export type AgentRunStatus = (typeof AGENT_RUN_STATUSES)[number];
+/** What a saved view lists. */
+export const VIEW_KINDS = ['issues', 'agentRuns'] as const;
+export type ViewKind = (typeof VIEW_KINDS)[number];
+
 /**
  * The run lists. open: active plus failed runs nobody has dealt with. waiting: the same less what's
  * being worked on, so everything waiting on something. active: queued, working or waiting for an

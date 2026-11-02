@@ -31,6 +31,7 @@ import {
   triggerLabel,
 } from './AgentRuns.tsx';
 import { FilterButton, FilterChips, hasUserFilters } from './FilterBar.tsx';
+import { IssuesLoadError } from './IssuesView.tsx';
 import { EmptyState, Spinner } from './PageHeader.tsx';
 import { Avatar } from './ui/Avatar.tsx';
 
@@ -47,7 +48,10 @@ export interface AgentRunsScope {
   teamId?: string;
 }
 
-/** Group buttons, team and Filter: what chooses the runs, for a page's header. */
+/**
+ * Group buttons, team and Filter: what chooses the runs. A row of its own, since all of it doesn't
+ * fit a page's header on a phone.
+ */
 export function AgentRunsControls({
   scope,
   onChange,
@@ -57,7 +61,7 @@ export function AgentRunsControls({
 }) {
   const ws = useWorkspace();
   return (
-    <>
+    <div className="flex flex-wrap items-center gap-2 border-b border-border-soft px-4 py-2">
       {ws.teams.length > 1 && (
         <select
           className="input h-8 w-36"
@@ -92,7 +96,7 @@ export function AgentRunsControls({
           </button>
         ))}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -116,20 +120,22 @@ export function AgentRunsList({
     () => withClock(filter, account?.preferences.timezone, account?.preferences.weekStartsOn),
     [filter, account],
   );
-  const { data, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteQuery({
-    queryKey: ['ws', ws.slug, 'agentRuns', 'list', group, teamId ?? null, clocked],
-    queryFn: ({ pageParam }) =>
-      api.post<AgentRunPage>(wsPath(ws.slug, '/agent-runs/query'), {
-        filter: clocked,
-        group,
-        teamId,
-        limit: PAGE,
-        offset: pageParam,
-      }),
-    initialPageParam: 0,
-    getNextPageParam: (last, _pages, offset) => (last.hasMore ? offset + PAGE : undefined),
-    refetchInterval: REFRESH_MS,
-  });
+  const { data, error, refetch, hasNextPage, fetchNextPage, isFetchingNextPage } = useInfiniteQuery(
+    {
+      queryKey: ['ws', ws.slug, 'agentRuns', 'list', group, teamId ?? null, clocked],
+      queryFn: ({ pageParam }) =>
+        api.post<AgentRunPage>(wsPath(ws.slug, '/agent-runs/query'), {
+          filter: clocked,
+          group,
+          teamId,
+          limit: PAGE,
+          offset: pageParam,
+        }),
+      initialPageParam: 0,
+      getNextPageParam: (last, _pages, offset) => (last.hasMore ? offset + PAGE : undefined),
+      refetchInterval: REFRESH_MS,
+    },
+  );
   // A run that moved up between pages comes back on the next one.
   const runs = useMemo(() => {
     if (!data) return undefined;
@@ -148,9 +154,21 @@ export function AgentRunsList({
         teamId={teamId}
         onChange={(next) => onChange({ ...scope, filter: next })}
       />
+      {error && runs && (
+        <p
+          role="status"
+          className="flex-none border-b border-border-soft px-4 py-1.5 font-mono text-[11px] text-index"
+        >
+          {t('issues.view.staleList')}
+        </p>
+      )}
       <div className="min-h-0 flex-1 overflow-y-auto">
         {!runs ? (
-          <Spinner />
+          error ? (
+            <IssuesLoadError error={error} filter={clocked} onRetry={() => refetch()} />
+          ) : (
+            <Spinner />
+          )
         ) : runs.length === 0 ? (
           <EmptyState
             title={
