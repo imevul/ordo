@@ -96,6 +96,27 @@ export default {
     body: "Copy it now: it isn't shown again. Start a runner with it:",
     fileHint: 'Or put it in a runner file (with the key in a .env file next to it):',
   },
+  /** Why a run isn't moving, on its row. {name} is the person who has to act. */
+  waitLine: {
+    question: 'Question',
+    questionFor: 'Question for {name}',
+    plan: 'Plan to approve',
+    planFor: 'Plan for {name} to approve',
+    permission: 'Permission issue',
+    permissionFor: 'Permission issue, for {name}',
+    failure: 'Failed, nobody has restarted or dismissed it',
+    failureFor: 'Failed, for {name} to restart or dismiss',
+    blocker: 'Blocked by an issue you can’t see',
+    cycle: 'Waiting for its cycle to open',
+    /** {time} is like "Oct 31 · 01:00". */
+    limitReset: 'Restarts by itself at {time}, when the limit resets',
+    limitResetSoon: 'Restarts by itself when the limit resets',
+    agentPaused: 'Its agent is paused',
+    runsPaused: 'New runs are paused for the workspace',
+    repository: 'Its repository is at its run limit',
+    agentBusy: 'Its agent is busy',
+    runner: 'Waiting for a runner',
+  },
   /** What a run is waiting on, as a filter value and on its row. */
   waitReason: {
     person: 'A person',
@@ -119,6 +140,8 @@ export default {
     resume: 'Resume',
     /** Above the agent's question on a waiting run. Replying on the issue resumes it. */
     asked: 'Asked · reply on the issue to continue',
+    /** The same when missing access stopped the agent. */
+    askedPermission: 'Permission issue · reply on the issue to continue',
     /** Above the plan an agent posted (propose_plan) while it waits for approval. */
     planForApproval: 'Plan for approval',
     approvePlan: 'Approve',
@@ -203,9 +226,12 @@ export default {
     nav: 'Agent runs',
     kicker: 'agent runs',
     title: 'Agent runs',
-    agent: 'Agent',
-    allAgents: 'All agents',
-    status: { open: 'Open', finished: 'Finished', all: 'All' },
+    status: { open: 'Open', waiting: 'Waiting', finished: 'Finished', all: 'All' },
+    allTeams: 'All teams',
+    team: 'Team',
+    loadMore: 'Load more',
+    emptyFiltered: 'No runs match these filters',
+    emptyWaiting: 'No runs are waiting on anything',
     /** {name} is an agent; {time} is like "Oct 31 · 01:00". */
     pausedLimit:
       '{name} hit its usage limit and is paused until {time}. Runs that failed on the limit restart then.',

@@ -14,6 +14,8 @@ import {
   type AgentRunDetail,
   type AgentRunEventKind,
   type AgentRunFailureReason,
+  type AgentRunFilter,
+  type AgentRunGroup,
   type AgentRunOutput,
   type AgentRunPullRequest,
   type AgentRunQuestionKind,
@@ -80,14 +82,24 @@ import { randomToken, sha256 } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, notFound, one } from '../lib/errors.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import { type Access, teamScope } from './access.ts';
-import { blockedNow, heldByCycle, inFullRepository, notSuperseded } from './agentRunWaits.ts';
+import {
+  blockedNow,
+  heldByCycle,
+  inFullRepository,
+  loadRunHolds,
+  notSuperseded,
+  runHoldsFor,
+  runIsWaiting,
+  waitingForIdColumn,
+  waitReasonsColumn,
+} from './agentRunWaits.ts';
 import { auditCtx } from './audit.ts';
 import { forEachIsolated } from './automation.ts';
 import { createComment } from './comments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { workspaceToday } from './cycle-automation.ts';
 import { heldCycles } from './cycles.ts';
-import { getIssue, getIssueDetail } from './issues.ts';
+import { getIssue, getIssueDetail, runFilterConditions } from './issues.ts';
 import { fullRepositories, issueRepositoryIds, repositoriesForIssue } from './repositories.ts';
 import { joinWorkspace, workspaceSettings } from './workspaces.ts';
 
@@ -413,6 +425,8 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
   // Filled in by withHolds where runs are listed for people.
   blockedBy: [],
   waitingForCycle: null,
+  waitReasons: [],
+  waitingForId: null,
   usage: r.usageAt
     ? {
         inputTokens: r.inputTokens,
@@ -794,7 +808,40 @@ async function withCycleHolds<T extends AgentRun>(
 
 /** What holds these runs back, for people to read. */
 async function withHolds<T extends AgentRun>(db: DbOrTx, access: Access, runs: T[]): Promise<T[]> {
-  return withCycleHolds(db, access, await withBlockers(db, access, runs));
+  return withWaitReasons(
+    db,
+    access,
+    await withCycleHolds(db, access, await withBlockers(db, access, runs)),
+  );
+}
+
+/** Adds what each unfinished run is waiting on and for whom, from what the filters read. */
+async function withWaitReasons<T extends AgentRun>(
+  db: DbOrTx,
+  access: Access,
+  runs: T[],
+): Promise<T[]> {
+  const unfinished = runs.filter((r) => ['queued', 'waiting', 'failed'].includes(r.status));
+  if (!unfinished.length) return runs;
+  const rows = await db
+    .select({
+      id: agentRuns.id,
+      reasons: waitReasonsColumn(await loadRunHolds(db, access)),
+      person: waitingForIdColumn(),
+    })
+    .from(agentRuns)
+    .where(
+      inArray(
+        agentRuns.id,
+        unfinished.map((r) => r.id),
+      ),
+    );
+  const byRun = new Map(rows.map((r) => [r.id, r]));
+  return runs.map((r) => ({
+    ...r,
+    waitReasons: byRun.get(r.id)?.reasons ?? [],
+    waitingForId: byRun.get(r.id)?.person ?? null,
+  }));
 }
 
 /**
@@ -1153,7 +1200,14 @@ export async function getRunDetail(
 export async function listWorkspaceRuns(
   db: DbOrTx,
   access: Access,
-  opts: { status: 'open' | 'active' | 'finished' | 'all'; agentId?: string; limit: number },
+  opts: {
+    status: AgentRunGroup;
+    agentId?: string;
+    teamId?: string;
+    filter?: AgentRunFilter;
+    limit: number;
+    offset?: number;
+  },
 ): Promise<AgentRunWithIssue[]> {
   const open = inArray(agentRuns.status, [...AGENT_RUN_OPEN]);
   const unhandled = and(
@@ -1163,6 +1217,7 @@ export async function listWorkspaceRuns(
   );
   const status = {
     open: or(open, unhandled),
+    waiting: runIsWaiting,
     active: open,
     finished: not(open),
     all: undefined,
@@ -1172,6 +1227,7 @@ export async function listWorkspaceRuns(
     access.workspaceId,
     await workspaceToday(db, access.workspaceId),
   );
+  const holds = opts.filter ? await runHoldsFor(db, access, opts.filter) : undefined;
   const rows = await db
     .select({
       run: agentRuns,
@@ -1188,13 +1244,21 @@ export async function listWorkspaceRuns(
       and(
         eq(agentRuns.workspaceId, access.workspaceId),
         teamScope(access, issues.teamId),
+        opts.teamId ? eq(issues.teamId, opts.teamId) : undefined,
         opts.agentId ? eq(agentRuns.agentId, opts.agentId) : undefined,
         status,
+        ...(opts.filter ? runFilterConditions(access, opts.filter, holds) : []),
       ),
     )
     // Runs held for a later cycle can be many, and last: they mustn't crowd out the rest.
-    .orderBy(...(closed.size ? [heldByCycle(closed.keys())] : []), desc(agentRuns.updatedAt))
-    .limit(opts.limit);
+    // The id keeps pages from repeating or skipping runs changed in the same transaction.
+    .orderBy(
+      ...(closed.size ? [heldByCycle(closed.keys())] : []),
+      desc(agentRuns.updatedAt),
+      desc(agentRuns.id),
+    )
+    .limit(opts.limit)
+    .offset(opts.offset ?? 0);
   const held = await heldByRepository(
     db,
     access.workspaceId,

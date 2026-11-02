@@ -1,4 +1,10 @@
-import type { AgentRunContext, Bootstrap, Issue, IssueFilter } from '@ordo/shared';
+import type {
+  AgentRunContext,
+  AgentRunWithIssue,
+  Bootstrap,
+  Issue,
+  IssueFilter,
+} from '@ordo/shared';
 import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -463,5 +469,175 @@ describe('access', () => {
     expect(await titles({ agentRunWaiting: true })).toContain('secret');
     expect(await titles({ agentRunWaiting: true }, member)).not.toContain('secret');
     expect(await titles({ agentRunAgentIds: [id] }, member)).toEqual([]);
+  });
+});
+
+describe('the run list', () => {
+  let slowpoke: TestAgent;
+  let listed: { blocked: string; asked: string; failed: string; restarted: string };
+
+  const query = async (body: Record<string, unknown> = {}, client: Client = owner) => {
+    const res = await client.post(`${ws}/agent-runs/query`, {
+      filter: { agentRunAgentIds: [slowpoke.id] },
+      group: 'all',
+      ...body,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    return res.data as { runs: AgentRunWithIssue[]; hasMore: boolean };
+  };
+  const reasons = async (id: string) =>
+    (await owner.get(`${ws}/agent-runs/${id}`)).data as AgentRunWithIssue;
+
+  beforeAll(async () => {
+    slowpoke = await newAgent({ concurrency: 5 });
+    const asked = await working('list: asked', slowpoke);
+    await slowpoke.as('PATCH', `${ws}/agent/runs/${asked.runId}`, {
+      status: 'waiting',
+      question: 'Which?',
+      questionKind: 'permission',
+    });
+    const failed = await working('list: failed', slowpoke);
+    await slowpoke.as('PATCH', `${ws}/agent/runs/${failed.runId}`, {
+      status: 'failed',
+      error: 'boom',
+    });
+    const restarted = await working('list: restarted', slowpoke);
+    await slowpoke.as('PATCH', `${ws}/agent/runs/${restarted.runId}`, {
+      status: 'failed',
+      error: 'boom',
+    });
+    await owner.post(`${ws}/agent-runs/${restarted.runId}/restart`);
+    const again = await slowpoke.claim();
+    await slowpoke.as('PATCH', `${ws}/agent/runs/${again!.run.id}`, { status: 'succeeded' });
+    const blocker = await issue('list: blocker');
+    const blockedIssue = await issue('list: blocked');
+    await owner.post(`${ws}/issues/${blockedIssue.id}/relations`, {
+      type: 'blocked_by',
+      relatedIssueId: blocker.id,
+    });
+    await owner.patch(`${ws}/issues/${blockedIssue.id}`, { assigneeId: slowpoke.id });
+    const blocked = (
+      await query({ filter: { agentRunAgentIds: [slowpoke.id], agentRunStatuses: ['queued'] } })
+    ).runs[0]!;
+    listed = {
+      blocked: blocked.id,
+      asked: asked.runId,
+      failed: failed.runId,
+      restarted: restarted.runId,
+    };
+  });
+
+  it('lists what is waiting and why, and whom it needs', async () => {
+    const { runs } = await query({ group: 'waiting' });
+    const byId = new Map(runs.map((r) => [r.id, r]));
+    expect(byId.get(listed.asked)!.waitReasons).toEqual(['permission']);
+    expect(byId.get(listed.asked)!.waitingForId).toBe(ownerId);
+    expect(byId.get(listed.failed)!.waitReasons).toEqual(['failure']);
+    expect(byId.get(listed.blocked)!.waitReasons).toEqual(['blocker']);
+    expect(byId.get(listed.blocked)!.waitingForId).toBeNull();
+    // Restarted and done: nothing left to do about it.
+    expect(byId.has(listed.restarted)).toBe(false);
+    expect(runs.every((r) => r.waitReasons.length > 0)).toBe(true);
+    expect((await reasons(listed.asked)).waitReasons).toEqual(['permission']);
+  });
+
+  it('applies run conditions to the run in the row, not the issue’s newest', async () => {
+    const failed = await query({
+      filter: { agentRunAgentIds: [slowpoke.id], agentRunStatuses: ['failed'] },
+    });
+    expect(failed.runs.map((r) => r.id).sort()).toEqual([listed.failed, listed.restarted].sort());
+    // What needs a person doesn't count a run someone already restarted.
+    const person = await query({
+      filter: { agentRunAgentIds: [slowpoke.id], agentRunWaitingOn: ['person'] },
+    });
+    expect(person.runs.map((r) => r.id).sort()).toEqual([listed.asked, listed.failed].sort());
+    const blocked = await query({
+      filter: { agentRunAgentIds: [slowpoke.id], agentRunWaitingOn: ['blocker'] },
+    });
+    expect(blocked.runs.map((r) => r.id)).toEqual([listed.blocked]);
+    const notFailed = await query({
+      filter: { agentRunAgentIds: [slowpoke.id], exclude: { agentRunStatuses: ['failed'] } },
+    });
+    expect(notFailed.runs.map((r) => r.id)).not.toContain(listed.failed);
+    expect(notFailed.runs.map((r) => r.id)).toContain(listed.asked);
+    const mine = await query({
+      filter: { agentRunAgentIds: [slowpoke.id], agentRunWaitingFor: ['me'] },
+    });
+    expect(mine.runs.map((r) => r.id).sort()).toEqual([listed.asked, listed.failed].sort());
+  });
+
+  it('also filters on the run’s issue', async () => {
+    const priority = (await issue('list: urgent', { assigneeId: slowpoke.id, priority: 1 })).id;
+    const urgent = await query({ filter: { agentRunAgentIds: [slowpoke.id], priorities: [1] } });
+    expect(urgent.runs.map((r) => r.issue.id)).toEqual([priority]);
+  });
+
+  it('pages through runs without repeats', async () => {
+    const first = await query({ limit: 2 });
+    expect(first.runs).toHaveLength(2);
+    expect(first.hasMore).toBe(true);
+    const seen = new Set(first.runs.map((r) => r.id));
+    let offset = 2;
+    for (;;) {
+      const page = await query({ limit: 2, offset });
+      for (const r of page.runs) {
+        expect(seen.has(r.id)).toBe(false);
+        seen.add(r.id);
+      }
+      offset += 2;
+      if (!page.hasMore) break;
+    }
+    expect(seen.size).toBe((await query({ limit: 200 })).runs.length);
+  });
+
+  it('keeps runs on trashed issues listed', async () => {
+    const agent = await newAgent();
+    const trashed = await working('list: trashed', agent);
+    await agent.as('PATCH', `${ws}/agent/runs/${trashed.runId}`, { status: 'succeeded' });
+    await owner.del(`${ws}/issues/${trashed.issue.id}`);
+    const { runs } = await query({ filter: { agentRunAgentIds: [agent.id] } });
+    expect(runs.map((r) => r.id)).toEqual([trashed.runId]);
+  });
+
+  it('refuses what makes no sense for a run', async () => {
+    for (const filter of [
+      { q: 'words' },
+      { trashed: true },
+      { subscribedBy: 'me' },
+      { hasAgentRun: true },
+      { or: [{ hasAgentRun: true }] },
+      { nonsense: 1 },
+    ]) {
+      const res = await owner.post(`${ws}/agent-runs/query`, { filter });
+      expect(res.statusCode, JSON.stringify(filter)).toBe(400);
+    }
+  });
+
+  it('stays within the caller’s teams', async () => {
+    const hidden = (await owner.post(`${ws}/teams`, { name: 'Vault', key: 'VLT', private: true }))
+      .data.id;
+    const id = (await owner.post(`${ws}/agents`, { name: `Agent ${++key}`, teamIds: [hidden] }))
+      .data.id;
+    await owner.post(`${ws}/issues`, { teamId: hidden, title: 'vaulted', assigneeId: id });
+    const see = async (client: Client, body: Record<string, unknown>) =>
+      ((await client.post(`${ws}/agent-runs/query`, body)).data.runs as AgentRunWithIssue[]).map(
+        (r) => r.issue.title,
+      );
+    const filter = { agentRunAgentIds: [id] };
+    expect(await see(owner, { filter, group: 'waiting' })).toEqual(['vaulted']);
+    expect(await see(owner, { filter, group: 'waiting', teamId: hidden })).toEqual(['vaulted']);
+    expect(await see(owner, { filter, group: 'waiting', teamId: team })).toEqual([]);
+    expect(await see(member, { filter, group: 'waiting' })).toEqual([]);
+    expect(
+      await see(member, { group: 'all', filter: { or: [{ agentRunAgentIds: [id] }] } }),
+    ).toEqual([]);
+    const refused = await member.post(`${ws}/agent-runs/query`, { teamId: hidden });
+    expect([403, 404]).toContain(refused.statusCode);
+  });
+
+  it('answers on GET too', async () => {
+    const res = await owner.get(`${ws}/agent-runs?status=waiting&agentId=${slowpoke.id}`);
+    expect(res.statusCode).toBe(200);
+    expect((res.data as AgentRunWithIssue[]).map((r) => r.id)).toContain(listed.asked);
   });
 });

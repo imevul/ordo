@@ -21,10 +21,8 @@ import {
   PendingPlan,
   PlanApprovedTag,
   RUN_STATUS_COLOR,
-  RunBlocked,
   RunProgress,
-  RunWaitingForCycle,
-  RunWaitingForSlot,
+  RunWaitReasons,
   runStatusLabel,
   triggerLabel,
 } from '../components/AgentRuns.tsx';
@@ -93,9 +91,7 @@ export function AgentRunPage() {
                 {run.issue.title}
               </span>
             </Link>
-            <RunBlocked run={run} className="mt-3 text-[12px] whitespace-normal" />
-            <RunWaitingForCycle run={run} className="mt-3 text-[12px] whitespace-normal" />
-            <RunWaitingForSlot run={run} className="mt-3 text-[12px] whitespace-normal" />
+            <RunWaitReasons run={run} className="mt-3 text-[12px] whitespace-normal" />
             <Restarts run={run} />
             {isPlanPending(run) && (
               <div className="panel mt-6 p-3 text-[13.5px]">

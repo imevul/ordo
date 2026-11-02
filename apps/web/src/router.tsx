@@ -10,7 +10,7 @@ import { Toaster } from 'sonner';
 import { ConfirmHost } from './components/ui/Modal.tsx';
 import { AdminPage } from './routes/admin/index.tsx';
 import { AgentRunPage } from './routes/agentRun.tsx';
-import { AgentRunsPage } from './routes/agentRuns.tsx';
+import { AgentRunsPage, validateAgentRunsSearch } from './routes/agentRuns.tsx';
 import { EmailLinkPage } from './routes/auth/emailLink.tsx';
 import { InvitePage } from './routes/auth/invite.tsx';
 import { IndexRedirect, LoginPage } from './routes/auth/login.tsx';
@@ -216,6 +216,7 @@ const releaseRoute = createRoute({
 const agentRunsRoute = createRoute({
   getParentRoute: () => wsRoute,
   path: '/agent-runs',
+  validateSearch: validateAgentRunsSearch,
   component: AgentRunsPage,
 });
 const agentRunRoute = createRoute({

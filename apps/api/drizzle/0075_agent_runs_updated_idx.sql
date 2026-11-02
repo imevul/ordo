@@ -1,0 +1,1 @@
+CREATE INDEX "agent_runs_updated_idx" ON "agent_runs" USING btree ("workspace_id","updated_at");

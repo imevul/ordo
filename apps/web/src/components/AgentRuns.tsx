@@ -1,4 +1,10 @@
-import type { AgentRun, AgentRunStatus, AgentRunWithIssue, IssueDetail } from '@ordo/shared';
+import type {
+  AgentRun,
+  AgentRunStatus,
+  AgentRunWaitReason,
+  AgentRunWithIssue,
+  IssueDetail,
+} from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { Bot, Check, ExternalLink, FastForward, RotateCcw, Square } from 'lucide-react';
@@ -232,6 +238,91 @@ export function RunWaitingForSlot({
   );
 }
 
+/**
+ * What's keeping a run from moving, a line per reason: why the run isn't done, and who it needs.
+ * Reasons with more to say than a sentence (what blocks it, which cycle) have their own lines.
+ */
+export function RunWaitReasons({
+  run,
+  className = '',
+}: {
+  run: AgentRun & Partial<Pick<AgentRunWithIssue, 'waitingForRepository'>>;
+  className?: string;
+}) {
+  const ws = useWorkspace();
+  const name = run.waitingForId ? ws.memberById.get(run.waitingForId)?.name : undefined;
+  const line = (reason: AgentRunWaitReason, text: string) => (
+    <div key={reason} className={`truncate font-mono text-[11px] text-warning ${className}`}>
+      {text}
+    </div>
+  );
+  return (
+    <>
+      {run.waitReasons.map((reason) => {
+        switch (reason) {
+          case 'question':
+            return line(
+              reason,
+              name ? t('agents.waitLine.questionFor', { name }) : t('agents.waitLine.question'),
+            );
+          case 'plan':
+            return line(
+              reason,
+              name ? t('agents.waitLine.planFor', { name }) : t('agents.waitLine.plan'),
+            );
+          case 'permission':
+            return line(
+              reason,
+              name ? t('agents.waitLine.permissionFor', { name }) : t('agents.waitLine.permission'),
+            );
+          case 'failure':
+            return line(
+              reason,
+              name ? t('agents.waitLine.failureFor', { name }) : t('agents.waitLine.failure'),
+            );
+          case 'blocker':
+            return run.blockedBy.length ? (
+              <RunBlocked key={reason} run={run} className={className} />
+            ) : (
+              line(reason, t('agents.waitLine.blocker'))
+            );
+          case 'cycle':
+            return run.waitingForCycle ? (
+              <RunWaitingForCycle key={reason} run={run} className={className} />
+            ) : (
+              line(reason, t('agents.waitLine.cycle'))
+            );
+          case 'limit_reset':
+            return line(
+              reason,
+              run.retryAt
+                ? t('agents.waitLine.limitReset', { time: longDate(run.retryAt) })
+                : t('agents.waitLine.limitResetSoon'),
+            );
+          case 'agent_paused':
+            return line(reason, t('agents.waitLine.agentPaused'));
+          case 'runs_paused':
+            return line(reason, t('agents.waitLine.runsPaused'));
+          case 'repository':
+            return run.waitingForRepository ? (
+              <RunWaitingForSlot
+                key={reason}
+                run={run as AgentRunWithIssue}
+                className={className}
+              />
+            ) : (
+              line(reason, t('agents.waitLine.repository'))
+            );
+          case 'agent_busy':
+            return line(reason, t('agents.waitLine.agentBusy'));
+          default:
+            return line(reason, t('agents.waitLine.runner'));
+        }
+      })}
+    </>
+  );
+}
+
 /** Whether "Run anyway" means anything: the run waits for its blockers or its cycle. */
 export const isHeldBack = (run: AgentRun) =>
   run.status === 'queued' && (run.blockedBy.length > 0 || !!run.waitingForCycle);
@@ -304,7 +395,9 @@ export function RunDetail({ run }: { run: AgentRun }) {
     return (
       <>
         <div className="mb-1 font-mono text-[10.5px] tracking-[0.16em] text-warning uppercase">
-          {t('agents.runs.asked')}
+          {run.questionKind === 'permission'
+            ? t('agents.runs.askedPermission')
+            : t('agents.runs.asked')}
         </div>
         <Markdown source={run.question} />
       </>
@@ -503,8 +596,7 @@ function RunRow({
         )}
       </div>
       <RunProgress run={run} className="-mt-1 px-8 pb-2" />
-      <RunBlocked run={run} className="-mt-1 px-8 pb-2" />
-      <RunWaitingForCycle run={run} className="-mt-1 px-8 pb-2" />
+      <RunWaitReasons run={run} className="-mt-1 px-8 pb-2" />
       {open && detail && (
         <div className="px-8 pb-3 text-[13px]">
           <RunDetail run={run} />

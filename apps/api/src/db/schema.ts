@@ -2132,6 +2132,7 @@ export const agentRuns = pgTable(
     index('agent_runs_issue_idx').on(t.issueId),
     index('agent_runs_lease_idx').on(t.leaseExpiresAt),
     index('agent_runs_usage_idx').on(t.workspaceId, t.usageAt),
+    index('agent_runs_updated_idx').on(t.workspaceId, t.updatedAt),
     index('agent_runs_retry_of_idx').on(t.retryOfId),
   ],
 );

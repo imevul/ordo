@@ -757,10 +757,20 @@ function handlers(c: McpCaller): Handlers {
 
     agent_runs: async ({ issue }) => agentRunsResult(c, dir, issue),
 
-    list_agent_runs: async ({ agent, status, limit }) => {
+    list_agent_runs: async ({ agent, team, failureReason, status, limit }) => {
       const agentId = agent ? await dir.person(agent) : undefined;
-      const runs = await listWorkspaceRuns(c.app.db, c.access, { status, agentId, limit });
-      const names = await dir.people(runs.map((r) => r.agentId));
+      const teamId = team ? (await dir.team(team)).id : undefined;
+      const runs = await listWorkspaceRuns(c.app.db, c.access, {
+        status,
+        agentId,
+        teamId,
+        limit,
+        filter: failureReason?.length ? { agentRunFailureReasons: failureReason } : undefined,
+      });
+      const names = await dir.people([
+        ...runs.map((r) => r.agentId),
+        ...runs.flatMap((r) => r.waitingForId ?? []),
+      ]);
       return runs.map((r) => ({
         run: r.id,
         issue: r.issue.identifier,
@@ -774,6 +784,8 @@ function handlers(c: McpCaller): Handlers {
         failureReason: r.failureReason ?? undefined,
         error: r.status === 'failed' ? r.error?.slice(-500) : undefined,
         retryAt: r.retryAt ?? undefined,
+        waitReasons: r.waitReasons.length ? r.waitReasons : undefined,
+        waitingFor: r.waitingForId ? (names.get(r.waitingForId) ?? undefined) : undefined,
         waitingOn: r.blockedBy.length ? r.blockedBy.map((b) => b.identifier) : undefined,
         waitingForCycle: r.waitingForCycle ?? undefined,
         sessionUrl: r.sessionUrl,

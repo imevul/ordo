@@ -841,6 +841,8 @@ describe('route inventory', () => {
     'GET /agent-usage': "usage totals count only runs on the caller's teams (agents.test.ts)",
     'POST /agents/:id/unpause': 'workspace admins only (agents.test.ts)',
     'GET /agent-runs': "listWorkspaceRuns is scoped to the caller's teams (agents.test.ts)",
+    'POST /agent-runs/query':
+      "listWorkspaceRuns is scoped to the caller's teams; a named team is checked (agents.test.ts)",
     'GET /agent-runs/active-count':
       "countActiveRuns is scoped to the caller's teams (agents.test.ts)",
     'GET /agent/me': "the calling agent's own teams (agents.test.ts)",

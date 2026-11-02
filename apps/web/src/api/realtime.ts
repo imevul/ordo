@@ -84,6 +84,8 @@ export function useRealtime(slug: string): RealtimeStatus {
       if (kinds.has('import')) inv(['ws', slug, 'imports']);
       if (kinds.has('export')) inv(['ws', slug, 'exports']);
       if (kinds.has('agentRun')) inv(['ws', slug, 'agentRuns']);
+      // A blocker closing or a cycle filling up changes what runs wait on, with no run event.
+      if (kinds.has('issue') || kinds.has('cycle')) inv(['ws', slug, 'agentRuns', 'list']);
       // Only the issue lists filtering on runs, and not for a progress note: those come often.
       if (kinds.has(RUN_CHANGED)) {
         qc.invalidateQueries({
