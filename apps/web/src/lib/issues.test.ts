@@ -6,12 +6,14 @@ import {
   type OrderBy,
 } from '@ordo/shared';
 import { describe, expect, it } from 'vitest';
+import { ApiError } from '../api/client.ts';
 import {
   canDropOnGroups,
   commentAnchor,
   commentIdFromHash,
   groupIssues,
   isDone,
+  issueLoadError,
   newerIdentifier,
   patchForGroup,
   sortIssues,
@@ -645,5 +647,22 @@ describe('canDropOnGroups', () => {
     expect(canDropOnGroups(ws, 'none')).toBe(false);
     expect(canDropOnGroups(ws, 'field:tags')).toBe(false);
     expect(canDropOnGroups(ws, 'field:deleted')).toBe(false);
+  });
+});
+
+describe('issueLoadError', () => {
+  const unreachable = new ApiError(0, 'Can’t reach Ordo', 'network');
+
+  it('says a filter the copy can’t answer needs a connection', () => {
+    for (const filter of [{ blocked: true }, { trashed: true }, { q: 'login' }])
+      expect(issueLoadError(unreachable, filter)).toMatch(/needs a connection/);
+  });
+
+  it('keeps the request’s own message otherwise', () => {
+    // A filter the copy can answer only gets here on a device without a copy.
+    expect(issueLoadError(unreachable, { assigneeIds: ['me'] })).toBe('Can’t reach Ordo');
+    expect(issueLoadError(new ApiError(500, 'Server trouble'), { blocked: true })).toBe(
+      'Server trouble',
+    );
   });
 });

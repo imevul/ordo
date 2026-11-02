@@ -13,7 +13,7 @@ import {
   useSearch,
 } from '../api/queries.ts';
 import { IssueDetailView } from '../components/IssueDetailView.tsx';
-import { IssuesView } from '../components/IssuesView.tsx';
+import { IssuesLoadError, IssuesView } from '../components/IssuesView.tsx';
 import { StatusIcon, TeamIcon } from '../components/icons.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
@@ -272,10 +272,12 @@ export function SearchPage() {
   );
 }
 
+const TRASHED: IssueFilter = { trashed: true };
+
 export function TrashPage() {
   const ws = useWorkspace();
   const qc = useQueryClient();
-  const { data, isLoading } = useIssues(ws.slug, { trashed: true });
+  const { data, isLoading, error, refetch } = useIssues(ws.slug, TRASHED);
   const restoreIssues = useRestoreIssues(ws.slug);
   const restore = (issue: Issue) =>
     restoreIssues.mutate([issue.id], {
@@ -311,8 +313,12 @@ export function TrashPage() {
       />
       <div className="min-h-0 flex-1 overflow-y-auto">
         {isLoading && <Spinner />}
-        {data?.length === 0 && (
-          <EmptyState title={t('issues.trash.emptyTitle')} body={t('issues.trash.emptyBody')} />
+        {error && !data?.length ? (
+          <IssuesLoadError error={error} filter={TRASHED} onRetry={() => refetch()} />
+        ) : (
+          data?.length === 0 && (
+            <EmptyState title={t('issues.trash.emptyTitle')} body={t('issues.trash.emptyBody')} />
+          )
         )}
         {data?.map((i) => (
           <PlainIssueRow
