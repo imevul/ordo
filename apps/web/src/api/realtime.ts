@@ -1,4 +1,4 @@
-import type { RealtimeEvent } from '@ordo/shared';
+import { type RealtimeEvent, usesAgentRuns } from '@ordo/shared';
 import type { Engine } from '@ordo/sync';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
@@ -18,6 +18,9 @@ const OUTSIDE_BOOTSTRAP = new Set<RealtimeEvent['kind']>([
   'agentRunOutput',
   'timeEntry',
 ]);
+
+/** Pending alongside event kinds: an agent run changed in more than its progress note. */
+const RUN_CHANGED = 'agentRun:changed';
 
 /**
  * Whether an event can change the bootstrap. Most kinds live in it; issues only when the server
@@ -81,6 +84,13 @@ export function useRealtime(slug: string): RealtimeStatus {
       if (kinds.has('import')) inv(['ws', slug, 'imports']);
       if (kinds.has('export')) inv(['ws', slug, 'exports']);
       if (kinds.has('agentRun')) inv(['ws', slug, 'agentRuns']);
+      // Only the issue lists filtering on runs, and not for a progress note: those come often.
+      if (kinds.has(RUN_CHANGED)) {
+        qc.invalidateQueries({
+          predicate: ({ queryKey: [ws, s, what, filter] }) =>
+            ws === 'ws' && s === slug && what === 'issues' && usesAgentRuns(filter ?? {}),
+        });
+      }
       // Only the run pages showing output: it comes every few seconds while a run works.
       if (kinds.has('agentRunOutput')) inv(['ws', slug, 'agentRunOutput']);
       if (kinds.has('issue') || kinds.has('cycle') || kinds.has('team')) inv(keys.workload(slug));
@@ -114,6 +124,7 @@ export function useRealtime(slug: string): RealtimeStatus {
         // The local copy catches up from the change log when the event is ahead of it.
         engine.current?.notify(e);
         pending.add(e.kind);
+        if (e.kind === 'agentRun' && !e.progressOnly) pending.add(RUN_CHANGED);
         if (changesBootstrap(e)) pendingBootstrap = true;
         flushTimer ??= setTimeout(flush, 60);
       };

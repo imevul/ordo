@@ -678,6 +678,15 @@ function handlers(c: McpCaller): Handlers {
       if (a.customFields && Object.keys(a.customFields).length)
         filter.customFields = await dir.fieldFilter(a.customFields, team);
       if (a.subscribed) filter.subscribedBy = 'me';
+      if (a.hasAgentRun !== undefined) filter.hasAgentRun = a.hasAgentRun;
+      if (a.agentRunAgent?.length)
+        filter.agentRunAgentIds = await Promise.all(a.agentRunAgent.map(dir.person, dir));
+      if (a.agentRunStatus?.length) filter.agentRunStatuses = a.agentRunStatus;
+      if (a.agentRunFailureReason?.length) filter.agentRunFailureReasons = a.agentRunFailureReason;
+      if (a.agentRunWaiting !== undefined) filter.agentRunWaiting = a.agentRunWaiting;
+      if (a.waitingOn?.length) filter.agentRunWaitingOn = a.waitingOn;
+      if (a.waitingFor?.length)
+        filter.agentRunWaitingFor = await Promise.all(a.waitingFor.map(dir.person, dir));
       return search(c, dir, filter, a.limit, a.query?.trim() ? 'relevance' : 'recent');
     },
 
@@ -843,10 +852,10 @@ function handlers(c: McpCaller): Handlers {
       return { run: saved.id, status: saved.status, progress: saved.progress };
     },
 
-    ask_question: async ({ question, run }) => {
+    ask_question: async ({ question, kind, run }) => {
       requireAgent(c);
       const runId = run ?? (await onlyHeldRun(c));
-      const saved = await c.run((ctx) => askQuestion(ctx, runId, question));
+      const saved = await c.run((ctx) => askQuestion(ctx, runId, question, kind));
       return {
         run: saved.id,
         status: saved.status,

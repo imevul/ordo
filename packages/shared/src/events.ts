@@ -49,6 +49,8 @@ export interface RealtimeEvent {
    * counts, former assignees), so clients needn't refetch it. Unset means it may have.
    */
   bootstrapUnchanged?: true;
+  /** Agent run events: only the run's progress note changed, not what it's doing or waiting on. */
+  progressOnly?: true;
   /** Where the change sits in the workspace's change log (sync clients fetch up to here). */
   seq?: number;
   epoch?: number;

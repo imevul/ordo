@@ -2,7 +2,6 @@ import {
   canonicalTimeZone,
   DATE_FILTER_FIELDS,
   type DateFilter,
-  type DateFilterField,
   type EstimateFilter,
   filterValues,
   type IssueConditions,
@@ -24,6 +23,12 @@ export const LIST_KEYS = [
   'projectIds',
   'milestoneIds',
   'cycleIds',
+  'agentRunWaitingOn',
+  'agentRunWaitingFor',
+  'agentRunAgentIds',
+  'agentRunStatuses',
+  'agentRunFailureReasons',
+  'agentRunTriggers',
 ] as const;
 export type ListKey = (typeof LIST_KEYS)[number];
 
@@ -33,16 +38,22 @@ export const FLAG_KEYS = [
   'hasPullRequest',
   'hasSubIssues',
   'isSubIssue',
+  'agentRunWaiting',
+  'hasAgentRun',
 ] as const;
 export type FlagKey = (typeof FLAG_KEYS)[number];
+
+/** Dates the bar can filter on: the issue's, and when its agent run last did something. */
+const DATE_KEYS = [...DATE_FILTER_FIELDS, 'agentRunAt'] as const;
+export type DateKey = (typeof DATE_KEYS)[number];
 
 /** A custom field's condition, kept in `customFields` under the field's id. */
 export type FieldKey = `field:${string}`;
 
-export type ConditionKey = ListKey | DateFilterField | 'estimate' | FlagKey | FieldKey;
+export type ConditionKey = ListKey | DateKey | 'estimate' | FlagKey | FieldKey;
 export const CONDITION_KEYS: ConditionKey[] = [
   ...LIST_KEYS,
-  ...DATE_FILTER_FIELDS,
+  ...DATE_KEYS,
   'estimate',
   ...FLAG_KEYS,
 ];
@@ -51,8 +62,8 @@ export const isListKey = (k: ConditionKey): k is ListKey =>
   (LIST_KEYS as readonly string[]).includes(k);
 export const isFlagKey = (k: ConditionKey): k is FlagKey =>
   (FLAG_KEYS as readonly string[]).includes(k);
-export const isDateKey = (k: ConditionKey): k is DateFilterField =>
-  (DATE_FILTER_FIELDS as readonly string[]).includes(k);
+export const isDateKey = (k: ConditionKey): k is DateKey =>
+  (DATE_KEYS as readonly string[]).includes(k);
 export const isFieldKey = (k: ConditionKey): k is FieldKey => k.startsWith('field:');
 export const fieldKey = (fieldId: string): FieldKey => `field:${fieldId}`;
 export const fieldIdOf = (k: FieldKey) => k.slice('field:'.length);
@@ -168,7 +179,7 @@ export function withClock(
   tz: string | null | undefined,
   weekStartsOn: 0 | 1 | undefined,
 ): IssueFilter {
-  const relative = DATE_FILTER_FIELDS.some((k) => filterValues<DateFilter>(f, k).some(RELATIVE));
+  const relative = DATE_KEYS.some((k) => filterValues<DateFilter>(f, k).some(RELATIVE));
   if (!relative) return f;
   const browser = Intl.DateTimeFormat().resolvedOptions().timeZone;
   return {

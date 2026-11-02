@@ -5,6 +5,17 @@ const CLAUDE_SPEND =
   "You've hit your monthly spend limit · raise it at https://claude.ai/settings/usage?from=cc_cli_limit_message · your session limit resets 1am (Europe/Oslo)\n(exit code 1)";
 
 describe('classifyFailure', () => {
+  it('recognises clear permission problems, and a limit wins', () => {
+    expect(classifyFailure('fatal: git push: Permission denied (publickey)')).toBe('permission');
+    expect(classifyFailure('403 Access denied for this repository')).toBe('permission');
+    expect(classifyFailure('gh: Insufficient permissions')).toBe('permission');
+    expect(classifyFailure("Claude requested permissions to use Bash, but you haven't")).toBe(
+      'permission',
+    );
+    expect(classifyFailure('Tests failed: add a permissions check to the admin page')).toBeNull();
+    expect(classifyFailure('Permission denied: usage limit reached')).toBe('usage_limit');
+  });
+
   it('recognises usage and spend limits', () => {
     expect(classifyFailure(CLAUDE_SPEND)).toBe('usage_limit');
     expect(classifyFailure("You've hit your session limit · resets 3pm (UTC)")).toBe('usage_limit');

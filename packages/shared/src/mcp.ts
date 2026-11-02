@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { STATE_TYPES } from './constants.ts';
+import {
+  AGENT_RUN_FAILURE_REASONS,
+  AGENT_RUN_QUESTION_KINDS,
+  AGENT_RUN_STATUSES,
+  AGENT_RUN_WAIT_REASONS,
+  STATE_TYPES,
+} from './constants.ts';
 
 /**
  * Arguments of the MCP server's tools (`/api/w/:ws/mcp`). Agents refer to things by name: a team
@@ -157,6 +163,25 @@ export const mcpToolSchemas = {
       .optional()
       .describe('Custom field name → values; issues with any of them (all fields must match)'),
     subscribed: z.boolean().optional().describe('Only issues I am subscribed to'),
+    hasAgentRun: z.boolean().optional().describe('An agent has run on the issue at all'),
+    agentRunAgent: z.array(person).optional().describe('An agent that has run on the issue'),
+    agentRunStatus: z
+      .array(z.enum(AGENT_RUN_STATUSES))
+      .optional()
+      .describe("The status of an agent's newest run on the issue"),
+    agentRunFailureReason: z.array(z.enum(AGENT_RUN_FAILURE_REASONS)).optional(),
+    agentRunWaiting: z
+      .boolean()
+      .optional()
+      .describe("An agent's newest run on the issue is waiting on something"),
+    waitingOn: z
+      .array(z.enum([...AGENT_RUN_WAIT_REASONS, 'person']))
+      .optional()
+      .describe('What that run is waiting on; "person" is anything a person has to act on'),
+    waitingFor: z
+      .array(person)
+      .optional()
+      .describe("The person that run needs: whoever asked for it, else the issue's creator"),
     includeClosed: z
       .boolean()
       .default(false)
@@ -300,6 +325,12 @@ export const mcpToolSchemas = {
       .min(1)
       .max(10_000)
       .describe('Markdown; posted on the issue, mentioning whoever asked for the work'),
+    kind: z
+      .enum(AGENT_RUN_QUESTION_KINDS)
+      .optional()
+      .describe(
+        '"permission" when missing access, a credential or a tool you may not use stopped you; default "decision"',
+      ),
     run: z.uuid().optional().describe('The run (default: your only open run)'),
   }),
   propose_plan: z.object({

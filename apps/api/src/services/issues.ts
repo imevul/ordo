@@ -1,4 +1,5 @@
 import {
+  AGENT_RUN_FILTERS,
   type AgentRunTrigger,
   type CreateIssueInput,
   type CustomFieldValue,
@@ -67,6 +68,14 @@ import {
   teamScope,
   usersWithTeamAccess,
 } from './access.ts';
+import {
+  notSuperseded,
+  type RunHolds,
+  runHoldsFor,
+  runIsWaiting,
+  waitingFor,
+  waitingOn,
+} from './agentRunWaits.ts';
 import { onAssigneeChanged } from './agents.ts';
 import { claimAttachments, listAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
@@ -147,8 +156,11 @@ export function baseQuery(db: DbOrTx) {
   return db.select(issueSelect).from(issues).innerJoin(teams, eq(teams.id, issues.teamId));
 }
 
-/** Translates an IssueFilter into SQL conditions, limited to teams `access` can read. `me` is the viewer. */
-export function filterConditions(access: Access, f: IssueFilter): SQL[] {
+/**
+ * Translates an IssueFilter into SQL conditions, limited to teams `access` can read. `me` is the
+ * viewer. A filter on what agent runs wait on needs `holds` (see `runHoldsFor`).
+ */
+export function filterConditions(access: Access, f: IssueFilter, holds?: RunHolds): SQL[] {
   const userId = access.userId;
   const conds: SQL[] = [eq(issues.workspaceId, access.workspaceId)];
   const scope = teamScope(access, issues.teamId);
@@ -168,14 +180,40 @@ export function filterConditions(access: Access, f: IssueFilter): SQL[] {
   }
   if (f.q?.trim()) conds.push(textConditions(f.q.trim()).match);
   const tz = f.tz ?? 'UTC';
-  conds.push(...conditionParts(f, { userId, tz, clock: filterClock(tz, f.weekStartsOn) }));
+  conds.push(
+    ...conditionParts(f, {
+      userId,
+      tz,
+      clock: filterClock(tz, f.weekStartsOn),
+      runs: 'current',
+      holds,
+    }),
+  );
   return conds;
+}
+
+/**
+ * A filter's conditions for a list of runs joined to their issues. Run conditions are about the
+ * row's run, the rest about its issue.
+ */
+export function runFilterConditions(access: Access, f: IssueFilter, holds?: RunHolds): SQL[] {
+  const tz = f.tz ?? 'UTC';
+  return conditionParts(f, {
+    userId: access.userId,
+    tz,
+    clock: filterClock(tz, f.weekStartsOn),
+    runs: 'row',
+    holds,
+  });
 }
 
 interface FilterEnv {
   userId: string;
   tz: string;
   clock: FilterClock;
+  /** What run conditions are about: an agent's newest run on the issue, or the selected run. */
+  runs: 'current' | 'row';
+  holds?: RunHolds;
 }
 
 const OPEN_STATE = sql`(select ws.type from workflow_states ws where ws.id = "issues"."state_id") not in ('completed', 'canceled')`;
@@ -185,9 +223,13 @@ const negate = (c: SQL) => sql`not coalesce((${c}), false)`;
 
 function dateCondition(field: DateFilterField, d: DateFilter, env: FilterEnv): SQL {
   const col = issues[field];
-  if (d.range === 'none') return isNull(col);
   // Timestamps count on the day they fall on in the filter's zone; `matchIssue` does the same.
   const day = field === 'dueDate' ? sql`${col}` : sql`(${col} at time zone ${env.tz})::date`;
+  return dateBounds(col, day, d, env);
+}
+
+function dateBounds(col: SQL | AnyPgColumn, day: SQL, d: DateFilter, env: FilterEnv): SQL {
+  if (d.range === 'none') return isNull(col);
   const parts: SQL[] = [isNotNull(col)];
   const bound = (from?: string, to?: string) => {
     if (from) parts.push(sql`${day} >= ${from}::date`);
@@ -200,6 +242,64 @@ function dateCondition(field: DateFilterField, d: DateFilter, env: FilterEnv): S
   }
   bound(d.from, d.to);
   return and(...parts)!;
+}
+
+const LAST_RUN_AT = sql`coalesce("agent_runs"."finished_at", "agent_runs"."started_at", "agent_runs"."created_at")`;
+
+/** The set's conditions on a single run. Quoted columns: these go in single-table selects too. */
+function runPredicates(c: IssueConditions, env: FilterEnv) {
+  const me = (v: string) => (v === 'me' ? env.userId : v);
+  const among = (column: string, values: string[] | undefined) =>
+    values?.length
+      ? sql`${sql.raw(`"agent_runs"."${column}"`)} in (${sql.join(
+          values.map((v) => sql`${v}`),
+          sql`, `,
+        )})`
+      : undefined;
+  const parts = [
+    among('agent_id', c.agentRunAgentIds),
+    among('status', c.agentRunStatuses),
+    among('failure_reason', c.agentRunFailureReasons),
+    among('trigger', c.agentRunTriggers),
+    c.agentRunAt &&
+      dateBounds(
+        LAST_RUN_AT,
+        sql`(${LAST_RUN_AT} at time zone ${env.tz})::date`,
+        c.agentRunAt,
+        env,
+      ),
+    c.agentRunWaitingOn?.length ? waitingOn(c.agentRunWaitingOn, env.holds) : undefined,
+    c.agentRunWaitingFor?.length ? waitingFor(c.agentRunWaitingFor.map(me)) : undefined,
+    c.agentRunWaiting === true ? runIsWaiting : undefined,
+  ];
+  return parts.filter((p): p is SQL => !!p);
+}
+
+/** `c` without what `runPredicates` already covered. */
+function withoutRunConditions(c: IssueConditions): IssueConditions {
+  const rest: Record<string, unknown> = { ...c };
+  for (const key of AGENT_RUN_FILTERS) delete rest[key];
+  return rest as IssueConditions;
+}
+
+/**
+ * The set's run conditions as SQL, its `exclude`'s with them. In issue lists, everything in a set
+ * is about one current run ("Claude's newest run failed", "Claude's newest run didn't"), unless
+ * nothing says which run: then each "not" is on its own and must hold for every current run.
+ */
+function runConditions(c: IssueConditions, env: FilterEnv): SQL[] {
+  const wanted = runPredicates(c, env);
+  const unwanted = runPredicates(c.exclude ?? {}, env);
+  // "Not waiting" reads like "is not" on `agentRunWaiting`, and the flag toggle writes it so.
+  if (c.agentRunWaiting === false) unwanted.push(runIsWaiting);
+  if (c.exclude?.agentRunWaiting === false) wanted.push(runIsWaiting);
+  if (env.runs === 'row') return [...wanted, ...unwanted.map(negate)];
+  const currentRun = (condition: SQL) =>
+    exists(
+      sql`(select 1 from agent_runs where "agent_runs"."issue_id" = "issues"."id" and ${notSuperseded} and ${condition})`,
+    );
+  if (wanted.length) return [currentRun(and(...wanted, ...unwanted.map(negate))!)];
+  return unwanted.map((u) => negate(currentRun(u)));
 }
 
 /** One SQL condition per condition set in `c`, so `exclude` can negate them one at a time. */
@@ -297,8 +397,15 @@ function conditionParts(c: IssueConditions, env: FilterEnv): SQL[] {
     ),
   );
   flag(c.isSubIssue, isNotNull(issues.parentId));
+  // Any run at all, not just current ones. Run lists have a run by definition, so it means nothing
+  // there and their schema leaves it out.
+  flag(
+    c.hasAgentRun,
+    exists(sql`(select 1 from agent_runs har where har.issue_id = "issues"."id")`),
+  );
+  conds.push(...runConditions(c, env));
   if (c.exclude) {
-    const excluded = conditionParts(c.exclude, env);
+    const excluded = conditionParts(withoutRunConditions(c.exclude), env);
     if (excluded.length) conds.push(and(...excluded.map(negate))!);
   }
   if (c.or?.length)
@@ -372,8 +479,9 @@ export async function queryIssues(
               desc(issues.updatedAt),
             ]
           : [asc(issues.sortOrder), desc(issues.createdAt)];
+  const holds = await runHoldsFor(db, access, filter);
   const rows = await baseQuery(db)
-    .where(and(...filterConditions(access, filter)))
+    .where(and(...filterConditions(access, filter, holds)))
     .orderBy(...orderBy)
     .limit(limit);
   return rows.map(toIssue);
@@ -416,8 +524,11 @@ export async function queryIssuePage(
   after: string | null,
   limit: number,
 ): Promise<Issue[]> {
+  const holds = await runHoldsFor(db, access, filter);
   const rows = await baseQuery(db)
-    .where(and(...filterConditions(access, filter), after ? gt(issues.id, after) : undefined))
+    .where(
+      and(...filterConditions(access, filter, holds), after ? gt(issues.id, after) : undefined),
+    )
     .orderBy(asc(issues.id))
     .limit(limit);
   return rows.map(toIssue);

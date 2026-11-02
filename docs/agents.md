@@ -366,7 +366,7 @@ fourth if you want [live output](#live-output):
 ```text
 POST  /api/w/<ws>/agent/claim?wait=30&runner=<name>   → 200 AgentRunContext, or 204 when there's nothing
 POST  /api/w/<ws>/agent/runs/<id>/heartbeat          → { cancelled } — at least every 5 minutes
-PATCH /api/w/<ws>/agent/runs/<id>                    { status: running | waiting | succeeded | failed, question? | plan?, resume?, sessionUrl?, summary?, error? }
+PATCH /api/w/<ws>/agent/runs/<id>                    { status: running | waiting | succeeded | failed, question?, questionKind? | plan?, resume?, sessionUrl?, summary?, error? }
 POST  /api/w/<ws>/agent/runs/<id>/output             { lines: [...] } → { accepted } — new lines, every few seconds
 ```
 
@@ -468,6 +468,34 @@ Asking for anything else is a comment: "@integrator rebase this on main and merg
 with `gh` can use `gh pr merge --auto`). The context's `pullRequests` lists the issue's pull requests with their
 state, checks and review, and the prompt has them under "Pull requests".
 
+## What a run is waiting on
+
+A run that isn't being worked on and hasn't been dealt with is waiting on something, and it always says what. A queued
+run has at least one reason, and may have several.
+
+| Waiting on       | Who acts       | Meaning                                                                  |
+| ---------------- | -------------- | ------------------------------------------------------------------------ |
+| Question         | A person       | The agent asked something ([Questions](#questions))                      |
+| Plan approval    | A person       | The agent posted a [plan](#plan-approval)                                |
+| Permission issue | A person       | It asked with kind `permission`, or failed with that reason              |
+| Failure          | A person       | It failed, won't restart by itself, and nobody restarted or dismissed it |
+| Blocker          | Other work     | An open issue blocks this one                                            |
+| Cycle            | Schedule       | The issue's [cycle](#work-planned-for-a-later-cycle) hasn't opened       |
+| Limit reset      | Time           | It failed on a usage limit and restarts by itself                        |
+| Agent paused     | Time or admin  | Its agent hit a usage limit or its budget                                |
+| Runs paused      | Admin          | **Pause new runs** is on for the workspace                               |
+| Repository full  | Capacity       | Its repository is at its run limit                                       |
+| Agent busy       | Capacity       | Its agent is at its _runs at once_, or already working on this issue     |
+| Runner           | Infrastructure | Nothing holds it, and no runner has picked it up                         |
+
+Issue lists filter on this. **Agent run waiting** finds everything, **Waiting on** a reason (or _A person_, any of the
+first four), and **Waiting for** the person who has to act: whoever asked for the run, else the issue's creator,
+the one its question mentions. Over MCP, `search_issues` takes `agentRunWaiting`, `waitingOn` and `waitingFor`.
+
+These look at each agent's newest run on the issue, as do the other run filters (agent, status, failure reason,
+trigger, last run). Conditions in one set describe the same run, so "Agent is Claude, Run status is failed" means
+Claude's newest run failed, not that Claude ran and another agent failed.
+
 ## Questions
 
 When an agent needs a person before it can go on, it asks and stops. Any of these works from inside a run:
@@ -475,6 +503,10 @@ When an agent needs a person before it can go on, it asks and stops. Any of thes
 - the MCP tool `ask_question` (with the agent's key),
 - `ordo agent ask "Should this target v1 or v2 of the API?"` (it reads `ORDO_RUN_ID` and `ORDO_TOKEN`),
 - the protocol: `PATCH …/agent/runs/<id> { "status": "waiting", "question": "…" }`.
+
+If missing access, a credential or a tool it may not use stopped the agent, it says so with kind `permission`
+(`ask_question`'s `kind`, `ordo agent ask --permission`, the protocol's `questionKind`), so people can
+[find it](#what-a-run-is-waiting-on). It's otherwise a question like any other.
 
 Ordo posts the question on the issue as a comment by the agent, @mentioning whoever asked for the run (else the
 issue's creator), so they're notified the usual way. The run shows **waiting for an answer**. It holds no lease,

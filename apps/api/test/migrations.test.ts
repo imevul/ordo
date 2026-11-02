@@ -37,6 +37,11 @@ const entryIndex = (tag: string) => {
   return journal.entries.findIndex((e: { tag: string }) => e.tag === tag);
 };
 
+const tagsAfter = (tag: string) => {
+  const journal = JSON.parse(readFileSync(join(migrationsFolder(), 'meta/_journal.json'), 'utf8'));
+  return journal.entries.slice(entryIndex(tag) + 1).map((e: { tag: string }) => e.tag) as string[];
+};
+
 // Each test builds databases from scratch, which is slow on a busy machine.
 describe('migrations', { timeout: 60_000 }, () => {
   const cleanup: (() => unknown)[] = [];
@@ -194,7 +199,12 @@ describe('migrations', { timeout: 60_000 }, () => {
         where tablename in ('request_forms', 'request_form_submissions') order by indexname`,
     ];
 
-    const ahead = folderWithout(['0070_request_forms', '0073_request_forms_catch_up']);
+    // As that instance stood: anything newer would count as applied and skip the catch-up.
+    const ahead = folderWithout([
+      '0070_request_forms',
+      '0073_request_forms_catch_up',
+      ...tagsAfter('0073_request_forms_catch_up'),
+    ]);
     cleanup.push(() => rmSync(ahead, { recursive: true, force: true }));
     await migrate(db, { migrationsFolder: ahead });
     const [before] = await sql`select to_regclass('request_forms') as forms`;

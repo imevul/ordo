@@ -243,9 +243,10 @@ Claim an agent's runs and launch the command for each one, in a worktree of the 
   'agent check': `Usage: ordo agent check --file <yaml> [--only a,b]
 
 Validate a runner file and its keys without claiming anything.`,
-  'agent ask': `Usage: ordo agent ask <question|-> [--run <id>]
+  'agent ask': `Usage: ordo agent ask <question|-> [--permission] [--run <id>]
 
-Inside a run: ask a person and pause the run until they reply on the issue. - reads stdin.`,
+Inside a run: ask a person and pause the run until they reply on the issue. - reads stdin.
+--permission says missing access, a credential or a tool you may not use stopped you.`,
   'agent plan': `Usage: ordo agent plan <plan|-> [--run <id>]
 
 Inside a run: post your plan (Markdown) on the issue and pause the run until a person approves it
@@ -1132,14 +1133,17 @@ async function agentRun(ctx: Context, args: string[], opts: { check?: boolean } 
 
 /** Inside a run (`ORDO_RUN_ID`, the agent's key in `ORDO_TOKEN`): asks a person and pauses it. */
 async function agentAsk(ctx: Context, args: string[]) {
-  const { values, positionals } = parse(args, { run: { type: 'string' } });
+  const { values, positionals } = parse(args, {
+    run: { type: 'string' },
+    permission: { type: 'boolean' },
+  });
   const runId = (values.run as string | undefined) ?? ctx.io.env.ORDO_RUN_ID;
   if (!runId) throw new UsageError('no run: use it inside a run (ORDO_RUN_ID) or pass --run <id>');
   const text = positionals.join(' ');
   const question = (text === '-' ? await ctx.io.readStdin() : text).trim();
   if (!question) throw new UsageError('what do you want to ask? "ordo agent ask <question>"');
   const ws = await ctx.workspace(values.workspace as string | undefined);
-  const run = await ws.agent.ask(runId, question);
+  const run = await ws.agent.ask(runId, question, values.permission ? 'permission' : undefined);
   if (values.json) return ctx.json(run);
   ctx.io.stdout('Asked. Stop working now: the run resumes when someone replies on the issue.\n');
 }

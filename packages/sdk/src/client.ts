@@ -3,6 +3,7 @@ import type {
   AgentRun,
   AgentRunContext,
   AgentRunFailureReason,
+  AgentRunQuestionKind,
   AgentRunUsageReport,
   Attachment,
   Bootstrap,
@@ -341,10 +342,11 @@ export class WorkspaceClient {
     ) => this.request<AgentRun>('PATCH', `/agent/runs/${encodeURIComponent(runId)}`, input),
 
     /** Asks a person and pauses the run; a reply on the issue puts it back in the queue. */
-    ask: (runId: string, question: string) =>
+    ask: (runId: string, question: string, kind?: AgentRunQuestionKind) =>
       this.request<AgentRun>('PATCH', `/agent/runs/${encodeURIComponent(runId)}`, {
         status: 'waiting',
         question,
+        ...(kind && { questionKind: kind }),
       }),
 
     /** Posts a plan and pauses the run until a person approves it or replies with changes. */
