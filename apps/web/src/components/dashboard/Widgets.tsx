@@ -11,7 +11,7 @@ import { t } from '../../i18n/index.ts';
 import { timelineScope } from '../../lib/dashboards.ts';
 import { usd } from '../../lib/format.ts';
 import { breakdown, weeklyFlow } from '../../lib/insights.ts';
-import { sortIssues, visibleIssues } from '../../lib/issues.ts';
+import { issueLoadError, sortIssues, visibleIssues } from '../../lib/issues.ts';
 import { useWorkspace, type WorkspaceData } from '../../lib/workspace.tsx';
 import { BarList, LineChart } from '../Charts.tsx';
 import { StatusIcon } from '../icons.tsx';
@@ -73,7 +73,8 @@ function Loading() {
 
 function CountWidget({ widget }: { widget: Of<'count'> }) {
   const ws = useWorkspace();
-  const { data, isLoading } = useIssues(ws.slug, widget.filters);
+  const { data, isLoading, error } = useIssues(ws.slug, widget.filters);
+  if (error && !data?.length) return <Note>{issueLoadError(error, widget.filters)}</Note>;
   if (isLoading || !data) return <Loading />;
   const value =
     widget.measure === 'estimate' ? data.reduce((a, i) => a + (i.estimate ?? 0), 0) : data.length;
@@ -98,8 +99,9 @@ function ViewWidget({ widget }: { widget: Of<'view'> }) {
     () => (view ? { ...view.filters, ...(view.teamId ? { teamId: view.teamId } : {}) } : {}),
     [view],
   );
-  const { data, isLoading } = useIssues(ws.slug, filter, !!view);
+  const { data, isLoading, error } = useIssues(ws.slug, filter, !!view);
   if (!view) return <Note>{t('dashboards.widget.viewGoneBody')}</Note>;
+  if (error && !data?.length) return <Note>{issueLoadError(error, filter)}</Note>;
   if (isLoading || !data) return <Loading />;
   const shown = sortIssues(visibleIssues(ws, data, view.display), view.display.orderBy);
   const more = shown.length - widget.limit;
@@ -199,7 +201,8 @@ function AgentsWidget({ widget }: { widget: Of<'agents'> }) {
 /** Breakdown and created-vs-completed, over the issues the widget's filter matches. */
 function IssueChart({ widget }: { widget: Of<'chart'> }) {
   const ws = useWorkspace();
-  const { data, isLoading } = useIssues(ws.slug, widget.filters ?? {});
+  const filter = widget.filters ?? {};
+  const { data, isLoading, error } = useIssues(ws.slug, filter);
   const m = widget.measure;
   const bars = useMemo(
     () =>
@@ -210,6 +213,7 @@ function IssueChart({ widget }: { widget: Of<'chart'> }) {
     () => (data && widget.chart === 'flow' ? weeklyFlow(data, m, widget.weeks ?? 12) : []),
     [data, widget.chart, widget.weeks, m],
   );
+  if (error && !data?.length) return <Note>{issueLoadError(error, filter)}</Note>;
   if (isLoading || !data) return <Loading />;
   if (widget.chart === 'breakdown') {
     // As many bars as the rows leave room for.

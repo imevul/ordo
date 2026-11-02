@@ -82,6 +82,60 @@ test('changes made offline survive a reload and reach the server once back', asy
   await expect.poll(async () => (await api.issue(createdId)).title).toBe(title);
 });
 
+test('a filter the local copy can’t answer says it needs a connection', async ({
+  page,
+  context,
+  api,
+}) => {
+  const issue = await api.createIssue('ENG', unique('Listed offline'));
+  const listed = page.getByRole('link', { name: issue.title });
+  const cantLoad = page.getByText('This list needs a connection');
+  await page.goto('/demo/team/ENG/all');
+  await expect(listed).toBeVisible();
+
+  await context.setOffline(true);
+  await expect(banner(page)).toContainText('showing this device’s copy');
+  await page.getByRole('button', { name: 'Filter', exact: true }).click();
+  await page.getByText('Blocked', { exact: true }).click();
+  await expect(cantLoad).toBeVisible();
+  await expect(page.getByText('No issues match these filters.')).toBeHidden();
+
+  // Without the filter the copy answers.
+  await page.getByRole('button', { name: /Remove.*Blocked/ }).click();
+  await expect(cantLoad).toBeHidden();
+  await expect(listed).toBeVisible();
+
+  // Back online, the filter gets its real answer without being asked again.
+  await page.getByRole('button', { name: 'Filter', exact: true }).click();
+  await page.getByText('Blocked', { exact: true }).click();
+  await expect(cantLoad).toBeVisible();
+  await context.setOffline(false);
+  await expect(banner(page)).toBeHidden({ timeout: 20_000 });
+  await expect(cantLoad).toBeHidden();
+  await expect(page.getByText('No issues match these filters.')).toBeVisible();
+});
+
+test('trash and dashboard widgets say so too', async ({ page, context, api }) => {
+  const res = await api.request.post('/api/w/demo/dashboards', {
+    data: {
+      name: unique('Blocked work'),
+      widgets: [{ id: 'blocked', type: 'count', filters: { blocked: true } }],
+    },
+  });
+  expect(res.ok(), `create dashboard: ${res.status()}`).toBe(true);
+  const { id } = await res.json();
+  await page.goto('/demo/team/ENG/all');
+  await expect(page.locator('[data-issue-id]').first()).toBeVisible();
+
+  await cutApi(context);
+  await page.goto('/demo/trash');
+  await expect(page.getByText('This list needs a connection')).toBeVisible();
+  await expect(page.getByText('trash is empty')).toBeHidden();
+
+  await page.goto(`/demo/dashboard/${id}`);
+  await expect(page.getByText('This list needs a connection')).toBeVisible();
+});
+
 test('closing the tab that syncs hands the job to another tab', async ({ context, api }) => {
   const issue = await api.createIssue('ENG', unique('Two tabs'));
   const first = await context.newPage();
