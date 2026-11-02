@@ -3,6 +3,7 @@ import type {
   AgentRunEventKind,
   AgentRunFailureReason,
   AgentRunPullRequest,
+  AgentRunQuestionKind,
   AgentRunStatus,
   AgentRunTrigger,
   AuditAction,
@@ -2105,6 +2106,8 @@ export const agentRuns = pgTable(
     triggerDetail: jsonb('trigger_detail').$type<AgentRunPullRequest>(),
     /** The agent's last question; set while `waiting`, kept after it resumes. */
     question: text('question'),
+    /** What that question is about (`permission`: missing access stopped the agent). */
+    questionKind: text('question_kind').$type<AgentRunQuestionKind>(),
     /** The plan the agent proposed (propose_plan); set while it waits for approval, kept after. */
     plan: text('plan'),
     planApprovedAt: ts('plan_approved_at'),

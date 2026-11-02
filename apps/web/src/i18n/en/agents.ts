@@ -96,6 +96,22 @@ export default {
     body: "Copy it now: it isn't shown again. Start a runner with it:",
     fileHint: 'Or put it in a runner file (with the key in a .env file next to it):',
   },
+  /** What a run is waiting on, as a filter value and on its row. */
+  waitReason: {
+    person: 'A person',
+    question: 'Question',
+    plan: 'Plan approval',
+    permission: 'Permission issue',
+    failure: 'Failure',
+    blocker: 'Blocker',
+    cycle: 'Cycle',
+    limit_reset: 'Limit reset',
+    agent_paused: 'Agent paused',
+    runs_paused: 'Runs paused',
+    repository: 'Repository full',
+    agent_busy: 'Agent busy',
+    runner: 'Runner',
+  },
   runs: {
     title: 'Agent runs',
     runAgain: 'Run again',
@@ -140,6 +156,7 @@ export default {
       timeout: 'timed out',
       runner_lost: 'runner stopped responding',
       checkout: 'checkout failed',
+      permission: 'permission issue',
       error: 'error',
     },
     /** {time} is like "Oct 31 · 01:00". */

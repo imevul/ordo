@@ -90,7 +90,7 @@ resync`. A changed bootstrap is loaded again, and issues of teams no longer in i
 
 In the web app (`src/sync/`), `SyncProvider` opens the engine when the instance's `offlineSync` setting and this
 device allow it. `useIssues` answers from the copy whenever `matchIssue` can (everything but full-text search,
-"subscribed by me", trash and archive, which stay online); a parity test in the API checks `matchIssue` against the
+"subscribed by me", trash, archive, and filters on relations, pull requests and agent runs, which stay online); a parity test in the API checks `matchIssue` against the
 SQL filter with random filters. `useIssue` and `useComments` still ask the server but show the copy meanwhile and
 offline, and the workspace's bootstrap falls back to the copy when the server can't be reached. Only one tab talks
 to the server: it holds a Web Lock and shares what it saves over a `BroadcastChannel`. Signing out deletes every

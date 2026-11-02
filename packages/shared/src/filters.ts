@@ -24,8 +24,29 @@ export type DateRange = (typeof DATE_RANGES)[number];
 export const DATE_FILTER_FIELDS = ['dueDate', 'createdAt', 'updatedAt', 'completedAt'] as const;
 export type DateFilterField = (typeof DATE_FILTER_FIELDS)[number];
 
-/** Filters that read relations and links, which the local copy doesn't keep. */
-export const SERVER_ONLY_FILTERS = ['blocked', 'blocking', 'hasPullRequest'] as const;
+/**
+ * Conditions on an agent's run: a current run on the issue in issue lists, the run itself in run
+ * lists. Conditions in one set describe the same run.
+ */
+export const AGENT_RUN_FILTERS = [
+  'agentRunAgentIds',
+  'agentRunStatuses',
+  'agentRunFailureReasons',
+  'agentRunTriggers',
+  'agentRunAt',
+  'agentRunWaiting',
+  'agentRunWaitingOn',
+  'agentRunWaitingFor',
+] as const;
+
+/** Filters that read relations, links and agent runs, which the local copy doesn't keep. */
+export const SERVER_ONLY_FILTERS = [
+  'blocked',
+  'blocking',
+  'hasPullRequest',
+  'hasAgentRun',
+  ...AGENT_RUN_FILTERS,
+] as const;
 
 /** Where "today" is: the zone decides when days start, `weekStartsOn` what "this week" is. */
 export interface FilterClock {
@@ -85,6 +106,10 @@ export function filterValues<T = unknown>(f: object, key: string): T[] {
   walk(f as Record<string, unknown>);
   return out;
 }
+
+/** Whether what matches `f` can change when an agent run does. */
+export const usesAgentRuns = (f: object) =>
+  [...AGENT_RUN_FILTERS, 'hasAgentRun'].some((key) => filterValues(f, key).length > 0);
 
 /** How deeply `exclude` and `or` nest in a filter (0 for none). */
 export function filterDepth(f: object): number {

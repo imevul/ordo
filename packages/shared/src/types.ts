@@ -2,6 +2,7 @@ import type {
   AgentPauseReason,
   AgentRunEventKind,
   AgentRunFailureReason,
+  AgentRunQuestionKind,
   AgentRunStatus,
   AgentRunTrigger,
   AuditAction,
@@ -1568,6 +1569,8 @@ export interface AgentRun {
   triggerDetail: AgentRunPullRequest | null;
   /** What the agent asked when it last paused (the run is `waiting` until a person answers). */
   question: string | null;
+  /** What that question is about. Null on questions from before kinds existed: decisions. */
+  questionKind: AgentRunQuestionKind | null;
   /** The plan the agent proposed; the run is `waiting` on it until it's approved or answered. */
   plan: string | null;
   planApprovedAt: string | null;

@@ -17,6 +17,7 @@ import { authorizeWorkspace, signInUser } from '../lib/auth.ts';
 import { randomToken, sha256 } from '../lib/crypto.ts';
 import { HttpError, notFound } from '../lib/errors.ts';
 import { type Access, canReadTeam } from './access.ts';
+import { runHoldsFor } from './agentRunWaits.ts';
 import { filterConditions } from './issues.ts';
 
 /** Feed tokens are recognisable in logs and leaked-secret scanners, like API keys. */
@@ -144,6 +145,7 @@ interface FeedScope {
 }
 
 async function issueEvents(s: FeedScope, filter: IssueFilter): Promise<CalendarEvent[]> {
+  const holds = await runHoldsFor(s.app.db, s.access, filter);
   const rows = await s.app.db
     .select({
       id: issues.id,
@@ -156,7 +158,7 @@ async function issueEvents(s: FeedScope, filter: IssueFilter): Promise<CalendarE
     .from(issues)
     .innerJoin(teams, eq(teams.id, issues.teamId))
     .innerJoin(workflowStates, eq(workflowStates.id, issues.stateId))
-    .where(and(...filterConditions(s.access, filter), isNotNull(issues.dueDate)))
+    .where(and(...filterConditions(s.access, filter, holds), isNotNull(issues.dueDate)))
     .orderBy(asc(issues.dueDate))
     .limit(MAX_ISSUES);
   return rows.map((r) => {

@@ -508,9 +508,18 @@ describe('agents', () => {
       url: `${ws}/agent/claim`,
       headers: { authorization: `Bearer ${agentKey}` },
     });
-    const asked = await tool('ask_question', { question: 'Tabs or spaces?' }, agentKey);
+    const asked = await tool(
+      'ask_question',
+      { question: 'Tabs or spaces?', kind: 'permission' },
+      agentKey,
+    );
     expect(asked).toMatchObject({ status: 'waiting' });
     expect(asked.next).toContain('Stop working');
+    const stuck = await tool('search_issues', { waitingOn: ['permission'], waitingFor: ['me'] });
+    expect(stuck.issues.map((i: { identifier: string }) => i.identifier)).toEqual([
+      issue.identifier,
+    ]);
+    expect((await tool('search_issues', { waitingOn: ['plan'] })).count).toBe(0);
     const runs = await tool('agent_runs', { issue: issue.identifier });
     expect(runs.runs[0]).toMatchObject({ status: 'waiting', question: 'Tabs or spaces?' });
     // An assistant answering with a person's key resumes it.

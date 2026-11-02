@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import {
   AGENT_RUN_FAILURE_REASONS,
+  AGENT_RUN_QUESTION_KINDS,
+  AGENT_RUN_STATUSES,
+  AGENT_RUN_TRIGGERS,
+  AGENT_RUN_WAIT_REASONS,
   AUDIT_CATEGORIES,
   type AuditCategory,
   CHAT_EVENT_KINDS,
@@ -668,6 +672,22 @@ const conditionFields = {
   hasPullRequest: z.boolean().optional(),
   hasSubIssues: z.boolean().optional(),
   isSubIssue: z.boolean().optional(),
+  /** An agent has run on the issue at all. */
+  hasAgentRun: z.boolean().optional(),
+  // The rest describe one run: in issue lists an agent's newest run on the issue, in run lists the
+  // run itself. Several in one set must hold for the same run.
+  agentRunAgentIds: z.array(id).max(200).optional(),
+  agentRunStatuses: z.array(z.enum(AGENT_RUN_STATUSES)).optional(),
+  agentRunFailureReasons: z.array(z.enum(AGENT_RUN_FAILURE_REASONS)).optional(),
+  agentRunTriggers: z.array(z.enum(AGENT_RUN_TRIGGERS)).optional(),
+  /** When the run last did something: it finished, else started, else was created. */
+  agentRunAt: dateFilterSchema.optional(),
+  /** The run is waiting on anything: see `AGENT_RUN_WAIT_REASONS`. */
+  agentRunWaiting: z.boolean().optional(),
+  /** Waiting on any of these; `person` is any of `AGENT_RUN_PERSON_REASONS`. */
+  agentRunWaitingOn: z.array(z.enum([...AGENT_RUN_WAIT_REASONS, 'person'])).optional(),
+  /** A person must act, and it's one of these: whoever the run mentions when it asks. */
+  agentRunWaitingFor: z.array(userRef).max(200).optional(),
 };
 
 /**
@@ -1511,6 +1531,8 @@ export const reportAgentRunSchema = z
     failureReason: z.enum(AGENT_RUN_FAILURE_REASONS).optional(),
     /** With `waiting`: what the agent asks. Posted on the issue; a person's reply resumes the run. */
     question: z.string().trim().min(1).max(10_000).optional(),
+    /** What the question is about: `permission` when missing access stopped the agent. */
+    questionKind: z.enum(AGENT_RUN_QUESTION_KINDS).optional(),
     /** With `waiting`, instead of a question: the plan, for a person to approve or answer. */
     plan: z.string().trim().min(1).max(50_000).optional(),
     /** Opaque: handed back on the next pickup so the runner can continue the agent's session. */

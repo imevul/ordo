@@ -1,4 +1,13 @@
 import {
+  AGENT_RUN_FAILURE_REASONS,
+  AGENT_RUN_FILTERS,
+  AGENT_RUN_STATUSES,
+  AGENT_RUN_TRIGGERS,
+  AGENT_RUN_WAIT_REASONS,
+  type AgentRunFailureReason,
+  type AgentRunStatus,
+  type AgentRunTrigger,
+  type AgentRunWaitReason,
   type CustomField,
   DATE_RANGES,
   type DateFilter,
@@ -51,6 +60,15 @@ interface FilterDef {
   numeric?: boolean;
 }
 
+const waitingOnLabel = (v: string) =>
+  v === 'person'
+    ? t('agents.waitReason.person')
+    : t(`agents.waitReason.${v as AgentRunWaitReason}`);
+const runStatusLabel = (v: string) => t(`issues.filter.agentRun.status.${v as AgentRunStatus}`);
+const failureLabel = (v: string) =>
+  t(`issues.filter.agentRun.failure.${v as AgentRunFailureReason}`);
+const triggerLabel = (v: string) => t(`issues.filter.agentRun.trigger.${v as AgentRunTrigger}`);
+
 const memberOptions = (ws: WorkspaceData, none: string | null): Option[] => [
   {
     value: 'me',
@@ -73,7 +91,14 @@ const FLAG_LABELS: Record<FlagKey, [MessageKey, MessageKey]> = {
   hasPullRequest: ['issues.filter.flag.hasPullRequest', 'issues.filter.notFlag.hasPullRequest'],
   hasSubIssues: ['issues.filter.flag.hasSubIssues', 'issues.filter.notFlag.hasSubIssues'],
   isSubIssue: ['issues.filter.flag.isSubIssue', 'issues.filter.notFlag.isSubIssue'],
+  agentRunWaiting: ['issues.filter.flag.agentRunWaiting', 'issues.filter.notFlag.agentRunWaiting'],
+  hasAgentRun: ['issues.filter.flag.hasAgentRun', 'issues.filter.notFlag.hasAgentRun'],
 };
+
+/** Filters that say nothing in a workspace without agents, so the menu leaves them out. */
+const RUN_KEYS: ReadonlySet<ConditionKey> = new Set([...AGENT_RUN_FILTERS, 'hasAgentRun']);
+
+const isAgent = (ws: WorkspaceData, id: string) => ws.memberById.get(id)?.kind === 'agent';
 
 const BUILTIN: (Omit<FilterDef, 'label'> & { label: MessageKey })[] = [
   {
@@ -153,10 +178,50 @@ const BUILTIN: (Omit<FilterDef, 'label'> & { label: MessageKey })[] = [
   { key: 'updatedAt', label: 'issues.filter.updated' },
   { key: 'completedAt', label: 'issues.filter.completed' },
   { key: 'estimate', label: 'common.estimate' },
-  ...(Object.keys(FLAG_LABELS) as FlagKey[]).map((key) => ({
-    key,
-    label: FLAG_LABELS[key][0],
-  })),
+  ...(Object.keys(FLAG_LABELS) as FlagKey[])
+    .filter((key) => !RUN_KEYS.has(key))
+    .map((key) => ({ key, label: FLAG_LABELS[key][0] })),
+  { key: 'agentRunWaiting', label: FLAG_LABELS.agentRunWaiting[0] },
+  {
+    key: 'agentRunWaitingOn',
+    label: 'issues.filter.agentRun.waitingOn',
+    options: () =>
+      ['person', ...AGENT_RUN_WAIT_REASONS].map((value) => ({
+        value,
+        label: waitingOnLabel(value),
+      })),
+  },
+  {
+    key: 'agentRunWaitingFor',
+    label: 'issues.filter.agentRun.waitingFor',
+    options: (ws) =>
+      memberOptions(ws, null).filter(
+        (o) => o.value === 'me' || ws.memberById.get(o.value)?.kind === 'human',
+      ),
+  },
+  {
+    key: 'agentRunAgentIds',
+    label: 'issues.filter.agentRun.agent',
+    options: (ws) => memberOptions(ws, null).filter((o) => isAgent(ws, o.value)),
+  },
+  {
+    key: 'agentRunStatuses',
+    label: 'issues.filter.agentRun.statusLabel',
+    options: () => AGENT_RUN_STATUSES.map((value) => ({ value, label: runStatusLabel(value) })),
+  },
+  {
+    key: 'agentRunFailureReasons',
+    label: 'issues.filter.agentRun.failureLabel',
+    options: () =>
+      AGENT_RUN_FAILURE_REASONS.map((value) => ({ value, label: failureLabel(value) })),
+  },
+  {
+    key: 'agentRunTriggers',
+    label: 'issues.filter.agentRun.triggerLabel',
+    options: () => AGENT_RUN_TRIGGERS.map((value) => ({ value, label: triggerLabel(value) })),
+  },
+  { key: 'agentRunAt', label: 'issues.filter.agentRun.lastRun' },
+  { key: 'hasAgentRun', label: FLAG_LABELS.hasAgentRun[0] },
 ];
 
 const DEFS: FilterDef[] = BUILTIN.map((d) => ({ ...d, label: () => t(d.label) }));
@@ -195,7 +260,12 @@ function fieldDef(ws: WorkspaceData, key: FieldKey, teamId?: string): FilterDef 
 
 /** What the "Filter" menu offers: the built-in filters, then custom fields with choices. */
 function filterDefs(ws: WorkspaceData, teamId?: string): FilterDef[] {
-  const builtin = DEFS.filter((d) => (teamId ? d.key !== 'stateTypes' : d.key !== 'stateIds'));
+  const hasAgents = ws.members.some((m) => m.kind === 'agent');
+  const builtin = DEFS.filter(
+    (d) =>
+      (teamId ? d.key !== 'stateTypes' : d.key !== 'stateIds') &&
+      (hasAgents || !RUN_KEYS.has(d.key)),
+  );
   const fields = fieldsInScope(ws.customFields, teamId)
     .filter(hasChoices)
     .map((f) => fieldDef(ws, fieldKey(f.id), teamId));
@@ -234,6 +304,17 @@ function listLabel(ws: WorkspaceData, key: ListKey, v: string): string {
       const c = ws.cycleById.get(v);
       return c ? cycleName(c) : '?';
     }
+    case 'agentRunWaitingOn':
+      return waitingOnLabel(v);
+    case 'agentRunWaitingFor':
+    case 'agentRunAgentIds':
+      return v === 'me' ? t('issues.filter.me') : (ws.memberById.get(v)?.name ?? '?');
+    case 'agentRunStatuses':
+      return runStatusLabel(v);
+    case 'agentRunFailureReasons':
+      return failureLabel(v);
+    case 'agentRunTriggers':
+      return triggerLabel(v);
   }
 }
 
@@ -327,6 +408,7 @@ function ConditionPicker({
             <DateEditor
               value={conds[key]}
               dueDate={key === 'dueDate'}
+              alwaysSet={key === 'agentRunAt'}
               onChange={(d) => write(setCondition(conds, key, d))}
               onClose={close}
             />
@@ -377,15 +459,20 @@ function ConditionPicker({
 function DateEditor({
   value,
   dueDate,
+  alwaysSet,
   onChange,
   onClose,
 }: {
   value: DateFilter | undefined;
   dueDate: boolean;
+  /** A date every match has, so "not set" could only ever find nothing. */
+  alwaysSet: boolean;
   onChange: (d: DateFilter | undefined) => void;
   onClose: () => void;
 }) {
-  const ranges = DATE_RANGES.filter((r) => dueDate || (r !== 'overdue' && r !== 'next14Days'));
+  const ranges = DATE_RANGES.filter(
+    (r) => (dueDate || (r !== 'overdue' && r !== 'next14Days')) && (!alwaysSet || r !== 'none'),
+  );
   const set = (patch: Partial<DateFilter>) => {
     const next = { ...value, ...patch };
     for (const k of ['range', 'from', 'to'] as const) if (!next[k]) delete next[k];
@@ -588,7 +675,13 @@ function Chip({
     const d = own[condKey];
     label = dateLabel(d ?? {});
     editor = (close) => (
-      <DateEditor value={d} dueDate={condKey === 'dueDate'} onChange={put} onClose={close} />
+      <DateEditor
+        value={d}
+        dueDate={condKey === 'dueDate'}
+        alwaysSet={condKey === 'agentRunAt'}
+        onChange={put}
+        onClose={close}
+      />
     );
   } else {
     label = estimateLabel(own.estimate ?? {});

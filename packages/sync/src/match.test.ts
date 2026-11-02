@@ -46,6 +46,11 @@ describe('matchIssue', () => {
     expect(
       matchesLocally({ or: [{ labelIds: ['l1'] }, { exclude: { hasPullRequest: true } }] }),
     ).toBe(false);
+    expect(matchesLocally({ agentRunWaiting: true })).toBe(false);
+    expect(matchesLocally({ hasAgentRun: false })).toBe(false);
+    expect(
+      matchesLocally({ labelIds: ['l1'], or: [{ exclude: { agentRunWaitingOn: ['question'] } }] }),
+    ).toBe(false);
     expect(matchesLocally({ dueDate: { range: 'overdue' }, hasSubIssues: true })).toBe(true);
   });
 

@@ -313,6 +313,14 @@ from the bytes — are served inline; everything else downloads as `application/
 | `estimate`                                             | `{ none?, min?, max? }`                                                  | see below                                         |
 | `blocked`, `blocking`                                  | boolean                                                                  | open, and blocked by (or blocking) an open issue  |
 | `hasPullRequest`, `hasSubIssues`, `isSubIssue`         | boolean                                                                  | `false` asks for the opposite                     |
+| `hasAgentRun`                                          | boolean                                                                  | an agent has run on the issue at all              |
+| `agentRunAgentIds`                                     | uuid[]                                                                   | see below, as are the next six                    |
+| `agentRunStatuses`                                     | run statuses[]                                                           |                                                   |
+| `agentRunFailureReasons`, `agentRunTriggers`           | failure reasons[], triggers[]                                            |                                                   |
+| `agentRunAt`                                           | `{ range?, from?, to? }`                                                 | when the run last did something                   |
+| `agentRunWaiting`                                      | boolean                                                                  | the run is waiting on anything                    |
+| `agentRunWaitingOn`                                    | (reason \| `"person"`)[]                                                 | what it's waiting on                              |
+| `agentRunWaitingFor`                                   | (uuid \| `"me"`)[]                                                       | who it needs                                      |
 | `exclude`                                              | conditions                                                               | each condition in it must _not_ hold ("is not")   |
 | `or`                                                   | conditions[]                                                             | at least one group must match                     |
 | `tz`, `weekStartsOn`                                   | IANA zone, `0` \| `1`                                                    | where "today" is for relative dates (UTC, Monday) |
@@ -323,6 +331,14 @@ inclusive; with a `range` too, both must hold. Timestamps count on the day they 
 
 **Estimate.** `{ "none": true }` has no estimate, `{}` any estimate, `{ "min": 3 }` / `{ "max": 2 }` bounds it;
 `{ "none": true, "max": 2 }` is "no estimate, or at most 2".
+
+**Agent runs.** The `agentRun…` fields look at each agent's newest run on the issue, so a failed run that was
+restarted stops counting as failed. Conditions in one set describe the same run:
+`{"agentRunAgentIds":["<claude>"],"agentRunStatuses":["failed"]}` is "Claude's newest run failed", and the same with
+the status in `exclude` is "Claude's newest run didn't fail". With no positive run condition, each one in `exclude`
+has to hold for every agent's newest run. `agentRunWaitingOn` takes a [wait reason](agents.md#what-a-run-is-waiting-on)
+or `person`, any reason a person has to act on. `agentRunWaitingFor` is the person the run mentions when it asks, and
+only matches those reasons. These filters always ask the server.
 
 **Groups.** _Conditions_ are the fields from `stateIds` down (not `teamId`, `parentId`, `q` and the rest), plus
 `exclude` and `or` themselves, nested up to 4 deep. Each condition in `exclude` is negated on its own, and an issue
@@ -618,7 +634,7 @@ Agents are members a runner works for; see [agents.md](agents.md) for the idea a
 | GET            | `/agent/me`                                                      | _Agent key._ The agent and its teams, and `pausedUntil` / `pauseReason` while it's paused                                                                                                               |
 | POST           | `/agent/claim?wait=30&runner=…`                                  | _Agent key._ `{ instructions? }` → the next run as an `AgentRunContext`, or `204` after `wait` seconds (≤ 60)                                                                                           |
 | POST           | `/agent/runs/:id/heartbeat`                                      | _Agent key._ Extend the lease → `{ cancelled, status }`                                                                                                                                                 |
-| PATCH          | `/agent/runs/:id`                                                | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, plan?, resume?, sessionUrl?, summary?, error?, failureReason?, usage? }`                                                 |
+| PATCH          | `/agent/runs/:id`                                                | _Agent key._ `{ status?: running \| waiting \| succeeded \| failed, question?, questionKind?, plan?, resume?, sessionUrl?, summary?, error?, failureReason?, usage? }`                                  |
 | POST           | `/agent/runs/:id/output`                                         | _Agent key._ `{ lines }` (≤ 1,000) printed since the last call → `{ accepted }` (false once the run isn't claimed or running); 120 a minute per run                                                     |
 | GET            | `/repositories`                                                  | The workspace's repositories (also in the bootstrap)                                                                                                                                                    |
 | POST           | `/repositories`                                                  | _Admin._ `{ name, url, defaultBranch?, integrationId?, externalRepo?, maxConcurrentRuns? }`                                                                                                             |
@@ -635,7 +651,7 @@ that way has `waitingForRepository: { id, name }` (otherwise `null`).
 A run's `trigger` is `assigned`, `mention`, `rerun`, `pull_request` or `scheduled` (a recurring issue); for `pull_request`, `triggerDetail` is
 `{ event: "ready_for_review" | "checks_failed" | "changes_requested", repo, number, url, branch }`.
 
-A failed run has a `failureReason`: `usage_limit`, `timeout`, `runner_lost`, `checkout` or `error`. A runner may send
+A failed run has a `failureReason`: `usage_limit`, `timeout`, `runner_lost`, `checkout`, `permission` or `error`. A runner may send
 `timeout` or `checkout` with its report; otherwise Ordo reads the error. On `usage_limit` the agent is paused until
 the limit resets and the run gets a `retryAt`, when it restarts by itself (not after three limits in a row). A
 restart has `retryOfId`, the run it restarts; `dismissedAt` is set on dismissed runs. See

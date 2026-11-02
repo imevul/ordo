@@ -17,10 +17,23 @@ const LIMIT_PATTERNS = [
   /\bquota (?:exceeded|exhausted)\b/i,
 ];
 
-/** `usage_limit` when the text says the agent's account ran out, else null. */
+// Only phrases that can't mean much else: a wrong `permission` is worse than a plain `error`.
+const PERMISSION_PATTERNS = [
+  /\bpermission denied\b/i,
+  /\baccess denied\b/i,
+  /\binsufficient permissions?\b/i,
+  // Claude Code in print mode: "Claude requested permissions to use Bash, but you haven't granted it"
+  /\brequested permissions? to\b/i,
+];
+
+/**
+ * `usage_limit` when the text says the agent's account ran out, `permission` when it says the
+ * agent wasn't allowed to do something, else null.
+ */
 export function classifyFailure(text: string | null | undefined): AgentRunFailureReason | null {
   if (!text) return null;
-  return LIMIT_PATTERNS.some((re) => re.test(text)) ? 'usage_limit' : null;
+  if (LIMIT_PATTERNS.some((re) => re.test(text))) return 'usage_limit';
+  return PERMISSION_PATTERNS.some((re) => re.test(text)) ? 'permission' : null;
 }
 
 /** When a usage limit isn't said to reset at any particular time: try again in an hour. */

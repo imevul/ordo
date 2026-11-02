@@ -187,11 +187,12 @@ Every issue screen (team issues, my issues, project and cycle issues, views) wor
 
 - **Filter** narrows by status, priority, assignee, creator, labels, project, milestone, cycle, due/created/updated/
   completed date (Overdue, Today, This week, Last 7 or 30 days, Next 2 weeks, or a range of days), estimate,
-  whether an issue is blocked, blocks another, has a pull request, has sub-issues or is a sub-issue, and
-  [custom fields](#custom-fields) with choices (select, multi-select, person). Filters combine with AND; values within
+  whether an issue is blocked, blocks another, has a pull request, has sub-issues or is a sub-issue,
+  [custom fields](#custom-fields) with choices (select, multi-select, person), and in a workspace with agents,
+  [what its agent run is doing or waiting on](agents.md#what-a-run-is-waiting-on). Filters combine with AND; values within
   one filter combine with OR. Click **is** on a filter to turn it into **is not**. **Add an "or" group** starts a group
   of filters; an issue has to match one of the groups, e.g. "has a pull request" _or_ "estimate ≥ 5". Blocked,
-  blocking and pull request filters always ask the server, even with an offline copy.
+  blocking, pull request and agent run filters always ask the server, even with an offline copy.
 - **Display** sets grouping, ordering and whether to show completed issues, sub-issues and empty groups.
 - The **list / board** toggle (or `V`) switches layouts. On the board, drag cards between columns to change the
   grouped property, and within a column to reorder (when ordering is _Manual_).

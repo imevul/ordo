@@ -16,6 +16,7 @@ import {
   type AgentRunFailureReason,
   type AgentRunOutput,
   type AgentRunPullRequest,
+  type AgentRunQuestionKind,
   type AgentRunTrigger,
   type AgentRunUsageReport,
   type AgentRunWithIssue,
@@ -79,6 +80,7 @@ import { randomToken, sha256 } from '../lib/crypto.ts';
 import { badRequest, conflict, forbidden, notFound, one } from '../lib/errors.ts';
 import { runInWorkspace } from '../lib/mutate.ts';
 import { type Access, teamScope } from './access.ts';
+import { blockedNow, heldByCycle, inFullRepository, notSuperseded } from './agentRunWaits.ts';
 import { auditCtx } from './audit.ts';
 import { forEachIsolated } from './automation.ts';
 import { createComment } from './comments.ts';
@@ -422,6 +424,7 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
       }
     : null,
   question: r.question,
+  questionKind: r.questionKind,
   plan: r.plan,
   planApprovedAt: r.planApprovedAt,
   planApprovedById: r.planApprovedById,
@@ -639,8 +642,13 @@ export async function onComment(
  * asked for the run (else the issue's creator), and the run waits, holding no lease and taking
  * no concurrency, until a person comments.
  */
-export async function askQuestion(ctx: Ctx, runId: string, question: string): Promise<AgentRun> {
-  const saved = await pause(ctx, runId, { question }, question);
+export async function askQuestion(
+  ctx: Ctx,
+  runId: string,
+  question: string,
+  kind: AgentRunQuestionKind = 'decision',
+): Promise<AgentRun> {
+  const saved = await pause(ctx, runId, { question, questionKind: kind }, question);
   await logRun(ctx, runId, 'asked', { question });
   return saved;
 }
@@ -654,7 +662,7 @@ export async function proposePlan(ctx: Ctx, runId: string, plan: string): Promis
   const saved = await pause(
     ctx,
     runId,
-    { plan, question: null, planApprovedAt: null, planApprovedById: null },
+    { plan, question: null, questionKind: null, planApprovedAt: null, planApprovedById: null },
     `**Plan for approval**\n\n${plan}\n\n_Approve it on the agent run of this issue, or reply with changes._`,
   );
   await logRun(ctx, runId, 'planned', { plan });
@@ -753,41 +761,6 @@ async function humanUsername(ctx: Ctx, ...ids: (string | null)[]) {
 }
 
 /** A run of an issue `ctx` can read. */
-/**
- * True while an open issue (not done, cancelled or trashed) blocks the run's issue. Correlated on
- * "agent_runs" by name, as the selects it goes in leave their columns unqualified.
- */
-const blockedNow = sql`exists (
-  select 1 from issue_relations r
-  join issues b on b.id = r.issue_id
-  join workflow_states s on s.id = b.state_id
-  where r.related_issue_id = "agent_runs"."issue_id" and r.type = 'blocks'
-    and b.deleted_at is null and s.type not in ('completed', 'canceled')
-)`;
-
-/**
- * True while this run is held for its issue's cycle, one of `held` (see `heldCycles`). Only work
- * that hasn't begun waits for its cycle: an issue already started carries on through hand-offs and
- * lapsed leases, and a mention, Run again or a pull request asks for the agent now.
- */
-function heldByCycle(held: Iterable<string>): SQL {
-  const ids = [...held];
-  if (!ids.length) return sql`false`;
-  return sql`("agent_runs"."status" = 'queued'
-    and not "agent_runs"."ignore_blockers"
-    and "agent_runs"."trigger" in ('assigned', 'scheduled')
-    and exists (select 1 from agents a where a.user_id = "agent_runs"."agent_id" and a.wait_for_cycle)
-    and exists (
-      select 1 from issues i join workflow_states s on s.id = i.state_id
-      where i.id = "agent_runs"."issue_id"
-        and s.type in ('triage', 'backlog', 'unstarted')
-        and i.cycle_id in (${sql.join(
-          ids.map((id) => sql`${id}`),
-          sql`, `,
-        )})
-    ))`;
-}
-
 /** Adds `waitingForCycle` to the runs held for their issue's cycle. */
 async function withCycleHolds<T extends AgentRun>(
   db: DbOrTx,
@@ -1030,9 +1003,6 @@ async function limitFailures(db: DbOrTx, where: ReturnType<typeof eq>) {
     .orderBy(asc(agentRuns.createdAt))
     .limit(200);
 }
-
-/** No newer run of the same agent on the same issue: nobody restarted or re-ran it since. */
-const notSuperseded = sql`not exists (select 1 from agent_runs later where later.issue_id = "agent_runs"."issue_id" and later.agent_id = "agent_runs"."agent_id" and later.created_at > "agent_runs"."created_at")`;
 
 /**
  * Every minute: runs that failed on a usage limit restart once their reset time has passed and
@@ -1348,12 +1318,7 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
         agent.waitForBlockers ? or(eq(agentRuns.ignoreBlockers, true), not(blockedNow)) : undefined,
         // Work planned for a cycle that isn't open yet waits for it, unless told to run anyway.
         not(heldByCycle(held.keys())),
-        full.length
-          ? sql`not exists (select 1 from (${issueRepositoryIds(sql`"agent_runs"."issue_id"`)}) repo where repo.repository_id in (${sql.join(
-              full.map((r) => sql`${r.id}`),
-              sql`, `,
-            )}))`
-          : undefined,
+        not(inFullRepository(full.map((r) => r.id))),
       ),
     )
     .orderBy(asc(agentRuns.createdAt))
@@ -1463,7 +1428,15 @@ export async function reportProgress(
   if (run.status === 'claimed') await logRun(ctx, runId, 'started');
   await logRun(ctx, runId, 'progress', { step: input.step, percent: input.percent ?? null });
   const teamId = await teamOfIssue(ctx.tx, run.issueId);
-  emit(ctx, { kind: 'agentRun', action: 'updated', id: run.id, issueId: run.issueId, teamId });
+  emit(ctx, {
+    kind: 'agentRun',
+    action: 'updated',
+    id: run.id,
+    issueId: run.issueId,
+    teamId,
+    // The first note also moves a claimed run to running, which a filter on status can see.
+    ...(run.status === 'running' && { progressOnly: true }),
+  });
   return toAgentRun(saved!);
 }
 
@@ -1549,6 +1522,7 @@ export async function reportRun(
     error?: string | null;
     failureReason?: AgentRunFailureReason;
     question?: string;
+    questionKind?: AgentRunQuestionKind;
     plan?: string;
     resume?: string | null;
     usage?: AgentRunUsageReport;
@@ -1592,7 +1566,7 @@ export async function reportRun(
         .returning();
     const paused = input.plan
       ? await proposePlan(ctx, runId, input.plan)
-      : await askQuestion(ctx, runId, input.question!);
+      : await askQuestion(ctx, runId, input.question!, input.questionKind);
     if (used) await afterUsage(ctx, run, { emitted: true });
     return paused;
   }
@@ -2276,7 +2250,7 @@ export function renderPrompt(
       `## You asked\n${c.run.question}\n\nThe answer is in the comments after your question. Continue from there.`,
     );
   out.push(
-    `## Reporting\nIf you need an answer before you can continue, ask it with the \`ask_question\` tool of the Ordo MCP server or \`ordo agent ask "<question>"\`, then stop: the run pauses, and it resumes when someone replies. At each new step of the work, say what you are doing with the \`report_progress\` tool (a few words, and a rough percentage if you can tell); people watching the run see the latest one. When you are done, end with a short summary of what you did and anything a reviewer should check; it is posted on the issue.`,
+    `## Reporting\nIf you need an answer before you can continue, ask it with the \`ask_question\` tool of the Ordo MCP server or \`ordo agent ask "<question>"\`, then stop: the run pauses, and it resumes when someone replies. If missing access, a credential or a tool you may not use stopped you, say what you need the same way with kind \`permission\` (\`ordo agent ask --permission\`), so people can find it. At each new step of the work, say what you are doing with the \`report_progress\` tool (a few words, and a rough percentage if you can tell); people watching the run see the latest one. When you are done, end with a short summary of what you did and anything a reviewer should check; it is posted on the issue.`,
   );
   return out.join('\n\n');
 }

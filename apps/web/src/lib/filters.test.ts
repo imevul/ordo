@@ -76,6 +76,9 @@ describe('filter editing', () => {
   it('adds the clock only for relative dates', () => {
     const plain = { dueDate: { from: '2026-01-01' } };
     expect(withClock(plain, 'Europe/Oslo', 0)).toBe(plain);
+    expect(withClock({ agentRunAt: { range: 'last7Days' } }, 'Europe/Oslo', 0)).toMatchObject({
+      tz: 'Europe/Oslo',
+    });
     expect(withClock({ or: [{ createdAt: { range: 'today' } }] }, 'Europe/Oslo', 0)).toMatchObject({
       tz: 'Europe/Oslo',
       weekStartsOn: 0,

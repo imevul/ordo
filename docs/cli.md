@@ -28,29 +28,29 @@ In a checkout of the Ordo repository, `pnpm ordo <command>` runs the CLI from so
 
 ### Commands
 
-| Command                          | What it does                                                                                                   |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| `ordo login [url]`               | Save the instance's address and a personal API key (asks for what's missing; `--token <key>` skips the prompt) |
-| `ordo logout`                    | Delete the saved login                                                                                         |
-| `ordo whoami`                    | Who the key belongs to                                                                                         |
-| `ordo workspaces`                | Your workspaces; `*` marks the default                                                                         |
-| `ordo use <slug>`                | Make a workspace the default                                                                                   |
-| `ordo teams`                     | Teams with their keys and statuses                                                                             |
-| `ordo issues`                    | Open issues, most urgent first (same as `ordo issue list`)                                                     |
-| `ordo issue view <id>`           | One issue in full; `--comments` adds them, `--web` opens it in the browser                                     |
-| `ordo issue create [title]`      | File an issue                                                                                                  |
-| `ordo issue edit <id>`           | Change fields                                                                                                  |
-| `ordo issue comment <id> [text]` | Comment; `--body-file <path>`, or `-` to read stdin; `--attach <file>` adds files (images show inline)         |
-| `ordo issue attach <id> <file…>` | Upload files to the issue and print the Markdown that shows them, for a comment, description or summary        |
-| `ordo issue start <id>`          | Move to the team's first started status, assign it to you if nobody has it, and print the git branch name      |
-| `ordo issue close <id>`          | Move to the first completed status (`--canceled` for the canceled one)                                         |
-| `ordo issue branch <id>`         | Print the git branch name (the workspace's branch format)                                                      |
-| `ordo search <words>`            | Issues and projects                                                                                            |
-| `ordo api <method> <path>`       | Call any [REST endpoint](api.md); path relative to `/api`; `--data <json \| @file \| ->`                       |
-| `ordo agent run …`               | Work on an agent's runs: launch a command of yours for each one (see [agents](agents.md))                      |
-| `ordo agent check --file <yaml>` | Validate a runner file and its keys without claiming anything                                                  |
-| `ordo agent ask <question>`      | Inside a run: ask a person and pause the run until they reply (`-` reads stdin)                                |
-| `ordo agent plan <plan>`         | Inside a run: post a plan and pause the run until someone approves it or replies (`-` reads stdin)             |
+| Command                          | What it does                                                                                                          |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `ordo login [url]`               | Save the instance's address and a personal API key (asks for what's missing; `--token <key>` skips the prompt)        |
+| `ordo logout`                    | Delete the saved login                                                                                                |
+| `ordo whoami`                    | Who the key belongs to                                                                                                |
+| `ordo workspaces`                | Your workspaces; `*` marks the default                                                                                |
+| `ordo use <slug>`                | Make a workspace the default                                                                                          |
+| `ordo teams`                     | Teams with their keys and statuses                                                                                    |
+| `ordo issues`                    | Open issues, most urgent first (same as `ordo issue list`)                                                            |
+| `ordo issue view <id>`           | One issue in full; `--comments` adds them, `--web` opens it in the browser                                            |
+| `ordo issue create [title]`      | File an issue                                                                                                         |
+| `ordo issue edit <id>`           | Change fields                                                                                                         |
+| `ordo issue comment <id> [text]` | Comment; `--body-file <path>`, or `-` to read stdin; `--attach <file>` adds files (images show inline)                |
+| `ordo issue attach <id> <file…>` | Upload files to the issue and print the Markdown that shows them, for a comment, description or summary               |
+| `ordo issue start <id>`          | Move to the team's first started status, assign it to you if nobody has it, and print the git branch name             |
+| `ordo issue close <id>`          | Move to the first completed status (`--canceled` for the canceled one)                                                |
+| `ordo issue branch <id>`         | Print the git branch name (the workspace's branch format)                                                             |
+| `ordo search <words>`            | Issues and projects                                                                                                   |
+| `ordo api <method> <path>`       | Call any [REST endpoint](api.md); path relative to `/api`; `--data <json \| @file \| ->`                              |
+| `ordo agent run …`               | Work on an agent's runs: launch a command of yours for each one (see [agents](agents.md))                             |
+| `ordo agent check --file <yaml>` | Validate a runner file and its keys without claiming anything                                                         |
+| `ordo agent ask <question>`      | Inside a run: ask a person and pause the run until they reply (`-` reads stdin; `--permission` if access stopped you) |
+| `ordo agent plan <plan>`         | Inside a run: post a plan and pause the run until someone approves it or replies (`-` reads stdin)                    |
 
 Every command takes `-w, --workspace <slug>`, `--json` (machine-readable output, the API's own shapes) and
 `-h, --help`. `ordo <command> --help` (or `ordo help <command>`) prints that command's usage and options, e.g.

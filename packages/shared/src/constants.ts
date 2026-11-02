@@ -395,16 +395,47 @@ export const AGENT_RUN_OPEN: readonly AgentRunStatus[] = [
 /**
  * Why a run failed, as far as Ordo can tell. usage_limit: the agent's account hit a usage or spend
  * limit (the agent pauses and the run restarts when the limit resets). runner_lost: its runner
- * stopped responding on the last attempt. error: anything else, usually a non-zero exit.
+ * stopped responding on the last attempt. permission: it lacked access, a credential or approval
+ * for a tool. error: anything else, usually a non-zero exit.
  */
 export const AGENT_RUN_FAILURE_REASONS = [
   'usage_limit',
   'timeout',
   'runner_lost',
   'checkout',
+  'permission',
   'error',
 ] as const;
 export type AgentRunFailureReason = (typeof AGENT_RUN_FAILURE_REASONS)[number];
+/**
+ * What an agent's question is about. decision: it needs an answer. permission: it's stopped by
+ * missing access, a credential or a tool it may not use.
+ */
+export const AGENT_RUN_QUESTION_KINDS = ['decision', 'permission'] as const;
+export type AgentRunQuestionKind = (typeof AGENT_RUN_QUESTION_KINDS)[number];
+/**
+ * What an unfinished run is waiting on, so "why isn't this moving?" always has an answer. Every
+ * queued run has at least one; `runner` means nothing holds it and no runner has picked it up.
+ * agent_busy: its agent is at its concurrency, or already working on this issue. limit_reset: it
+ * failed on a usage limit and restarts by itself.
+ */
+export const AGENT_RUN_WAIT_REASONS = [
+  'question',
+  'plan',
+  'permission',
+  'failure',
+  'blocker',
+  'cycle',
+  'limit_reset',
+  'agent_paused',
+  'runs_paused',
+  'repository',
+  'agent_busy',
+  'runner',
+] as const;
+export type AgentRunWaitReason = (typeof AGENT_RUN_WAIT_REASONS)[number];
+/** The wait reasons a person has to act on; the others resolve by themselves or are an admin's. */
+export const AGENT_RUN_PERSON_REASONS = ['question', 'plan', 'permission', 'failure'] as const;
 /**
  * Why an agent's claims are on hold: its runner hit a usage limit, or it spent its monthly budget
  * (it's paused until the next month starts, in UTC).
