@@ -4,12 +4,15 @@ import {
   ISSUE_IDENTIFIER_PATTERN,
   type Issue,
   type IssueDisplay,
+  type IssueFilter,
   type OrderBy,
   prioritySortKey,
   STATE_TYPES,
   type StateType,
   type UpdateIssueInput,
 } from '@ordo/shared';
+import { matchesLocally } from '@ordo/sync';
+import { ApiError } from '../api/client.ts';
 import { t } from '../i18n/index.ts';
 import { priorityLabel, stateTypeLabel } from '../i18n/labels.ts';
 import { groupingField } from './customFields.ts';
@@ -31,6 +34,12 @@ const DONE_TYPES: StateType[] = ['completed', 'canceled'];
 
 export const isDone = (ws: WorkspaceData, issue: Issue) =>
   DONE_TYPES.includes(ws.stateById.get(issue.stateId)?.type ?? 'backlog');
+
+/** What to say when an issue list didn't load. Without a connection, a copy can't help some filters. */
+export function issueLoadError(error: Error, filter: IssueFilter): string {
+  const unreachable = error instanceof ApiError && error.code === 'network';
+  return unreachable && !matchesLocally(filter) ? t('issues.view.needsConnection') : error.message;
+}
 
 /**
  * The identifier an issue page opened as `asked` should show in its URL instead, if any: the

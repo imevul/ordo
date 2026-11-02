@@ -22,7 +22,13 @@ import {
 } from '../api/queries.ts';
 import { t, tx } from '../i18n/index.ts';
 import { useHotkey } from '../lib/hotkeys.ts';
-import { groupIssues, type IssueGroup, patchForGroup, visibleIssues } from '../lib/issues.ts';
+import {
+  groupIssues,
+  type IssueGroup,
+  issueLoadError,
+  patchForGroup,
+  visibleIssues,
+} from '../lib/issues.ts';
 import { readPref, ui, writePref } from '../lib/store.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 import { DisplayOptions, LayoutToggle } from './DisplayOptions.tsx';
@@ -53,6 +59,29 @@ interface Props {
   aside?: ReactNode;
   emptyTitle?: string;
   emptyBody?: ReactNode;
+}
+
+/** Stands in for a list that didn't load, so that it can't be read as an empty answer. */
+export function IssuesLoadError({
+  error,
+  filter,
+  onRetry,
+}: {
+  error: Error;
+  filter: IssueFilter;
+  onRetry: () => void;
+}) {
+  return (
+    <EmptyState
+      title={t('issues.view.loadFailed')}
+      body={issueLoadError(error, filter)}
+      action={
+        <button type="button" className="btn btn-ghost" onClick={onRetry}>
+          {t('common.retry')}
+        </button>
+      }
+    />
+  );
 }
 
 export function IssuesView(props: Props) {
@@ -86,7 +115,7 @@ export function IssuesView(props: Props) {
   }, [userFilter, storageKey, view]);
 
   const filter = useMemo(() => ({ ...userFilter, ...baseFilter }), [userFilter, baseFilter]);
-  const { data, isLoading } = useIssues(ws.slug, filter);
+  const { data, isLoading, error, refetch } = useIssues(ws.slug, filter);
   const issues = useMemo(() => visibleIssues(ws, data ?? [], display), [ws, data, display]);
   const groups = useMemo(
     () => groupIssues(ws, issues, display, teamId),
@@ -294,8 +323,18 @@ export function IssuesView(props: Props) {
 
       <div className="relative flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
+          {error && issues.length > 0 && (
+            <p
+              role="status"
+              className="flex-none border-b border-border-soft px-4 py-1.5 font-mono text-[11px] text-index"
+            >
+              {t('issues.view.staleList')}
+            </p>
+          )}
           {isLoading && !data ? (
             <Spinner label={t('issues.view.loading')} />
+          ) : error && issues.length === 0 ? (
+            <IssuesLoadError error={error} filter={filter} onRetry={() => refetch()} />
           ) : issues.length === 0 ? (
             <EmptyState
               title={props.emptyTitle ?? t('issues.view.emptyTitle')}
