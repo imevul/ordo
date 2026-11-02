@@ -67,20 +67,23 @@ afterAll(() => app.close());
 
 describe('one failure does not stop the rest', () => {
   it('cycle automation handles each team on its own', async () => {
+    // A Wednesday. On a start day the cycle starting today doesn't count as upcoming, so one more
+    // is planned and each team gets two.
+    const at = new Date('2026-11-04T12:00:00Z');
     for (const team of [eng, ops])
       await owner.patch(`${ws}/teams/${team.id}`, {
         cycleAutomation: { enabled: true, weeks: 2, startDay: 1, upcoming: 1 },
       });
     const undo = await failWhen('cycles', 'insert', `new.team_id = '${eng.id}'`);
     try {
-      await expect(automateCycles(app)).resolves.toBeUndefined();
+      await expect(automateCycles(app, at)).resolves.toBeUndefined();
     } finally {
       await undo();
     }
     expect(await teamCycles(eng)).toHaveLength(0);
     expect(await teamCycles(ops)).toHaveLength(1);
     // The next run catches the failed team up.
-    await automateCycles(app);
+    await automateCycles(app, at);
     expect(await teamCycles(eng)).toHaveLength(1);
   });
 
