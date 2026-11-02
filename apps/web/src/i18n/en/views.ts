@@ -17,6 +17,6 @@ export default {
     delete: 'Delete view',
     deleted: 'View deleted',
     confirmDeleteTitle: 'Delete “{name}”?',
-    confirmDeleteBody: 'Issues are not affected.',
+    confirmDeleteBody: 'Issues and runs are not affected.',
   },
 };

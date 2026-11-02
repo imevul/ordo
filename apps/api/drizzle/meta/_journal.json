@@ -533,6 +533,13 @@
       "when": 1793647090314,
       "tag": "0075_agent_runs_updated_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1793647329089,
+      "tag": "0076_view_kind",
+      "breakpoints": true
     }
   ]
 }

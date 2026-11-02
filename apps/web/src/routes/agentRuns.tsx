@@ -4,10 +4,12 @@ import {
   type AgentRunGroup,
   type AgentUsageTotal,
   agentRunFilterSchema,
+  DEFAULT_ISSUE_DISPLAY,
 } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useSearch } from '@tanstack/react-router';
-import { Pause, Play } from 'lucide-react';
+import { Pause, Play, Save } from 'lucide-react';
+import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys, useWsMutation } from '../api/queries.ts';
 import {
@@ -15,7 +17,9 @@ import {
   AgentRunsList,
   type AgentRunsScope,
 } from '../components/AgentRunsView.tsx';
+import { hasUserFilters } from '../components/FilterBar.tsx';
 import { PageHeader, Sep } from '../components/PageHeader.tsx';
+import { SaveViewModal } from '../components/SaveViewModal.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { getLocale, INTL_TAG, t } from '../i18n/index.ts';
 import { compactCount, longDate, usd } from '../lib/format.ts';
@@ -64,6 +68,9 @@ export function AgentRunsPage() {
         ...(Object.keys(next.filter).length > 0 && { filter: next.filter }),
       },
     });
+  const [saveOpen, setSaveOpen] = useState(false);
+  const canSave =
+    !ws.isGuest && (hasUserFilters(scope.filter) || scope.group !== 'open' || !!scope.teamId);
   const paused = ws.workspace.settings.agentRunsPaused;
   const togglePause = useWsMutation(
     ws.slug,
@@ -102,12 +109,24 @@ export function AgentRunsPage() {
                 onClick={() => togglePause.mutate()}
                 disabled={togglePause.isPending}
                 title={t('agents.runsPage.pauseHint')}
+                aria-label={paused ? t('agents.runsPage.resume') : t('agents.runsPage.pause')}
               >
                 {paused ? <Play size={12} /> : <Pause size={12} />}
-                {paused ? t('agents.runsPage.resume') : t('agents.runsPage.pause')}
+                <span className="hidden sm:inline">
+                  {paused ? t('agents.runsPage.resume') : t('agents.runsPage.pause')}
+                </span>
               </button>
             )}
-            <AgentRunsControls scope={scope} onChange={setScope} />
+            {canSave && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => setSaveOpen(true)}
+              >
+                <Save size={13} />
+                <span className="hidden sm:inline">{t('issues.view.saveView')}</span>
+              </button>
+            )}
           </div>
         }
       />
@@ -120,7 +139,16 @@ export function AgentRunsPage() {
         <PauseBanner key={p.agentId} pause={p} />
       ))}
       <UsageTotals totals={usage} />
+      <AgentRunsControls scope={scope} onChange={setScope} />
       <AgentRunsList scope={scope} onChange={setScope} />
+      <SaveViewModal
+        open={saveOpen}
+        onClose={() => setSaveOpen(false)}
+        kind="agentRuns"
+        filters={scope.filter}
+        display={{ ...DEFAULT_ISSUE_DISPLAY, agentRunGroup: scope.group }}
+        teamId={scope.teamId}
+      />
     </div>
   );
 }

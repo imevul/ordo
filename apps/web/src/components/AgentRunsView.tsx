@@ -47,7 +47,10 @@ export interface AgentRunsScope {
   teamId?: string;
 }
 
-/** Group buttons, team and Filter: what chooses the runs, for a page's header. */
+/**
+ * Group buttons, team and Filter: what chooses the runs. A row of its own, since all of it doesn't
+ * fit a page's header on a phone.
+ */
 export function AgentRunsControls({
   scope,
   onChange,
@@ -57,7 +60,7 @@ export function AgentRunsControls({
 }) {
   const ws = useWorkspace();
   return (
-    <>
+    <div className="flex flex-wrap items-center gap-2 border-b border-border-soft px-4 py-2">
       {ws.teams.length > 1 && (
         <select
           className="input h-8 w-36"
@@ -92,7 +95,7 @@ export function AgentRunsControls({
           </button>
         ))}
       </div>
-    </>
+    </div>
   );
 }
 

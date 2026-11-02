@@ -27,6 +27,7 @@ import type {
   TeamRole,
   UserKind,
   UserStatusKind,
+  ViewKind,
 } from './constants.ts';
 import { DEFAULT_LOCALE, NOTIFICATION_TYPES } from './constants.ts';
 import type { CustomField, CustomFieldValue } from './customFields.ts';
@@ -749,6 +750,8 @@ export interface View {
   id: string;
   name: string;
   description: string | null;
+  /** Absent on views a client cached before kinds existed: those list issues. */
+  kind?: ViewKind;
   ownerId: string | null;
   teamId: string | null;
   shared: boolean;

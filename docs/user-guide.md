@@ -210,6 +210,9 @@ the option. Open one from **Views** in the sidebar; change its filters or displa
 update it. Star views and projects to pin them under _Favorites_. The calendar button on a view gives a URL to
 subscribe to its due dates in a calendar app (see **Calendar** under [Your account](#your-account)).
 
+The [Agent runs](agents.md#what-a-run-is-waiting-on) page saves views the same way: a filter on runs, say "Waiting for
+me". They open as a list of runs, so they don't feed a calendar or a dashboard's view widget.
+
 ## Dashboards
 
 A dashboard pins what you check every day to one page: **Dashboards** in the sidebar (`G` then `D`), then **New

@@ -29,6 +29,7 @@ import {
   TEAM_ROLES,
   USER_STATUSES,
   USERNAME_PATTERN,
+  VIEW_KINDS,
 } from './constants.ts';
 import { CUSTOM_FIELD_TYPES } from './customFields.ts';
 import { canonicalTimeZone, isTimeZone } from './dates.ts';
@@ -823,6 +824,8 @@ export const issueDisplaySchema = z.object({
   showCompleted: z.boolean().default(true),
   showSubIssues: z.boolean().default(true),
   showEmptyGroups: z.boolean().default(false),
+  /** In a view of agent runs: which list it shows. */
+  agentRunGroup: z.enum(AGENT_RUN_GROUPS).optional(),
 });
 export type IssueDisplay = z.infer<typeof issueDisplaySchema>;
 export const DEFAULT_ISSUE_DISPLAY: IssueDisplay = issueDisplaySchema.parse({});
@@ -1076,6 +1079,8 @@ export type UpdateCycleInput = z.infer<typeof updateCycleSchema>;
 export const createViewSchema = z.object({
   name: name,
   description: z.string().max(2000).nullish(),
+  /** What it lists. Fixed once made: what else reads a view depends on it. */
+  kind: z.enum(VIEW_KINDS).default('issues'),
   teamId: id.nullish(),
   shared: z.boolean().default(true),
   filters: issueFilterSchema,
@@ -1085,6 +1090,7 @@ export const createViewSchema = z.object({
 export const updateViewSchema = z.object({
   name: name.optional(),
   description: z.string().max(2000).nullish(),
+  teamId: id.nullish(),
   shared: z.boolean().optional(),
   filters: issueFilterSchema.optional(),
   display: issueDisplaySchema.optional(),

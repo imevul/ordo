@@ -126,7 +126,9 @@ export function CalendarSection() {
   const [viewId, setViewId] = useState('');
   const personal = feeds.find((f) => !f.viewId);
   const viewFeeds = feeds.filter((f) => f.viewId && ws.viewById.has(f.viewId));
-  const unsubscribed = ws.views.filter((v) => !feeds.some((f) => f.viewId === v.id));
+  const unsubscribed = ws.views.filter(
+    (v) => v.kind !== 'agentRuns' && !feeds.some((f) => f.viewId === v.id),
+  );
 
   const make = async (id: string | null) => {
     const url = await create(id);

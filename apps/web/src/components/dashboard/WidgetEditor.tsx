@@ -92,11 +92,12 @@ export function WidgetEditor({
   const agents = ws.members.filter((m) => m.kind === 'agent');
   const chart = (draft.chart as DashboardChart | undefined) ?? 'burnUp';
 
+  const issueViews = ws.views.filter((v) => v.kind !== 'agentRuns');
   // Only new widgets change type: each starts at a size that suits it.
   const switchType = (type: DashboardWidgetType) => {
     const start: Record<DashboardWidgetType, Record<string, unknown>> = {
       count: { filters: {}, w: 1 },
-      view: { viewId: ws.views[0]?.id, w: 2, h: 2 },
+      view: { viewId: issueViews[0]?.id, w: 2, h: 2 },
       chart: { chart: 'burnUp', w: 2 },
       agents: { days: 7, w: 2 },
     };
@@ -178,7 +179,7 @@ export function WidgetEditor({
         )}
 
         {draft.type === 'view' &&
-          (ws.views.length === 0 ? (
+          (issueViews.length === 0 ? (
             <p className="mt-4 text-[13px] text-muted">{t('dashboards.editor.noViews')}</p>
           ) : (
             <div className="flex gap-3">
@@ -189,7 +190,7 @@ export function WidgetEditor({
                     value={(draft.viewId as string | undefined) ?? ''}
                     onChange={(e) => set({ viewId: e.target.value })}
                   >
-                    {ws.views.map((v) => (
+                    {issueViews.map((v) => (
                       <option key={v.id} value={v.id}>
                         {v.name}
                       </option>
@@ -416,7 +417,7 @@ export function WidgetEditor({
           </button>
           <button
             className="btn btn-primary"
-            disabled={draft.type === 'view' && ws.views.length === 0}
+            disabled={draft.type === 'view' && issueViews.length === 0}
           >
             {widget ? t('common.save') : t('dashboards.editor.add')}{' '}
             <span className="arrow">→</span>

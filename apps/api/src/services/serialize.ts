@@ -73,6 +73,7 @@ export const toView = (v: typeof views.$inferSelect): View => ({
   id: v.id,
   name: v.name,
   description: v.description,
+  kind: v.kind,
   ownerId: v.ownerId,
   teamId: v.teamId,
   shared: v.shared,

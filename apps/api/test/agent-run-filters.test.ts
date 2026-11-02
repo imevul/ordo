@@ -641,3 +641,80 @@ describe('the run list', () => {
     expect((res.data as AgentRunWithIssue[]).map((r) => r.id)).toContain(listed.asked);
   });
 });
+
+describe('saved views of runs', () => {
+  const view = (body: Record<string, unknown>, client: Client = owner) =>
+    client.post(`${ws}/views`, { name: 'Waiting', filters: {}, ...body });
+
+  it('default to issues, so API clients keep working', async () => {
+    const res = await view({ name: 'Plain' });
+    expect(res.data.kind).toBe('issues');
+  });
+
+  it('keep what they list, and come back with the workspace', async () => {
+    const res = await view({
+      name: 'Waiting for me',
+      kind: 'agentRuns',
+      filters: { agentRunWaitingFor: ['me'] },
+      display: { agentRunGroup: 'waiting' },
+      teamId: team,
+    });
+    expect(res.statusCode, res.body).toBe(200);
+    expect(res.data).toMatchObject({
+      kind: 'agentRuns',
+      filters: { agentRunWaitingFor: ['me'] },
+      teamId: team,
+    });
+    expect(res.data.display.agentRunGroup).toBe('waiting');
+    const listed = (await owner.get(`${ws}/bootstrap`)).data.views.find(
+      (v: { id: string }) => v.id === res.data.id,
+    );
+    expect(listed.kind).toBe('agentRuns');
+
+    const changed = await owner.patch(`${ws}/views/${res.data.id}`, {
+      filters: { agentRunWaitingOn: ['person'] },
+      teamId: null,
+      display: { agentRunGroup: 'all' },
+    });
+    expect(changed.statusCode, changed.body).toBe(200);
+    expect(changed.data).toMatchObject({ kind: 'agentRuns', teamId: null });
+    expect(changed.data.display.agentRunGroup).toBe('all');
+    // What it lists is fixed: `kind` isn't something an update changes.
+    const again = await owner.patch(`${ws}/views/${res.data.id}`, { kind: 'issues' });
+    expect(again.data.kind).toBe('agentRuns');
+  });
+
+  it('refuse what makes no sense for a run', async () => {
+    for (const filters of [{ q: 'words' }, { trashed: true }, { hasAgentRun: true }]) {
+      const res = await view({ kind: 'agentRuns', filters });
+      expect(res.statusCode, JSON.stringify(filters)).toBe(400);
+    }
+    const made = await view({ kind: 'agentRuns' });
+    const res = await owner.patch(`${ws}/views/${made.data.id}`, { filters: { q: 'words' } });
+    expect(res.statusCode).toBe(400);
+    // Issue views still take them.
+    expect((await view({ filters: { q: 'words' } })).statusCode).toBe(200);
+  });
+
+  it('stay private when asked, and can’t name a team you can’t see', async () => {
+    const mine = await view({ name: 'Just mine', kind: 'agentRuns', shared: false });
+    const others = (await member.get(`${ws}/bootstrap`)).data.views as { id: string }[];
+    expect(others.some((v) => v.id === mine.data.id)).toBe(false);
+    const hidden = (await owner.post(`${ws}/teams`, { name: 'Sealed', key: 'SLD', private: true }))
+      .data.id;
+    const made = await view({ kind: 'agentRuns' }, member);
+    expect(made.statusCode).toBe(200);
+    const moved = await member.patch(`${ws}/views/${made.data.id}`, { teamId: hidden });
+    expect([403, 404]).toContain(moved.statusCode);
+  });
+
+  it('can’t feed a calendar', async () => {
+    const made = await view({ kind: 'agentRuns' });
+    const res = await owner.post(`${ws}/calendar-feeds`, { viewId: made.data.id });
+    expect(res.statusCode).toBe(400);
+    const plain = await view({});
+    expect((await owner.post(`${ws}/calendar-feeds`, { viewId: plain.data.id })).statusCode).toBe(
+      200,
+    );
+  });
+});
