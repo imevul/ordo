@@ -22,6 +22,10 @@ export default {
     loading: 'loading issues',
     emptyTitle: 'nothing here',
     noMatches: 'No issues match these filters.',
+    loadFailed: 'can’t load this list',
+    needsConnection:
+      'This list needs a connection: this device’s copy can’t answer its filters. It loads once you’re back online.',
+    staleList: 'Couldn’t refresh this list, so it may be out of date or incomplete.',
     getStarted: 'Create an issue to get started.',
     saveView: 'Save view',
     viewSaved: 'View saved',

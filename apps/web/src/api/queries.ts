@@ -203,8 +203,9 @@ export function useIssues(slug: string, wanted: IssueFilter, enabled = true) {
     enabled: enabled && !fromCopy,
     placeholderData: (prev) => prev,
   });
-  if (fromCopy) return { data: local.issues, isLoading: !local.issues, error: null };
-  return { data: remote.data, isLoading: remote.isLoading, error: remote.error };
+  const { refetch } = remote;
+  if (fromCopy) return { data: local.issues, isLoading: !local.issues, error: null, refetch };
+  return { data: remote.data, isLoading: remote.isLoading, error: remote.error, refetch };
 }
 
 /** An issue's page from the local copy, while the server's is on its way (or offline). */

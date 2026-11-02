@@ -20,6 +20,10 @@ export default {
     loading: 'laster saker',
     emptyTitle: 'ingenting her',
     noMatches: 'Ingen saker passer med disse filtrene.',
+    loadFailed: 'listen kan ikke lastes',
+    needsConnection:
+      'Listen trenger tilkobling: enhetens kopi kan ikke svare på filtrene. Den lastes når du er tilbake på nett.',
+    staleList: 'Listen kunne ikke oppdateres og kan være utdatert eller ufullstendig.',
     getStarted: 'Opprett en sak for å komme i gang.',
     saveView: 'Lagre visning',
     viewSaved: 'Visningen er lagret',

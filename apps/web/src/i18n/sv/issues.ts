@@ -20,6 +20,10 @@ export default {
     loading: 'laddar ärenden',
     emptyTitle: 'inget här',
     noMatches: 'Inga ärenden matchar filtren.',
+    loadFailed: 'listan går inte att ladda',
+    needsConnection:
+      'Listan behöver en anslutning: enhetens kopia kan inte svara på filtren. Den laddas när du är tillbaka online.',
+    staleList: 'Listan kunde inte uppdateras och kan vara inaktuell eller ofullständig.',
     getStarted: 'Skapa ett ärende för att komma igång.',
     saveView: 'Spara vy',
     viewSaved: 'Vyn sparad',
