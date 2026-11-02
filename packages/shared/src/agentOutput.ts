@@ -2,6 +2,7 @@ import {
   AGENT_OUTPUT_BYTES,
   AGENT_OUTPUT_LINE_CHARS,
   AGENT_OUTPUT_LINES,
+  AGENT_OUTPUT_PICKUP,
   AGENT_OUTPUT_RESULT_LINES,
 } from './constants.ts';
 
@@ -45,15 +46,41 @@ export function appendOutput(kept: string[], lines: string[]): string[] {
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 
-/** The gist of a tool call's input: its command, path, pattern or URL, else its JSON. */
+/** The input that says what a tool call is about, for tools that have one. */
+const GIST_KEYS = [
+  'command',
+  'file_path',
+  'path',
+  'pattern',
+  'url',
+  'query',
+  'description',
+  'step',
+  'question',
+  'plan',
+  'body',
+  'title',
+];
+
+/** Inputs written in Markdown, whose bold and headings are only noise on one line. */
+const MARKDOWN_KEYS = new Set(['question', 'plan', 'body']);
+const plainText = (s: string) => s.replace(/\*\*|(^|\s)#{1,6} /g, '$1');
+
+/**
+ * The gist of a tool call's input: its command, path, pattern or URL, else its other fields as
+ * `issue: ENG-1 · status: Done`, since JSON is hard to read at a glance.
+ */
 function toolGist(input: unknown): string {
   if (!input || typeof input !== 'object') return '';
   const o = input as Record<string, unknown>;
-  for (const key of ['command', 'file_path', 'path', 'pattern', 'url', 'query', 'description']) {
+  for (const key of GIST_KEYS) {
     const v = o[key];
-    if (typeof v === 'string' && v.trim()) return oneLine(v);
+    if (typeof v === 'string' && v.trim())
+      return MARKDOWN_KEYS.has(key) ? plainText(oneLine(v)) : oneLine(v);
   }
-  return oneLine(JSON.stringify(input));
+  return Object.entries(o)
+    .map(([k, v]) => `${k}: ${typeof v === 'string' ? oneLine(v) : JSON.stringify(v)}`)
+    .join(' · ');
 }
 
 /** A tool result's text: Claude Code sends a string, or text blocks among others (images). */
@@ -149,4 +176,57 @@ export function agentSessionId(line: string): string | null {
   } catch {
     return null;
   }
+}
+
+/** One line of a run's output, by what it is, so a page can show each its own way. */
+export type AgentOutputLine =
+  | { kind: 'pickup' }
+  | { kind: 'session' }
+  /** `server` is the MCP server of a tool like `mcp__ordo__add_comment`. */
+  | { kind: 'tool'; tool: string; server: string | null; detail: string }
+  | { kind: 'result'; text: string }
+  | { kind: 'error'; text: string }
+  | { kind: 'text'; text: string };
+
+/** Reads a line back as `describeAgentEvent` wrote it; anything else is plain text. */
+export function parseOutputLine(line: string): AgentOutputLine {
+  if (line === AGENT_OUTPUT_PICKUP) return { kind: 'pickup' };
+  if (line === 'Session started') return { kind: 'session' };
+  if (line.startsWith('✗ ')) return { kind: 'error', text: line.slice(2) };
+  if (line.startsWith('  ')) return { kind: 'result', text: line.slice(2) };
+  const call = /^→ ([^\s:]+)(?:: (.*))?$/.exec(line);
+  if (!call) return { kind: 'text', text: line };
+  const mcp = /^mcp__(.+?)__(.+)$/.exec(call[1]!);
+  let detail = call[2] ?? '';
+  // Lines from before tool calls had a gist: their input as JSON, unless it was cut short.
+  if (detail.startsWith('{')) {
+    try {
+      detail = toolGist(JSON.parse(detail));
+    } catch {}
+  }
+  return {
+    kind: 'tool',
+    tool: mcp ? mcp[2]! : call[1]!,
+    server: mcp ? mcp[1]! : null,
+    detail,
+  };
+}
+
+const BLOCK_LINE = /^\s*(?:[-*+] |\d+[.)] |\||>)/;
+
+/**
+ * What the agent said, as Markdown again. `describeAgentEvent` drops blank lines, so lines become
+ * paragraphs of their own, except where they belong together: list items, tables and code.
+ */
+export function outputMarkdown(lines: string[]): string {
+  let out = '';
+  let fenced = false;
+  lines.forEach((line, i) => {
+    const prev = lines[i - 1];
+    if (prev !== undefined)
+      out += fenced || (BLOCK_LINE.test(prev) && BLOCK_LINE.test(line)) ? '\n' : '\n\n';
+    out += line;
+    if (line.trimStart().startsWith('```')) fenced = !fenced;
+  });
+  return out;
 }

@@ -306,6 +306,8 @@ export default {
       'Nothing printed yet. A command that prints only when it ends stays blank: run Claude Code with --output-format stream-json --verbose.',
     /** A divider in the output, where a later pickup of the same run begins. */
     outputPickup: 'Picked up again',
+    /** A line in the output: the agent's session began. */
+    outputSession: 'Session started',
     outputNone: 'No output: the runner sent none, or it has been deleted.',
     /** Above the lines when older ones were dropped; {shown} and {total} are numbers. */
     outputTail: 'The last {shown} of {total} lines',

@@ -1,16 +1,18 @@
 import {
   AGENT_LEASE_MS,
-  AGENT_OUTPUT_PICKUP,
+  type AgentOutputLine,
   type AgentRun,
   type AgentRunDetail,
   type AgentRunEvent,
   type AgentRunOutput,
   type Comment,
+  outputMarkdown,
+  parseOutputLine,
 } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import { ExternalLink, FastForward, RotateCcw, Square, X } from 'lucide-react';
-import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
+import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
 import {
@@ -278,8 +280,9 @@ function Output({ run }: { run: AgentRunDetail }) {
     // Attempts start over when a run goes back in the queue, and what it printed stays.
     enabled: run.attempts > 0 || !!run.startedAt,
   });
-  const box = useRef<HTMLPreElement>(null);
+  const box = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
+  const blocks = useMemo(() => outputBlocks(data?.lines ?? []), [data]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: scroll again whenever lines arrive
   useLayoutEffect(() => {
     if (box.current && pinned.current) box.current.scrollTop = box.current.scrollHeight;
@@ -310,18 +313,18 @@ function Output({ run }: { run: AgentRunDetail }) {
           )}
           {/* The panel's fill doesn't scroll: the box scrolls inside it (panel-clip). */}
           <div className="panel panel-clip">
-            <pre
+            <div
               ref={box}
               onScroll={(e) => {
                 const el = e.currentTarget;
                 pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
               }}
-              className="panel-body max-h-[28rem] overflow-auto p-3 font-mono text-[11.5px] leading-[1.55] break-words whitespace-pre-wrap"
+              className="panel-body flex max-h-[28rem] flex-col gap-1.5 overflow-auto p-3"
             >
-              {data.lines.map((line, i) => (
-                <OutputLine key={i} line={line} />
+              {blocks.map((block, i) => (
+                <OutputBlock key={i} block={block} />
               ))}
-            </pre>
+            </div>
           </div>
         </>
       )}
@@ -329,16 +332,105 @@ function Output({ run }: { run: AgentRunDetail }) {
   );
 }
 
-/** One line of output: tool calls and text stand out, results sit back, errors say so. */
-function OutputLine({ line }: { line: string }) {
-  if (line === AGENT_OUTPUT_PICKUP)
-    return (
-      <div className="my-2 border-t border-border-soft pt-1 text-index">
-        {t('agents.runPage.outputPickup')}
-      </div>
-    );
-  if (line.startsWith('✗')) return <div style={{ color: RUN_STATUS_COLOR.failed }}>{line}</div>;
-  return <div className={line.startsWith('  ') ? 'text-muted' : undefined}>{line || ' '}</div>;
+type OutputBlockData =
+  | Exclude<AgentOutputLine, { kind: 'text' | 'result' | 'error' }>
+  /** What the agent said (Markdown), or what a plain command printed. */
+  | { kind: 'said' | 'printed'; lines: string[] }
+  | { kind: 'result'; failed: boolean; lines: string[] };
+
+/**
+ * Lines grouped into what reads as one thing. Only an agent's stream has calls or a session start,
+ * so that's when text is what it said; a plain command's output stays as printed.
+ */
+function outputBlocks(lines: string[]): OutputBlockData[] {
+  const parsed = lines.map(parseOutputLine);
+  const agent = parsed.some((l) => l.kind === 'tool' || l.kind === 'session');
+  const blocks: OutputBlockData[] = [];
+  for (const line of parsed) {
+    const last = blocks.at(-1);
+    if (line.kind === 'text') {
+      const kind = agent ? 'said' : 'printed';
+      if (last?.kind === kind) last.lines.push(line.text);
+      else blocks.push({ kind, lines: [line.text] });
+    } else if (line.kind === 'result' || line.kind === 'error') {
+      const failed = line.kind === 'error';
+      if (last?.kind === 'result' && !failed) last.lines.push(line.text);
+      else blocks.push({ kind: 'result', failed, lines: [line.text] });
+    } else blocks.push(line);
+  }
+  return blocks;
+}
+
+function OutputBlock({ block }: { block: OutputBlockData }) {
+  switch (block.kind) {
+    case 'pickup':
+      return (
+        <div className="mt-2 border-t border-border-soft pt-2 font-mono text-[11px] text-index">
+          {t('agents.runPage.outputPickup')}
+        </div>
+      );
+    case 'session':
+      return (
+        <div className="font-mono text-[11px] text-index">{t('agents.runPage.outputSession')}</div>
+      );
+    case 'said':
+      return <Markdown source={outputMarkdown(block.lines)} className="my-1.5 !text-[13px]" />;
+    case 'printed':
+      return (
+        <pre className="font-mono text-[11.5px] leading-[1.55] break-words whitespace-pre-wrap">
+          {block.lines.join('\n')}
+        </pre>
+      );
+    case 'result':
+      return (
+        <pre
+          className="ml-1 border-l border-border-soft pl-3 font-mono text-[11px] leading-[1.5] break-words whitespace-pre-wrap text-muted"
+          style={block.failed ? { borderColor: RUN_STATUS_COLOR.failed } : undefined}
+        >
+          {block.failed ? (
+            <>
+              <span style={{ color: RUN_STATUS_COLOR.failed }}>{block.lines[0]}</span>
+              {block.lines.length > 1 && `\n${block.lines.slice(1).join('\n')}`}
+            </>
+          ) : (
+            block.lines.join('\n')
+          )}
+        </pre>
+      );
+    case 'tool':
+      return <OutputTool call={block} />;
+  }
+}
+
+/** A tool's name and what it was called with; a long one folds to two lines until you click it. */
+function OutputTool({ call }: { call: Extract<AgentOutputLine, { kind: 'tool' }> }) {
+  const [open, setOpen] = useState(false);
+  const long = call.detail.length > 140;
+  const detail = (
+    <span className={`min-w-0 break-words text-text ${open ? '' : 'line-clamp-2'}`}>
+      {call.detail}
+    </span>
+  );
+  return (
+    <div className="flex flex-col gap-x-2 font-mono text-[11.5px] leading-[1.5] sm:flex-row sm:items-baseline">
+      <span className="shrink-0">
+        {call.server && <span className="text-index">{call.server} </span>}
+        <span className="text-highlight">{call.tool}</span>
+      </span>
+      {long ? (
+        <button
+          type="button"
+          className="min-w-0 cursor-pointer text-left hover:opacity-80"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+        >
+          {detail}
+        </button>
+      ) : (
+        detail
+      )}
+    </div>
+  );
 }
 
 /**
@@ -614,9 +706,9 @@ function Prompt({ prompt }: { prompt: string | null }) {
           <p className="mb-2 text-[12.5px] text-muted">{t('agents.runPage.promptHint')}</p>
           {open && (
             <div className="panel panel-clip">
-              <pre className="panel-body max-h-[32rem] overflow-auto p-3 font-mono text-[11.5px] whitespace-pre-wrap">
-                {prompt}
-              </pre>
+              <div className="panel-body max-h-[32rem] overflow-auto p-4">
+                <Markdown source={prompt} className="!text-[13.5px]" />
+              </div>
             </div>
           )}
         </>

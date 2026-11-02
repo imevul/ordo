@@ -4,8 +4,15 @@ import {
   appendOutput,
   cleanOutputLine,
   describeAgentEvent,
+  outputMarkdown,
+  parseOutputLine,
 } from './agentOutput.ts';
-import { AGENT_OUTPUT_BYTES, AGENT_OUTPUT_LINE_CHARS, AGENT_OUTPUT_LINES } from './constants.ts';
+import {
+  AGENT_OUTPUT_BYTES,
+  AGENT_OUTPUT_LINE_CHARS,
+  AGENT_OUTPUT_LINES,
+  AGENT_OUTPUT_PICKUP,
+} from './constants.ts';
 
 describe('cleanOutputLine', () => {
   it('drops terminal escapes and control characters', () => {
@@ -67,7 +74,7 @@ describe('describeAgentEvent', () => {
       'Running the tests.',
       'Then lint.',
       '→ Bash: pnpm test --run',
-      '→ TodoWrite: {"todos":[]}',
+      '→ TodoWrite: todos: []',
     ]);
     expect(describeAgentEvent(line({ type: 'system', subtype: 'init' }))).toEqual([
       'Session started',
@@ -133,5 +140,78 @@ describe('agentSessionId', () => {
     expect(agentSessionId(line({ type: 'result', session_id: 5 }))).toBeNull();
     expect(agentSessionId('session_id abc')).toBeNull();
     expect(agentSessionId('{"session_id": not json}')).toBeNull();
+  });
+});
+
+describe('tool calls in the output', () => {
+  const call = (name: string, input: unknown) =>
+    describeAgentEvent(
+      JSON.stringify({
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', name, input }] },
+      }),
+    );
+
+  it('says what a call is about, or its fields, rather than its JSON', () => {
+    expect(
+      call('mcp__ordo__report_progress', { run: 'abc', step: 'Merging', percent: 85 }),
+    ).toEqual(['→ mcp__ordo__report_progress: Merging']);
+    expect(
+      call('mcp__ordo__add_comment', { issue: 'ENG-1', body: '**First**\n\n## Second\na *b' }),
+    ).toEqual(['→ mcp__ordo__add_comment: First Second a *b']);
+    expect(call('Bash', { command: 'ls **/*.ts # all' })).toEqual(['→ Bash: ls **/*.ts # all']);
+    expect(call('mcp__ordo__get_issue', { issue: 'ENG-1', comments: false })).toEqual([
+      '→ mcp__ordo__get_issue: issue: ENG-1 · comments: false',
+    ]);
+  });
+
+  it('reads lines back by kind', () => {
+    expect(parseOutputLine(AGENT_OUTPUT_PICKUP)).toEqual({ kind: 'pickup' });
+    expect(parseOutputLine('Session started')).toEqual({ kind: 'session' });
+    expect(parseOutputLine('  FAIL a.test.ts')).toEqual({ kind: 'result', text: 'FAIL a.test.ts' });
+    expect(parseOutputLine('✗ not found')).toEqual({ kind: 'error', text: 'not found' });
+    expect(parseOutputLine('Plain words: here')).toEqual({
+      kind: 'text',
+      text: 'Plain words: here',
+    });
+    expect(parseOutputLine('→ Bash: pnpm test')).toEqual({
+      kind: 'tool',
+      tool: 'Bash',
+      server: null,
+      detail: 'pnpm test',
+    });
+    expect(parseOutputLine('→ TodoRead')).toEqual({
+      kind: 'tool',
+      tool: 'TodoRead',
+      server: null,
+      detail: '',
+    });
+    expect(parseOutputLine('→ mcp__ordo__update_issue: issue: ENG-1')).toMatchObject({
+      tool: 'update_issue',
+      server: 'ordo',
+    });
+  });
+
+  it('summarises the JSON of lines written before gists, unless it was cut short', () => {
+    expect(
+      parseOutputLine('→ mcp__ordo__update_issue: {"issue":"ENG-1","status":"Done"}'),
+    ).toMatchObject({ detail: 'issue: ENG-1 · status: Done' });
+    expect(parseOutputLine('→ mcp__ordo__add_comment: {"body":"cut sho…')).toMatchObject({
+      detail: '{"body":"cut sho…',
+    });
+  });
+});
+
+describe('outputMarkdown', () => {
+  it('makes each line a paragraph of its own', () => {
+    expect(outputMarkdown(['One.', 'Two.'])).toBe('One.\n\nTwo.');
+  });
+
+  it('keeps lists, tables and code together', () => {
+    expect(outputMarkdown(['Then:', '- a', '- b', 'Done.'])).toBe('Then:\n\n- a\n- b\n\nDone.');
+    expect(outputMarkdown(['| a |', '|---|', '| 1 |'])).toBe('| a |\n|---|\n| 1 |');
+    expect(outputMarkdown(['```sh', 'one', 'two', '```', 'After.'])).toBe(
+      '```sh\none\ntwo\n```\n\nAfter.',
+    );
   });
 });
