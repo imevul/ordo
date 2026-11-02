@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   AGENT_RUN_FAILURE_REASONS,
+  AGENT_RUN_GROUPS,
   AGENT_RUN_QUESTION_KINDS,
   AGENT_RUN_STATUSES,
   AGENT_RUN_WAIT_REASONS,
@@ -264,11 +265,13 @@ export const mcpToolSchemas = {
   agent_runs: z.object({ issue }),
   list_agent_runs: z.object({
     agent: ref('Only this agent: username, name or id').optional(),
+    team: team.optional(),
+    failureReason: z.array(z.enum(AGENT_RUN_FAILURE_REASONS)).optional(),
     status: z
-      .enum(['active', 'open', 'finished', 'all'])
+      .enum(AGENT_RUN_GROUPS)
       .default('active')
       .describe(
-        'active: queued, working or waiting for an answer (default); open: active plus failed runs nobody has restarted or dismissed; finished; or all',
+        'active: queued, working or waiting for an answer (default); open: active plus failed runs nobody has restarted or dismissed; waiting: open runs nobody is working on, each with what it waits on; finished; or all',
       ),
     limit: limit(200, 50),
   }),

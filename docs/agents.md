@@ -54,8 +54,10 @@ There are three parts:
    agent cancels its open runs too.
 7. **Agent runs** in the sidebar (shown once the workspace has an agent) lists what every agent is doing across the
    workspace. It opens on **Open**: runs that are queued, working or waiting for an answer, plus failed runs nobody
-   has dealt with yet. **Finished** and **All** show the rest. Rows have Resume, Cancel, and for failed runs
-   **Restart** and **Dismiss** (see [When a run fails](#when-a-run-fails)).
+   has dealt with yet. **Waiting** leaves out what's being worked on, and every row says
+   [what it's waiting on](#what-a-run-is-waiting-on). **Finished** and **All** show the rest. Filter by what a run is
+   doing and by its issue's properties; the URL keeps the filters, so a link shows the same list. Rows have Resume,
+   Cancel, and for failed runs **Restart** and **Dismiss** (see [When a run fails](#when-a-run-fails)).
 8. A run's status (on the Agent runs page or the issue) opens **its page**, the whole story in one place: the issue,
    agent, why it ran and who asked; a timeline of when it was queued, picked up (by which runner, which attempt),
    started, each progress step, its question and the reply that resumed it, lapsed leases, someone choosing **Run
@@ -488,7 +490,8 @@ run has at least one reason, and may have several.
 | Agent busy       | Capacity       | Its agent is at its _runs at once_, or already working on this issue     |
 | Runner           | Infrastructure | Nothing holds it, and no runner has picked it up                         |
 
-Issue lists filter on this. **Agent run waiting** finds everything, **Waiting on** a reason (or _A person_, any of the
+Over the API, `POST /agent-runs/query` and `GET /agent-runs` return `waitReasons` and `waitingForId` on each run. Issue
+lists filter on this too. **Agent run waiting** finds everything, **Waiting on** a reason (or _A person_, any of the
 first four), and **Waiting for** the person who has to act: whoever asked for the run, else the issue's creator,
 the one its question mentions. Over MCP, `search_issues` takes `agentRunWaiting`, `waitingOn` and `waitingFor`.
 

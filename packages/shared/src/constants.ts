@@ -386,6 +386,13 @@ export const AGENT_RUN_STATUSES = [
   'cancelled',
 ] as const;
 export type AgentRunStatus = (typeof AGENT_RUN_STATUSES)[number];
+/**
+ * The run lists. open: active plus failed runs nobody has dealt with. waiting: the same less what's
+ * being worked on, so everything waiting on something. active: queued, working or waiting for an
+ * answer.
+ */
+export const AGENT_RUN_GROUPS = ['open', 'waiting', 'active', 'finished', 'all'] as const;
+export type AgentRunGroup = (typeof AGENT_RUN_GROUPS)[number];
 export const AGENT_RUN_OPEN: readonly AgentRunStatus[] = [
   'queued',
   'claimed',

@@ -258,14 +258,33 @@ function fieldDef(ws: WorkspaceData, key: FieldKey, teamId?: string): FilterDef 
   };
 }
 
+/** Which list a bar filters: lists of runs offer what's about a run and a few issue properties. */
+export type FilterScope = 'issues' | 'agentRuns';
+const RUN_LIST_KEYS: ReadonlySet<ConditionKey> = new Set([
+  ...AGENT_RUN_FILTERS,
+  'stateIds',
+  'stateTypes',
+  'priorities',
+  'assigneeIds',
+  'labelIds',
+  'projectIds',
+  'cycleIds',
+]);
+
 /** What the "Filter" menu offers: the built-in filters, then custom fields with choices. */
-function filterDefs(ws: WorkspaceData, teamId?: string): FilterDef[] {
+function filterDefs(
+  ws: WorkspaceData,
+  teamId?: string,
+  scope: FilterScope = 'issues',
+): FilterDef[] {
   const hasAgents = ws.members.some((m) => m.kind === 'agent');
   const builtin = DEFS.filter(
     (d) =>
       (teamId ? d.key !== 'stateTypes' : d.key !== 'stateIds') &&
-      (hasAgents || !RUN_KEYS.has(d.key)),
+      (hasAgents || !RUN_KEYS.has(d.key)) &&
+      (scope === 'issues' || RUN_LIST_KEYS.has(d.key)),
   );
+  if (scope === 'agentRuns') return builtin;
   const fields = fieldsInScope(ws.customFields, teamId)
     .filter(hasChoices)
     .map((f) => fieldDef(ws, fieldKey(f.id), teamId));
@@ -360,6 +379,7 @@ function ConditionPicker({
   group,
   trigger,
   allowGroups,
+  scope,
 }: {
   filter: IssueFilter;
   onChange: (f: IssueFilter) => void;
@@ -367,6 +387,7 @@ function ConditionPicker({
   group?: number;
   trigger: ReactNode;
   allowGroups?: boolean;
+  scope?: FilterScope;
 }) {
   const ws = useWorkspace();
   const [kindKey, setKindKey] = useState<ConditionKey | null>(null);
@@ -376,7 +397,7 @@ function ConditionPicker({
   const conds: IssueConditions = target === null ? filter : (filter.or?.[target] ?? {});
   const write = (next: IssueConditions) =>
     onChange(target === null ? (next as IssueFilter) : setGroup(filter, target, next));
-  const defs = filterDefs(ws, teamId);
+  const defs = filterDefs(ws, teamId, scope);
   const kind = defs.find((d) => d.key === kindKey) ?? null;
   const reset = () => {
     setKindKey(null);
@@ -570,16 +591,19 @@ export function FilterButton({
   filter,
   onChange,
   teamId,
+  scope,
 }: {
   filter: IssueFilter;
   onChange: (f: IssueFilter) => void;
   teamId?: string;
+  scope?: FilterScope;
 }) {
   return (
     <ConditionPicker
       filter={filter}
       onChange={onChange}
       teamId={teamId}
+      scope={scope}
       allowGroups
       trigger={
         <button
@@ -763,10 +787,12 @@ export function FilterChips({
   filter,
   onChange,
   teamId,
+  scope,
 }: {
   filter: IssueFilter;
   onChange: (f: IssueFilter) => void;
   teamId?: string;
+  scope?: FilterScope;
 }) {
   if (!hasConditions(filter)) return null;
   const groups = filter.or ?? [];
@@ -793,6 +819,7 @@ export function FilterChips({
               filter={filter}
               onChange={onChange}
               teamId={teamId}
+              scope={scope}
               group={i}
               trigger={
                 <button

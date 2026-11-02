@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import {
   AGENT_RUN_FAILURE_REASONS,
+  AGENT_RUN_GROUPS,
   AGENT_RUN_QUESTION_KINDS,
   AGENT_RUN_STATUSES,
   AGENT_RUN_TRIGGERS,
@@ -709,6 +710,16 @@ export const issueConditionsSchema: z.ZodType<IssueConditions> = z.lazy(() =>
   }),
 );
 
+const filterTimeZone = z
+  .string()
+  .max(64)
+  .transform((zone, ctx) => {
+    const name = canonicalTimeZone(zone);
+    if (!name) ctx.addIssue({ code: 'custom', message: 'Unknown time zone' });
+    return name ?? zone;
+  })
+  .optional();
+
 export const issueFilterSchema = z
   .object({
     teamId: id.optional(),
@@ -719,15 +730,7 @@ export const issueFilterSchema = z
     /** Archived issues are left out unless included, or asked for alone. */
     archived: z.enum(['include', 'only']).optional(),
     /** Where "today" is for relative dates (default UTC). Not part of saved views. */
-    tz: z
-      .string()
-      .max(64)
-      .transform((zone, ctx) => {
-        const name = canonicalTimeZone(zone);
-        if (!name) ctx.addIssue({ code: 'custom', message: 'Unknown time zone' });
-        return name ?? zone;
-      })
-      .optional(),
+    tz: filterTimeZone,
     weekStartsOn: z.union([z.literal(0), z.literal(1)]).optional(),
     ...conditionFields,
     exclude: issueConditionsSchema.optional(),
@@ -735,6 +738,32 @@ export const issueFilterSchema = z
   })
   .refine((f) => filterDepth(f) <= MAX_FILTER_DEPTH, 'Filter groups nest too deeply');
 export type IssueFilter = z.infer<typeof issueFilterSchema>;
+
+// A run has a run by definition, so `hasAgentRun` says nothing in a list of them.
+const { hasAgentRun: _hasAgentRun, ...runConditionFields } = conditionFields;
+
+const runConditionsSchema: z.ZodType<IssueConditions> = z.lazy(() =>
+  z.strictObject({
+    ...runConditionFields,
+    exclude: runConditionsSchema.optional(),
+    or: z.array(runConditionsSchema).max(20).optional(),
+  }),
+);
+
+/**
+ * A filter on a list of runs: run conditions are about each run, the rest about its issue. Strict:
+ * what makes no sense for a run (a text search, the trash) is refused rather than ignored.
+ */
+export const agentRunFilterSchema = z
+  .strictObject({
+    tz: filterTimeZone,
+    weekStartsOn: z.union([z.literal(0), z.literal(1)]).optional(),
+    ...runConditionFields,
+    exclude: runConditionsSchema.optional(),
+    or: z.array(runConditionsSchema).max(20).optional(),
+  })
+  .refine((f) => filterDepth(f) <= MAX_FILTER_DEPTH, 'Filter groups nest too deeply');
+export type AgentRunFilter = z.infer<typeof agentRunFilterSchema>;
 
 /**
  * The part of the filter model automation rules check. The bot is "me", so people are by id.
@@ -1562,9 +1591,18 @@ export const agentRunOutputSchema = z.object({
  * active ones plus failed runs nobody has restarted or dismissed yet.
  */
 export const agentRunsQuerySchema = z.object({
-  status: z.enum(['open', 'active', 'finished', 'all']).default('all'),
+  status: z.enum(AGENT_RUN_GROUPS).default('all'),
   agentId: id.optional(),
   limit: z.coerce.number().int().min(1).max(500).default(100),
+});
+
+/** `POST /agent-runs/query`: a page of runs by group and filter. */
+export const agentRunsSearchSchema = z.object({
+  filter: agentRunFilterSchema.default({}),
+  group: z.enum(AGENT_RUN_GROUPS).default('open'),
+  teamId: id.optional(),
+  limit: z.number().int().min(1).max(200).default(100),
+  offset: z.number().int().min(0).max(100_000).default(0),
 });
 
 /** `GET /agent-usage`: totals per agent for a calendar month (UTC), this one by default. */

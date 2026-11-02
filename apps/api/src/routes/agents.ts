@@ -1,6 +1,8 @@
 import {
+  type AgentRunPage,
   agentRunOutputSchema,
   agentRunsQuerySchema,
+  agentRunsSearchSchema,
   agentUsageQuerySchema,
   createAgentSchema,
   createApiKeySchema,
@@ -12,6 +14,7 @@ import { z } from 'zod';
 import { requireAccess, requireAdmin, requireUser } from '../lib/auth.ts';
 import { forbidden, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
+import { assertTeamAccess } from '../services/access.ts';
 import {
   appendRunOutput,
   approvePlan,
@@ -116,6 +119,21 @@ export async function agentRoutes(app: FastifyInstance) {
   app.get('/agent-runs', async (req) =>
     listWorkspaceRuns(db, requireAccess(req), parse(agentRunsQuerySchema, req.query)),
   );
+
+  // The same with filters and paging. A POST like /issues/query: filters nest.
+  app.post('/agent-runs/query', async (req) => {
+    const { filter, group, teamId, limit, offset } = parse(agentRunsSearchSchema, req.body ?? {});
+    const access = requireAccess(req);
+    if (teamId) assertTeamAccess(access, teamId);
+    const runs = await listWorkspaceRuns(db, access, {
+      status: group,
+      filter,
+      teamId,
+      limit: limit + 1,
+      offset,
+    });
+    return { runs: runs.slice(0, limit), hasMore: runs.length > limit } satisfies AgentRunPage;
+  });
 
   app.get('/agent-runs/active-count', async (req) => ({
     count: await countActiveRuns(db, requireAccess(req)),

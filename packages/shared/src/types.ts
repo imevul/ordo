@@ -5,6 +5,7 @@ import type {
   AgentRunQuestionKind,
   AgentRunStatus,
   AgentRunTrigger,
+  AgentRunWaitReason,
   AuditAction,
   ChatEventKind,
   DomainEventType,
@@ -1597,6 +1598,10 @@ export interface AgentRun {
   blockedBy: { id: string; identifier: string; title: string }[];
   /** For a queued run held until its issue's cycle opens: that cycle. Null otherwise. */
   waitingForCycle: CycleHold | null;
+  /** What it's waiting on, for people to read; empty when nothing (or for a runner's copy). */
+  waitReasons: AgentRunWaitReason[];
+  /** Who has to act, when a person does and there's a human to ask. */
+  waitingForId: string | null;
   /** What it used, as its runner reported; null when it reported nothing. */
   usage: AgentRunUsage | null;
   requestedById: string | null;
@@ -1659,6 +1664,12 @@ export interface AgentRunWithIssue extends AgentRun {
   issue: IssueRef;
   /** For a queued run: a repository at its run limit that holds it back, if one does. */
   waitingForRepository: { id: string; name: string } | null;
+}
+
+/** A page of `POST /agent-runs/query`. */
+export interface AgentRunPage {
+  runs: AgentRunWithIssue[];
+  hasMore: boolean;
 }
 
 /**
