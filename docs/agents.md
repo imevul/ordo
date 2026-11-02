@@ -278,6 +278,40 @@ the CLI instead, allow `"Bash(ordo:*)"`. Add `"Bash(git:*)"` and the like for wh
 is what lets the run's page [follow along](#live-output) and the runner keep the session, which `--resume` then
 [continues](#continuing-the-session) on a later pickup.
 
+### Signing in to Claude Code
+
+The runner starts `claude` as the user it runs as, so runs use that user's Claude sign-in. Ordo neither asks for it nor
+keeps it, and an agent's key only gets into Ordo. `claude auth status` shows which sign-in that is.
+
+Which sign-in fits depends on whose work the agent does. These are Anthropic's rules, and they can change, so check
+its [authentication and credential terms](https://code.claude.com/docs/en/legal-and-compliance#authentication-and-credential-use):
+
+- **Only your own work:** your own Claude plan will do. Run `claude auth login`, or on a machine without a browser
+  `claude setup-token`, and set `CLAUDE_CODE_OAUTH_TOKEN`. Runs count against the plan's limits, which assume ordinary,
+  individual use, so a busy runner can hit them ([Usage limits](#usage-limits)).
+- **Other people's work too:** if anyone else can assign or mention the agent, don't run it on your personal plan,
+  since its terms don't let others use your account. Use an API key from the
+  [Claude Console](https://platform.claude.com/) or a cloud provider, or give each person their own agent and runner
+  with their own sign-in.
+- **Runners you offer as a service:** this needs Anthropic's Commercial Terms, and each user must sign in with their
+  own credentials. You can't pay for or resell their Claude usage.
+
+Set an API key under `env:` in a runner file, because values from `env_file` and `.env` don't reach the command:
+
+```yaml
+env_file: [.env.local] # ANTHROPIC_API_KEY=…, kept out of git
+defaults:
+  env:
+    ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+```
+
+`claude -p` always uses `ANTHROPIC_API_KEY` when it's set, and the runner passes its own environment on to the command,
+so a key left in the runner's shell takes over from your plan without asking. Every command the agent runs can read the
+key too, so give the agent a key of its own that you can revoke.
+
+On a plan, the cost Ordo shows is what Claude Code reports, not what you pay. [Monthly budgets](#cost-and-budgets) count
+that figure as well.
+
 ### Live output
 
 While the command works, the runner sends what it prints (stdout and stderr, without the `ORDO_…=` lines above) to
