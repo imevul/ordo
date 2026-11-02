@@ -69,8 +69,8 @@ There are three parts:
    agent may see related issues on teams the viewer can't. Heartbeats aren't kept one by one: the page
    shows when the lease runs out. The same actions as on the list are at the top.
 
-   While the run works, **Output** shows the last 200 lines its command printed, updating every few seconds (see
-   [Live output](#live-output)).
+   While the run works, **Output** shows the last 500 lines its command printed, updating every few seconds (see
+   [Live output](#live-output)), and **Tell the agent** under it [sends the agent a comment](#steering-a-working-agent).
 9. If a runner goes quiet (the laptop closed), its lease runs out after five minutes and the run goes back in the
    queue for another runner. After three claims it is marked failed, with a comment on the issue.
 10. To save tokens or stop a runaway, an admin can **Pause new runs** on the Agent runs page. Runners claim nothing
@@ -223,6 +223,7 @@ left alone. Set `prune: false` in a runner file to keep them.
 | `--once`                   | Work through what's queued now, then exit (for cron or CI)                        |
 | `-v, --verbose`            | Echo the command's output                                                         |
 | `--no-output`              | Don't send the command's output to Ordo ([Live output](#live-output))             |
+| `--steer`                  | Stop the command for a mention ([Steering](#steering-a-working-agent))            |
 | `--file <yaml>`            | Read agents and commands from a runner file (repeatable); `--only a,b` picks some |
 
 `ordo agent check --file <yaml>` validates a runner file and shows who each key belongs to, without claiming
@@ -233,23 +234,25 @@ anything. A runner file sets `key`, `repos`, `concurrency` and `timeout` per age
 
 This is all the runner asks of your command:
 
-| Environment                                                  | What it holds                                                                     |
-| ------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| `ORDO_RUN_FILE`                                              | The run as JSON (`AgentRunContext`, below)                                        |
-| `ORDO_MCP_CONFIG`                                            | An MCP config (`mcpServers`) for the Ordo MCP server, with the agent's key        |
-| `ORDO_PROMPT_FILE`                                           | The run as a Markdown prompt; it is also on **stdin**                             |
-| `ORDO_SUMMARY_FILE`                                          | Write your summary here (Markdown); without one, the end of stdout is used        |
-| `ORDO_WORKDIR`                                               | Where the command starts: the first repository's worktree, or an empty directory  |
-| `ORDO_REPO_PATHS`                                            | JSON: repository name → worktree path, when a run has several                     |
-| `ORDO_ISSUE`, `ORDO_ISSUE_URL`                               | `ENG-42` and its link                                                             |
-| `ORDO_RUN_ID`                                                | The run                                                                           |
-| `ORDO_URL`, `ORDO_WORKSPACE`, `ORDO_TOKEN`, `ORDO_AGENT_KEY` | So `ordo` and the SDK inside the run act as the agent                             |
-| `ORDO_RUNNER_DIR`                                            | The runner file's directory                                                       |
-| `ORDO_QUESTION`, `ORDO_RESUME`                               | On a pickup after a question: what the agent asked, and the token it left (below) |
+| Environment                                                  | What it holds                                                                    |
+| ------------------------------------------------------------ | -------------------------------------------------------------------------------- |
+| `ORDO_RUN_FILE`                                              | The run as JSON (`AgentRunContext`, below)                                       |
+| `ORDO_MCP_CONFIG`                                            | An MCP config (`mcpServers`) for the Ordo MCP server, with the agent's key       |
+| `ORDO_PROMPT_FILE`                                           | The run as a Markdown prompt; it is also on **stdin**                            |
+| `ORDO_SUMMARY_FILE`                                          | Write your summary here (Markdown); without one, the end of stdout is used       |
+| `ORDO_WORKDIR`                                               | Where the command starts: the first repository's worktree, or an empty directory |
+| `ORDO_REPO_PATHS`                                            | JSON: repository name → worktree path, when a run has several                    |
+| `ORDO_ISSUE`, `ORDO_ISSUE_URL`                               | `ENG-42` and its link                                                            |
+| `ORDO_RUN_ID`                                                | The run                                                                          |
+| `ORDO_URL`, `ORDO_WORKSPACE`, `ORDO_TOKEN`, `ORDO_AGENT_KEY` | So `ordo` and the SDK inside the run act as the agent                            |
+| `ORDO_RUNNER_DIR`                                            | The runner file's directory                                                      |
+| `ORDO_QUESTION`, `ORDO_RESUME`                               | On a later pickup: what the agent asked, and its session's token (below)         |
 
 A line `ORDO_SESSION_URL=https://…` on stdout is reported right away and linked on the issue, and a line
-`ORDO_RESUME=<token>` is kept for the next pickup of the run (see [Questions](#questions)). Exit code 0 means the
-run succeeded; anything else means it failed, with the end of stderr (or of stdout, if stderr is empty) as the error.
+`ORDO_RESUME=<token>` is kept for the next pickup of the run (see [Continuing the session](#continuing-the-session)).
+Exit code 0 means the run succeeded; anything else means it failed, with the end of stderr (or of stdout, if stderr is
+empty) as the error. A JSON result that says `is_error: true` is a failure too, whatever the exit code, with its
+`result` text as the error.
 
 What the run used is read from a line `ORDO_USAGE={"costUsd":0.42,"inputTokens":1200,"outputTokens":3400}` on stdout
 (also `cacheReadTokens`, `cacheWriteTokens`, `durationMs`), or from a JSON result the command prints last: Claude
@@ -265,24 +268,61 @@ the [MCP server](mcp.md) the same way.
 up front, and give it Ordo's tools:
 
 ```yaml
-command: claude -p --permission-mode acceptEdits --mcp-config "$ORDO_MCP_CONFIG" --allowedTools mcp__ordo
+command: >-
+  claude -p --output-format stream-json --verbose --permission-mode acceptEdits
+  --mcp-config "$ORDO_MCP_CONFIG" --allowedTools mcp__ordo ${ORDO_RESUME:+--resume "$ORDO_RESUME"}
 ```
 
 That's the string form (run with `sh -c`), which expands `$ORDO_MCP_CONFIG`; the list form doesn't. To let it use
-the CLI instead, allow `"Bash(ordo:*)"`. Add `"Bash(git:*)"` and the like for what else it should run.
+the CLI instead, allow `"Bash(ordo:*)"`. Add `"Bash(git:*)"` and the like for what else it should run. `stream-json`
+is what lets the run's page [follow along](#live-output) and the runner keep the session, which `--resume` then
+[continues](#continuing-the-session) on a later pickup.
 
 ### Live output
 
 While the command works, the runner sends what it prints (stdout and stderr, without the `ORDO_…=` lines above) to
-Ordo every two seconds, and the run's page shows the last 200 lines as they come. Terminal colours are stripped and
+Ordo every two seconds, and the run's page shows the last 500 lines as they come. Terminal colours are stripped and
 long lines cut at 1,000 characters. Claude Code's `--output-format json` prints nothing until it's done; with
-`--output-format stream-json --verbose` the page follows along, and each event is shown as what the agent said and
-the tools it called (`→ Bash: pnpm test`) rather than as JSON. Usage and the summary are read from its last line.
+`--output-format stream-json --verbose` the page follows along, and each event is shown as what the agent said, the
+tools it called (`→ Bash: pnpm test`) and the first five lines of each result (`✗` when it failed), rather than as
+JSON. Usage and the summary are read from its last line.
 
-Output can hold secrets the command printed, so Ordo keeps little of it and not for long: only the last 200 lines
-(64 KB) of the latest pickup, readable by whoever can see the issue, like the rest of the run, and deleted a week
-after the last line came in. A new pickup (after a question, or another runner taking over) starts over. To send
-none, set `output: false` for an agent in its runner file, or run with `--no-output`.
+A later pickup of the same run (after a question, a steering comment, or another runner taking over) adds to what's
+there, under a divider.
+
+Output can hold secrets the command printed, and tool results make that likelier, so Ordo keeps little of it and not
+for long: only the last 500 lines (128 KB), readable by whoever can see the issue, like the rest of the run, and
+deleted a week after the last line came in. To send none, set `output: false` for an agent in its runner file, or
+run with `--no-output`.
+
+### Steering a working agent
+
+When you can see an agent going the wrong way, you don't have to cancel it or wait: **@mention it**, on the issue or
+in **Tell the agent** on the run's page, which posts the same comment. What you told it stays on the issue with
+everything else.
+
+With `steer: true` for the agent in its runner file (or `--steer`):
+
+1. The runner hears of the mention in Ordo's reply to its next output batch, or at the latest its next heartbeat, a
+   minute away. It stops the command the way a cancel does, and the run goes back in the queue.
+2. The next pickup is the same run, with `ORDO_RESUME` set and a "You were interrupted" section in its prompt quoting
+   your comment (`steerComment` in the run file). It's told to check the working tree first, since a command or edit
+   may have been cut off.
+
+**Only opt in for a command that continues its session from `ORDO_RESUME`**, as in the Claude Code example above. Any
+other would start again from the top on every mention.
+
+The run keeps working, and your comment starts a new run when this one ends (a [mention](#mentions) as ever), when the
+agent hasn't opted in, when the run has no session to continue yet, or with an older runner. **Tell the agent** says
+which will happen before you send. Plain comments without a mention never stop anything; the next pickup reads them.
+
+Some limits:
+
+- A stopped pickup prints no final result, so its tokens aren't counted. Its cost is, once the session continues:
+  Claude Code's `total_cost_usd` covers the whole session, and the runner counts what the run hasn't yet. If the run is
+  cancelled before then, that cost is lost.
+- An agent served by several runners can resume on a machine that doesn't have the session. Claude Code then fails,
+  and so does the run. Questions have the same limit.
 
 ### Runner files
 
@@ -308,7 +348,10 @@ defaults:
 agents:
   claude: # a local label, for logs and the runner name
     key: ${CLAUDE_AGENT_KEY}
-    command: claude -p --permission-mode acceptEdits --mcp-config "$ORDO_MCP_CONFIG" --allowedTools mcp__ordo
+    command: >-
+      claude -p --output-format stream-json --verbose --permission-mode acceptEdits
+      --mcp-config "$ORDO_MCP_CONFIG" --allowedTools mcp__ordo ${ORDO_RESUME:+--resume "$ORDO_RESUME"}
+    steer: true
     concurrency: 2
     instructions: |
       This machine has a GPU; run the benchmarks in bench/ before and after.
@@ -354,7 +397,8 @@ your `ordo login`.
   goes in a list, like `factory` above.
 - Per agent: `key`, `command`, `repos`, `concurrency`, `timeout` (`90s`, `30m`, `2h`), `env`, `cwd` (`worktree` or
   `tmp`), `checkout` (`true` or `false`), `prune` (`true` or `false`), `output` (`true` or `false`, see
-  [Live output](#live-output)) and `instructions`. Unknown fields are errors.
+  [Live output](#live-output)), `steer` (`true` or `false`, see [Steering](#steering-a-working-agent)) and
+  `instructions`. Unknown fields are errors.
 - `instructions` add up instead of replacing each other: the top level's, then `defaults`', then the agent's own,
   followed by the agent's instructions from Ordo. They go into the run's prompt (and `agent.instructions` in the run
   file), so a runner can describe its machine or its tools without changing the agent for everyone else. Ordo
@@ -368,9 +412,9 @@ fourth if you want [live output](#live-output):
 
 ```text
 POST  /api/w/<ws>/agent/claim?wait=30&runner=<name>   → 200 AgentRunContext, or 204 when there's nothing
-POST  /api/w/<ws>/agent/runs/<id>/heartbeat          → { cancelled } — at least every 5 minutes
-PATCH /api/w/<ws>/agent/runs/<id>                    { status: running | waiting | succeeded | failed, question?, questionKind? | plan?, resume?, sessionUrl?, summary?, error? }
-POST  /api/w/<ws>/agent/runs/<id>/output             { lines: [...] } → { accepted } — new lines, every few seconds
+POST  /api/w/<ws>/agent/runs/<id>/heartbeat          → { cancelled, steer } — at least every 5 minutes
+PATCH /api/w/<ws>/agent/runs/<id>                    { status: running | waiting | succeeded | failed, question?, questionKind? | plan?, resume?, sessionUrl?, summary?, error?, steerable?, steered? }
+POST  /api/w/<ws>/agent/runs/<id>/output             { lines: [...] } → { accepted, steer } — new lines, every few seconds
 ```
 
 Send output in batches (at most 1,000 lines, two calls a second per run); send the last batch before the final
@@ -379,6 +423,12 @@ report, since a run that no longer works takes none (`accepted: false`).
 `claim` takes an optional body `{ "instructions": "…" }`: the runner's own instructions, put before the agent's in
 the run's prompt and `agent.instructions`, and not stored. `claim` long-polls: it answers as soon as a run is queued for the agent, or with `204` after `wait` seconds. Each
 claim holds a five-minute lease. Keep it alive with heartbeats, and stop working when one answers `cancelled: true`.
+
+To support [steering](#steering-a-working-agent), report `steerable: true` once you can stop and continue the session.
+A `steer` comment id in a heartbeat or output reply then means a person's @mention is waiting: stop the agent and
+report `{ steered: true, usage?, resume? }` without a status, and the run goes back in the queue. The next pickup's
+`steerComment` has the comment. A runner that ignores `steer` needn't do anything: the mention starts a new run when
+this one ends.
 
 `AgentRunContext` (`protocolVersion: 1`) has the `run`, the `workspace`, the `agent` (with its `instructions`), the
 full `issue` (description, labels, relations, links, its `url` and `team`), its `comments` with author names, its
@@ -417,7 +467,7 @@ A person **@mentioning an agent** in a comment asks it for something, whether or
 
 - Only agents that work in the issue's team can be mentioned, like people.
 - A queued or waiting run already covers a mention: it will see the comment. A waiting run resumes, as on any person's comment.
-- A mention while the agent is working on the issue queues one follow-up run, which starts once the current one ends. An agent never works on the same issue twice at once.
+- A mention while the agent is working on the issue is for that run: it [stops and continues with the comment](#steering-a-working-agent) if its runner can. Otherwise one follow-up run starts when the current one ends, for the latest mention. An agent never works on the same issue twice at once.
 - Agents' mentions start nothing, so two agents can't keep starting each other. Agents hand work on by assigning the issue.
 
 The run's `trigger` says why it exists (`assigned`, `mention`, `rerun` for Run again, `pull_request`, see [Pull requests](#pull-requests), or `scheduled`, see [Scheduled runs](#scheduled-runs)), with `triggerCommentId` for a mention and `triggerDetail` for a pull request. The context adds `trigger.comment` (author and body), `trigger.pullRequest`, and `assigned` (whether the issue is the agent's).
@@ -525,26 +575,11 @@ the answer is in the comments, and `run.question` and `run.resume` are in the co
 ### Continuing the session
 
 A runner can leave an opaque token on a run (`resume` in a report, or an `ORDO_RESUME=<token>` line from the
-command) and gets it back on the next pickup as `ORDO_RESUME`. Ordo never reads it. With Claude Code, a small
-wrapper keeps the same session across questions:
+command) and gets it back on the next pickup as `ORDO_RESUME`. Ordo never reads it.
 
-```sh
-#!/bin/sh
-# claude-run.sh — command: [./claude-run.sh] in the runner file
-out=$(claude -p --output-format json --permission-mode acceptEdits ${ORDO_RESUME:+--resume "$ORDO_RESUME"})
-code=$?
-session=$(printf '%s' "$out" | jq -r '.session_id // empty' 2>/dev/null)
-[ -n "$session" ] && echo "ORDO_RESUME=$session"
-# What the run cost, for the Agent runs page and the agent's budget.
-usage=$(printf '%s' "$out" | jq -c '{total_cost_usd, duration_ms, usage}' 2>/dev/null)
-[ -n "$usage" ] && echo "ORDO_USAGE=$usage"
-# A failure (a usage limit, a crash) has to exit non-zero, or Ordo records the run as done.
-if [ "$code" -ne 0 ] || [ "$(printf '%s' "$out" | jq -r '.is_error' 2>/dev/null)" = true ]; then
-  printf '%s\n' "$(printf '%s' "$out" | jq -r '.result // empty' 2>/dev/null || printf '%s' "$out")" >&2
-  exit "$((code ? code : 1))"
-fi
-printf '%s' "$out" | jq -r .result
-```
+With Claude Code and `--output-format stream-json`, the runner takes the token from the stream, so all the command
+needs is `${ORDO_RESUME:+--resume "$ORDO_RESUME"}`, as in the [example above](#the-launch-contract). A command that
+prints its own `ORDO_RESUME=` line goes by that instead.
 
 ## Plan approval
 

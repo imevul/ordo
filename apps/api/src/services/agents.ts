@@ -2,6 +2,7 @@ import {
   AGENT_AUTO_RESTARTS,
   AGENT_BRANCH_FORMAT,
   AGENT_LEASE_MS,
+  AGENT_OUTPUT_PICKUP,
   AGENT_OUTPUT_RETENTION_MS,
   AGENT_PROTOCOL_VERSION,
   AGENT_RUN_OPEN,
@@ -443,6 +444,8 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
   planApprovedAt: r.planApprovedAt,
   planApprovedById: r.planApprovedById,
   resume: r.resume,
+  steerCommentId: r.steerCommentId,
+  steerable: r.steerable,
   trigger: r.trigger,
   triggerCommentId: r.triggerCommentId,
   triggerDetail: r.triggerDetail ?? null,
@@ -504,7 +507,7 @@ export async function queueRun(
     commentId?: string;
     pullRequest?: AgentRunPullRequest;
   } = { kind: 'assigned' },
-  opts: { followUp?: boolean; retryOfId?: string } = {},
+  opts: { followUp?: boolean; retryOfId?: string; requestedById?: string } = {},
 ) {
   const open = await ctx.tx
     .select()
@@ -526,7 +529,7 @@ export async function queueRun(
         workspaceId: ctx.workspaceId,
         issueId,
         agentId,
-        requestedById: ctx.userId,
+        requestedById: opts.requestedById ?? ctx.userId,
         trigger: trigger.kind,
         triggerCommentId: trigger.commentId ?? null,
         triggerDetail: trigger.pullRequest ?? null,
@@ -546,6 +549,8 @@ async function cancelOpenRuns(ctx: Ctx, where: ReturnType<typeof eq>, reason: st
       status: 'cancelled',
       error: reason,
       leaseExpiresAt: null,
+      // Someone chose to stop it, so a mention waiting to reach it goes no further than the issue.
+      steerCommentId: null,
       finishedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     })
@@ -641,7 +646,10 @@ export async function onComment(
   if (waiting) await resumeRuns(ctx, eq(agentRuns.issueId, issueId), comment.id);
   // A person @mentioning an agent asks it for something, whether or not the issue is its own.
   for (const id of mentioned)
-    if (await isActiveAgent(ctx.tx, ctx.workspaceId, id))
+    if (
+      (await isActiveAgent(ctx.tx, ctx.workspaceId, id)) &&
+      !(await steerRun(ctx, issueId, id, comment.id))
+    )
       await queueRun(
         ctx,
         issueId,
@@ -649,6 +657,58 @@ export async function onComment(
         { kind: 'mention', commentId: comment.id },
         { followUp: true },
       );
+}
+
+/**
+ * A mention while the agent works on the issue: the run's runner hears of it in its next reply and
+ * stops the command, so the agent continues with it. A runner that can't leaves the run working,
+ * and `afterSteerMissed` queues the follow-up when it ends. False when the agent isn't working here.
+ */
+async function steerRun(ctx: Ctx, issueId: string, agentId: string, commentId: string) {
+  const [run] = await ctx.tx
+    .update(agentRuns)
+    .set({ steerCommentId: commentId, updatedAt: new Date().toISOString() })
+    .where(
+      and(
+        eq(agentRuns.issueId, issueId),
+        eq(agentRuns.agentId, agentId),
+        inArray(agentRuns.status, ['claimed', 'running']),
+      ),
+    )
+    .returning();
+  if (!run) return false;
+  await logRun(ctx, run.id, 'steer_requested', { commentId });
+  await changed(ctx, run);
+  return true;
+}
+
+/**
+ * A run ended with a mention that never reached the agent: it still asked for something, so it
+ * gets the follow-up it would have had, requested by whoever wrote it.
+ */
+async function afterSteerMissed(ctx: Ctx, run: RunRow) {
+  if (!run.steerCommentId) return;
+  const [comment] = await ctx.tx
+    .select({ authorId: comments.authorId })
+    .from(comments)
+    .where(eq(comments.id, run.steerCommentId));
+  await ctx.tx.update(agentRuns).set({ steerCommentId: null }).where(eq(agentRuns.id, run.id));
+  await queueRun(
+    ctx,
+    run.issueId,
+    run.agentId,
+    { kind: 'mention', commentId: run.steerCommentId },
+    { followUp: true, ...(comment?.authorId && { requestedById: comment.authorId }) },
+  );
+}
+
+/**
+ * The agent paused with a mention waiting: a person's comment resumes a waiting run, and this one
+ * came first. The next pickup acts on it.
+ */
+async function resumeIfSteered(ctx: Ctx, runId: string) {
+  const [run] = await ctx.tx.select().from(agentRuns).where(eq(agentRuns.id, runId));
+  if (run?.steerCommentId) await resumeRuns(ctx, eq(agentRuns.id, runId), run.steerCommentId);
 }
 
 /**
@@ -664,6 +724,7 @@ export async function askQuestion(
 ): Promise<AgentRun> {
   const saved = await pause(ctx, runId, { question, questionKind: kind }, question);
   await logRun(ctx, runId, 'asked', { question });
+  await resumeIfSteered(ctx, runId);
   return saved;
 }
 
@@ -680,6 +741,7 @@ export async function proposePlan(ctx: Ctx, runId: string, plan: string): Promis
     `**Plan for approval**\n\n${plan}\n\n_Approve it on the agent run of this issue, or reply with changes._`,
   );
   await logRun(ctx, runId, 'planned', { plan });
+  await resumeIfSteered(ctx, runId);
   return saved;
 }
 
@@ -1400,6 +1462,11 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
       progressStep: null,
       progressPercent: null,
       progressAt: null,
+      // A mention waiting for the run is what this pickup acts on (the prompt quotes it).
+      steeredCommentId: sql`${agentRuns.steerCommentId}`,
+      steerCommentId: null,
+      // Whether this pickup can be steered is for its runner to say.
+      steerable: false,
       updatedAt: new Date().toISOString(),
     })
     .where(eq(agentRuns.id, next.id))
@@ -1407,8 +1474,20 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
   // Deleted since the select (its issue went away): nothing to claim this time.
   if (run) {
     await logRun(ctx, run.id, 'claimed', { runner: runnerName, attempt: run.attempts });
-    // Like progress: what an earlier pickup printed doesn't describe this one.
-    await ctx.tx.delete(agentRunOutput).where(eq(agentRunOutput.runId, run.id));
+    // What earlier pickups printed stays, so stopping for a mention doesn't wipe what you watched.
+    const [kept] = await ctx.tx
+      .select()
+      .from(agentRunOutput)
+      .where(eq(agentRunOutput.runId, run.id));
+    if (kept?.lines.length)
+      await ctx.tx
+        .update(agentRunOutput)
+        .set({
+          lines: appendOutput(kept.lines, [AGENT_OUTPUT_PICKUP]),
+          total: kept.total + 1,
+          updatedAt: new Date().toISOString(),
+        })
+        .where(eq(agentRunOutput.runId, run.id));
   }
   return run ?? null;
 }
@@ -1525,7 +1604,8 @@ export async function appendRunOutput(ctx: Ctx, runId: string, lines: string[]) 
     });
   const teamId = await teamOfIssue(ctx.tx, run.issueId);
   emit(ctx, { kind: 'agentRunOutput', action: 'updated', id: runId, issueId: run.issueId, teamId });
-  return { accepted: true };
+  // Output comes every few seconds, so this is how a mention reaches the runner soonest.
+  return { accepted: true, steer: run.steerCommentId };
 }
 
 /** The run's output tail, for anyone who can see its issue (output can hold secrets). */
@@ -1560,7 +1640,10 @@ export async function pruneRunOutput(app: FastifyInstance) {
   await app.db.delete(agentRunOutput).where(lt(agentRunOutput.updatedAt, cutoff));
 }
 
-/** Keeps a claim alive. Tells the runner when a person cancelled the run, so it can stop. */
+/**
+ * Keeps a claim alive. Tells the runner when a person cancelled the run, so it can stop, and when
+ * a person's @mention is waiting (`steer`), so it can stop for that and let the run continue.
+ */
 export async function heartbeat(ctx: Ctx, runId: string) {
   const run = await ownRun(ctx, runId);
   // Asking ends the pickup but not the run: stop working, it's not cancelled.
@@ -1569,7 +1652,7 @@ export async function heartbeat(ctx: Ctx, runId: string) {
     return { cancelled: true, status: run.status };
   const leaseExpiresAt = new Date(Date.now() + AGENT_LEASE_MS).toISOString();
   await ctx.tx.update(agentRuns).set({ leaseExpiresAt }).where(eq(agentRuns.id, runId));
-  return { cancelled: false, status: run.status, leaseExpiresAt };
+  return { cancelled: false, status: run.status, leaseExpiresAt, steer: run.steerCommentId };
 }
 
 /**
@@ -1589,6 +1672,8 @@ export async function reportRun(
     questionKind?: AgentRunQuestionKind;
     plan?: string;
     resume?: string | null;
+    steerable?: true;
+    steered?: true;
     usage?: AgentRunUsageReport;
   },
 ): Promise<AgentRun> {
@@ -1615,6 +1700,27 @@ export async function reportRun(
   }
   if (run.status !== 'claimed' && run.status !== 'running')
     throw conflict(`This run is ${run.status}`);
+  if (input.steered) {
+    // Like a reply to a question: the same run continues, and lapsed-lease counting starts over.
+    const [queued] = await ctx.tx
+      .update(agentRuns)
+      .set({
+        status: 'queued',
+        attempts: 0,
+        leaseExpiresAt: null,
+        runnerName: null,
+        ...(input.sessionUrl !== undefined && { sessionUrl: input.sessionUrl }),
+        ...(input.resume !== undefined && { resume: input.resume }),
+        ...usage,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(agentRuns.id, runId))
+      .returning();
+    await logRun(ctx, runId, 'steered', { commentId: run.steerCommentId });
+    if (used) await afterUsage(ctx, queued!, { emitted: true });
+    await changed(ctx, queued!);
+    return toAgentRun(queued!);
+  }
   if (input.status === 'waiting') {
     if (!input.question && !input.plan)
       throw badRequest('Say what you are asking (question) or proposing (plan)');
@@ -1645,6 +1751,7 @@ export async function reportRun(
       ...(input.summary !== undefined && { summary: input.summary }),
       ...(input.error !== undefined && { error: input.error }),
       ...(input.resume !== undefined && { resume: input.resume }),
+      ...(input.steerable && { steerable: true }),
       ...(input.status === 'running' && !run.startedAt && { startedAt: now }),
       ...(final && { finishedAt: now, leaseExpiresAt: null, startedAt: run.startedAt ?? now }),
       ...(failure && { failureReason: failure.reason, retryAt: failure.retryAt }),
@@ -1665,6 +1772,7 @@ export async function reportRun(
   if (body) await createComment(ctx, run.issueId, { body: body.slice(0, 50_000) });
   if (used) await afterUsage(ctx, saved!, { emitted: true });
   await changed(ctx, saved!);
+  if (final) await afterSteerMissed(ctx, saved!);
   return toAgentRun(saved!);
 }
 
@@ -1971,6 +2079,7 @@ async function reapLease(app: FastifyInstance, run: typeof agentRuns.$inferSelec
           body: `This run failed after ${current.attempts} attempts: ${error.toLowerCase()}.`,
         }).catch(() => {});
       await changed(ctx, saved!);
+      if (failed) await afterSteerMissed(ctx, saved!);
     },
   );
 }
@@ -2179,6 +2288,12 @@ async function runContext(
         return c ? { id: c.id, author: c.author, body: c.body } : null;
       })(),
     },
+    steerComment: (() => {
+      const c = run.steeredCommentId
+        ? commentRows.find((x) => x.id === run.steeredCommentId)
+        : undefined;
+      return c ? { id: c.id, author: c.author, body: c.body } : null;
+    })(),
     assigned,
     planApproval: approvalOn && !approvedBefore,
   };
@@ -2312,6 +2427,15 @@ export function renderPrompt(
   if (c.run.question)
     out.push(
       `## You asked\n${c.run.question}\n\nThe answer is in the comments after your question. Continue from there.`,
+    );
+  if (c.steerComment)
+    out.push(
+      `## You were interrupted\n${c.steerComment.author ?? 'Someone'} mentioned you while you were working, and your work was stopped so you'd see it:\n\n${c.steerComment.body
+        .split('\n')
+        .map((l) => `> ${l}`)
+        .join(
+          '\n',
+        )}\n\nA command or edit may have been cut off when it stopped, so check the working tree first. Then do what the comment asks, and carry on from there.`,
     );
   out.push(
     `## Reporting\nIf you need an answer before you can continue, ask it with the \`ask_question\` tool of the Ordo MCP server or \`ordo agent ask "<question>"\`, then stop: the run pauses, and it resumes when someone replies. If missing access, a credential or a tool you may not use stopped you, say what you need the same way with kind \`permission\` (\`ordo agent ask --permission\`), so people can find it. At each new step of the work, say what you are doing with the \`report_progress\` tool (a few words, and a rough percentage if you can tell); people watching the run see the latest one. When you are done, end with a short summary of what you did and anything a reviewer should check; it is posted on the issue.`,

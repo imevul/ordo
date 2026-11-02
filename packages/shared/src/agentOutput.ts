@@ -1,4 +1,9 @@
-import { AGENT_OUTPUT_BYTES, AGENT_OUTPUT_LINE_CHARS, AGENT_OUTPUT_LINES } from './constants.ts';
+import {
+  AGENT_OUTPUT_BYTES,
+  AGENT_OUTPUT_LINE_CHARS,
+  AGENT_OUTPUT_LINES,
+  AGENT_OUTPUT_RESULT_LINES,
+} from './constants.ts';
 
 // Colour codes, cursor moves and terminal titles: CSI (`ESC [ … letter`) and OSC (`ESC ] … BEL`).
 // biome-ignore lint/suspicious/noControlCharactersInRegex: matching terminal escapes is the point
@@ -51,10 +56,38 @@ function toolGist(input: unknown): string {
   return oneLine(JSON.stringify(input));
 }
 
+/** A tool result's text: Claude Code sends a string, or text blocks among others (images). */
+function resultText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return (content as { type?: unknown; text?: unknown }[])
+    .map((b) => (b.type === 'text' && typeof b.text === 'string' ? b.text : ''))
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * The start of a tool result, indented under its call: enough to see why a command failed, and
+ * little of what it read, which is often whole files. An error's first line says `✗`.
+ */
+function describeResult(block: { content?: unknown; is_error?: unknown }): string[] {
+  const lines = resultText(block.content)
+    .split('\n')
+    .filter((l) => l.trim());
+  const shown = lines.slice(0, AGENT_OUTPUT_RESULT_LINES).map((l) => `  ${l}`);
+  if (block.is_error === true) {
+    const first = lines[0]?.trim() ?? 'The tool failed';
+    shown[0] = `✗ ${first}`;
+  }
+  const more = lines.length - AGENT_OUTPUT_RESULT_LINES;
+  if (more > 0) shown.push(more === 1 ? '  … 1 more line' : `  … ${more} more lines`);
+  return shown;
+}
+
 /**
  * Readable lines for one line of Claude Code's `--output-format stream-json`: what the assistant
- * said and which tools it called (`→ Bash: pnpm test`). Tool results and bookkeeping events give
- * none. Null when the line isn't such an event, so it's shown as printed.
+ * said, which tools it called (`→ Bash: pnpm test`) and how each result starts. Bookkeeping events
+ * give none. Null when the line isn't such an event, so it's shown as printed.
  */
 export function describeAgentEvent(line: string): string[] | null {
   const trimmed = line.trim();
@@ -82,11 +115,38 @@ export function describeAgentEvent(line: string): string[] | null {
     }
     case 'system':
       return event.subtype === 'init' ? ['Session started'] : [];
-    case 'user':
+    case 'user': {
+      const content = Array.isArray(event.message?.content) ? event.message.content : [];
+      return (content as { type?: string; content?: unknown; is_error?: unknown }[]).flatMap((b) =>
+        b.type === 'tool_result' ? describeResult(b) : [],
+      );
+    }
     case 'result':
     case 'stream_event':
       return [];
     default:
       return null;
+  }
+}
+
+/**
+ * The session a line of Claude Code's `stream-json` belongs to, so a later pickup can continue it
+ * without a wrapper script printing `ORDO_RESUME=`. Null for any other line.
+ */
+export function agentSessionId(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('{') || !trimmed.includes('"session_id"')) return null;
+  try {
+    const event = JSON.parse(trimmed) as {
+      type?: unknown;
+      subtype?: unknown;
+      session_id?: unknown;
+    };
+    const named = (event.type === 'system' && event.subtype === 'init') || event.type === 'result';
+    return named && typeof event.session_id === 'string' && event.session_id
+      ? event.session_id
+      : null;
+  } catch {
+    return null;
   }
 }

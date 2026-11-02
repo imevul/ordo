@@ -1,9 +1,11 @@
 import {
   AGENT_LEASE_MS,
+  AGENT_OUTPUT_PICKUP,
   type AgentRun,
   type AgentRunDetail,
   type AgentRunEvent,
   type AgentRunOutput,
+  type Comment,
 } from '@ordo/shared';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
@@ -27,10 +29,12 @@ import {
   triggerLabel,
 } from '../components/AgentRuns.tsx';
 import { Markdown } from '../components/Markdown.tsx';
+import { MarkdownEditor } from '../components/MarkdownEditor.tsx';
 import { EmptyState, PageHeader, Sep, Spinner } from '../components/PageHeader.tsx';
 import { Avatar } from '../components/ui/Avatar.tsx';
 import { t, tx } from '../i18n/index.ts';
 import { durationBetween, longDate, relativeTime } from '../lib/format.ts';
+import { commentAnchor } from '../lib/issues.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
 
 /**
@@ -105,6 +109,7 @@ export function AgentRunPage() {
               </>
             )}
             <Output run={run} />
+            <Steer run={run} />
             <Result run={run} />
             <div className="section-label mt-8 mb-2">{t('agents.runPage.timeline')}</div>
             <Timeline run={run} />
@@ -261,16 +266,17 @@ function Restarts({ run }: { run: AgentRunDetail }) {
 }
 
 /**
- * The tail of what the run's command printed. Output events refetch it while the run works; a new
- * pickup (attempts) starts over, as the server does. It follows the end unless you scroll up.
+ * The tail of what the run's command printed, across its pickups. Output events refetch it while
+ * the run works. It follows the end unless you scroll up.
  */
 function Output({ run }: { run: AgentRunDetail }) {
   const ws = useWorkspace();
   const working = run.status === 'claimed' || run.status === 'running';
   const { data } = useQuery({
-    queryKey: ['ws', ws.slug, 'agentRunOutput', run.id, run.attempts],
+    queryKey: ['ws', ws.slug, 'agentRunOutput', run.id],
     queryFn: () => api.get<AgentRunOutput>(wsPath(ws.slug, `/agent-runs/${run.id}/output`)),
-    enabled: run.attempts > 0,
+    // Attempts start over when a run goes back in the queue, and what it printed stays.
+    enabled: run.attempts > 0 || !!run.startedAt,
   });
   const box = useRef<HTMLPreElement>(null);
   const pinned = useRef(true);
@@ -312,11 +318,95 @@ function Output({ run }: { run: AgentRunDetail }) {
               }}
               className="panel-body max-h-[28rem] overflow-auto p-3 font-mono text-[11.5px] leading-[1.55] break-words whitespace-pre-wrap"
             >
-              {data.lines.join('\n')}
+              {data.lines.map((line, i) => (
+                <OutputLine key={i} line={line} />
+              ))}
             </pre>
           </div>
         </>
       )}
+    </>
+  );
+}
+
+/** One line of output: tool calls and text stand out, results sit back, errors say so. */
+function OutputLine({ line }: { line: string }) {
+  if (line === AGENT_OUTPUT_PICKUP)
+    return (
+      <div className="my-2 border-t border-border-soft pt-1 text-index">
+        {t('agents.runPage.outputPickup')}
+      </div>
+    );
+  if (line.startsWith('✗')) return <div style={{ color: RUN_STATUS_COLOR.failed }}>{line}</div>;
+  return <div className={line.startsWith('  ') ? 'text-muted' : undefined}>{line || ' '}</div>;
+}
+
+/**
+ * Says something to the agent while it works: an ordinary comment on the issue that mentions it,
+ * so what it was told stays with the issue. Whether it stops for it is up to its runner.
+ */
+function Steer({ run }: { run: AgentRunDetail }) {
+  const ws = useWorkspace();
+  const [draft, setDraft] = useState('');
+  const [sent, setSent] = useState<string | null>(null);
+  const agent = ws.memberById.get(run.agentId);
+  const send = useWsMutation(
+    ws.slug,
+    (body: string) =>
+      api.post<Comment>(wsPath(ws.slug, `/issues/${run.issueId}/comments`), { body }),
+    { invalidate: [['ws', ws.slug, 'agentRuns']] },
+  );
+  if ((run.status !== 'claimed' && run.status !== 'running') || !agent?.username) return null;
+  const mention = `@${agent.username}`;
+  const submit = () => {
+    const text = draft.trim();
+    if (!text || send.isPending) return;
+    send.mutate(text.includes(mention) ? text : `${mention} ${text}`, {
+      onSuccess: (comment) => setSent(comment.id),
+    });
+    setDraft('');
+  };
+  const vars = { name: agent.name, identifier: run.issue.identifier };
+  return (
+    <>
+      <div className="section-label mt-8 mb-2">{t('agents.runPage.steer')}</div>
+      <p className="mb-2 text-[12.5px] text-muted">
+        {run.steerable
+          ? t('agents.runPage.steerStops', vars)
+          : t('agents.runPage.steerLater', vars)}
+      </p>
+      {run.steerCommentId && (
+        <p className="mb-2 font-mono text-[12px] text-index">
+          {run.steerable ? t('agents.runPage.steerOnItsWay') : t('agents.runPage.steerAtTheEnd')}
+        </p>
+      )}
+      <MarkdownEditor
+        value={draft}
+        onChange={setDraft}
+        onSubmit={submit}
+        placeholder={t('agents.runPage.steerPlaceholder')}
+        minRows={2}
+      />
+      <div className="mt-2 flex items-center justify-end gap-3">
+        {sent && (
+          <Link
+            to="/$slug/issue/$identifier"
+            params={{ slug: ws.slug, identifier: run.issue.identifier }}
+            hash={commentAnchor(sent)}
+            className="text-[12.5px] text-muted hover:text-highlight"
+          >
+            {t('agents.runPage.steerSent')}
+          </Link>
+        )}
+        <button
+          type="button"
+          className="btn btn-primary btn-sm"
+          onClick={submit}
+          disabled={!draft.trim() || send.isPending}
+        >
+          {t('agents.runPage.steerSend')} <span className="arrow">→</span>
+        </button>
+      </div>
     </>
   );
 }

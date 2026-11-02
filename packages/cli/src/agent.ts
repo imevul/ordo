@@ -10,6 +10,7 @@ import {
   type AgentRunContext,
   type AgentRunRepository,
   type AgentRunUsageReport,
+  agentSessionId,
   cleanOutputLine,
   describeAgentEvent,
   parseUsage,
@@ -54,6 +55,11 @@ export interface AgentSpec {
   instructions: string;
   /** Send the command's output to Ordo as it runs, for the run's page. */
   output: boolean;
+  /**
+   * Stop the command for a person's @mention and let the run continue. Only for a command that
+   * continues its session from `ORDO_RESUME`: any other would start over.
+   */
+  steer: boolean;
 }
 
 export class RunnerConfigError extends Error {}
@@ -78,6 +84,7 @@ const fieldsSchema = z
     checkout: z.boolean(),
     prune: z.boolean(),
     output: z.boolean(),
+    steer: z.boolean(),
     instructions: z.string().max(20_000),
   })
   .partial()
@@ -298,6 +305,7 @@ export async function loadRunnerFile(
       checkout: merged.checkout ?? true,
       prune: merged.prune ?? true,
       output: merged.output ?? true,
+      steer: merged.steer ?? false,
       baseDir,
       // Instructions add up rather than override: shared conventions first, then this agent's.
       instructions: [top.instructions, defaults.instructions, own.instructions]
@@ -445,7 +453,7 @@ export async function checkout(
 // ─── the launch contract ─────────────────────────────────────────────
 
 export interface LaunchResult {
-  status: 'succeeded' | 'failed' | 'cancelled';
+  status: 'succeeded' | 'failed' | 'cancelled' | 'steered';
   summary: string | null;
   error: string | null;
   /** When the runner knows why it failed; otherwise Ordo reads the error. */
@@ -467,18 +475,43 @@ const parseJson = (s: string): unknown => {
 
 /**
  * A JSON result the command printed last: Claude Code's `--output-format json` (all of stdout)
- * or `stream-json` (its last line). Its usage counts, and its `result` text is the summary.
+ * or `stream-json` (its last line). Its usage counts, its `result` text is the summary, and
+ * `is_error` means it failed, which it can say while exiting with 0 (a usage limit).
  */
-function resultOf(stdout: string): { usage: AgentRunUsageReport | null; text: string | null } {
+function resultOf(stdout: string): {
+  usage: AgentRunUsageReport | null;
+  text: string | null;
+  isError: boolean;
+  sessionId: string | null;
+} {
   const trimmed = stdout.trim();
-  if (!trimmed.endsWith('}')) return { usage: null, text: null };
+  if (!trimmed.endsWith('}')) return { usage: null, text: null, isError: false, sessionId: null };
   const value =
     parseJson(trimmed) ?? parseJson(trimmed.slice(trimmed.lastIndexOf('\n') + 1).trim());
-  const result = value as { type?: unknown; result?: unknown } | undefined;
+  const result = value as
+    | { type?: unknown; result?: unknown; is_error?: unknown; session_id?: unknown }
+    | undefined;
+  const named = result?.type === 'result';
   return {
     usage: parseUsage(value),
-    text: result?.type === 'result' && typeof result.result === 'string' ? result.result : null,
+    text: named && typeof result.result === 'string' ? result.result : null,
+    isError: named && result.is_error === true,
+    sessionId: named && typeof result.session_id === 'string' ? result.session_id : null,
   };
+}
+
+/**
+ * What this pickup added to the run. Claude Code's `total_cost_usd` covers the whole session, so on
+ * a resumed one it includes what earlier pickups cost, which the run already counts. A pickup that
+ * was stopped never reported its cost, so it's counted here, by the pickup that continues it.
+ */
+function sinceLastPickup(
+  usage: AgentRunUsageReport | null,
+  sessionId: string | null,
+  run: AgentRunContext['run'],
+): AgentRunUsageReport | null {
+  if (usage?.costUsd === undefined || !sessionId || sessionId !== run.resume) return usage;
+  return { ...usage, costUsd: Math.max(0, usage.costUsd - (run.usage?.costUsd ?? 0)) };
 }
 
 // Commands run in their own process group (POSIX), so the terminal's Ctrl-C reaches only the
@@ -527,11 +560,16 @@ export async function launch(
     repoPaths: { name: string; path: string }[];
     onStart?: (pid: number | undefined) => void;
     onSessionUrl?: (url: string) => void;
-    /** An `ORDO_RESUME=` line: the command's handle on its session, for the next pickup. */
+    /**
+     * The command's handle on its session, for the next pickup: an `ORDO_RESUME=` line, or else
+     * the session id in Claude Code's `stream-json`.
+     */
     onResume?: (token: string) => void;
     onOutput?: (line: string, stream: 'stdout' | 'stderr') => void;
     /** Resolves when the run should stop (cancelled in Ordo). */
     cancelled?: Promise<void>;
+    /** Resolves when the command should stop for a person's @mention; the run continues. */
+    steered?: Promise<void>;
     /** How long a stopped command gets between SIGTERM and SIGKILL (default 10s). */
     graceMs?: number;
   },
@@ -608,6 +646,8 @@ export async function launch(
     let stderr = '';
     let sessionUrl: string | null = null;
     let reported: AgentRunUsageReport | null = null;
+    let resumeLine = false;
+    let session: string | null = null;
     const lines = (stream: 'stdout' | 'stderr') => {
       let buffer = '';
       return (chunk: Buffer) => {
@@ -623,6 +663,7 @@ export async function launch(
           }
           const r = stream === 'stdout' ? RESUME_LINE.exec(line) : null;
           if (r) {
+            resumeLine = true;
             opts.onResume?.(r[1]!);
             continue;
           }
@@ -630,6 +671,11 @@ export async function launch(
           if (u) {
             reported = parseUsage(parseJson(u[1]!)) ?? reported;
             continue;
+          }
+          const id = stream === 'stdout' && !resumeLine ? agentSessionId(line) : null;
+          if (id && id !== session) {
+            session = id;
+            opts.onResume?.(id);
           }
           if (stream === 'stdout') stdout = tail(`${stdout}${line}\n`, 64 * 1024);
           else stderr = tail(`${stderr}${line}\n`, 64 * 1024);
@@ -641,9 +687,9 @@ export async function launch(
     child.stderr.on('data', lines('stderr'));
 
     let closed = false;
-    let stopped: 'cancelled' | 'timeout' | null = null;
+    let stopped: 'cancelled' | 'steered' | 'timeout' | null = null;
     let force: NodeJS.Timeout | undefined;
-    const kill = (why: 'cancelled' | 'timeout') => {
+    const kill = (why: 'cancelled' | 'steered' | 'timeout') => {
       if (stopped || closed) return;
       stopped = why;
       signalGroup(child, 'SIGTERM');
@@ -652,6 +698,7 @@ export async function launch(
     };
     const timer = spec.timeoutMs ? setTimeout(() => kill('timeout'), spec.timeoutMs) : undefined;
     void opts.cancelled?.then(() => kill('cancelled'));
+    void opts.steered?.then(() => kill('steered'));
 
     const code = await new Promise<number | null>((resolveExit) => {
       child.on('error', (err) => {
@@ -669,7 +716,7 @@ export async function launch(
     const result = resultOf(stdout);
     const usage: AgentRunUsageReport = {
       durationMs: Date.now() - started,
-      ...(reported ?? result.usage),
+      ...(reported ?? sinceLastPickup(result.usage, result.sessionId, context.run)),
     };
     let summary: string | null = null;
     try {
@@ -678,6 +725,7 @@ export async function launch(
     summary ??= tail((result.text ?? stdout).trim(), 4096) || null;
     const base = { summary, sessionUrl, usage };
     if (stopped === 'cancelled') return { ...base, status: 'cancelled', error: null };
+    if (stopped === 'steered') return { ...base, status: 'steered', error: null };
     if (stopped === 'timeout')
       return {
         ...base,
@@ -685,13 +733,14 @@ export async function launch(
         error: `Timed out after ${Math.round(spec.timeoutMs / 60_000)} minutes`,
         failureReason: 'timeout',
       };
-    if (code === 0) return { ...base, status: 'succeeded', error: null };
+    if (code === 0 && !result.isError) return { ...base, status: 'succeeded', error: null };
     return {
       ...base,
       status: 'failed',
       error: tail(
         // Some tools say what went wrong on stdout (e.g. "not logged in"), so that's next best.
-        `${stderr.trim() || (result.text ?? stdout).trim() || 'No output.'}\n(exit code ${code ?? 'signal'})`,
+        // A result that says it failed knows better than whatever was on stderr along the way.
+        `${(result.isError && result.text?.trim()) || stderr.trim() || (result.text ?? stdout).trim() || 'No output.'}\n(exit code ${code ?? 'signal'})`,
         4000,
       ),
     };
@@ -709,8 +758,10 @@ export async function launch(
  * It stops once Ordo says the run no longer works.
  */
 export function outputStream(
-  send: (lines: string[]) => Promise<{ accepted: boolean } | undefined>,
+  send: (lines: string[]) => Promise<{ accepted: boolean; steer?: string | null } | undefined>,
   everyMs = 2000,
+  /** Ordo's reply says a person's @mention is waiting for the run. */
+  onSteer?: () => void,
 ) {
   let buffer: string[] = [];
   let sending: Promise<unknown> | null = null;
@@ -722,6 +773,7 @@ export function outputStream(
     sending = send(lines)
       .then((r) => {
         if (r && !r.accepted) stopped = true;
+        if (r?.steer) onSteer?.();
       })
       .catch(() => {})
       .finally(() => {
@@ -952,12 +1004,26 @@ async function work(
   const cancelled = new Promise<void>((r) => {
     cancel = r;
   });
+  let stopForSteer = () => {};
+  const steered = new Promise<void>((r) => {
+    stopForSteer = r;
+  });
+  // Only with a session to continue: without one, the run would start over.
+  let resume = context.run.resume;
+  let canSteer = spec.steer;
+  const onSteer = () => {
+    if (!canSteer || !resume) return;
+    canSteer = false;
+    opts.log(`${id} was mentioned in Ordo; stopping it to continue with the comment`);
+    stopForSteer();
+  };
   const beat = setInterval(async () => {
     try {
-      if ((await ws.agent.heartbeat(runId)).cancelled) {
+      const reply = await ws.agent.heartbeat(runId);
+      if (reply.cancelled) {
         opts.log(`${id} was cancelled in Ordo; stopping it`);
         cancel();
-      }
+      } else if (reply.steer) onSteer();
     } catch (err) {
       opts.log(`${id} heartbeat failed: ${(err as Error).message}`);
     }
@@ -994,11 +1060,14 @@ async function work(
     const workdir = spec.cwd === 'worktree' && repoPaths[0] ? repoPaths[0].path : null;
     const pending: Promise<unknown>[] = [];
     output = spec.output
-      ? outputStream((lines) =>
-          ws.agent.output(runId, lines).catch((err: Error) => {
-            opts.log(`${id} sending output failed: ${err.message}`);
-            return undefined;
-          }),
+      ? outputStream(
+          (lines) =>
+            ws.agent.output(runId, lines).catch((err: Error) => {
+              opts.log(`${id} sending output failed: ${err.message}`);
+              return undefined;
+            }),
+          undefined,
+          onSteer,
         )
       : null;
     const live = output;
@@ -1006,21 +1075,27 @@ async function work(
       workdir,
       repoPaths,
       cancelled,
+      steered,
       onStart: () => {
-        pending.push(report({ status: 'running' }));
+        pending.push(
+          report({ status: 'running', ...(spec.steer && resume && { steerable: true }) }),
+        );
         opts.log(`${id} running in ${workdir ?? 'a temporary directory'}`);
       },
       onSessionUrl: (url) => {
         pending.push(report({ sessionUrl: url }));
       },
       onResume: (token) => {
-        pending.push(report({ resume: token }));
+        const first = !resume;
+        resume = token;
+        pending.push(report({ resume: token, ...(spec.steer && first && { steerable: true }) }));
       },
       onOutput: (line) => {
         live?.push(line);
         if (opts.verbose) opts.log(`${id} │ ${line}`);
       },
     });
+    canSteer = false;
     // The rest of the output first: Ordo takes none once the run has ended.
     await Promise.all([...pending, live?.close()]);
     const cost = result.usage.costUsd;
@@ -1028,6 +1103,14 @@ async function work(
     // A cancelled run's tokens were spent all the same.
     if (result.status === 'cancelled') {
       await report({ usage: result.usage });
+      return;
+    }
+    if (result.status === 'steered') {
+      const back = await report({ steered: true, usage: result.usage });
+      // Cancelled meanwhile: the report is refused, but what the run used still counts.
+      if (!back && (refused as string | null)?.includes('cancelled'))
+        await ws.agent.report(runId, { usage: result.usage }).catch(() => {});
+      opts.log(`${id} went back in the queue to continue`);
       return;
     }
     const saved = await report({

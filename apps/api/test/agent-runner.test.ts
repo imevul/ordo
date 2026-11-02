@@ -20,7 +20,14 @@ import {
   serveAgent,
 } from '@ordo/cli/agent';
 import { Ordo } from '@ordo/sdk';
-import type { AgentRun, AgentRunContext, AgentRunOutput, Bootstrap, Comment } from '@ordo/shared';
+import {
+  AGENT_OUTPUT_PICKUP,
+  type AgentRun,
+  type AgentRunContext,
+  type AgentRunOutput,
+  type Bootstrap,
+  type Comment,
+} from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { type Client, signup, testApp } from './helpers.ts';
@@ -920,12 +927,148 @@ describe('ordo agent', () => {
         baseDir: dir,
         instructions: '',
         output: true,
+        steer: false,
       },
       { log: (l) => lines.push(l), signal: new AbortController().signal },
     );
     // Each worker stops on its own.
     expect(lines.filter((l) => l.includes('the key was refused'))).toHaveLength(2);
   });
+});
+
+describe('steering', () => {
+  let pilot: string;
+  let pilotKey: string;
+  beforeAll(async () => {
+    pilot = (
+      await owner.post(`${ws}/agents`, {
+        name: 'Runner Pilot',
+        username: 'runner-pilot',
+        teamIds: [eng],
+      })
+    ).data.id;
+    pilotKey = (await owner.post(`${ws}/agents/${pilot}/keys`, { name: 'test' })).data.token;
+  });
+  /** An issue for the agent, and a runner file serving it with `command`. */
+  const setup = async (name: string, title: string, command: string, extra = '') => {
+    const issue = (await owner.post(`${ws}/issues`, { teamId: eng, title, assigneeId: pilot }))
+      .data;
+    const file = write(
+      `${name}.yml`,
+      `url: ${url}\nworkspace: ${slug}\nkey: ${pilotKey}\ncheckout: false\n${extra}command: ${JSON.stringify(command)}\n`,
+    );
+    return { issue, file };
+  };
+  const runsOf = async (issueId: string) =>
+    (await owner.get(`${ws}/issues/${issueId}/agent-runs`)).data as AgentRun[];
+  const mention = (issueId: string, words: string) =>
+    owner.post(`${ws}/issues/${issueId}/comments`, { body: `@runner-pilot ${words}` });
+  /** Prints a line every 100ms so the output replies carry the mention, until it's stopped. */
+  const SPIN = 'while :; do echo working; sleep 0.1; done';
+
+  it('stops a command for a mention, and continues its session with the comment', async () => {
+    const session = (id: string) =>
+      `echo '{"type":"system","subtype":"init","session_id":"${id}"}'`;
+    // The first pickup never ends by itself; the second says which session it was handed.
+    const command = `if [ -n "$ORDO_RESUME" ]; then echo "resumed $ORDO_RESUME"; grep -c "You were interrupted" "$ORDO_PROMPT_FILE"; exit 0; fi; ${session('claude-session')}; touch "${dir}/steer.started"; ${SPIN}`;
+    const { issue, file } = await setup('steer', 'Steer the command', command, 'steer: true\n');
+    const started = () => existsSync(join(dir, 'steer.started'));
+    const done = ordo(['agent', 'run', '--file', file, '--once']);
+    await until(started, 15_000);
+    let run = (await runsOf(issue.id))[0]!;
+    for (const end = Date.now() + 10_000; !run.steerable && Date.now() < end; )
+      run = (await runsOf(issue.id))[0]!;
+    expect(run).toMatchObject({ steerable: true, resume: 'claude-session' });
+    await mention(issue.id, 'look elsewhere');
+    expect((await done).code).toBe(0);
+
+    const [after] = await runsOf(issue.id);
+    expect(after).toMatchObject({ id: run.id, status: 'succeeded', steerCommentId: null });
+    const output = (await owner.get(`${ws}/agent-runs/${run.id}/output`)).data as AgentRunOutput;
+    expect(output.lines).toContain('working');
+    expect(output.lines).toContain(AGENT_OUTPUT_PICKUP);
+    expect(output.lines).toContain('resumed claude-session');
+    expect(output.lines).toContain('1');
+  }, 40_000);
+
+  it('leaves the command working without the opt-in, and follows up afterwards', async () => {
+    const gate = gated('no-steer', `echo '{"type":"system","subtype":"init","session_id":"s"}'`);
+    const { issue, file } = await setup('no-steer', 'Not steered', gate.command);
+    const done = ordo(['agent', 'run', '--file', file, '--once']);
+    await until(gate.started, 15_000);
+    await mention(issue.id, 'when you can');
+    const [run] = await runsOf(issue.id);
+    expect(run).toMatchObject({ steerable: false });
+    gate.release();
+    expect((await done).code).toBe(0);
+    const statuses = (await runsOf(issue.id)).map((r) => r.status).sort();
+    // `--once` works through what's queued, so the follow-up ran too.
+    expect(statuses).toEqual(['succeeded', 'succeeded']);
+  }, 30_000);
+
+  it('has nothing to stop for without a session to continue', async () => {
+    const gate = gated('no-session', 'echo done');
+    const { issue, file } = await setup('no-session', 'No session', gate.command, 'steer: true\n');
+    const done = ordo(['agent', 'run', '--file', file, '--once']);
+    await until(gate.started, 15_000);
+    await mention(issue.id, 'when you can');
+    const [run] = await runsOf(issue.id);
+    expect(run).toMatchObject({ steerable: false });
+    gate.release();
+    expect((await done).code).toBe(0);
+    expect((await runsOf(issue.id)).map((r) => r.status).sort()).toEqual([
+      'succeeded',
+      'succeeded',
+    ]);
+  }, 30_000);
+
+  it("counts only what a resumed session added to the run's cost", async () => {
+    const result = (session: string) =>
+      `echo '${JSON.stringify({ type: 'result', result: 'Done', session_id: session, total_cost_usd: 0.5, usage: { input_tokens: 2 } })}'`;
+    const spec = {
+      env: {},
+      timeoutMs: 0,
+      url: 'http://127.0.0.1:9',
+      workspace: 'x',
+      key: 'k',
+      baseDir: dir,
+    };
+    const cost = async (session: string, run: Partial<AgentRun>) => {
+      const context = {
+        prompt: 'Do it',
+        run: { id: 'run-1', question: null, ...run },
+        issue: { identifier: 'ENG-1', url: 'https://ordo.example.com/x/issue/ENG-1' },
+      } as unknown as AgentRunContext;
+      const done = await launch({ ...spec, command: result(session) }, context, {
+        workdir: null,
+        repoPaths: [],
+      });
+      return done.usage.costUsd;
+    };
+    const paid = { usage: { costUsd: 0.2 } } as Partial<AgentRun>;
+    // Its session's total, less what the run has counted.
+    expect(await cost('s1', { resume: 's1', ...paid })).toBeCloseTo(0.3);
+    // A stopped pickup reported nothing, so all of it is new.
+    expect(await cost('s1', { resume: 's1', usage: null })).toBe(0.5);
+    // A session of its own (a new pickup, or a token of the command's making) is all new too.
+    expect(await cost('s2', { resume: 's1', ...paid })).toBe(0.5);
+    expect(await cost('s1', { resume: null, ...paid })).toBe(0.5);
+    // Never below nothing, if the run counted more than this session cost.
+    expect(await cost('s1', { resume: 's1', usage: { costUsd: 9 } } as Partial<AgentRun>)).toBe(0);
+  });
+
+  it('fails a run whose result says it failed, whatever the exit code', async () => {
+    const result = JSON.stringify({
+      type: 'result',
+      is_error: true,
+      result: 'It went wrong',
+    });
+    const { issue, file } = await setup('is-error', 'Says it failed', `echo '${result}'`);
+    expect((await ordo(['agent', 'run', '--file', file, '--once'])).code).toBe(0);
+    const [run] = await runsOf(issue.id);
+    expect(run!.status).toBe('failed');
+    expect(run!.error).toContain('It went wrong');
+  }, 30_000);
 });
 
 describe('stopping a run', () => {

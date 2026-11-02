@@ -2118,6 +2118,16 @@ export const agentRuns = pgTable(
     }),
     /** Opaque to Ordo: the runner's handle on the agent's session, returned on the next pickup. */
     resume: text('resume'),
+    /** A person's @mention while the run works, not yet in front of the agent; the latest wins. */
+    steerCommentId: uuid('steer_comment_id').references(() => comments.id, {
+      onDelete: 'set null',
+    }),
+    /** The mention this pickup is to act on: `steerCommentId`, moved here by the claim. */
+    steeredCommentId: uuid('steered_comment_id').references(() => comments.id, {
+      onDelete: 'set null',
+    }),
+    /** The runner said it can stop this pickup for a mention and continue the session. */
+    steerable: boolean('steerable').notNull().default(false),
     /**
      * The prompt of the latest pickup, as Ordo rendered it, without instructions: the runner's
      * may hold expanded environment variables, and the agent's are for admins only.
@@ -2160,7 +2170,7 @@ export const agentRunEvents = pgTable(
 );
 
 /**
- * The tail of a run's live output in its latest pickup (capped, see `AGENT_OUTPUT_LINES`). Its own
+ * The tail of a run's live output across its pickups (capped, see `AGENT_OUTPUT_LINES`). Its own
  * table so listing runs never reads it; deleted a while after the last line (`pruneRunOutput`).
  */
 export const agentRunOutput = pgTable(

@@ -461,9 +461,13 @@ export const AGENT_LEASE_MS = 5 * 60_000;
  * A running run's live output: Ordo keeps only its tail (the last lines, and at most so many
  * bytes in all, each line cut short), since output can hold secrets and grows without end.
  */
-export const AGENT_OUTPUT_LINES = 200;
-export const AGENT_OUTPUT_BYTES = 64 * 1024;
+export const AGENT_OUTPUT_LINES = 500;
+export const AGENT_OUTPUT_BYTES = 128 * 1024;
 export const AGENT_OUTPUT_LINE_CHARS = 1000;
+/** How much of each tool result the output shows: enough to see why a command failed. */
+export const AGENT_OUTPUT_RESULT_LINES = 5;
+/** A line in a run's output where a later pickup begins; the page draws it as a divider. */
+export const AGENT_OUTPUT_PICKUP = '::ordo-pickup';
 /** A run's output is deleted this long after its runner last sent some. */
 export const AGENT_OUTPUT_RETENTION_MS = 7 * 86_400_000;
 /**
@@ -485,6 +489,8 @@ export type AgentRunTrigger = (typeof AGENT_RUN_TRIGGERS)[number];
  * waiting run went back in the queue, after a person's reply or Resume. ran_anyway: someone told a
  * queued run not to wait for its issue's blockers. planned: it posted a plan and waits for
  * approval. plan_approved: a person approved it (and the run went back in the queue).
+ * steer_requested: a person @mentioned the agent while it worked. steered: its runner stopped the
+ * command for that, and the run went back in the queue to continue.
  */
 export const AGENT_RUN_EVENT_KINDS = [
   'queued',
@@ -496,6 +502,8 @@ export const AGENT_RUN_EVENT_KINDS = [
   'planned',
   'plan_approved',
   'resumed',
+  'steer_requested',
+  'steered',
   'lapsed',
   'succeeded',
   'failed',

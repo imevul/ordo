@@ -1572,8 +1572,16 @@ export const reportAgentRunSchema = z
     plan: z.string().trim().min(1).max(50_000).optional(),
     /** Opaque: handed back on the next pickup so the runner can continue the agent's session. */
     resume: z.string().max(2000).nullish(),
+    /** This pickup can be stopped for a person's @mention and continue its session. */
+    steerable: z.literal(true).optional(),
+    /** The runner stopped the command for such a mention: the run goes back in the queue. */
+    steered: z.literal(true).optional(),
     /** What this pickup used (tokens, cost, duration); added to the run's totals. */
     usage: agentRunUsageSchema.optional(),
+  })
+  .refine((r) => !(r.steered && r.status), {
+    message: 'A steered run goes back in the queue; report no status with it',
+    path: ['steered'],
   })
   .refine((r) => r.status !== 'waiting' || !!r.question || !!r.plan, {
     message: 'Say what you are asking (question) or proposing (plan)',
