@@ -273,6 +273,7 @@ describe('runs', () => {
     expect(data.prompt).toContain('For **v2**.');
     expect(data.prompt).toContain('Keep it short.');
     expect(data.prompt).toContain('Run the tests before opening a PR.');
+    expect(data.prompt).not.toContain('get_attachment');
 
     // A runner's own instructions come first, then the agent's; nothing is stored.
     const extra = await issue('With runner instructions', { assigneeId: agentId });

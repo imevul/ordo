@@ -333,9 +333,11 @@ export async function buildApp(
 const BUILT_FILE = /^\/assets\/[^/?]+\.\w+(?:\?|$)/;
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const WORKSPACE_PREFIX = '/api/w/:ws/';
+// Outside a workspace's prefix, but the attachment route checks the workspace and team itself.
+const AGENT_READS = new Set(['/api/auth/me', '/api/attachments/:id']);
 const isAgentRoute = (req: FastifyRequest) =>
   req.routeOptions.url?.startsWith(WORKSPACE_PREFIX) ||
-  (req.method === 'GET' && req.routeOptions.url === '/api/auth/me');
+  (req.method === 'GET' && AGENT_READS.has(req.routeOptions.url ?? ''));
 const MCP_ROUTE = '/api/w/:ws/mcp';
 
 /**

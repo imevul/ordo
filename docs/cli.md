@@ -42,6 +42,7 @@ In a checkout of the Ordo repository, `pnpm ordo <command>` runs the CLI from so
 | `ordo issue edit <id>`           | Change fields                                                                                                         |
 | `ordo issue comment <id> [text]` | Comment; `--body-file <path>`, or `-` to read stdin; `--attach <file>` adds files (images show inline)                |
 | `ordo issue attach <id> <file…>` | Upload files to the issue and print the Markdown that shows them, for a comment, description or summary               |
+| `ordo issue download <id>`       | Save the issue's attachments and print their paths; `-o <dir>` says where                                             |
 | `ordo issue start <id>`          | Move to the team's first started status, assign it to you if nobody has it, and print the git branch name             |
 | `ordo issue close <id>`          | Move to the first completed status (`--canceled` for the canceled one)                                                |
 | `ordo issue branch <id>`         | Print the git branch name (the workspace's branch format)                                                             |

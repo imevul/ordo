@@ -24,6 +24,7 @@ import {
   type AgentRunUsageReport,
   type AgentRunWithIssue,
   type AgentUsageTotal,
+  ATTACHMENT_URL_PATTERN,
   AVATAR_COLORS,
   appendOutput,
   branchName,
@@ -2356,6 +2357,14 @@ export function renderPrompt(
   ].filter(Boolean);
   out.push(meta.map((m) => `- ${m}`).join('\n'));
   out.push(issue.description.trim() || '_No description._');
+  if (
+    [issue.description, ...c.comments.map((m) => m.body)].some(
+      (t) => t.search(ATTACHMENT_URL_PATTERN) >= 0,
+    )
+  )
+    out.push(
+      `Links to \`/api/attachments/…\` here are files attached to the issue, and they need your key. To see an image, use the \`get_attachment\` tool of the Ordo MCP server. \`ordo issue download ${issue.identifier} -o <dir>\` saves them all.`,
+    );
   if (issue.parent) out.push(`Parent issue: ${issue.parent.identifier} ${issue.parent.title}`);
   if (issue.relations.length)
     out.push(

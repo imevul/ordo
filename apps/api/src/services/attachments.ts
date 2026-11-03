@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify';
 import type { DbOrTx } from '../db/client.ts';
 import { attachments, files, issues } from '../db/schema.ts';
 import { forbidden, notFound, one } from '../lib/errors.ts';
-import { canReadTeam } from './access.ts';
+import { type Access, canReadTeam } from './access.ts';
 import { forEachIsolated } from './automation.ts';
 import { type Ctx, emit } from './context.ts';
 import { deleteFile } from './files.ts';
@@ -108,6 +108,13 @@ export async function loadAttachmentForDownload(db: DbOrTx, id: string) {
     .where(eq(attachments.id, id));
   return row ?? null;
 }
+
+/** Whoever can read the issue, or before it's claimed, the uploader. */
+export const canReadAttachment = (
+  access: Access,
+  row: { teamId: string | null; issueId: string | null; uploaderId: string | null },
+) =>
+  row.teamId ? canReadTeam(access, row.teamId) : !row.issueId && row.uploaderId === access.userId;
 
 /**
  * Uploaders and workspace or team admins may remove an attachment. Returns the file to delete

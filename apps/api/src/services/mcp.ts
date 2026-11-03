@@ -33,7 +33,7 @@ import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { users } from '../db/schema.ts';
-import { badRequest, parse } from '../lib/errors.ts';
+import { badRequest, notFound, parse } from '../lib/errors.ts';
 import type { Access } from './access.ts';
 import {
   askQuestion,
@@ -48,11 +48,13 @@ import {
   requestRun,
   restartRun,
 } from './agents.ts';
+import { canReadAttachment, loadAttachmentForDownload } from './attachments.ts';
 import { createComment, listComments } from './comments.ts';
 import type { Ctx } from './context.ts';
 import { listCustomFields } from './customFields.ts';
 import { workspaceTimezone, workspaceToday } from './cycle-automation.ts';
 import { createCycle, listCycles, updateCycle } from './cycles.ts';
+import { isImageType } from './files.ts';
 import { createIssue, getIssue, getIssueDetail, queryIssues, updateIssue } from './issues.ts';
 import { listLabels } from './labels.ts';
 import { createMilestone, listProjects, updateMilestone } from './projects.ts';
@@ -79,6 +81,19 @@ export interface McpCaller {
 
 /** Enough of a caller to read: AI assistance shows models issues the same way. */
 export type McpReader = Omit<McpCaller, 'run'>;
+
+/** A tool result the model sees as an image; `about` goes along as its JSON text. */
+export class McpImage {
+  constructor(
+    readonly mimeType: string,
+    readonly data: string,
+    readonly about: unknown,
+  ) {}
+}
+
+const ATTACHMENT_ID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/;
+// What model APIs take per image; a larger one would fail the whole request, not just this tool.
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 const same = (a: string, b: string) =>
   a.localeCompare(b, undefined, { sensitivity: 'accent' }) === 0;
@@ -700,6 +715,25 @@ function handlers(c: McpCaller): Handlers {
       ),
 
     get_issue: ({ issue, comments }) => issueResult(c, dir, issue, comments),
+
+    get_attachment: async ({ attachment }) => {
+      const id = ATTACHMENT_ID.exec(attachment)?.[0];
+      const row = id ? await loadAttachmentForDownload(c.app.db, id) : null;
+      if (!row || row.workspaceId !== c.workspace.id || !canReadAttachment(c.access, row))
+        throw notFound('Attachment');
+      const { filename, contentType, size, storageKey } = row.file;
+      if (!isImageType(contentType))
+        throw badRequest(
+          `${filename} isn't an image, so it can't be shown here. "ordo issue download <issue> -o <dir>" saves it.`,
+        );
+      if (size > MAX_IMAGE_BYTES)
+        throw badRequest(
+          `${filename} is too large to show here. "ordo issue download <issue> -o <dir>" saves it.`,
+        );
+      const body = await c.app.storage.get(storageKey);
+      if (!body) throw notFound('Attachment');
+      return new McpImage(contentType, body.toString('base64'), { filename, size });
+    },
 
     create_issue: async (a) => {
       const team = await dir.team(a.team);

@@ -4,8 +4,8 @@ import type { FastifyInstance } from 'fastify';
 import { authInfo, authorizeWorkspace, requireAccess, requireUser } from '../lib/auth.ts';
 import { badRequest, HttpError, notFound, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
-import { canReadTeam } from '../services/access.ts';
 import {
+  canReadAttachment,
   createAttachment,
   deleteAttachment,
   loadAttachmentForDownload,
@@ -76,10 +76,7 @@ export async function attachmentDownloadRoutes(app: FastifyInstance) {
     const row = /^[0-9a-f-]{36}$/.test(id) ? await loadAttachmentForDownload(app.db, id) : null;
     if (!row) throw notFound('Attachment');
     const ws = await authorizeWorkspace(app.db, user, { id: row.workspaceId }, authInfo(req));
-    const readable = row.teamId
-      ? canReadTeam(ws.access, row.teamId)
-      : !row.issueId && row.uploaderId === user.id;
-    if (!readable) throw notFound('Attachment');
+    if (!canReadAttachment(ws.access, row)) throw notFound('Attachment');
     // Short, private caching: losing access to the issue takes effect within minutes.
     return sendStoredFile(app, reply, row.file, 300);
   });
