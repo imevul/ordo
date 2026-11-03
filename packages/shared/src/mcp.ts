@@ -283,6 +283,7 @@ export const mcpToolSchemas = {
       ),
     limit: limit(200, 50),
   }),
+  agent_run_holds: z.object({ team: team.optional() }),
   rerun_agent: z.object({
     issue,
     note: z
@@ -557,6 +558,13 @@ export const MCP_TOOLS: {
     title: 'List agent runs',
     description:
       'What agents are doing across the workspace: active runs (queued, working, waiting for an answer) by default, or finished ones, with each run’s usage (tokens, cost in USD, duration) when reported.',
+    readOnly: true,
+  },
+  {
+    name: 'agent_run_holds',
+    title: 'What holds agent runs',
+    description:
+      "Why queued agent runs aren't starting: chains of cycles with how many runs each holds, the issues that have to move first, and those that will stall the chain next.",
     readOnly: true,
   },
   {

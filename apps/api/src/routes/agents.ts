@@ -1,5 +1,6 @@
 import {
   type AgentRunPage,
+  agentRunHoldsQuerySchema,
   agentRunOutputSchema,
   agentRunsQuerySchema,
   agentRunsSearchSchema,
@@ -15,6 +16,7 @@ import { requireAccess, requireAdmin, requireUser } from '../lib/auth.ts';
 import { forbidden, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertTeamAccess } from '../services/access.ts';
+import { agentRunHolds } from '../services/agentRunHolds.ts';
 import {
   appendRunOutput,
   approvePlan,
@@ -138,6 +140,14 @@ export async function agentRoutes(app: FastifyInstance) {
   app.get('/agent-runs/active-count', async (req) => ({
     count: await countActiveRuns(db, requireAccess(req)),
   }));
+
+  // What's holding queued runs back, grouped by what each group waits for.
+  app.get('/agent-runs/holds', async (req) => {
+    const { teamId } = parse(agentRunHoldsQuerySchema, req.query);
+    const access = requireAccess(req);
+    if (teamId) assertTeamAccess(access, teamId);
+    return agentRunHolds(db, access, { teamId });
+  });
 
   // One run with its prompt, timeline and restarts: the run's page.
   app.get('/agent-runs/:id', async (req) => {

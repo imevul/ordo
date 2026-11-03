@@ -1,5 +1,6 @@
 import {
   type AgentRun,
+  type AgentRunHoldIssue,
   type CustomField,
   type CustomFieldValue,
   type Cycle,
@@ -35,6 +36,7 @@ import { z } from 'zod';
 import { users } from '../db/schema.ts';
 import { badRequest, notFound, parse } from '../lib/errors.ts';
 import type { Access } from './access.ts';
+import { agentRunHolds } from './agentRunHolds.ts';
 import {
   askQuestion,
   cancelRun,
@@ -826,6 +828,29 @@ function handlers(c: McpCaller): Handlers {
         usage: r.usage ?? undefined,
         updatedAt: r.finishedAt ?? r.startedAt ?? r.createdAt,
       }));
+    },
+
+    agent_run_holds: async ({ team }) => {
+      const teamId = team ? (await dir.team(team)).id : undefined;
+      const holds = await agentRunHolds(c.app.db, c.access, { teamId });
+      const toAct = [
+        ...holds.chains.flatMap((h) => h.issues),
+        ...holds.blocked.map((b) => b.issue),
+      ];
+      const names = await dir.people(toAct.map((i) => i.assigneeId));
+      const named = ({ id: _id, assigneeId, ...rest }: AgentRunHoldIssue) => ({
+        ...rest,
+        assignee: assigneeId ? (names.get(assigneeId) ?? null) : null,
+      });
+      return {
+        ...holds,
+        chains: holds.chains.map((h) => ({
+          ...h,
+          issues: h.issues.map(named),
+          nextToStall: h.nextToStall.map(({ identifier, title }) => ({ identifier, title })),
+        })),
+        blocked: holds.blocked.map((b) => ({ runs: b.runs, issue: named(b.issue) })),
+      };
     },
 
     rerun_agent: async ({ issue, note }) => {

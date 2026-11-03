@@ -12,6 +12,7 @@ import { Pause, Play, Save } from 'lucide-react';
 import { useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { keys, useWsMutation } from '../api/queries.ts';
+import { AgentRunHoldsPanel } from '../components/AgentRunHolds.tsx';
 import {
   AgentRunsControls,
   AgentRunsList,
@@ -139,6 +140,7 @@ export function AgentRunsPage() {
         <PauseBanner key={p.agentId} pause={p} />
       ))}
       <UsageTotals totals={usage} />
+      <AgentRunHoldsPanel scope={scope} onChange={setScope} />
       <AgentRunsControls scope={scope} onChange={setScope} />
       <AgentRunsList scope={scope} onChange={setScope} />
       <SaveViewModal

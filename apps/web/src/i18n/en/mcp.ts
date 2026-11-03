@@ -136,6 +136,8 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
         "An issue's agent runs: status, runner, session link, summary or error, and what each cost.",
       list_agent_runs:
         'What agents are doing across the workspace: active or finished runs, and what each cost.',
+      agent_run_holds:
+        "Why queued agent runs aren't starting, and which issues have to move first.",
       rerun_agent: "Ask the issue's agent to work on it again, optionally with a note.",
       cancel_agent_run: "Stop the agent's queued or running work on an issue.",
       restart_agent_run:

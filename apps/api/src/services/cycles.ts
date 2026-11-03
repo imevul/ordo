@@ -143,6 +143,7 @@ export async function heldCycles(db: DbOrTx, workspaceId: string, today: string)
             id: before.id,
             number: before.number,
             name: before.name,
+            endsAt: before.endsAt,
             open: t?.open ?? 0,
             total: t?.total ?? 0,
           }
