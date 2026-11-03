@@ -85,6 +85,7 @@ import { badRequest, conflict, forbidden, notFound, one } from '../lib/errors.ts
 import { runInWorkspace } from '../lib/mutate.ts';
 import { type Access, teamScope } from './access.ts';
 import {
+  awaitingHandOff,
   blockedNow,
   heldByCycle,
   inFullRepository,
@@ -1505,6 +1506,7 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
         eq(agentRuns.status, 'queued'),
         // One run per issue at a time: a follow-up waits for the agent's run there to finish.
         sql`not exists (select 1 from agent_runs busy where busy.issue_id = "agent_runs"."issue_id" and busy.agent_id = "agent_runs"."agent_id" and busy.status in ('claimed', 'running'))`,
+        not(awaitingHandOff),
         // A blocked issue waits for its blockers, unless someone said to run anyway.
         agent.waitForBlockers ? or(eq(agentRuns.ignoreBlockers, true), not(blockedNow)) : undefined,
         // Work planned for a cycle that isn't open yet waits for it, unless told to run anyway.
@@ -2525,7 +2527,7 @@ export function renderPrompt(
         )}\n\nA command or edit may have been cut off when it stopped, so check the working tree first. Then do what the comment asks, and carry on from there.`,
     );
   out.push(
-    `## Reporting\nIf you need an answer before you can continue, ask it with the \`ask_question\` tool of the Ordo MCP server or \`ordo agent ask "<question>"\`, then stop: the run pauses, and it resumes when someone replies. If missing access, a credential or a tool you may not use stopped you, say what you need the same way with kind \`permission\` (\`ordo agent ask --permission\`), so people can find it. At each new step of the work, say what you are doing with the \`report_progress\` tool (a few words, and a rough percentage if you can tell); people watching the run see the latest one. When you are done, end with a short summary of what you did and anything a reviewer should check; it is posted on the issue.`,
+    `## Reporting\nIf you need an answer before you can continue, ask it with the \`ask_question\` tool of the Ordo MCP server or \`ordo agent ask "<question>"\`, then stop: the run pauses, and it resumes when someone replies. If missing access, a credential or a tool you may not use stopped you, say what you need the same way with kind \`permission\` (\`ordo agent ask --permission\`), so people can find it. At each new step of the work, say what you are doing with the \`report_progress\` tool (a few words, and a rough percentage if you can tell); people watching the run see the latest one. When you are done, end with a short summary of what you did and anything a reviewer should check. Ordo posts that final message on the issue for you, and whoever you hand the issue to sees it before they start, so don't post the same thing as a comment yourself.`,
   );
   return out.join('\n\n');
 }

@@ -21,6 +21,12 @@ import { fullRepositories, issueRepositoryIds } from './repositories.ts';
 /** No newer run of the same agent on the same issue: nobody restarted or re-ran it since. */
 export const notSuperseded = sql`not exists (select 1 from agent_runs later where later.issue_id = "agent_runs"."issue_id" and later.agent_id = "agent_runs"."agent_id" and (later.created_at, later.id) > ("agent_runs"."created_at", "agent_runs"."id"))`;
 
+/**
+ * Handed the issue while another agent is still working on it, which is usually the run that handed
+ * it over. That run's summary is only posted when it ends, and the next prompt should have it.
+ */
+export const awaitingHandOff = sql`("agent_runs"."trigger" = 'assigned' and exists (select 1 from agent_runs busy where busy.issue_id = "agent_runs"."issue_id" and busy.agent_id <> "agent_runs"."agent_id" and busy.status in ('claimed', 'running')))`;
+
 /** True while an open issue (not done, cancelled or trashed) blocks the run's issue. */
 export const blockedNow = sql`exists (
   select 1 from issue_relations r
@@ -103,7 +109,8 @@ function reasonConditions(holds: RunHolds | undefined): Record<AgentRunWaitReaso
   const agentPaused = sql`(${queued} and exists (select 1 from agents a where a.user_id = "agent_runs"."agent_id" and a.paused_until > now()))`;
   const runsPaused = sql`(${queued} and exists (select 1 from workspaces w where w.id = "agent_runs"."workspace_id" and (w.settings->>'agentRunsPaused')::boolean))`;
   const agentBusy = sql`(${queued} and (
-    exists (select 1 from agent_runs busy where busy.issue_id = "agent_runs"."issue_id" and busy.agent_id = "agent_runs"."agent_id" and busy.status in ('claimed', 'running'))
+    ${awaitingHandOff}
+    or exists (select 1 from agent_runs busy where busy.issue_id = "agent_runs"."issue_id" and busy.agent_id = "agent_runs"."agent_id" and busy.status in ('claimed', 'running'))
     or (select count(*) from agent_runs busy where busy.agent_id = "agent_runs"."agent_id" and busy.status in ('claimed', 'running')) >= (select a.concurrency from agents a where a.user_id = "agent_runs"."agent_id")
   ))`;
   return {

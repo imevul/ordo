@@ -324,6 +324,18 @@ describe('what holds a queued run back', () => {
     expect(await agent.claim()).toBeNull();
   });
 
+  it('a hand-off, while the agent that made it is still working', async () => {
+    const from = await newAgent();
+    const to = await newAgent();
+    const { issue: made, runId } = await working('handed over', from);
+    await from.as('PATCH', `${ws}/issues/${made.id}`, { assigneeId: to.id });
+    expect(await waitsOn('handed over', 'agent_busy')).toBe(true);
+    expect(await waitsOn('handed over', 'runner')).toBe(false);
+    await from.as('PATCH', `${ws}/agent/runs/${runId}`, { status: 'succeeded' });
+    expect(await waitsOn('handed over', 'agent_busy')).toBe(false);
+    expect(await waitsOn('handed over', 'runner')).toBe(true);
+  });
+
   it('the workspace’s pause', async () => {
     const paused = `arf-paused-${Date.now()}`;
     await owner.post('/api/workspaces', {

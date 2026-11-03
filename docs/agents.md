@@ -44,8 +44,10 @@ There are three parts:
    that use the Ordo MCP server say what they're doing as they go (`report_progress`: "Running the tests", 70%), and
    the latest step shows under the run on the issue and on the Agent runs page.
 3. When the runner finishes, it reports success or failure with a summary, which is posted on the issue as a
-   comment by the agent. If the agent opened a pull request that mentions the issue (the suggested branch name
-   contains the identifier), your [forge integration](integrations/README.md) links it and moves the issue on.
+   comment by the agent, so the agent needn't post it itself. An agent handed the issue waits until any other agent
+   working on it has finished, so its prompt has that summary. If the agent opened a pull request that mentions the
+   issue (the suggested branch name contains the identifier), your [forge integration](integrations/README.md) links
+   it and moves the issue on.
 4. To ask for changes, comment on the issue and click **Run again**. The next run sees the whole thread.
 5. **Blocked issues wait.** If the issue is blocked by another that isn't done or cancelled yet, its run stays queued
    and shows "Waiting on ENG-2". It starts by itself when the last blocker closes. **Run anyway** (on the queued

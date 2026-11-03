@@ -430,8 +430,9 @@ export type AgentRunQuestionKind = (typeof AGENT_RUN_QUESTION_KINDS)[number];
 /**
  * What an unfinished run is waiting on, so "why isn't this moving?" always has an answer. Every
  * queued run has at least one; `runner` means nothing holds it and no runner has picked it up.
- * agent_busy: its agent is at its concurrency, or already working on this issue. limit_reset: it
- * failed on a usage limit and restarts by itself.
+ * agent_busy: its agent is at its concurrency or already working on this issue, or it was handed the
+ * issue while another agent still works on it. limit_reset: it failed on a usage limit and restarts
+ * by itself.
  */
 export const AGENT_RUN_WAIT_REASONS = [
   'question',
