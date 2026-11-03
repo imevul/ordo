@@ -77,7 +77,7 @@ import {
   waitingFor,
   waitingOn,
 } from './agentRunWaits.ts';
-import { noteRunsStopping, onAssigneeChanged } from './agents.ts';
+import { noteRunsLeavingTeam, noteRunsStopping, onAssigneeChanged } from './agents.ts';
 import { claimAttachments, listAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { requestsOnIssue } from './customers.ts';
@@ -1169,6 +1169,7 @@ export async function updateIssue(
   // Moving to another team: renumber and map the status onto the new team's workflow.
   if (patch.teamId && patch.teamId !== current.teamId) {
     const target = await teamOf(ctx, patch.teamId);
+    await noteRunsLeavingTeam(ctx, current.id, current.teamId);
     const [{ counter }] = (await ctx.tx
       .update(teams)
       .set({ issueCounter: sql`${teams.issueCounter} + 1` })

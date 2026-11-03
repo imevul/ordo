@@ -1,9 +1,26 @@
-import type { AgentRun, AgentRunContext, Bootstrap } from '@ordo/shared';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import {
+  AGENT_RUN_OPEN,
+  type AgentRun,
+  type AgentRunContext,
+  type Bootstrap,
+  type WebhookPayload,
+} from '@ordo/shared';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { agentRuns, agents, domainEvents, users } from '../src/db/schema.ts';
+import {
+  agentRuns,
+  agents,
+  domainEvents,
+  integrations,
+  users,
+  webhookDeliveries,
+} from '../src/db/schema.ts';
+import { registerProvider, unregisterProvider } from '../src/integrations/registry.ts';
 import { reapLeases } from '../src/services/agents.ts';
+import { dispatchEvents } from '../src/services/events.ts';
 import { wants } from '../src/services/webhooks.ts';
 import { type Client, signup, testApp } from './helpers.ts';
 
@@ -65,7 +82,7 @@ const waitForLockWait = async (tx: Pick<FastifyInstance['db'], 'execute'>) => {
 };
 
 beforeAll(async () => {
-  app = await testApp();
+  app = await testApp({ settingsFromEnv: { allowPrivateNetworkTargets: true } });
   owner = (await signup(app, 'Ida Owner')).client;
   await owner.post('/api/workspaces', { name: 'Idle', slug, teamName: 'Eng', teamKey: 'ENG' });
   ops = (await owner.post(`${ws}/teams`, { name: 'Ops', key: 'OPS' })).data.id;
@@ -100,14 +117,17 @@ describe('agent_runs.idle', () => {
     expect(events[0]!.data).toEqual({ queued: 0, waiting: 0 });
   });
 
-  it('reaches webhooks limited to any team', async () => {
+  it('belongs to the team that went quiet', async () => {
     await queue('In Ops', ops);
     await report(await claim(), { status: 'succeeded' });
     const [event] = await newIdleEvents();
-    expect(event!.teamIds.sort()).toEqual([eng, ops].sort());
+    expect(event!.teamIds).toEqual([ops]);
+    expect(
+      wants({ eventTypes: ['agent_runs.idle'], teamIds: [ops] }, 'agent_runs.idle', event!.teamIds),
+    ).toBe(true);
     expect(
       wants({ eventTypes: ['agent_runs.idle'], teamIds: [eng] }, 'agent_runs.idle', event!.teamIds),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       wants({ eventTypes: ['issue.created'], teamIds: [] }, 'agent_runs.idle', event!.teamIds),
     ).toBe(false);
@@ -263,5 +283,223 @@ describe('agent_runs.idle', () => {
       await app.jobs.drain();
       expect((await newIdleEvents()).map((e) => e.data)).toEqual([{ queued: 0, waiting: 0 }]);
     });
+  });
+});
+
+describe('agent_runs.idle deliveries', () => {
+  let sec: string;
+  let quiet: string;
+  const hookIds: Record<string, string> = {};
+  let received: { name: string; payload: WebhookPayload }[] = [];
+  let server: Server;
+
+  /** What each webhook got since the last call, by name. */
+  const deliveries = async () => {
+    await app.jobs.drain();
+    const got = received;
+    received = [];
+    return Object.fromEntries(
+      Object.keys(hookIds).map((name) => [
+        name,
+        got.filter((r) => r.name === name).map((r) => r.payload.data),
+      ]),
+    );
+  };
+  const none = { eng: [], engOps: [], engSec: [], sec: [], empty: [], all: [] };
+  const clearRuns = () =>
+    app.db
+      .update(agentRuns)
+      .set({ status: 'cancelled' })
+      .where(
+        and(eq(agentRuns.workspaceId, workspaceId), inArray(agentRuns.status, [...AGENT_RUN_OPEN])),
+      );
+
+  beforeAll(async () => {
+    server = createServer(async (req, res) => {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      received.push({ name: req.url!.slice(1), payload: JSON.parse(body) });
+      res.writeHead(200).end();
+    });
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+    sec = (await owner.post(`${ws}/teams`, { name: 'Sec', key: 'SEC', private: true })).data.id;
+    quiet = (await owner.post(`${ws}/teams`, { name: 'Quiet', key: 'QUI' })).data.id;
+    await owner.patch(`${ws}/agents/${agentId}`, { teamIds: [eng, ops, sec, quiet] });
+    const limits = {
+      eng: [eng],
+      engOps: [eng, ops],
+      engSec: [eng, sec],
+      sec: [sec],
+      empty: [quiet],
+      all: [],
+    };
+    for (const [name, teamIds] of Object.entries(limits)) {
+      const hook = await owner.post(`${ws}/webhooks`, {
+        url: `${base}/${name}`,
+        eventTypes: ['agent_runs.idle'],
+        teamIds,
+      });
+      expect(hook.statusCode).toBe(200);
+      hookIds[name] = hook.data.webhook.id;
+    }
+  });
+  afterAll(() => new Promise<void>((r) => server.close(() => r())));
+
+  it('fires for the team that went quiet, with what each webhook can see', async () => {
+    // Ops and Sec each have a run waiting, then everything below is queued behind a working one.
+    await queue('Ops asks', ops);
+    await report(await claim(), { status: 'waiting', question: 'Which one?' });
+    await queue('Sec asks', sec);
+    await report(await claim(), { status: 'waiting', question: 'Which one?' });
+    await deliveries();
+
+    await queue('Eng works', eng);
+    const working = await claim();
+    await queue('Eng queued', eng);
+    for (let i = 0; i < 2; i++) await queue(`Ops queued ${i}`, ops);
+    for (let i = 0; i < 3; i++) await queue(`Sec queued ${i}`, sec);
+    await report(working, { status: 'succeeded' });
+
+    expect(await deliveries()).toEqual({
+      ...none,
+      eng: [{ queued: 1, waiting: 0 }],
+      engOps: [{ queued: 3, waiting: 1 }],
+      engSec: [{ queued: 4, waiting: 1 }],
+      all: [{ queued: 6, waiting: 2 }],
+    });
+  });
+
+  it('keeps other teams out of what it stores and resends', async () => {
+    const stored = await app.db
+      .select()
+      .from(webhookDeliveries)
+      .where(eq(webhookDeliveries.webhookId, hookIds.eng!))
+      .orderBy(desc(webhookDeliveries.createdAt))
+      .limit(1);
+    const text = JSON.stringify(stored[0]!.payload);
+    expect(text).not.toContain(sec);
+    expect(text).not.toContain(ops);
+    expect(text).not.toContain('teamCounts');
+    expect(stored[0]!.payload.data).toEqual({ queued: 1, waiting: 0 });
+
+    const again = await owner.post(
+      `${ws}/webhooks/${hookIds.eng}/deliveries/${stored[0]!.id}/redeliver`,
+    );
+    expect(again.statusCode).toBe(200);
+    expect((await deliveries()).eng).toEqual([{ queued: 1, waiting: 0 }]);
+  });
+
+  it('counts the same however late or often the dispatch runs', async () => {
+    const [event] = await app.db
+      .select()
+      .from(domainEvents)
+      .where(
+        and(eq(domainEvents.workspaceId, workspaceId), eq(domainEvents.type, 'agent_runs.idle')),
+      )
+      .orderBy(desc(domainEvents.id))
+      .limit(1);
+    await dispatchEvents(app, { workspaceId, ids: [event!.id] });
+    expect(await deliveries()).toEqual(none);
+  });
+
+  it('stays quiet for a webhook while another of its teams is working', async () => {
+    await clearRuns();
+    await queue('Eng works', eng);
+    await queue('Ops works', ops);
+    await queue('Sec works', sec);
+    const engRun = await claim();
+    const opsRun = await claim();
+    const secRun = await claim();
+    await deliveries();
+
+    await report(opsRun, { status: 'succeeded' });
+    // Ops went quiet, but the only webhook with Ops also has Eng, which is still working.
+    expect(await deliveries()).toEqual(none);
+
+    await report(engRun, { status: 'succeeded' });
+    const afterEng = await deliveries();
+    expect(afterEng.eng).toHaveLength(1);
+    expect(afterEng.engOps).toHaveLength(1);
+    // Sec is still working, so these wait.
+    expect(afterEng.engSec).toEqual([]);
+    expect(afterEng.sec).toEqual([]);
+    expect(afterEng.all).toEqual([]);
+
+    await report(secRun, { status: 'succeeded' });
+    const afterSec = await deliveries();
+    expect(afterSec.eng).toEqual([]);
+    expect(afterSec.engOps).toEqual([]);
+    expect(afterSec.engSec).toHaveLength(1);
+    expect(afterSec.sec).toHaveLength(1);
+    expect(afterSec.all).toHaveLength(1);
+    expect(afterSec.empty).toEqual([]);
+  });
+
+  it('hears a team going quiet when an issue working there moves away', async () => {
+    await clearRuns();
+    const issueId = await queue('Moving', eng);
+    const run = await claim();
+    await deliveries();
+
+    const moved = await owner.patch(`${ws}/issues/${issueId}`, { teamId: quiet });
+    expect(moved.statusCode).toBe(200);
+    const heard = await deliveries();
+    expect(heard.eng).toHaveLength(1);
+    // Still working, in its new team.
+    expect(heard.all).toEqual([]);
+    expect(heard.empty).toEqual([]);
+
+    await report(run, { status: 'succeeded' });
+    const after = await deliveries();
+    expect(after.empty).toHaveLength(1);
+    expect(after.all).toHaveLength(1);
+    expect(after.eng).toEqual([]);
+  });
+
+  it('tells integrations only about the whole workspace', async () => {
+    await clearRuns();
+    await queue('In Eng', eng);
+    await queue('In Ops', ops);
+    const first = await claim();
+    const second = await claim();
+    await report(first, { status: 'succeeded' });
+    await report(second, { status: 'succeeded' });
+    await deliveries();
+    const events = await app.db
+      .select()
+      .from(domainEvents)
+      .where(
+        and(eq(domainEvents.workspaceId, workspaceId), eq(domainEvents.type, 'agent_runs.idle')),
+      )
+      .orderBy(desc(domainEvents.id))
+      .limit(2);
+    const [wholeWorkspace, oneTeam] = events;
+    expect(oneTeam!.teamCounts).not.toBeNull();
+    expect(Object.values(oneTeam!.teamCounts!).some((c) => c.working > 0)).toBe(true);
+    expect(Object.values(wholeWorkspace!.teamCounts!).some((c) => c.working > 0)).toBe(false);
+
+    const heard: unknown[] = [];
+    registerProvider({
+      key: 'idle-fake',
+      name: 'Idle fake',
+      description: 'A test provider',
+      category: 'other',
+      configure: ({ config }) => ({ config, secrets: {} }),
+      onDomainEvent: async (_ictx, event) => {
+        if (event.type === 'agent_runs.idle') heard.push(event.data);
+      },
+    });
+    try {
+      const connected = await owner.post(`${ws}/integrations`, { provider: 'idle-fake' });
+      expect(connected.statusCode).toBe(200);
+      await dispatchEvents(app, { workspaceId, ids: [oneTeam!.id, wholeWorkspace!.id] });
+      await app.jobs.drain();
+      expect(heard).toEqual([wholeWorkspace!.data]);
+    } finally {
+      await app.db.delete(integrations).where(eq(integrations.provider, 'idle-fake'));
+      unregisterProvider('idle-fake');
+    }
   });
 });

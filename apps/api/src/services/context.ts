@@ -1,5 +1,6 @@
 import type { DomainEventType, HistoryChange, RealtimeEvent } from '@ordo/shared';
 import type { DbOrTx } from '../db/client.ts';
+import type { TeamRunCounts } from '../db/schema.ts';
 import type { Access } from './access.ts';
 
 /** What caused a change. Integrations use this to ignore their own echoes. */
@@ -35,8 +36,8 @@ export interface Ctx {
   meta: RequestMeta | null;
   /** Set while automation rules act: the rules that led here, and the one acting now. */
   automation?: { chain: string[]; rule?: { id: string; name: string } };
-  /** A run stopped working in this transaction, so the workspace may have gone idle. */
-  runStopped?: boolean;
+  /** Teams where a run stopped working in this transaction, so they may have gone idle. */
+  runStoppedIn?: Set<string>;
 }
 
 export function emit(ctx: Ctx, e: Omit<RealtimeEvent, 'workspaceId' | 'actorId'>) {
@@ -48,6 +49,8 @@ export interface DomainEventDraft {
   teamIds: string[];
   data: Record<string, unknown>;
   changes?: HistoryChange[];
+  /** Open runs per team, to work out each webhook's delivery (see `recordIdleRuns`). */
+  teamCounts?: TeamRunCounts;
   /** Rules that caused it, oldest first (see `Ctx.automation`). */
   automationChain?: string[];
 }
@@ -60,13 +63,18 @@ export function record(
   ctx: Ctx,
   type: DomainEventType,
   data: object,
-  opts: { teamIds?: (string | null | undefined)[]; changes?: HistoryChange[] } = {},
+  opts: {
+    teamIds?: (string | null | undefined)[];
+    changes?: HistoryChange[];
+    teamCounts?: DomainEventDraft['teamCounts'];
+  } = {},
 ) {
   ctx.domainEvents.push({
     type,
     data: data as Record<string, unknown>,
     teamIds: [...new Set((opts.teamIds ?? []).filter((t): t is string => !!t))],
     changes: opts.changes,
+    teamCounts: opts.teamCounts,
     automationChain: ctx.automation && [
       ...ctx.automation.chain,
       ...(ctx.automation.rule ? [ctx.automation.rule.id] : []),
