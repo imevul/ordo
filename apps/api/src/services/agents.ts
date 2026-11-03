@@ -1557,9 +1557,18 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
   return run ?? null;
 }
 
+/** Claimed and cancelled in one transaction: nobody ever saw this run working. */
+async function cancelAtClaim(ctx: Ctx, run: RunRow, reason: string) {
+  await cancelOpenRuns(ctx, eq(agentRuns.id, run.id), reason);
+  ctx.runStoppedIn = undefined;
+  return { done: false as const, context: null };
+}
+
 /**
  * Claims a run for the calling agent and describes it, or returns null when there's nothing to
- * do. Runs whose issue the agent can no longer see (trashed, moved to another team) are cancelled.
+ * do. Runs whose issue is in the trash, or that the agent can no longer see (moved to another
+ * team), are cancelled. Only here: a run already working when its issue is trashed carries on,
+ * since a trashed issue can be restored, and it stops if the issue is purged.
  */
 export async function claimRun(
   app: FastifyInstance,
@@ -1575,6 +1584,11 @@ export async function claimRun(
       async (ctx) => {
         const run = await takeRun(ctx, runnerName);
         if (!run) return { done: true as const, context: null };
+        const [issue] = await ctx.tx
+          .select({ deletedAt: issues.deletedAt })
+          .from(issues)
+          .where(eq(issues.id, run.issueId));
+        if (issue?.deletedAt) return cancelAtClaim(ctx, run, 'The issue is in the trash');
         try {
           const { context, prompt } = await runContext(app, ctx, run, runnerInstructions);
           await ctx.tx.update(agentRuns).set({ prompt }).where(eq(agentRuns.id, run.id));
@@ -1582,14 +1596,7 @@ export async function claimRun(
           return { done: true as const, context };
         } catch (err) {
           if ((err as { statusCode?: number }).statusCode !== 404) throw err;
-          await cancelOpenRuns(
-            ctx,
-            eq(agentRuns.id, run.id),
-            'The agent can no longer see the issue',
-          );
-          // Claimed and cancelled in one transaction: nobody ever saw this run working.
-          ctx.runStoppedIn = undefined;
-          return { done: false as const, context: null };
+          return cancelAtClaim(ctx, run, 'The agent can no longer see the issue');
         }
       },
     );

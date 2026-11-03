@@ -457,6 +457,49 @@ describe('runs', () => {
     expect((await runsOf(i.id))[0]!.status).toBe('cancelled');
   });
 
+  it('cancels queued runs on a trashed issue at claim, and a restore can run it again', async () => {
+    const i = await issue('Binned', { assigneeId: agentId });
+    await owner.del(`${ws}/issues/${i.id}`);
+    // Trashing alone stops nothing: only a claim that would start it does.
+    expect((await runsOf(i.id))[0]!.status).toBe('queued');
+    expect((await claim()).statusCode).toBe(204);
+    expect((await runsOf(i.id))[0]).toMatchObject({
+      status: 'cancelled',
+      error: 'The issue is in the trash',
+    });
+
+    await owner.post(`${ws}/issues/${i.id}/restore`);
+    await owner.post(`${ws}/issues/${i.id}/agent-runs`);
+    const again = await claim();
+    expect(again.data.issue.id).toBe(i.id);
+    await member.post(`${ws}/agent-runs/${again.data.run.id}/cancel`);
+  });
+
+  it('runs a queued run as usual when its issue is restored before a claim', async () => {
+    const i = await issue('Binned by mistake', { assigneeId: agentId });
+    await owner.del(`${ws}/issues/${i.id}`);
+    await owner.post(`${ws}/issues/${i.id}/restore`);
+    const { data } = await claim();
+    expect(data.issue.id).toBe(i.id);
+    await member.post(`${ws}/agent-runs/${data.run.id}/cancel`);
+  });
+
+  it('leaves a working run alone when its issue is trashed, until the issue is purged', async () => {
+    const i = await issue('Binned mid-run', { assigneeId: agentId });
+    const { data } = await claim();
+    const runId = data.run.id;
+    await agent('PATCH', `${ws}/agent/runs/${runId}`, { status: 'running' });
+    await owner.del(`${ws}/issues/${i.id}`);
+    expect((await agent('POST', `${ws}/agent/runs/${runId}/heartbeat`)).data).toMatchObject({
+      cancelled: false,
+      status: 'running',
+    });
+    expect((await runsOf(i.id))[0]).toMatchObject({ id: runId, status: 'running' });
+
+    expect((await owner.del(`${ws}/issues/${i.id}/purge`)).statusCode).toBeLessThan(300);
+    expect((await agent('POST', `${ws}/agent/runs/${runId}/heartbeat`)).statusCode).toBe(404);
+  });
+
   it('records runs for webhooks', async () => {
     const rows = await app.db
       .select({ data: domainEvents.data })
@@ -587,6 +630,23 @@ describe('questions', () => {
     await as('PATCH', `${ws}/agent/runs/${runId}`, { status: 'waiting', question: 'Still there?' });
     await owner.patch(`${ws}/issues/${i.id}`, { assigneeId: null });
     expect((await runsOf(i.id))[0]!.status).toBe('cancelled');
+  });
+
+  it('stay waiting on a trashed issue, and a reply ends them at the next claim', async () => {
+    const i = await issue('Asked, then binned', { assigneeId: askerId });
+    const { data } = await claimAsker();
+    await as('PATCH', `${ws}/agent/runs/${data.run.id}`, { status: 'waiting', question: 'Sure?' });
+    await owner.del(`${ws}/issues/${i.id}`);
+    expect((await claimAsker()).statusCode).toBe(204);
+    expect((await runsOf(i.id))[0]!.status).toBe('waiting');
+
+    await member.post(`${ws}/issues/${i.id}/comments`, { body: 'Yes.' });
+    expect((await runsOf(i.id))[0]!.status).toBe('queued');
+    expect((await claimAsker()).statusCode).toBe(204);
+    expect((await runsOf(i.id))[0]).toMatchObject({
+      status: 'cancelled',
+      error: 'The issue is in the trash',
+    });
   });
 });
 

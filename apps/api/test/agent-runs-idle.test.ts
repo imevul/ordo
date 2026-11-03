@@ -221,6 +221,16 @@ describe('agent_runs.idle', () => {
     await owner.patch(`${ws}/agents/${agentId}`, { teamIds: [eng, ops] });
   });
 
+  it('stays quiet when a run is cancelled at claim because the issue is in the trash', async () => {
+    const issueId = await queue('Binned');
+    await owner.del(`${ws}/issues/${issueId}`);
+    const res = await agent('POST', '/agent/claim?wait=0&runner=idle-host');
+    expect(res.statusCode).toBe(204);
+    const [run] = (await owner.get(`${ws}/issues/${issueId}/agent-runs`)).data as AgentRun[];
+    expect(run!.status).toBe('cancelled');
+    expect(await newIdleEvents()).toEqual([]);
+  });
+
   it('notices a cancel that had to wait for a claim to commit', async () => {
     const issueId = await queue('Claimed mid-cancel');
     const [run] = (await owner.get(`${ws}/issues/${issueId}/agent-runs`)).data as AgentRun[];
