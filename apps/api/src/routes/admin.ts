@@ -25,6 +25,7 @@ import {
 } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
+  agentRuns,
   auditLog,
   invites,
   issues,
@@ -39,7 +40,9 @@ import { localeForEmail, localeOf } from '../i18n/index.ts';
 import { requireUser } from '../lib/auth.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
 import { inviteUrl, newInviteToken, revealInviteToken } from '../lib/invites.ts';
+import { enqueue } from '../lib/jobs/index.ts';
 import { requestMeta } from '../lib/mutate.ts';
+import { lockWorkingRuns } from '../services/agents.ts';
 import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
 import { audit, auditFilters } from '../services/audit.ts';
 import { passwordResetEmail, siteInviteEmail } from '../services/mail-templates.ts';
@@ -251,6 +254,10 @@ export async function adminRoutes(app: FastifyInstance) {
       );
     }
     await db.transaction(async (tx) => {
+      // An agent's runs go with it, in every workspace it was working in.
+      const working = await lockWorkingRuns(tx, eq(agentRuns.agentId, id));
+      for (const workspaceId of new Set(working.map((r) => r.workspaceId)))
+        await enqueue(tx, 'agents.checkIdle', { workspaceId, actorId: me.id });
       const [gone] = await tx
         .delete(users)
         .where(eq(users.id, id))
