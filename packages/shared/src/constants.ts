@@ -407,7 +407,8 @@ export const AGENT_RUN_OPEN: readonly AgentRunStatus[] = [
 /**
  * Why a run failed, as far as Ordo can tell. usage_limit: the agent's account hit a usage or spend
  * limit (the agent pauses and the run restarts when the limit resets). runner_lost: its runner
- * stopped responding on the last attempt. permission: it lacked access, a credential or approval
+ * stopped responding on the last attempt. setup: its runner couldn't prepare the command (its
+ * temporary files, say), so nothing ran. permission: it lacked access, a credential or approval
  * for a tool. error: anything else, usually a non-zero exit.
  */
 export const AGENT_RUN_FAILURE_REASONS = [
@@ -415,6 +416,7 @@ export const AGENT_RUN_FAILURE_REASONS = [
   'timeout',
   'runner_lost',
   'checkout',
+  'setup',
   'permission',
   'error',
 ] as const;

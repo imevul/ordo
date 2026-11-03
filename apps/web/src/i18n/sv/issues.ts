@@ -116,6 +116,7 @@ export default {
         timeout: 'Tidsgräns',
         runner_lost: 'Körmiljön slutade svara',
         checkout: 'Utcheckning misslyckades',
+        setup: 'Förberedelsen misslyckades',
         permission: 'Behörighetsproblem',
         error: 'Fel',
       },

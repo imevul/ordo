@@ -179,6 +179,7 @@ export default {
       timeout: 'timed out',
       runner_lost: 'runner stopped responding',
       checkout: 'checkout failed',
+      setup: 'setup failed',
       permission: 'permission issue',
       error: 'error',
     },

@@ -144,9 +144,15 @@ An agent's key may plan cycles, so an agent could move a date and let itself in.
 
 ## When a run fails
 
-A run fails when its command exits non-zero, times out, can't check out its repositories, or its runner stops
-responding three times. The agent posts _This run failed_ on the issue with the end of the output, and the run keeps a
-**reason**: _usage limit_, _timed out_, _checkout failed_, _runner stopped responding_ or _error_.
+A run fails when its command exits non-zero, times out, can't check out its repositories, can't be set up, or its
+runner stops responding three times. The agent posts _This run failed_ on the issue with the end of the output, and the
+run keeps a **reason**: _usage limit_, _timed out_, _checkout failed_, _setup failed_, _runner stopped responding_ or
+_error_.
+
+_Setup failed_ means the runner couldn't prepare the command, usually because it can't write the run's files to its
+temporary directory (`TMPDIR`, or `/tmp`) when that's full or over its quota. The command never ran, and the error says
+which machine and directory it was. That worker then claims nothing for a minute, doubling up to 15 minutes while
+setup keeps failing, so a broken machine doesn't fail the whole queue. Fix the machine and **Restart** the runs.
 
 Failed runs stay in the **Open** list on the Agent runs page, with what went wrong, until someone deals with them:
 

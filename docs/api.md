@@ -661,8 +661,8 @@ that way has `waitingForRepository: { id, name }` (otherwise `null`).
 A run's `trigger` is `assigned`, `mention`, `rerun`, `pull_request` or `scheduled` (a recurring issue); for `pull_request`, `triggerDetail` is
 `{ event: "ready_for_review" | "checks_failed" | "changes_requested", repo, number, url, branch }`.
 
-A failed run has a `failureReason`: `usage_limit`, `timeout`, `runner_lost`, `checkout`, `permission` or `error`. A runner may send
-`timeout` or `checkout` with its report; otherwise Ordo reads the error. On `usage_limit` the agent is paused until
+A failed run has a `failureReason`: `usage_limit`, `timeout`, `runner_lost`, `checkout`, `setup`, `permission` or `error`. A runner may send
+`timeout`, `checkout` or `setup` with its report; otherwise Ordo reads the error. On `usage_limit` the agent is paused until
 the limit resets and the run gets a `retryAt`, when it restarts by itself (not after three limits in a row). A
 restart has `retryOfId`, the run it restarts; `dismissedAt` is set on dismissed runs. See
 [agents.md](agents.md#when-a-run-fails).
