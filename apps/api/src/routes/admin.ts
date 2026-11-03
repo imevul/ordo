@@ -25,6 +25,8 @@ import {
 } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
+  agentRuns,
+  agents,
   auditLog,
   invites,
   issues,
@@ -39,7 +41,9 @@ import { localeForEmail, localeOf } from '../i18n/index.ts';
 import { requireUser } from '../lib/auth.ts';
 import { badRequest, conflict, forbidden, notFound, parse } from '../lib/errors.ts';
 import { inviteUrl, newInviteToken, revealInviteToken } from '../lib/invites.ts';
+import { enqueue } from '../lib/jobs/index.ts';
 import { requestMeta } from '../lib/mutate.ts';
+import { lockWorkingRuns } from '../services/agents.ts';
 import { decryptAiKey, instanceModel } from '../services/ai/assist.ts';
 import { audit, auditFilters } from '../services/audit.ts';
 import { passwordResetEmail, siteInviteEmail } from '../services/mail-templates.ts';
@@ -251,6 +255,19 @@ export async function adminRoutes(app: FastifyInstance) {
       );
     }
     await db.transaction(async (tx) => {
+      // An agent's runs go with it. Its row comes first, the order a claim locks them in, or the
+      // two can deadlock.
+      const [agent] = await tx
+        .select({ workspaceId: agents.workspaceId })
+        .from(agents)
+        .where(eq(agents.userId, id))
+        .for('update');
+      if (agent && (await lockWorkingRuns(tx, eq(agentRuns.agentId, id))).length) {
+        await enqueue(tx, 'agents.checkIdle', {
+          workspaceId: agent.workspaceId,
+          actorId: me.id,
+        });
+      }
       const [gone] = await tx
         .delete(users)
         .where(eq(users.id, id))

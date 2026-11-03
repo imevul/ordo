@@ -13,9 +13,10 @@ import {
   updateTeamSchema,
   updateTriageRuleSchema,
 } from '@ordo/shared';
-import { and, count, eq, isNull, lte, max, ne } from 'drizzle-orm';
+import { and, count, eq, inArray, isNull, lte, max, ne } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
+  agentRuns,
   automationRules,
   cycles,
   issues,
@@ -37,6 +38,7 @@ import {
 } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertCan, assertTeamAccess, canAdminTeam, computeAccess } from '../services/access.ts';
+import { noteRunsStopping } from '../services/agents.ts';
 import { auditCtx } from '../services/audit.ts';
 import { assertAutomationRule, toAutomationRule } from '../services/automationRules.ts';
 import { type Ctx, emit } from '../services/context.ts';
@@ -308,6 +310,13 @@ export async function teamRoutes(app: FastifyInstance) {
         .from(teams)
         .where(eq(teams.workspaceId, ctx.workspaceId))) as [{ n: number }];
       if (n <= 1) throw badRequest('A workspace needs at least one team').as('needs_team');
+      await noteRunsStopping(
+        ctx,
+        inArray(
+          agentRuns.issueId,
+          ctx.tx.select({ id: issues.id }).from(issues).where(eq(issues.teamId, team.id)),
+        ),
+      );
       // Issues reference workflow states without cascading, so remove them explicitly first.
       await ctx.tx.delete(issues).where(eq(issues.teamId, team.id));
       await ctx.tx.delete(teams).where(eq(teams.id, team.id));

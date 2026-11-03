@@ -302,7 +302,83 @@ function Deliveries({ hook }: { hook: Webhook }) {
   );
 }
 
-const EVENT_GROUPS = [...new Set(DOMAIN_EVENT_TYPES.map((type) => type.split('.')[0]!))];
+type EventPrefix<T> = T extends `${infer P}.${string}` ? P : never;
+type EventGroupKey = 'issues' | 'comments' | 'projects' | 'cycles' | 'releases' | 'agents' | 'time';
+
+// A Record, so that a new kind of event doesn't compile until it has a group.
+const EVENT_GROUP_OF: Record<EventPrefix<DomainEventType>, EventGroupKey> = {
+  issue: 'issues',
+  relation: 'issues',
+  comment: 'comments',
+  reaction: 'comments',
+  project: 'projects',
+  project_update: 'projects',
+  initiative: 'projects',
+  cycle: 'cycles',
+  release: 'releases',
+  agent_run: 'agents',
+  agent_runs: 'agents',
+  time_entry: 'time',
+};
+
+const EVENT_GROUPS = [...new Set(Object.values(EVENT_GROUP_OF))].map((key) => ({
+  key,
+  types: DOMAIN_EVENT_TYPES.filter(
+    (type) => EVENT_GROUP_OF[type.split('.')[0] as EventPrefix<DomainEventType>] === key,
+  ),
+}));
+
+function EventGroup({
+  group,
+  events,
+  onChange,
+}: {
+  group: (typeof EVENT_GROUPS)[number];
+  events: DomainEventType[];
+  onChange: (events: DomainEventType[]) => void;
+}) {
+  const picked = group.types.filter((type) => events.includes(type));
+  const all = picked.length === group.types.length;
+  return (
+    <div className="mb-3 break-inside-avoid last:mb-0">
+      <label className="flex items-center gap-2 text-[12.5px] font-medium">
+        <input
+          type="checkbox"
+          className="accent-primary"
+          checked={all}
+          ref={(el) => {
+            if (el) el.indeterminate = picked.length > 0 && !all;
+          }}
+          onChange={() => {
+            const others = events.filter((type) => !group.types.includes(type));
+            onChange(all ? others : [...others, ...group.types]);
+          }}
+        />
+        <span className="flex-1">{t(`webhooks.form.eventGroups.${group.key}`)}</span>
+        <span className="font-mono text-[10.5px] font-normal text-index">
+          {picked.length}/{group.types.length}
+        </span>
+      </label>
+      <div className="mt-1 ml-1.5 flex flex-col gap-1 border-l border-border-soft pl-3">
+        {group.types.map((type) => (
+          <label key={type} className="flex items-center gap-2 font-mono text-[11.5px]">
+            <input
+              type="checkbox"
+              className="accent-primary"
+              checked={events.includes(type)}
+              onChange={() =>
+                onChange(
+                  events.includes(type) ? events.filter((e) => e !== type) : [...events, type],
+                )
+              }
+            />
+            {type}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function WebhookModal({
   hook,
@@ -317,6 +393,9 @@ function WebhookModal({
   const existing = hook && hook !== 'new' ? hook : null;
   const [url, setUrl] = useState('');
   const [description, setDescription] = useState('');
+  // Separate from `events`: to the API no events means everything, but clearing the last checkbox
+  // here shouldn't turn into that.
+  const [everything, setEverything] = useState(true);
   const [events, setEvents] = useState<DomainEventType[]>([]);
   const [teamIds, setTeamIds] = useState<string[]>([]);
   const [enabled, setEnabled] = useState(true);
@@ -325,6 +404,7 @@ function WebhookModal({
     if (!hook) return;
     setUrl(existing?.url ?? '');
     setDescription(existing?.description ?? '');
+    setEverything(!existing?.eventTypes.length);
     setEvents(existing?.eventTypes ?? []);
     setTeamIds(existing?.teamIds ?? []);
     setEnabled(existing?.enabled ?? true);
@@ -335,7 +415,7 @@ function WebhookModal({
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setBusy(true);
-    const body = { url, description, eventTypes: events, teamIds, enabled };
+    const body = { url, description, eventTypes: everything ? [] : events, teamIds, enabled };
     try {
       if (existing) {
         await api.patch(wsPath(ws.slug, `/webhooks/${existing.id}`), body);
@@ -386,25 +466,20 @@ function WebhookModal({
           <input
             type="checkbox"
             className="accent-primary"
-            checked={events.length === 0}
-            onChange={() => setEvents(events.length ? [] : ['issue.created'])}
+            checked={everything}
+            onChange={(e) => setEverything(e.target.checked)}
           />
           {t('webhooks.form.everything')}
         </label>
-        {events.length > 0 && (
-          <div className="mb-4 grid grid-cols-2 gap-x-4 gap-y-1 border border-border-soft p-3 sm:grid-cols-3">
-            {EVENT_GROUPS.flatMap((g) =>
-              DOMAIN_EVENT_TYPES.filter((type) => type.startsWith(`${g}.`)).map((type) => (
-                <label key={type} className="flex items-center gap-2 font-mono text-[11.5px]">
-                  <input
-                    type="checkbox"
-                    className="accent-primary"
-                    checked={events.includes(type)}
-                    onChange={() => setEvents(toggle(events, type))}
-                  />
-                  {type}
-                </label>
-              )),
+        {!everything && (
+          <div className="mb-4">
+            <div className="columns-1 gap-6 border border-border-soft p-3 sm:columns-2">
+              {EVENT_GROUPS.map((group) => (
+                <EventGroup key={group.key} group={group} events={events} onChange={setEvents} />
+              ))}
+            </div>
+            {events.length === 0 && (
+              <p className="mt-1 text-[12px] text-warning">{t('webhooks.form.pickEvent')}</p>
             )}
           </div>
         )}
@@ -446,7 +521,7 @@ function WebhookModal({
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             {t('common.cancel')}
           </button>
-          <button className="btn btn-primary" disabled={busy}>
+          <button className="btn btn-primary" disabled={busy || (!everything && !events.length)}>
             {existing ? t('common.save') : t('webhooks.addWebhook')}
           </button>
         </div>

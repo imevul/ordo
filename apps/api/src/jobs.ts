@@ -1,7 +1,12 @@
 import { lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { sessions } from './db/schema.ts';
-import { pruneRunOutput, reapLeases, restartAfterLimits } from './services/agents.ts';
+import {
+  checkRunsIdle,
+  pruneRunOutput,
+  reapLeases,
+  restartAfterLimits,
+} from './services/agents.ts';
 import { sweepAttachments } from './services/attachments.ts';
 import { autoArchive, forEachIsolated } from './services/automation.ts';
 import { runAutomationEvent, runAutomationRules } from './services/automationRules.ts';
@@ -47,6 +52,9 @@ export function registerJobs(app: FastifyInstance) {
   jobs.every('notifications.email', 60);
   jobs.define('users.statusExpire', () => expireStatuses(app));
   jobs.every('users.statusExpire', 60);
+  jobs.define<Parameters<typeof checkRunsIdle>[1]>('agents.checkIdle', (p) =>
+    checkRunsIdle(app, p),
+  );
   jobs.define('agents.leases', () => reapLeases(app));
   jobs.every('agents.leases', 60);
   jobs.define('agents.restart', () => restartAfterLimits(app));

@@ -355,6 +355,7 @@ export const DOMAIN_EVENT_TYPES = [
   'release.reopened',
   'release.deleted',
   'agent_run.updated',
+  'agent_runs.idle',
   'time_entry.created',
   'time_entry.updated',
   'time_entry.deleted',

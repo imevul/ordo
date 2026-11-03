@@ -42,6 +42,7 @@ import {
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import type { DbOrTx } from '../db/client.ts';
 import {
+  agentRuns,
   type comments,
   cycles,
   issueHistory,
@@ -76,7 +77,7 @@ import {
   waitingFor,
   waitingOn,
 } from './agentRunWaits.ts';
-import { onAssigneeChanged } from './agents.ts';
+import { noteRunsStopping, onAssigneeChanged } from './agents.ts';
 import { claimAttachments, listAttachments } from './attachments.ts';
 import { type Ctx, emit, record } from './context.ts';
 import { requestsOnIssue } from './customers.ts';
@@ -1682,6 +1683,8 @@ export async function trashIssue(ctx: Ctx, issueId: string, restore = false) {
 }
 
 export async function purgeIssue(ctx: Ctx, issueId: string) {
+  // Trashing doesn't stop a run, so one may still be working here.
+  await noteRunsStopping(ctx, eq(agentRuns.issueId, issueId));
   const [row] = await ctx.tx
     .delete(issues)
     .where(

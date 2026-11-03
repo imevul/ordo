@@ -543,7 +543,41 @@ export async function queueRun(
   return run;
 }
 
+/**
+ * Which of these runs are working, to call before stopping or deleting them. It locks every open
+ * run, not just the working ones: a claim that hasn't committed still reads as queued, and the lock
+ * waits for it and returns the new status.
+ */
+export async function lockWorkingRuns(tx: DbOrTx, where: SQL) {
+  const open = await tx
+    .select({ status: agentRuns.status })
+    .from(agentRuns)
+    .where(and(where, inArray(agentRuns.status, [...AGENT_RUN_OPEN])))
+    .for('update');
+  return open.filter((r) => r.status === 'claimed' || r.status === 'running');
+}
+
+/** For anything that ends these runs, including a delete that cascades to them. */
+export async function noteRunsStopping(ctx: Ctx, where: SQL) {
+  const inWorkspace = and(where, eq(agentRuns.workspaceId, ctx.workspaceId))!;
+  if ((await lockWorkingRuns(ctx.tx, inWorkspace)).length) ctx.runStopped = true;
+}
+
+/**
+ * For a change with no `Ctx` to notice the workspace going idle: an instance admin deleting an
+ * agent's user. Another run stopping before this job runs can mean a second `agent_runs.idle`.
+ */
+export async function checkRunsIdle(
+  app: FastifyInstance,
+  { workspaceId, actorId }: { workspaceId: string; actorId: string },
+) {
+  await runInWorkspace(app, { workspaceId, actorId, source: 'system' }, async (ctx) => {
+    ctx.runStopped = true;
+  });
+}
+
 async function cancelOpenRuns(ctx: Ctx, where: ReturnType<typeof eq>, reason: string) {
+  await noteRunsStopping(ctx, where);
   const cancelled = await ctx.tx
     .update(agentRuns)
     .set({
@@ -775,6 +809,7 @@ async function pause(
     body: `${asker ? `@${asker} ` : ''}${body}`.slice(0, 50_000),
   });
   await changed(ctx, saved!);
+  ctx.runStopped = true;
   return toAgentRun(saved!);
 }
 
@@ -1523,6 +1558,8 @@ export async function claimRun(
             eq(agentRuns.id, run.id),
             'The agent can no longer see the issue',
           );
+          // Claimed and cancelled in one transaction: nobody ever saw this run working.
+          ctx.runStopped = false;
           return { done: false as const, context: null };
         }
       },
@@ -1720,6 +1757,7 @@ export async function reportRun(
     await logRun(ctx, runId, 'steered', { commentId: run.steerCommentId });
     if (used) await afterUsage(ctx, queued!, { emitted: true });
     await changed(ctx, queued!);
+    ctx.runStopped = true;
     return toAgentRun(queued!);
   }
   if (input.status === 'waiting') {
@@ -1773,7 +1811,10 @@ export async function reportRun(
   if (body) await createComment(ctx, run.issueId, { body: body.slice(0, 50_000) });
   if (used) await afterUsage(ctx, saved!, { emitted: true });
   await changed(ctx, saved!);
-  if (final) await afterSteerMissed(ctx, saved!);
+  if (final) {
+    ctx.runStopped = true;
+    await afterSteerMissed(ctx, saved!);
+  }
   return toAgentRun(saved!);
 }
 
@@ -2080,6 +2121,7 @@ async function reapLease(app: FastifyInstance, run: typeof agentRuns.$inferSelec
           body: `This run failed after ${current.attempts} attempts: ${error.toLowerCase()}.`,
         }).catch(() => {});
       await changed(ctx, saved!);
+      ctx.runStopped = true;
       if (failed) await afterSteerMissed(ctx, saved!);
     },
   );
