@@ -83,6 +83,20 @@ export class Ordo {
       headers,
       body: body === undefined ? undefined : form ? body : JSON.stringify(body),
     });
+    return (await this.#read(res)) as T;
+  }
+
+  /** A file's bytes, by its path (an attachment's `url`); not JSON, so not for `request`. */
+  async download(path: string): Promise<Uint8Array<ArrayBuffer>> {
+    const res = await this.#fetch(`${this.url}/api${path.replace(/^\/api(?=\/)/, '')}`, {
+      headers: { authorization: `Bearer ${this.#token}` },
+    });
+    if (!res.ok) await this.#read(res);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
+  /** The response's body, parsed if it's JSON. Throws an `OrdoError` for a failed request. */
+  async #read(res: Response): Promise<unknown> {
     const text = await res.text();
     let data: unknown = null;
     if (text) {
@@ -108,7 +122,7 @@ export class Ordo {
         err.details ?? err.errors,
       );
     }
-    return data as T;
+    return data;
   }
 
   /** The key's owner, with their workspaces. */

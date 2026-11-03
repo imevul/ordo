@@ -116,6 +116,8 @@ The Ordo tools act as me, with my permissions. Ask me before creating or changin
         'Find issues by text and filters (team, status, assignee, labels, project, cycle, priority). Open issues only unless includeClosed, status or statusType is set.',
       my_issues: 'Open issues assigned to you, most urgent first.',
       get_issue: 'One issue in full: description, comments, sub-issues, relations and links.',
+      get_attachment:
+        'See an image attached to an issue, such as a screenshot in its description or a comment.',
       create_issue: 'Create an issue in a team. Statuses, labels and people are given by name.',
       update_issue:
         'Change an issue: title, description, status, priority, assignee, labels, project, milestone, cycle, parent, estimate or due date.',

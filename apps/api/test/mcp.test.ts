@@ -1020,3 +1020,74 @@ describe("a member's key", () => {
     ]);
   });
 });
+
+describe('get_attachment', () => {
+  const PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  const attach = async (filename: string, body: Buffer) => {
+    const teamId = boot.teams[0]!.id;
+    const issue = (await ada.post(`${ws}/issues`, { teamId, title: filename })).data;
+    return (await ada.upload(`${ws}/attachments?issueId=${issue.id}`, filename, body)).data;
+  };
+
+  it('shows an image to the model, by its id or its URL', async () => {
+    const att = await attach('shot.png', PNG);
+    for (const attachment of [att.id, att.url, `https://ordo.example.com${att.url}`]) {
+      const res = await rpc('tools/call', { name: 'get_attachment', arguments: { attachment } });
+      const { content, isError } = res.data.result;
+      expect(isError).toBeUndefined();
+      expect(content[0]).toEqual({
+        type: 'image',
+        mimeType: 'image/png',
+        data: PNG.toString('base64'),
+      });
+      expect(JSON.parse(content[1].text)).toEqual({ filename: 'shot.png', size: PNG.length });
+    }
+  });
+
+  it('says what to do with files it can not show', async () => {
+    const text = await attach('notes.txt', Buffer.from('plain text'));
+    expect((await tool('get_attachment', { attachment: text.id })).error).toContain(
+      'ordo issue download',
+    );
+    const huge = await attach('huge.png', Buffer.concat([PNG, Buffer.alloc(5 * 1024 * 1024)]));
+    expect((await tool('get_attachment', { attachment: huge.id })).error).toContain('too large');
+  });
+
+  it("finds nothing in another workspace or a team the caller can't read", async () => {
+    const att = await attach('private.png', PNG);
+    const missing = 'Attachment not found';
+    expect((await tool('get_attachment', { attachment: 'not-an-id' })).error).toBe(missing);
+
+    await ada.post('/api/workspaces', {
+      name: 'MCP Other',
+      slug: 'mcp-other',
+      teamName: 'Other',
+      teamKey: 'OTH',
+    });
+    const other = await rpc(
+      'tools/call',
+      { name: 'get_attachment', arguments: { attachment: att.id } },
+      { to: '/api/w/mcp-other/mcp' },
+    );
+    expect(other.data.result.isError).toBe(true);
+    expect(other.data.result.content[0].text).toBe(missing);
+
+    const invite = (await ada.post(`${ws}/invites`, { role: 'member' })).data[0].token;
+    const bea = (await signup(app, 'Bea Member', { inviteToken: invite })).client;
+    const beaKey = (await bea.post('/api/me/api-keys', { name: 'agent' })).data.token;
+    const team = (await ada.post(`${ws}/teams`, { name: 'Closed', key: 'CLO', private: true }))
+      .data;
+    const closed = (await ada.post(`${ws}/issues`, { teamId: team.id, title: 'Closed' })).data;
+    const secret = (await ada.upload(`${ws}/attachments?issueId=${closed.id}`, 's.png', PNG)).data;
+    expect((await tool('get_attachment', { attachment: secret.id }, beaKey)).error).toBe(missing);
+    const open = await rpc(
+      'tools/call',
+      { name: 'get_attachment', arguments: { attachment: att.id } },
+      { token: beaKey },
+    );
+    expect(open.data.result.content[0].type).toBe('image');
+  });
+});

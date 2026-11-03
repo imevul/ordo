@@ -109,6 +109,8 @@ Ordo-verktøyene handler som meg, med mine tillatelser. Spør meg før du oppret
         'Finn saker med tekst og filtre (team, status, ansvarlig, etiketter, prosjekt, syklus, prioritet). Bare åpne saker med mindre includeClosed, status eller statusType er satt.',
       my_issues: 'Åpne saker der du er ansvarlig, de mest hastende først.',
       get_issue: 'Én sak i sin helhet: beskrivelse, kommentarer, undersaker, relasjoner og lenker.',
+      get_attachment:
+        'Se et bilde som er lagt ved en sak, for eksempel et skjermbilde i beskrivelsen eller en kommentar.',
       create_issue: 'Opprett en sak i et team. Statuser, etiketter og personer oppgis med navn.',
       update_issue:
         'Endre en sak: tittel, beskrivelse, status, prioritet, ansvarlig, etiketter, prosjekt, syklus, overordnet sak, estimat eller forfallsdato.',

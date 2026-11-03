@@ -264,6 +264,10 @@ Since `ORDO_TOKEN` is the agent's key, the command can use the CLI as the agent:
 `ordo issue comment "$ORDO_ISSUE" "Checked at 375px" --attach shot.png` to show a screenshot. `ORDO_MCP_CONFIG` hands it
 the [MCP server](mcp.md) the same way.
 
+Attachments need the agent's key, so a plain `curl` or browser gets a 401. To see a screenshot on the issue, the agent
+uses the MCP server's `get_attachment`, which needs nothing beyond `mcp__ordo`. `ordo issue download "$ORDO_ISSUE" -o <dir>`
+saves every attachment, for files that aren't images.
+
 **Claude Code** asks before using tools, and `claude -p` can't ask, so it refuses them. Allow what the agent needs
 up front, and give it Ordo's tools:
 

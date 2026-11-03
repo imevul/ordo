@@ -110,6 +110,8 @@ Ordos verktyg agerar som mig, med mina behörigheter. Fråga mig innan du skapar
       my_issues: 'Öppna ärenden där du är ansvarig, mest brådskande först.',
       get_issue:
         'Ett ärende i sin helhet: beskrivning, kommentarer, underärenden, relationer och länkar.',
+      get_attachment:
+        'Se en bild som är bifogad till ett ärende, till exempel en skärmbild i beskrivningen eller en kommentar.',
       create_issue: 'Skapa ett ärende i ett team. Statusar, etiketter och personer anges med namn.',
       update_issue:
         'Ändra ett ärende: titel, beskrivning, status, prioritet, ansvarig, etiketter, projekt, cykel, överordnat ärende, uppskattning eller förfallodatum.',

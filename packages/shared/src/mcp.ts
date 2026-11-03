@@ -197,6 +197,14 @@ export const mcpToolSchemas = {
     issue,
     comments: z.boolean().default(true).describe('Include the comment thread'),
   }),
+  get_attachment: z.object({
+    attachment: z
+      .string()
+      .trim()
+      .min(1)
+      .max(2000)
+      .describe('The attachment id, or its URL (/api/attachments/…) from get_issue or the text'),
+  }),
   create_issue: z.object({
     team,
     title: z.string().trim().min(1).max(500),
@@ -447,6 +455,13 @@ export const MCP_TOOLS: {
     name: 'get_issue',
     title: 'Get issue',
     description: 'One issue in full: description, comments, sub-issues, relations and links.',
+    readOnly: true,
+  },
+  {
+    name: 'get_attachment',
+    title: 'Get attachment',
+    description:
+      'See an image attached to an issue, such as a screenshot in its description or a comment.',
     readOnly: true,
   },
   {

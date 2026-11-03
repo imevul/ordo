@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { requireUser, requireWorkspace } from '../lib/auth.ts';
 import { HttpError, unauthorized } from '../lib/errors.ts';
 import { requestMeta, runInWorkspace } from '../lib/mutate.ts';
-import { callMcpTool, isMcpTool, type McpCaller, mcpToolList } from '../services/mcp.ts';
+import { callMcpTool, isMcpTool, type McpCaller, McpImage, mcpToolList } from '../services/mcp.ts';
 import { resourceMetadataUrl, SCOPE } from '../services/oauth.ts';
 
 /**
@@ -222,6 +222,13 @@ export async function mcpRoutes(app: FastifyInstance) {
         };
         try {
           const out = await callMcpTool(caller, name, msg.params?.arguments);
+          if (out instanceof McpImage)
+            return {
+              content: [
+                { type: 'image', data: out.data, mimeType: out.mimeType },
+                { type: 'text', text: JSON.stringify(out.about) },
+              ],
+            };
           return { content: [{ type: 'text', text: JSON.stringify(out) }] };
         } catch (err) {
           // Tool failures go back to the model, which can correct itself.

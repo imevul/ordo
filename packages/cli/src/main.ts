@@ -1,5 +1,5 @@
-import { readFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import { type ParseArgsOptionsConfig, parseArgs } from 'node:util';
 import { NameError, Names, Ordo, OrdoError, parsePriority, type WorkspaceClient } from '@ordo/sdk';
 import {
@@ -83,6 +83,7 @@ Issues
   issue comment <id> [text]  Text, --body-file <path>, or - to read stdin; --attach <file> adds
                            a file below the text (repeatable; images show inline)
   issue attach <id> <file…>  Upload files to the issue and print the Markdown that shows them
+  issue download <id>      Save the issue's attachments and print their paths; -o <dir>
   issue start <id>         Assign to you, move to the first started status, print the branch name
   issue close <id>         Move to the first completed status (--canceled to cancel)
   issue branch <id>        The git branch name for the issue
@@ -200,6 +201,12 @@ Comment on an issue; - reads the text from stdin.
   'issue attach': `Usage: ordo issue attach <id> <file…>
 
 Upload files to the issue and print the Markdown that shows them.`,
+  'issue download': `Usage: ordo issue download <id> [options]
+
+Save the issue's attachments and print their paths. Each name starts with the attachment's id, so
+two files with one name both survive.
+
+  -o, --output <dir>             Where to save them (default: the current directory)`,
   'issue start': `Usage: ordo issue start <id>
 
 Assign to you if nobody has it, move to the first started status, print the branch name.`,
@@ -385,6 +392,8 @@ async function dispatch(argv: string[], io: Io, s: Style) {
           return issueComment(ctx, args);
         case 'attach':
           return issueAttach(ctx, args);
+        case 'download':
+          return issueDownload(ctx, args);
         case 'start':
           return issueMove(ctx, args, 'start');
         case 'close':
@@ -901,6 +910,27 @@ async function issueAttach(ctx: Context, args: string[]) {
   if (values.json) return ctx.json(attachments);
   // Just the Markdown, one per line, to paste into a comment, description or run summary.
   ctx.io.stdout(`${attachments.map(attachmentMarkdown).join('\n')}\n`);
+}
+
+async function issueDownload(ctx: Context, args: string[]) {
+  const { values, positionals } = parse(args, { output: { type: 'string', short: 'o' } });
+  const id = positionals[0];
+  if (!id) throw new UsageError('which issue? "ordo issue download ENG-42 -o shots"');
+  const ws = await ctx.workspace(values.workspace);
+  const { attachments } = await ws.issues.get(id);
+  const dir = values.output ?? '.';
+  await mkdir(dir, { recursive: true });
+  const saved: (Attachment & { path: string })[] = [];
+  for (const att of attachments) {
+    // The name is whatever the uploader's client sent: it must not choose the directory.
+    const name = basename(att.filename.replaceAll('\\', '/'));
+    const path = join(dir, `${att.id.slice(0, 8)}-${name}`);
+    await writeFile(path, await ctx.ordo.download(att.url));
+    saved.push({ ...att, path });
+  }
+  if (values.json) return ctx.json(saved);
+  if (!saved.length) ctx.io.stderr(`${id.toUpperCase()} has no attachments\n`);
+  for (const { path } of saved) ctx.io.stdout(`${path}\n`);
 }
 
 /** Uploads files to an issue, one at a time. Reads them all first, so a missing file uploads nothing. */

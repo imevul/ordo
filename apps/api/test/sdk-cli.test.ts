@@ -266,6 +266,20 @@ describe('cli', () => {
     expect(file.statusCode).toBe(200);
     expect(file.headers['content-type']).toBe('image/png');
 
+    // An agent saves them all, under names that can't collide or leave the directory.
+    const saved = join(dir, 'saved');
+    const downloaded = await ordo(['issue', 'download', issue.identifier, '-o', saved], {
+      env: { ORDO_URL: url, ORDO_TOKEN: key, ORDO_WORKSPACE: 'kit' },
+    });
+    expect(downloaded.code, downloaded.stderr).toBe(0);
+    const paths = downloaded.stdout.trim().split('\n');
+    expect(paths).toHaveLength(3);
+    expect(new Set(paths).size).toBe(3);
+    expect(paths.every((p) => p.startsWith(saved))).toBe(true);
+    const bytes = await readFile(paths.find((p) => p.endsWith('-shot.png'))!);
+    expect(bytes.equals(png)).toBe(true);
+    expect(await readFile(paths.find((p) => p.endsWith('-notes.txt'))!, 'utf8')).toBe('plain text');
+
     const missing = await ordo([
       'issue',
       'comment',

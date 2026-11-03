@@ -207,4 +207,52 @@ describe('attachments', () => {
       await app.settings.set('maxAttachmentMb', 25, null);
     }
   });
+
+  it("lets an agent's key download from the teams it works in, and nothing else opens up", async () => {
+    const shown = (await member.upload(`${ws}/attachments?issueId=${ids.open}`, 'a.png', PNG))
+      .data as Attachment;
+    const secret = (await insider.upload(`${ws}/attachments?issueId=${ids.secret}`, 'b.png', PNG))
+      .data as Attachment;
+    await owner.post('/api/workspaces', {
+      name: 'Att Other',
+      slug: 'att-other',
+      teamName: 'Other',
+      teamKey: 'OTH',
+    });
+    const otherTeam = (await owner.get('/api/w/att-other/bootstrap')).data.teams[0].id;
+    const otherIssue = (
+      await owner.post('/api/w/att-other/issues', { teamId: otherTeam, title: 'x' })
+    ).data;
+    const elsewhere = (
+      await owner.upload(`/api/w/att-other/attachments?issueId=${otherIssue.id}`, 'c.png', PNG)
+    ).data as Attachment;
+
+    const agent = (await owner.post(`${ws}/agents`, { name: 'Viewer', teamIds: [ids.pub] })).data;
+    const token = (await owner.post(`${ws}/agents/${agent.id}/keys`, { name: 'k' })).data.token;
+    const get = (url: string) =>
+      app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } });
+
+    const file = await get(shown.url);
+    expect(file.statusCode).toBe(200);
+    expect(file.headers['content-type']).toBe('image/png');
+    expect(file.rawPayload.equals(PNG)).toBe(true);
+    expect((await get(secret.url)).statusCode).toBe(404);
+    expect((await get(elsewhere.url)).statusCode).toBe(404);
+    // Still no one on account routes.
+    expect((await get('/api/me/api-keys')).statusCode).toBe(401);
+
+    // A run on an issue with one is told how to look at it.
+    await owner.post(`${ws}/issues`, {
+      teamId: ids.pub,
+      title: 'With a screenshot',
+      description: `![a.png](${shown.url})`,
+      assigneeId: agent.id,
+    });
+    const claimed = await app.inject({
+      method: 'POST',
+      url: `${ws}/agent/claim?wait=0&runner=test-host`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(claimed.json().prompt).toContain('`get_attachment`');
+  });
 });
