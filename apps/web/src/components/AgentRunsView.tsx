@@ -296,11 +296,6 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
             </span>
             <span className="truncate text-[13.5px]">{run.issue.title}</span>
           </Link>
-          {/* The issue column is narrow below xl; the expanded row says what failed anyway. */}
-          <span className="hidden xl:contents">
-            <FailureTags run={run} />
-            <PlanApprovedTag run={run} />
-          </span>
           {detail && (
             <button
               type="button"
@@ -315,9 +310,6 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
         <span className="flex min-w-0 items-center gap-2 text-[13px]">
           {agent && <Avatar name={agent.name} color={agent.avatarColor} size={16} />}
           <span className="truncate">{agent?.name ?? t('shell.actor.someone')}</span>
-          {run.trigger !== 'assigned' && (
-            <span className="tag ml-2 flex-none font-mono">{triggerLabel(run)}</span>
-          )}
         </span>
         <span className="truncate font-mono text-[11.5px] text-index">
           {run.runnerName ?? '—'}
@@ -392,6 +384,12 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
             </button>
           )}
         </span>
+      </div>
+      {/* A line of their own: tags don't shrink, so in the columns they run into the next one. */}
+      <div className="-mt-1.5 flex flex-wrap items-center gap-2 pb-2 pl-[11.5rem] pr-4 empty:hidden [&>.tag]:ml-0">
+        {run.trigger !== 'assigned' && <span className="tag font-mono">{triggerLabel(run)}</span>}
+        <FailureTags run={run} />
+        <PlanApprovedTag run={run} />
       </div>
       <RunProgress run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
       <RunWaitReasons run={run} className="-mt-1.5 pb-2 pl-[11.5rem] pr-4" />
