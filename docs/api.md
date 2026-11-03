@@ -575,11 +575,13 @@ A run's `status` is `queued` (waiting for a runner), `claimed` (a runner took it
 asked a question or proposed a plan; a reply, or approving the plan, requeues it), or one of the final `succeeded`,
 `failed` and `cancelled`.
 
-`agent_runs.idle` is sent when the last `claimed` or `running` run in the workspace stops working, or is deleted along
-with its issue, team or agent. Queued runs may still be left, and a runner may pick up the next one a moment later,
-so check `queued` and `waiting` to tell "between runs" from "all done". It counts the whole workspace and reaches every
-webhook that selects it, whatever teams the webhook is limited to, so a webhook limited to a team doesn't hear about
-that team alone going quiet.
+`agent_runs.idle` is sent when the last `claimed` or `running` run stops working, or is deleted along with its issue,
+team or agent. What counts depends on the webhook. One with no team limit hears it when nothing is working in the whole
+workspace, and gets the workspace's counts. One limited to teams hears it when a run stops in one of those teams and
+nothing is working in any of them, whatever other teams are doing, and gets the counts for those teams added together.
+A run also stops counting for a team when its issue moves to another team. Integrations hear it as a webhook with no
+team limit does. Queued runs may still be left, and a runner may pick up the next one a moment later, so check `queued`
+and `waiting` to tell "between runs" from "all done".
 
 **Headers:** `Ordo-Event` (the type), `Ordo-Delivery` (unique per attempt series; reuse it to deduplicate), and
 `Ordo-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 over `"<t>.<raw body>"` with the webhook's

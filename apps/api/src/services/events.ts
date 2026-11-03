@@ -1,10 +1,12 @@
-import { AGENT_RUN_OPEN, type AgentRunStatus, type WebhookPayload } from '@ordo/shared';
+import { AGENT_RUN_OPEN, type WebhookPayload } from '@ordo/shared';
 import { and, asc, count, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
   agentRuns,
   domainEvents,
+  issues,
   jobKeys,
+  type TeamRunCounts,
   teams,
   users,
   webhookDeliveries,
@@ -24,7 +26,7 @@ import { queueDelivery, wants } from './webhooks.ts';
  */
 export async function writeOutbox(ctx: Ctx) {
   if (ctx.silent) return;
-  if (ctx.runStopped) await recordIdleRuns(ctx);
+  if (ctx.runStoppedIn?.size) await recordIdleRuns(ctx, ctx.runStoppedIn);
   if (ctx.domainEvents.length === 0) return;
   const rows = await ctx.tx
     .insert(domainEvents)
@@ -37,6 +39,7 @@ export async function writeOutbox(ctx: Ctx) {
         teamIds: e.teamIds,
         data: e.data,
         changes: e.changes ?? null,
+        teamCounts: e.teamCounts ?? null,
         automationChain: e.automationChain ?? null,
       })),
     )
@@ -51,36 +54,67 @@ export async function writeOutbox(ctx: Ctx) {
 }
 
 /**
- * `agent_runs.idle`: a run stopped working and none is left. This waits for the end of the
- * transaction and takes a lock, because two runs stopping at once would otherwise each still see
- * the other working, and nobody would report it. Every team hears it: no run works in any of them.
+ * `agent_runs.idle`: a run stopped working and none is left in its team, or in the workspace. This
+ * waits for the end of the transaction and takes a lock, because two runs stopping at once would
+ * otherwise each still see the other working, and nobody would report it. It's one event however
+ * many teams went quiet: `teamIds` has those, `data` the workspace's totals. `teamCounts` keeps the
+ * runs per team, taken now so that every webhook reports the same moment however late or often the
+ * dispatch runs, and `idleDataFor` decides from it who hears what.
  */
-async function recordIdleRuns(ctx: Ctx) {
+async function recordIdleRuns(ctx: Ctx, stoppedIn: Set<string>) {
   await ctx.tx.execute(
     sql`select pg_advisory_xact_lock(hashtext(${`agent-runs-idle:${ctx.workspaceId}`}))`,
   );
   const open = await ctx.tx
-    .select({ status: agentRuns.status, n: count() })
+    .select({ status: agentRuns.status, teamId: issues.teamId, n: count() })
     .from(agentRuns)
+    .innerJoin(issues, eq(issues.id, agentRuns.issueId))
     .where(
       and(
         eq(agentRuns.workspaceId, ctx.workspaceId),
         inArray(agentRuns.status, [...AGENT_RUN_OPEN]),
       ),
     )
-    .groupBy(agentRuns.status);
-  const runs = (status: AgentRunStatus) => open.find((r) => r.status === status)?.n ?? 0;
-  if (runs('claimed') + runs('running') > 0) return;
+    .groupBy(agentRuns.status, issues.teamId);
+  const teamCounts: TeamRunCounts = {};
+  const totals = { queued: 0, waiting: 0 };
+  for (const { status, teamId, n } of open) {
+    const counts = teamCounts[teamId] ?? { working: 0, queued: 0, waiting: 0 };
+    teamCounts[teamId] = counts;
+    if (status === 'queued' || status === 'waiting') {
+      counts[status] += n;
+      totals[status] += n;
+    } else counts.working += n;
+  }
+  // A team deleted in this transaction isn't there to go quiet.
   const inWorkspace = await ctx.tx
     .select({ id: teams.id })
     .from(teams)
     .where(eq(teams.workspaceId, ctx.workspaceId));
-  record(
-    ctx,
-    'agent_runs.idle',
-    { queued: runs('queued'), waiting: runs('waiting') },
-    { teamIds: inWorkspace.map((t) => t.id) },
-  );
+  const quiet = inWorkspace
+    .map((t) => t.id)
+    .filter((id) => stoppedIn.has(id) && !teamCounts[id]?.working);
+  if (!quiet.length && !isWorkspaceIdle(teamCounts)) return;
+  record(ctx, 'agent_runs.idle', totals, { teamIds: quiet, teamCounts });
+}
+
+const isWorkspaceIdle = (counts: TeamRunCounts) =>
+  Object.values(counts).every((c) => c.working === 0);
+
+/**
+ * What one webhook hears of `agent_runs.idle`, or null if nothing: only the teams it's limited to
+ * count, so it stays quiet while one of them is working. `wants` has already checked that one of
+ * them went quiet.
+ */
+function idleDataFor(hook: Pick<typeof webhooks.$inferSelect, 'teamIds'>, counts: TeamRunCounts) {
+  const data = { queued: 0, waiting: 0 };
+  for (const [teamId, c] of Object.entries(counts)) {
+    if (hook.teamIds.length && !hook.teamIds.includes(teamId)) continue;
+    if (c.working) return null;
+    data.queued += c.queued;
+    data.waiting += c.waiting;
+  }
+  return data;
 }
 
 export type EventRow = typeof domainEvents.$inferSelect;
@@ -143,12 +177,20 @@ export async function dispatchEvents(
             continue;
           // A backlog drained after a webhook was added doesn't belong to it.
           if (hook.createdAt > event.createdAt) continue;
-          await queueDelivery(tx, hook.id, payloads[i]!, event.id);
+          const data = event.teamCounts && idleDataFor(hook, event.teamCounts);
+          if (event.teamCounts && !data) continue;
+          const payload = payloads[i]!;
+          await queueDelivery(tx, hook.id, data ? { ...payload, data } : payload, event.id);
         }
       }
     });
   }
-  await dispatchToIntegrations(app, workspaceId, events);
+  // Integrations aren't limited to teams, so for them it's still about the whole workspace.
+  await dispatchToIntegrations(
+    app,
+    workspaceId,
+    events.filter((e) => !e.teamCounts || isWorkspaceIdle(e.teamCounts)),
+  );
   await queueAutomations(app, workspaceId, events);
 }
 

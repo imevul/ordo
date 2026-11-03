@@ -550,29 +550,54 @@ export async function queueRun(
  */
 export async function lockWorkingRuns(tx: DbOrTx, where: SQL) {
   const open = await tx
-    .select({ status: agentRuns.status })
+    .select({ status: agentRuns.status, teamId: issues.teamId })
     .from(agentRuns)
+    .innerJoin(issues, eq(issues.id, agentRuns.issueId))
     .where(and(where, inArray(agentRuns.status, [...AGENT_RUN_OPEN])))
-    .for('update');
+    .for('update', { of: agentRuns });
   return open.filter((r) => r.status === 'claimed' || r.status === 'running');
 }
+
+const noteTeam = (ctx: Ctx, teamId: string) => {
+  ctx.runStoppedIn ??= new Set();
+  ctx.runStoppedIn.add(teamId);
+};
 
 /** For anything that ends these runs, including a delete that cascades to them. */
 export async function noteRunsStopping(ctx: Ctx, where: SQL) {
   const inWorkspace = and(where, eq(agentRuns.workspaceId, ctx.workspaceId))!;
-  if ((await lockWorkingRuns(ctx.tx, inWorkspace)).length) ctx.runStopped = true;
+  for (const { teamId } of await lockWorkingRuns(ctx.tx, inWorkspace)) noteTeam(ctx, teamId);
+}
+
+/** For a run that just stopped working on this issue. */
+async function noteRunStopped(ctx: Ctx, issueId: string) {
+  const [issue] = await ctx.tx
+    .select({ teamId: issues.teamId })
+    .from(issues)
+    .where(eq(issues.id, issueId));
+  if (issue) noteTeam(ctx, issue.teamId);
+}
+
+/** An issue moving to another team takes its working runs along, so its old team may go idle. */
+export async function noteRunsLeavingTeam(ctx: Ctx, issueId: string, teamId: string) {
+  const [working] = await ctx.tx
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(and(eq(agentRuns.issueId, issueId), inArray(agentRuns.status, ['claimed', 'running'])))
+    .limit(1);
+  if (working) noteTeam(ctx, teamId);
 }
 
 /**
- * For a change with no `Ctx` to notice the workspace going idle: an instance admin deleting an
- * agent's user. Another run stopping before this job runs can mean a second `agent_runs.idle`.
+ * For a change with no `Ctx` to notice teams going idle: an instance admin deleting an agent's
+ * user. Another run stopping before this job runs can mean a second `agent_runs.idle`.
  */
 export async function checkRunsIdle(
   app: FastifyInstance,
-  { workspaceId, actorId }: { workspaceId: string; actorId: string },
+  { workspaceId, actorId, teamIds }: { workspaceId: string; actorId: string; teamIds: string[] },
 ) {
   await runInWorkspace(app, { workspaceId, actorId, source: 'system' }, async (ctx) => {
-    ctx.runStopped = true;
+    ctx.runStoppedIn = new Set(teamIds);
   });
 }
 
@@ -809,7 +834,7 @@ async function pause(
     body: `${asker ? `@${asker} ` : ''}${body}`.slice(0, 50_000),
   });
   await changed(ctx, saved!);
-  ctx.runStopped = true;
+  await noteRunStopped(ctx, run.issueId);
   return toAgentRun(saved!);
 }
 
@@ -1559,7 +1584,7 @@ export async function claimRun(
             'The agent can no longer see the issue',
           );
           // Claimed and cancelled in one transaction: nobody ever saw this run working.
-          ctx.runStopped = false;
+          ctx.runStoppedIn = undefined;
           return { done: false as const, context: null };
         }
       },
@@ -1757,7 +1782,7 @@ export async function reportRun(
     await logRun(ctx, runId, 'steered', { commentId: run.steerCommentId });
     if (used) await afterUsage(ctx, queued!, { emitted: true });
     await changed(ctx, queued!);
-    ctx.runStopped = true;
+    await noteRunStopped(ctx, run.issueId);
     return toAgentRun(queued!);
   }
   if (input.status === 'waiting') {
@@ -1812,7 +1837,7 @@ export async function reportRun(
   if (used) await afterUsage(ctx, saved!, { emitted: true });
   await changed(ctx, saved!);
   if (final) {
-    ctx.runStopped = true;
+    await noteRunStopped(ctx, run.issueId);
     await afterSteerMissed(ctx, saved!);
   }
   return toAgentRun(saved!);
@@ -2121,7 +2146,7 @@ async function reapLease(app: FastifyInstance, run: typeof agentRuns.$inferSelec
           body: `This run failed after ${current.attempts} attempts: ${error.toLowerCase()}.`,
         }).catch(() => {});
       await changed(ctx, saved!);
-      ctx.runStopped = true;
+      await noteRunStopped(ctx, run.issueId);
       if (failed) await afterSteerMissed(ctx, saved!);
     },
   );

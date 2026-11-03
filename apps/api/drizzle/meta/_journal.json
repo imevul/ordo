@@ -547,6 +547,13 @@
       "when": 1793658175826,
       "tag": "0077_agent_run_steering",
       "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1793692940848,
+      "tag": "0078_domain_event_team_counts",
+      "breakpoints": true
     }
   ]
 }

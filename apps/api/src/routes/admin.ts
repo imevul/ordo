@@ -262,10 +262,12 @@ export async function adminRoutes(app: FastifyInstance) {
         .from(agents)
         .where(eq(agents.userId, id))
         .for('update');
-      if (agent && (await lockWorkingRuns(tx, eq(agentRuns.agentId, id))).length) {
+      const working = agent ? await lockWorkingRuns(tx, eq(agentRuns.agentId, id)) : [];
+      if (agent && working.length) {
         await enqueue(tx, 'agents.checkIdle', {
           workspaceId: agent.workspaceId,
           actorId: me.id,
+          teamIds: [...new Set(working.map((r) => r.teamId))],
         });
       }
       const [gone] = await tx

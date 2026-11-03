@@ -1625,6 +1625,9 @@ export const scimUsers = pgTable(
 
 // ─── Events, webhooks, integrations ──────────────────────────────────────
 
+/** Open runs per team id; a team with none is left out. */
+export type TeamRunCounts = Record<string, { working: number; queued: number; waiting: number }>;
+
 /**
  * The outbox: domain events written in the same transaction as the change they describe, then
  * fanned out to webhooks and integrations by an `events.dispatch` job.
@@ -1643,6 +1646,11 @@ export const domainEvents = pgTable(
     teamIds: uuid('team_ids').array().notNull().default(sql`'{}'`),
     data: jsonb('data').$type<Record<string, unknown>>().notNull(),
     changes: jsonb('changes').$type<HistoryChange[]>(),
+    /**
+     * `agent_runs.idle`: the open runs per team when it was recorded, to work out each webhook's
+     * delivery. Never part of a payload: it names teams a receiver may not know about.
+     */
+    teamCounts: jsonb('team_counts').$type<TeamRunCounts>(),
     /** Set when automation rules caused it: the rules so far in the chain (loop protection). */
     automationChain: uuid('automation_chain').array(),
     createdAt: createdAt(),
