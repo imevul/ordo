@@ -35,6 +35,8 @@ export interface Ctx {
   meta: RequestMeta | null;
   /** Set while automation rules act: the rules that led here, and the one acting now. */
   automation?: { chain: string[]; rule?: { id: string; name: string } };
+  /** A run stopped working in this transaction, so the workspace may have gone idle. */
+  runStopped?: boolean;
 }
 
 export function emit(ctx: Ctx, e: Omit<RealtimeEvent, 'workspaceId' | 'actorId'>) {

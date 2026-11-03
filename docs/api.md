@@ -564,6 +564,7 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 | `project_update.created`                                         | `{ update, project }`                                                           |
 | `cycle.created` `cycle.updated` `cycle.deleted`                  | The cycle                                                                       |
 | `agent_run.updated`                                              | The run when its status changes (statuses below), see [agents](agents.md)       |
+| `agent_runs.idle`                                                | `{ queued, waiting }`, the open runs left when none is working any more (below) |
 | `time_entry.created` `time_entry.updated` `time_entry.deleted`   | `{ timeEntry, issue: { id, identifier, title } }`; stopping a timer updates     |
 | `ping`                                                           | Sent by the "test" button                                                       |
 
@@ -573,6 +574,11 @@ Admins add endpoints under **Settings → Webhooks** (or the API below). Ordo PO
 A run's `status` is `queued` (waiting for a runner), `claimed` (a runner took it), `running`, `waiting` (the agent
 asked a question or proposed a plan; a reply, or approving the plan, requeues it), or one of the final `succeeded`,
 `failed` and `cancelled`.
+
+`agent_runs.idle` is sent when the last `claimed` or `running` run in the workspace stops working. Queued runs may
+still be left, and a runner may pick up the next one a moment later, so check `queued` and `waiting` to tell "between
+runs" from "all done". It counts the whole workspace and reaches every webhook that selects it, whatever teams the
+webhook is limited to, so a webhook limited to a team doesn't hear about that team alone going quiet.
 
 **Headers:** `Ordo-Event` (the type), `Ordo-Delivery` (unique per attempt series; reuse it to deduplicate), and
 `Ordo-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 over `"<t>.<raw body>"` with the webhook's

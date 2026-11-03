@@ -544,6 +544,12 @@ export async function queueRun(
 }
 
 async function cancelOpenRuns(ctx: Ctx, where: ReturnType<typeof eq>, reason: string) {
+  const working = await ctx.tx
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .where(and(where, inArray(agentRuns.status, ['claimed', 'running'])))
+    .for('update');
+  if (working.length) ctx.runStopped = true;
   const cancelled = await ctx.tx
     .update(agentRuns)
     .set({
@@ -775,6 +781,7 @@ async function pause(
     body: `${asker ? `@${asker} ` : ''}${body}`.slice(0, 50_000),
   });
   await changed(ctx, saved!);
+  ctx.runStopped = true;
   return toAgentRun(saved!);
 }
 
@@ -1720,6 +1727,7 @@ export async function reportRun(
     await logRun(ctx, runId, 'steered', { commentId: run.steerCommentId });
     if (used) await afterUsage(ctx, queued!, { emitted: true });
     await changed(ctx, queued!);
+    ctx.runStopped = true;
     return toAgentRun(queued!);
   }
   if (input.status === 'waiting') {
@@ -1773,7 +1781,10 @@ export async function reportRun(
   if (body) await createComment(ctx, run.issueId, { body: body.slice(0, 50_000) });
   if (used) await afterUsage(ctx, saved!, { emitted: true });
   await changed(ctx, saved!);
-  if (final) await afterSteerMissed(ctx, saved!);
+  if (final) {
+    ctx.runStopped = true;
+    await afterSteerMissed(ctx, saved!);
+  }
   return toAgentRun(saved!);
 }
 
@@ -2080,6 +2091,7 @@ async function reapLease(app: FastifyInstance, run: typeof agentRuns.$inferSelec
           body: `This run failed after ${current.attempts} attempts: ${error.toLowerCase()}.`,
         }).catch(() => {});
       await changed(ctx, saved!);
+      ctx.runStopped = true;
       if (failed) await afterSteerMissed(ctx, saved!);
     },
   );

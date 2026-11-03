@@ -1,9 +1,11 @@
-import type { WebhookPayload } from '@ordo/shared';
-import { and, asc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { AGENT_RUN_OPEN, type AgentRunStatus, type WebhookPayload } from '@ordo/shared';
+import { and, asc, count, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import {
+  agentRuns,
   domainEvents,
   jobKeys,
+  teams,
   users,
   webhookDeliveries,
   webhooks,
@@ -11,7 +13,7 @@ import {
 } from '../db/schema.ts';
 import { enqueue } from '../lib/jobs/index.ts';
 import { queueAutomations } from './automationRules.ts';
-import type { Ctx } from './context.ts';
+import { type Ctx, record } from './context.ts';
 import { dispatchToIntegrations } from './integrations.ts';
 import { queueDelivery, wants } from './webhooks.ts';
 
@@ -21,7 +23,9 @@ import { queueDelivery, wants } from './webhooks.ts';
  * a workspace's changes in commit order. Silent contexts (imports) record nothing.
  */
 export async function writeOutbox(ctx: Ctx) {
-  if (ctx.silent || ctx.domainEvents.length === 0) return;
+  if (ctx.silent) return;
+  if (ctx.runStopped) await recordIdleRuns(ctx);
+  if (ctx.domainEvents.length === 0) return;
   const rows = await ctx.tx
     .insert(domainEvents)
     .values(
@@ -43,6 +47,39 @@ export async function writeOutbox(ctx: Ctx) {
     'events.dispatch',
     { workspaceId: ctx.workspaceId, ids: rows.map((r) => r.id) },
     { orderingKey: `events:${ctx.workspaceId}` },
+  );
+}
+
+/**
+ * `agent_runs.idle`: a run stopped working and none is left. This waits for the end of the
+ * transaction and takes a lock, because two runs stopping at once would otherwise each still see
+ * the other working, and nobody would report it. Every team hears it: no run works in any of them.
+ */
+async function recordIdleRuns(ctx: Ctx) {
+  await ctx.tx.execute(
+    sql`select pg_advisory_xact_lock(hashtext(${`agent-runs-idle:${ctx.workspaceId}`}))`,
+  );
+  const open = await ctx.tx
+    .select({ status: agentRuns.status, n: count() })
+    .from(agentRuns)
+    .where(
+      and(
+        eq(agentRuns.workspaceId, ctx.workspaceId),
+        inArray(agentRuns.status, [...AGENT_RUN_OPEN]),
+      ),
+    )
+    .groupBy(agentRuns.status);
+  const runs = (status: AgentRunStatus) => open.find((r) => r.status === status)?.n ?? 0;
+  if (runs('claimed') + runs('running') > 0) return;
+  const inWorkspace = await ctx.tx
+    .select({ id: teams.id })
+    .from(teams)
+    .where(eq(teams.workspaceId, ctx.workspaceId));
+  record(
+    ctx,
+    'agent_runs.idle',
+    { queued: runs('queued'), waiting: runs('waiting') },
+    { teamIds: inWorkspace.map((t) => t.id) },
   );
 }
 
