@@ -32,6 +32,7 @@ import {
 } from './AgentRuns.tsx';
 import { FilterButton, FilterChips, hasUserFilters } from './FilterBar.tsx';
 import { IssuesLoadError } from './IssuesView.tsx';
+import { ProjectIcon } from './icons.tsx';
 import { EmptyState, Spinner } from './PageHeader.tsx';
 import { Avatar } from './ui/Avatar.tsx';
 
@@ -252,6 +253,7 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
   const [toggled, setToggled] = useState<boolean | null>(null);
   const open = toggled ?? (run.status === 'waiting' || run.status === 'failed');
   const agent = ws.memberById.get(run.agentId);
+  const project = run.issue.projectId ? ws.projectById.get(run.issue.projectId) : null;
   const detail = runDetail(run);
   const invalidate = { invalidate: [['ws', ws.slug, 'agentRuns']] };
   const resume = useWsMutation(
@@ -387,6 +389,12 @@ function RunRow({ run }: { run: AgentRunWithIssue }) {
       </div>
       {/* A line of their own: tags don't shrink, so in the columns they run into the next one. */}
       <div className="-mt-1.5 flex flex-wrap items-center gap-2 pb-2 pl-[11.5rem] pr-4 empty:hidden [&>.tag]:ml-0">
+        {project && (
+          <span className="tag max-w-40">
+            <ProjectIcon color={project.color} size={11} />
+            <span className="truncate">{project.name}</span>
+          </span>
+        )}
         {run.trigger !== 'assigned' && <span className="tag font-mono">{triggerLabel(run)}</span>}
         <FailureTags run={run} />
         <PlanApprovedTag run={run} />
