@@ -26,6 +26,7 @@ import {
 import type { FastifyInstance } from 'fastify';
 import {
   agentRuns,
+  agents,
   auditLog,
   invites,
   issues,
@@ -254,10 +255,19 @@ export async function adminRoutes(app: FastifyInstance) {
       );
     }
     await db.transaction(async (tx) => {
-      // An agent's runs go with it, in every workspace it was working in.
-      const working = await lockWorkingRuns(tx, eq(agentRuns.agentId, id));
-      for (const workspaceId of new Set(working.map((r) => r.workspaceId)))
-        await enqueue(tx, 'agents.checkIdle', { workspaceId, actorId: me.id });
+      // An agent's runs go with it. Its row comes first, the order a claim locks them in, or the
+      // two can deadlock.
+      const [agent] = await tx
+        .select({ workspaceId: agents.workspaceId })
+        .from(agents)
+        .where(eq(agents.userId, id))
+        .for('update');
+      if (agent && (await lockWorkingRuns(tx, eq(agentRuns.agentId, id))).length) {
+        await enqueue(tx, 'agents.checkIdle', {
+          workspaceId: agent.workspaceId,
+          actorId: me.id,
+        });
+      }
       const [gone] = await tx
         .delete(users)
         .where(eq(users.id, id))

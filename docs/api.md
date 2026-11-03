@@ -576,9 +576,10 @@ asked a question or proposed a plan; a reply, or approving the plan, requeues it
 `failed` and `cancelled`.
 
 `agent_runs.idle` is sent when the last `claimed` or `running` run in the workspace stops working, or is deleted along
-with its issue, team or agent. Queued runs may still be left, and a runner may pick up the next one a moment later, so check `queued` and `waiting` to tell "between
-runs" from "all done". It counts the whole workspace and reaches every webhook that selects it, whatever teams the
-webhook is limited to, so a webhook limited to a team doesn't hear about that team alone going quiet.
+with its issue, team or agent. Queued runs may still be left, and a runner may pick up the next one a moment later,
+so check `queued` and `waiting` to tell "between runs" from "all done". It counts the whole workspace and reaches every
+webhook that selects it, whatever teams the webhook is limited to, so a webhook limited to a team doesn't hear about
+that team alone going quiet.
 
 **Headers:** `Ordo-Event` (the type), `Ordo-Delivery` (unique per attempt series; reuse it to deduplicate), and
 `Ordo-Signature: t=<unix seconds>,v1=<hex>` where `v1` is HMAC-SHA256 over `"<t>.<raw body>"` with the webhook's

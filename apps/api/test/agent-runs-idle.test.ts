@@ -2,7 +2,7 @@ import type { AgentRun, AgentRunContext, Bootstrap } from '@ordo/shared';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { agentRuns, domainEvents, users } from '../src/db/schema.ts';
+import { agentRuns, agents, domainEvents, users } from '../src/db/schema.ts';
 import { reapLeases } from '../src/services/agents.ts';
 import { wants } from '../src/services/webhooks.ts';
 import { type Client, signup, testApp } from './helpers.ts';
@@ -215,24 +215,53 @@ describe('agent_runs.idle', () => {
     expect(await newIdleEvents()).toHaveLength(1);
   });
 
-  it('notices the last working run being deleted with its agent', async () => {
-    const adminUser = (await signup(app, 'Ada Instance')).client;
-    const { id: adminId } = (await adminUser.get('/api/auth/me')).data;
-    await app.db.update(users).set({ isInstanceAdmin: true }).where(eq(users.id, adminId));
-    const doomed = (await owner.post(`${ws}/agents`, { name: 'Idle Doomed', teamIds: [eng] })).data;
-    const doomedKey = (await owner.post(`${ws}/agents/${doomed.id}/keys`, { name: 'runner' })).data
-      .token;
-    await owner.post(`${ws}/issues`, { teamId: eng, title: 'Orphaned', assigneeId: doomed.id });
-    const claimed = await app.inject({
-      method: 'POST',
-      url: `${ws}/agent/claim?wait=0&runner=idle-host`,
-      headers: { authorization: `Bearer ${doomedKey}` },
+  describe('deleting an agent', () => {
+    let adminUser: Client;
+    beforeAll(async () => {
+      adminUser = (await signup(app, 'Ada Instance')).client;
+      const { id: adminId } = (await adminUser.get('/api/auth/me')).data;
+      await app.db.update(users).set({ isInstanceAdmin: true }).where(eq(users.id, adminId));
     });
-    expect(claimed.statusCode).toBe(200);
-    await newIdleEvents();
 
-    expect((await adminUser.del(`/api/admin/users/${doomed.id}`)).statusCode).toBe(200);
-    await app.jobs.drain();
-    expect((await newIdleEvents()).map((e) => e.data)).toEqual([{ queued: 0, waiting: 0 }]);
+    it('notices the last working run being deleted with its agent', async () => {
+      const doomed = (await owner.post(`${ws}/agents`, { name: 'Idle Doomed', teamIds: [eng] }))
+        .data;
+      const doomedKey = (await owner.post(`${ws}/agents/${doomed.id}/keys`, { name: 'runner' }))
+        .data.token;
+      await owner.post(`${ws}/issues`, { teamId: eng, title: 'Orphaned', assigneeId: doomed.id });
+      const claimed = await app.inject({
+        method: 'POST',
+        url: `${ws}/agent/claim?wait=0&runner=idle-host`,
+        headers: { authorization: `Bearer ${doomedKey}` },
+      });
+      expect(claimed.statusCode).toBe(200);
+      await newIdleEvents();
+
+      expect((await adminUser.del(`/api/admin/users/${doomed.id}`)).statusCode).toBe(200);
+      await app.jobs.drain();
+      expect((await newIdleEvents()).map((e) => e.data)).toEqual([{ queued: 0, waiting: 0 }]);
+    });
+
+    it('waits for a claim in flight without deadlocking', async () => {
+      const doomed = (await owner.post(`${ws}/agents`, { name: 'Idle Claimant', teamIds: [eng] }))
+        .data;
+      const issue = (
+        await owner.post(`${ws}/issues`, { teamId: eng, title: 'Racing', assigneeId: doomed.id })
+      ).data;
+      const [run] = (await owner.get(`${ws}/issues/${issue.id}/agent-runs`)).data as AgentRun[];
+      await newIdleEvents();
+
+      // Holds a claim open in `takeRun`'s order: the agent's row, then the run.
+      let del: ReturnType<typeof adminUser.del> | undefined;
+      await app.db.transaction(async (tx) => {
+        await tx.select().from(agents).where(eq(agents.userId, doomed.id)).for('update');
+        del = adminUser.del(`/api/admin/users/${doomed.id}`);
+        await waitForLockWait(tx);
+        await tx.update(agentRuns).set({ status: 'claimed' }).where(eq(agentRuns.id, run!.id));
+      });
+      expect((await del!).statusCode).toBe(200);
+      await app.jobs.drain();
+      expect((await newIdleEvents()).map((e) => e.data)).toEqual([{ queued: 0, waiting: 0 }]);
+    });
   });
 });

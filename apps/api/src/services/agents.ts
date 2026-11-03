@@ -550,7 +550,7 @@ export async function queueRun(
  */
 export async function lockWorkingRuns(tx: DbOrTx, where: SQL) {
   const open = await tx
-    .select({ status: agentRuns.status, workspaceId: agentRuns.workspaceId })
+    .select({ status: agentRuns.status })
     .from(agentRuns)
     .where(and(where, inArray(agentRuns.status, [...AGENT_RUN_OPEN])))
     .for('update');
@@ -564,8 +564,8 @@ export async function noteRunsStopping(ctx: Ctx, where: SQL) {
 }
 
 /**
- * For a change with no `Ctx` to notice the workspace going idle: deleting a user crosses
- * workspaces. Another run stopping before this job runs can mean a second `agent_runs.idle`.
+ * For a change with no `Ctx` to notice the workspace going idle: an instance admin deleting an
+ * agent's user. Another run stopping before this job runs can mean a second `agent_runs.idle`.
  */
 export async function checkRunsIdle(
   app: FastifyInstance,
