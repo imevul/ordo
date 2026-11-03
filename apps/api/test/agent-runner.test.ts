@@ -29,8 +29,30 @@ import {
   type Comment,
 } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { type Client, signup, testApp } from './helpers.ts';
+
+/** The next write of a run's prompt file fails with this, as a full `/tmp` would. */
+const tempWrite = vi.hoisted(() => ({
+  failNext: null as Error | null,
+  path: null as string | null,
+}));
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...real,
+    writeFile: (...args: Parameters<typeof real.writeFile>) => {
+      const path = String(args[0]);
+      if (tempWrite.failNext && path.endsWith('prompt.md')) {
+        const err = tempWrite.failNext;
+        tempWrite.failNext = null;
+        tempWrite.path = path;
+        return Promise.reject(err);
+      }
+      return real.writeFile(...args);
+    },
+  };
+});
 
 let app: FastifyInstance;
 let owner: Client;
@@ -876,6 +898,107 @@ describe('ordo agent', () => {
     expect(runRow!.error).toMatch(/^Checkout failed on /);
     // The command never ran.
     expect(existsSync(marker)).toBe(false);
+  });
+
+  it("fails the run straight away when its temp files can't be written, and keeps working", async () => {
+    const full = await assign('No room in tmp', 'Docs');
+    const next = await assign('Room again', 'Docs');
+    // What Node makes of EDQUOT on a filehandle write: it has no name for that errno.
+    tempWrite.failNext = Object.assign(
+      new Error('Unknown system error -122: Unknown system error -122, write'),
+      { errno: -122, code: 'Unknown system error -122', syscall: 'write' },
+    );
+    tempWrite.path = null;
+    const started = Date.now();
+    const res = await ordo(
+      [
+        'agent',
+        'run',
+        '--once',
+        '-w',
+        slug,
+        '--url',
+        url,
+        '--repos',
+        join(dir, 'repos'),
+        '--',
+        'sh',
+        '-c',
+        'echo "ran $ORDO_ISSUE"',
+      ],
+      { ORDO_AGENT_KEY: keys.Docs },
+    );
+
+    // Said against the issue, and not as an error that ends the runner.
+    expect(res.code).toBe(0);
+    expect(res.stderr).toBe('');
+    expect(res.stdout).toContain(`${full.identifier} setup failed: EDQUOT: Unknown system error`);
+    expect(res.stdout).not.toContain(`${full.identifier} running`);
+
+    // Failed now with the real error, not after three lapsed leases.
+    const [failed] = await runsOf(full.id);
+    expect(failed).toMatchObject({
+      status: 'failed',
+      failureReason: 'setup',
+      attempts: 1,
+      leaseExpiresAt: null,
+    });
+    expect(failed!.error).toMatch(/^Setup failed on .*EDQUOT: Unknown system error -122/);
+    expect(failed!.error).toContain(tmpdir());
+    expect(Date.parse(failed!.finishedAt!)).toBeGreaterThanOrEqual(started);
+    expect((await lastComment(full.id))?.body).toContain('EDQUOT');
+    // What it did manage to write (the agent's key is in there) doesn't stay behind.
+    expect(existsSync(dirname(tempWrite.path!))).toBe(false);
+
+    // The worker lived on: the next run went through.
+    const [done] = await runsOf(next.id);
+    expect(done).toMatchObject({ status: 'succeeded', summary: `ran ${next.identifier}` });
+    await owner.patch(`${ws}/issues/${full.id}`, { assigneeId: null });
+    await owner.patch(`${ws}/issues/${next.id}`, { assigneeId: null });
+  });
+
+  it('claims nothing for a while after a failed setup, so the queue stays queued', async () => {
+    const first = await assign('Temp directory gone', 'Docs');
+    const second = await assign('Still waiting', 'Docs');
+    // A real failure this time: mkdtemp, in a directory that isn't there.
+    const was = process.env.TMPDIR;
+    process.env.TMPDIR = join(dir, 'no-such-tmp');
+    const stop = new AbortController();
+    const lines: string[] = [];
+    const serving = serveAgent(
+      {
+        label: 'docs',
+        url,
+        workspace: slug,
+        key: keys.Docs!,
+        command: 'true',
+        repos: join(dir, 'repos'),
+        concurrency: 1,
+        timeoutMs: 0,
+        env: {},
+        cwd: 'tmp',
+        checkout: false,
+        prune: false,
+        baseDir: dir,
+        instructions: '',
+        output: true,
+        steer: false,
+      },
+      { log: (l) => lines.push(l), signal: stop.signal },
+    );
+    try {
+      await until(() => lines.some((l) => l.includes('claiming nothing for 1 min')), 15_000);
+      expect(lines.join('\n')).toContain(`${first.identifier} setup failed: ENOENT`);
+      expect(await runsOf(first.id)).toMatchObject([{ status: 'failed', failureReason: 'setup' }]);
+      expect(await runsOf(second.id)).toMatchObject([{ status: 'queued', attempts: 0 }]);
+    } finally {
+      stop.abort();
+      await serving;
+      if (was === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = was;
+    }
+    await owner.patch(`${ws}/issues/${first.id}`, { assigneeId: null });
+    await owner.patch(`${ws}/issues/${second.id}`, { assigneeId: null });
   });
 
   it('stops a worker whose claims are refused', async () => {

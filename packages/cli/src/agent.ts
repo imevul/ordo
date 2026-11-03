@@ -1,7 +1,7 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { homedir, hostname, tmpdir } from 'node:os';
+import { constants, homedir, hostname, tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { Ordo, OrdoError, type WorkspaceClient } from '@ordo/sdk';
@@ -745,7 +745,8 @@ export async function launch(
       ),
     };
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    // A failed cleanup must not replace the command's result, or the error that got us here.
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }
 
@@ -933,6 +934,18 @@ async function sweepWorktrees(
   return removed;
 }
 
+const SETUP_PAUSE_MS = 60_000;
+const SETUP_PAUSE_MAX_MS = 15 * 60_000;
+
+/** Node doesn't name every errno: EDQUOT comes out as "Unknown system error -122". */
+function systemErrorMessage(err: unknown) {
+  const { message, errno } = err as NodeJS.ErrnoException;
+  const name =
+    errno !== undefined &&
+    Object.entries(constants.errno).find(([, value]) => value === Math.abs(errno))?.[0];
+  return name && !message.includes(name) ? `${name}: ${message}` : message;
+}
+
 /** Claims and works on one agent's runs until stopped (or, with `once`, until the queue is empty). */
 export async function serveAgent(spec: AgentSpec, opts: ServeOptions) {
   const { ws, claims } = agentClients(spec, opts);
@@ -958,6 +971,7 @@ export async function serveAgent(spec: AgentSpec, opts: ServeOptions) {
   };
   const worker = async () => {
     let backoff = 1000;
+    let setupPause = SETUP_PAUSE_MS;
     while (!opts.signal.aborted) {
       let context: AgentRunContext | null;
       try {
@@ -983,7 +997,17 @@ export async function serveAgent(spec: AgentSpec, opts: ServeOptions) {
         await notePause();
         continue;
       }
-      await work(ws, spec, context, { ...opts, log });
+      const outcome = await work(ws, spec, context, { ...opts, log });
+      if (outcome !== 'setup_failed') {
+        setupPause = SETUP_PAUSE_MS;
+        continue;
+      }
+      // The next run would most likely fail the same way, and a machine that can't set up must
+      // not fail the whole queue in seconds.
+      if (opts.once) continue;
+      log(`claiming nothing for ${setupPause / 60_000} min after the failed setup`);
+      await sleep(setupPause, opts.signal);
+      setupPause = Math.min(setupPause * 2, SETUP_PAUSE_MAX_MS);
     }
   };
   await Promise.all(Array.from({ length: spec.concurrency }, worker));
@@ -994,7 +1018,7 @@ async function work(
   spec: AgentSpec,
   context: AgentRunContext,
   opts: ServeOptions,
-) {
+): Promise<'setup_failed' | undefined> {
   const id = context.issue.identifier;
   const runId = context.run.id;
   opts.log(
@@ -1071,30 +1095,46 @@ async function work(
         )
       : null;
     const live = output;
-    const result = await launch(spec, context, {
-      workdir,
-      repoPaths,
-      cancelled,
-      steered,
-      onStart: () => {
-        pending.push(
-          report({ status: 'running', ...(spec.steer && resume && { steerable: true }) }),
-        );
-        opts.log(`${id} running in ${workdir ?? 'a temporary directory'}`);
-      },
-      onSessionUrl: (url) => {
-        pending.push(report({ sessionUrl: url }));
-      },
-      onResume: (token) => {
-        const first = !resume;
-        resume = token;
-        pending.push(report({ resume: token, ...(spec.steer && first && { steerable: true }) }));
-      },
-      onOutput: (line) => {
-        live?.push(line);
-        if (opts.verbose) opts.log(`${id} │ ${line}`);
-      },
-    });
+    let result: LaunchResult;
+    try {
+      result = await launch(spec, context, {
+        workdir,
+        repoPaths,
+        cancelled,
+        steered,
+        onStart: () => {
+          pending.push(
+            report({ status: 'running', ...(spec.steer && resume && { steerable: true }) }),
+          );
+          opts.log(`${id} running in ${workdir ?? 'a temporary directory'}`);
+        },
+        onSessionUrl: (url) => {
+          pending.push(report({ sessionUrl: url }));
+        },
+        onResume: (token) => {
+          const first = !resume;
+          resume = token;
+          pending.push(report({ resume: token, ...(spec.steer && first && { steerable: true }) }));
+        },
+        onOutput: (line) => {
+          live?.push(line);
+          if (opts.verbose) opts.log(`${id} │ ${line}`);
+        },
+      });
+    } catch (err) {
+      // launch only throws while preparing the command (its run files, usually a full or
+      // over-quota temp directory). Uncaught, this would end the worker and leave the lease to
+      // lapse, claim after claim, with the real error nowhere near the run.
+      const message = systemErrorMessage(err);
+      opts.log(`${id} setup failed: ${message}`);
+      await Promise.all([...pending, live?.close()]);
+      await report({
+        status: 'failed',
+        error: `Setup failed on ${hostname()} (temporary files in ${tmpdir()}): ${message}`,
+        failureReason: 'setup',
+      });
+      return 'setup_failed';
+    }
     canSteer = false;
     // The rest of the output first: Ordo takes none once the run has ended.
     await Promise.all([...pending, live?.close()]);

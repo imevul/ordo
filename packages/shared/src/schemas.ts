@@ -1562,7 +1562,7 @@ export const reportAgentRunSchema = z
     sessionUrl: z.url().max(2000).nullish(),
     summary: z.string().max(50_000).nullish(),
     error: z.string().max(10_000).nullish(),
-    /** With `failed`, when the runner knows (a timeout, a failed checkout). Else Ordo reads the error. */
+    /** With `failed`, when the runner knows (a timeout, a failed checkout or setup). Else Ordo reads the error. */
     failureReason: z.enum(AGENT_RUN_FAILURE_REASONS).optional(),
     /** With `waiting`: what the agent asks. Posted on the issue; a person's reply resumes the run. */
     question: z.string().trim().min(1).max(10_000).optional(),

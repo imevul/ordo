@@ -116,6 +116,7 @@ export default {
         timeout: 'Tidsavbrudd',
         runner_lost: 'Kjøremiljøet sluttet å svare',
         checkout: 'Utsjekking mislyktes',
+        setup: 'Klargjøringen mislyktes',
         permission: 'Tilgangsproblem',
         error: 'Feil',
       },
