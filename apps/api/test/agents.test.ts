@@ -841,6 +841,28 @@ describe('handing an issue to another agent', () => {
     await owner.patch(`${ws}/issues/${i.id}`, { assigneeId: null });
     expect((await runsOf(i.id)).find((r) => r.agentId === coder.id)?.status).toBe('cancelled');
   });
+
+  it('holds the next agent until the run that handed over ends, so it sees the summary', async () => {
+    const from = (await owner.post(`${ws}/agents`, { name: 'Passer', teamIds: [eng] })).data;
+    const to = (await owner.post(`${ws}/agents`, { name: 'Catcher', teamIds: [eng] })).data;
+    const fromKey = (await owner.post(`${ws}/agents/${from.id}/keys`, { name: 'p' })).data.token;
+    const toKey = (await owner.post(`${ws}/agents/${to.id}/keys`, { name: 'c' })).data.token;
+    const i = await issue('Pass me on', { assigneeId: from.id });
+    const run = (await bearer(fromKey, 'POST', `${ws}/agent/claim`)).data as AgentRunContext;
+    await bearer(fromKey, 'PATCH', `${ws}/issues/${i.id}`, { assigneeId: to.id });
+
+    expect((await bearer(toKey, 'POST', `${ws}/agent/claim`)).statusCode).toBe(204);
+
+    await bearer(fromKey, 'PATCH', `${ws}/agent/runs/${run.run.id}`, {
+      status: 'succeeded',
+      summary: 'Found a bug in the parser.',
+    });
+    const next = (await bearer(toKey, 'POST', `${ws}/agent/claim`)).data as AgentRunContext;
+    expect(next.issue.id).toBe(i.id);
+    expect(next.comments.map((c) => c.body)).toContain('Found a bug in the parser.');
+    expect(next.prompt).toContain("don't post the same thing as a comment yourself");
+    await bearer(toKey, 'PATCH', `${ws}/agent/runs/${next.run.id}`, { status: 'succeeded' });
+  });
 });
 
 describe('mentions', () => {
