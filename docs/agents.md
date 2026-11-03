@@ -51,7 +51,9 @@ There are three parts:
    and shows "Waiting on ENG-2". It starts by itself when the last blocker closes. **Run anyway** (on the queued
    run) starts it without waiting. Issues in a [later cycle](#work-planned-for-a-later-cycle) wait the same way.
 6. **Cancel** stops a run: its runner hears about it on its next heartbeat and stops the command. Unassigning the
-   agent cancels its open runs too.
+   agent cancels its open runs too. Moving an issue to the trash doesn't stop a run that's working, but a queued run
+   there is cancelled when a runner would pick it up ("The issue is in the trash"). After restoring the issue, click
+   **Run again**. Deleting the issue from the trash stops every run on it.
 7. **Agent runs** in the sidebar (shown once the workspace has an agent) lists what every agent is doing across the
    workspace. It opens on **Open**: runs that are queued, working or waiting for an answer, plus failed runs nobody
    has dealt with yet. **Waiting** leaves out what's being worked on, and every row says
