@@ -556,6 +556,8 @@ export interface CycleHold {
     id: string;
     number: number;
     name: string | null;
+    /** An empty cycle finishes on this date. */
+    endsAt: string;
     open: number;
     total: number;
   } | null;
@@ -1632,6 +1634,60 @@ export interface AgentRunUsage {
   cacheWriteTokens: number | null;
   costUsd: number | null;
   durationMs: number | null;
+}
+
+/** An open issue nobody is on, with nothing else blocking it: what held runs need moved. */
+export interface AgentRunHoldIssue {
+  id: string;
+  identifier: string;
+  title: string;
+  status: string;
+  assigneeId: string | null;
+  labels: string[];
+  /** A run of its waits for a person, or it has no run that will move it. */
+  reason: 'needs_person' | 'no_run';
+  /** Open issues waiting for it, directly or through others. */
+  behind: number;
+}
+
+export interface AgentRunHoldCycle {
+  id: string;
+  number: number;
+  name: string | null;
+  teamKey: string;
+}
+
+/** Runs held by cycles that open one after another, from the cycle that decides when they move. */
+export interface AgentRunHoldChain {
+  cycle: AgentRunHoldCycle;
+  /** `cycle` has to finish, to start on `date`, or (it's empty) to end on `date`. */
+  waitsFor: 'finish' | 'start' | 'end';
+  date: string | null;
+  /** How far along `cycle` is, when it has to finish. */
+  open: number;
+  total: number;
+  /** Runs held across the whole chain. */
+  runs: number;
+  /** The later cycles holding runs, in the order they open. */
+  later: (AgentRunHoldCycle & { runs: number })[];
+  /** Open issues in `cycle` that agents have or will get to. */
+  working: number;
+  /** What has to move for `cycle` to finish. */
+  issues: AgentRunHoldIssue[];
+  /** The same for later cycles that others wait for, so they can be sorted out early. */
+  nextToStall: Pick<AgentRunHoldIssue, 'id' | 'identifier' | 'title'>[];
+}
+
+/** What's holding queued runs back: `GET /agent-runs/holds`. */
+export interface AgentRunHolds {
+  working: number;
+  queued: number;
+  needPerson: number;
+  /** Queued with nothing in the way: it takes a runner to pick them up. */
+  ready: number;
+  chains: AgentRunHoldChain[];
+  /** Runs blocked by an issue outside any held cycle, by the issue that has to move. */
+  blocked: { issue: AgentRunHoldIssue; runs: number }[];
 }
 
 /** An agent's runs in one calendar month (UTC): `GET /agent-usage`. */

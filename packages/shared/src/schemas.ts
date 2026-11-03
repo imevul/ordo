@@ -1619,6 +1619,9 @@ export const agentRunsSearchSchema = z.object({
   offset: z.number().int().min(0).max(100_000).default(0),
 });
 
+/** `GET /agent-runs/holds`: what's holding queued runs back. */
+export const agentRunHoldsQuerySchema = z.object({ teamId: id.optional() });
+
 /** `GET /agent-usage`: totals per agent for a calendar month (UTC), this one by default. */
 export const agentUsageQuerySchema = z.object({
   month: z

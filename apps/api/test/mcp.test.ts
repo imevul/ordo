@@ -1091,3 +1091,46 @@ describe('get_attachment', () => {
     expect(open.data.result.content[0].type).toBe('image');
   });
 });
+
+describe('agent_run_holds', () => {
+  it('says which issues hold queued runs, with their people by name', async () => {
+    const eng = boot.teams.find((t) => t.key === 'ENG')!.id;
+    const agent = (await ada.post(`${ws}/agents`, { name: 'Holder', teamIds: [eng] })).data;
+    const day = (offset: number) =>
+      new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+    const cycle = async (name: string, from: number, to: number, startsAfter?: string) =>
+      tool('create_cycle', {
+        team: 'ENG',
+        name,
+        startsAt: day(from),
+        endsAt: day(to),
+        startsAfter,
+      });
+    await cycle('Hold first', -1, 90);
+    await cycle('Hold second', 90, 100, 'Hold first');
+    const stuck = await tool('create_issue', {
+      team: 'ENG',
+      title: 'Holds everything',
+      cycle: 'Hold first',
+      assignee: 'me',
+    });
+    await tool('create_issue', {
+      team: 'ENG',
+      title: 'Waits for it',
+      cycle: 'Hold second',
+      assignee: agent.username,
+    });
+
+    const holds = await tool('agent_run_holds', { team: 'ENG' });
+    const chain = holds.chains.find(
+      (c: { cycle: { name: string } }) => c.cycle.name === 'Hold first',
+    );
+    expect(chain).toMatchObject({ waitsFor: 'finish', runs: 1 });
+    expect(chain.later.map((c: { name: string }) => c.name)).toEqual(['Hold second']);
+    expect(chain.issues).toMatchObject([
+      { identifier: stuck.identifier, reason: 'no_run', assignee: { name: expect.any(String) } },
+    ]);
+    expect(chain.issues[0].assigneeId).toBeUndefined();
+    expect((await tool('agent_run_holds', { team: 'NOPE' })).error).toContain('Unknown team');
+  });
+});

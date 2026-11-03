@@ -264,6 +264,39 @@ export default {
     /** Tooltip on a run's status, which links to its page. */
     open: 'Open the run',
   },
+  /** The panel on the Agent runs page: what queued runs wait for, and what has to move. */
+  holds: {
+    title: "What's holding the queue",
+    show: 'Show',
+    hide: 'Hide',
+    working: '{count} working',
+    queued: '{count} queued',
+    needPerson: { one: '{count} needs a person', other: '{count} need a person' },
+    ready: '{count} ready for a runner',
+    runs: { one: '{count} run', other: '{count} runs' },
+    /** {cycle} has to finish before these runs can start. */
+    waitFinish: {
+      one: 'waiting for {cycle} to finish ({open} of {count} issue open)',
+      other: 'waiting for {cycle} to finish ({open} of {count} issues open)',
+    },
+    waitStart: 'waiting for {cycle} · starts {date}',
+    /** {cycle} has no issues, so it counts as finished on its end date. */
+    waitEnd: 'waiting for {cycle}, which has no issues, to end on {date}',
+    /** {cycles}: the later cycles, in order. */
+    later: 'then {cycles}',
+    beingWorkedOn: {
+      one: '{count} issue being worked on',
+      other: '{count} issues being worked on',
+    },
+    unassigned: 'Unassigned',
+    noRun: 'no run',
+    needsPerson: 'waiting for a person',
+    behind: { one: '{count} issue behind it', other: '{count} issues behind it' },
+    /** {issues}: linked identifiers. */
+    nextToStall: 'Next to stall: {issues}',
+    /** {issue}: a linked identifier. */
+    blockedBy: { one: '{count} run blocked by {issue}', other: '{count} runs blocked by {issue}' },
+  },
   /** One run's page (Agent runs → a run). */
   runPage: {
     kicker: 'run',

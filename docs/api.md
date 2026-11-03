@@ -674,7 +674,13 @@ can see, `{ id, identifier, title }`; empty when the run doesn't wait.
 A queued run of an agent with `waitForCycle`, queued by an assignment or a schedule, isn't handed out while its issue
 hasn't started and the issue's cycle hasn't opened, unless `ignoreBlockers` is set. Listed runs carry `waitingForCycle`:
 `{ id, number, name, startsAt, startsAfter }`, or `null`; `startsAfter` is the cycle it waits for,
-`{ id, number, name, open, total }`, or `null` when it waits for its date. See [agents.md](agents.md#work-planned-for-a-later-cycle).
+`{ id, number, name, endsAt, open, total }`, or `null` when it waits for its date. See [agents.md](agents.md#work-planned-for-a-later-cycle).
+
+`GET /agent-runs/holds` (optional `teamId`) says what's holding queued runs back: `{ working, queued, needPerson, ready,
+chains, blocked }`. A chain is `{ cycle, waitsFor, date, open, total, runs, later, working, issues, nextToStall }`, with
+`waitsFor` `finish`, `start` or `end` (of an empty cycle). `issues` and each of `blocked`'s `{ issue, runs }` are
+`{ id, identifier, title, status, assigneeId, labels, reason, behind }`, `reason` `needs_person` or `no_run`. See
+[agents.md](agents.md#whats-holding-the-queue).
 
 A report's `usage` is what that pickup used: `{ inputTokens?, outputTokens?, cacheReadTokens?, cacheWriteTokens?,
 costUsd?, durationMs? }`. It's added to the run's `usage` (each field `null` until reported), so send it once per

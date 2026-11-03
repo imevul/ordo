@@ -117,6 +117,24 @@ With P2 after P1 and P3 after P2, agents work through the phases in order, with 
 
 For a precise link between two issues, across cycles too, use a blocking relation. Those apply as well.
 
+### What's holding the queue
+
+The panel at the top of **Agent runs** says why queued runs aren't starting. It groups them by the one thing each group
+waits for:
+
+- **A chain of cycles**, headed by the cycle that decides when it moves, with how many runs the whole chain holds. If
+  that cycle has to finish, the panel lists the issues that have to move: open, nobody on them, and not blocked by
+  another open issue. Each shows who has it, its status and labels, and how many issues are behind it. These issues
+  often have no run, so they aren't in the list below.
+- **A date.** The group lists nothing, because it starts by itself.
+- **Next to stall.** Issues nobody is on in later cycles of the chain, so you can sort them out early. The last cycle's
+  aren't listed, since nothing waits for them.
+- **Runs blocked by an issue** outside any held cycle, grouped by the issue that has to move.
+
+The counts at the top filter the list: who needs a person, and runs ready for a runner (the sign to check the runner when
+nothing is working). The panel follows the page's team picker, and is gone when nothing is queued and nobody is needed.
+Agents get the same answer from the `agent_run_holds` [MCP](mcp.md) tool.
+
 To start a whole cycle early, move its start date or clear _Starts after_. Waiting runs are listed last under **Open** on the Agent runs page,
 in a collapsed group, and don't count towards the number in the sidebar. The prompt and the run file name the issue's
 cycle (`cycle` in `AgentRunContext`), so tell a triage agent to keep a cycle that's already set.
