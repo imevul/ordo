@@ -635,6 +635,19 @@ describe('the run list', () => {
     expect([403, 404]).toContain(refused.statusCode);
   });
 
+  it('says which project each run’s issue is in', async () => {
+    const project = (await owner.post(`${ws}/projects`, { name: 'Runs', teamIds: [team] })).data
+      .id as string;
+    const agent = await newAgent({ concurrency: 2 });
+    const inProject = await working('in a project', agent, { projectId: project });
+    const loose = await working('in no project', agent);
+    const filter = { agentRunAgentIds: [agent.id] };
+    const { runs } = await query({ filter });
+    expect(runs.find((r) => r.id === inProject.runId)?.issue.projectId).toBe(project);
+    expect(runs.find((r) => r.id === loose.runId)?.issue.projectId).toBeNull();
+    expect((await reasons(inProject.runId)).issue.projectId).toBe(project);
+  });
+
   it('answers on GET too', async () => {
     const res = await owner.get(`${ws}/agent-runs?status=waiting&agentId=${slowpoke.id}`);
     expect(res.statusCode).toBe(200);

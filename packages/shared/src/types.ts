@@ -1668,7 +1668,7 @@ export interface AgentPause {
 
 /** A run with the issue it's about, for workspace-wide run lists. */
 export interface AgentRunWithIssue extends AgentRun {
-  issue: IssueRef;
+  issue: IssueRef & { projectId: string | null };
   /** For a queued run: a repository at its run limit that holds it back, if one does. */
   waitingForRepository: { id: string; name: string } | null;
 }

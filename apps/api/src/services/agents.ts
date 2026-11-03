@@ -1231,6 +1231,7 @@ export async function getRunDetail(
       title: issues.title,
       stateId: issues.stateId,
       teamId: issues.teamId,
+      projectId: issues.projectId,
       teamKey: teams.key,
     })
     .from(agentRuns)
@@ -1276,6 +1277,7 @@ export async function getRunDetail(
       title: row.title,
       stateId: row.stateId,
       teamId: row.teamId,
+      projectId: row.projectId,
     },
     prompt: run.prompt,
     triggerComment: triggerComment ?? null,
@@ -1333,6 +1335,7 @@ export async function listWorkspaceRuns(
       title: issues.title,
       stateId: issues.stateId,
       teamId: issues.teamId,
+      projectId: issues.projectId,
       teamKey: teams.key,
     })
     .from(agentRuns)
@@ -1373,6 +1376,7 @@ export async function listWorkspaceRuns(
         title: r.title,
         stateId: r.stateId,
         teamId: r.teamId,
+        projectId: r.projectId,
       },
       waitingForRepository: (r.run.status === 'queued' && held.get(r.run.issueId)) || null,
     })),
