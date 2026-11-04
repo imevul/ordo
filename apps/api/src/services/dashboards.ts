@@ -1,12 +1,13 @@
 import {
   AGENT_RUN_OPEN,
   type AgentActivityReport,
+  type AgentMetricsReport,
   type CreateDashboardInput,
   type Dashboard,
   dashboardWidgetSchema,
   type UpdateDashboardInput,
 } from '@ordo/shared';
-import { and, asc, eq, gte, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, gte, isNull, notInArray, or, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../db/client.ts';
 import { agentRuns, dashboards, issues } from '../db/schema.ts';
 import { forbidden, notFound } from '../lib/errors.ts';
@@ -157,4 +158,50 @@ export async function agentActivity(
     .groupBy(agentRuns.agentId)
     .orderBy(sql`count(*) desc`);
   return { since, agents: rows };
+}
+
+/**
+ * What runs started in the last `days` days used, per agent and UTC day, on issues `access` can
+ * read. Open runs wait until they finish: their usage so far would pull an average down.
+ */
+export async function agentMetrics(
+  db: DbOrTx,
+  access: Access,
+  q: { days: number; teamId?: string },
+): Promise<AgentMetricsReport> {
+  if (q.teamId) assertTeamAccess(access, q.teamId);
+  const now = Date.now();
+  const since = new Date(now - q.days * DAY).toISOString();
+  const day = sql<string>`to_char(${agentRuns.createdAt} at time zone 'UTC', 'YYYY-MM-DD')`;
+  const { inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens } = agentRuns;
+  const points = await db
+    .select({
+      agentId: agentRuns.agentId,
+      day,
+      runs: sql<number>`count(*)::int`,
+      durationMs: sql<number>`coalesce(sum(${agentRuns.durationMs}), 0)::float8`,
+      durationRuns: sql<number>`count(${agentRuns.durationMs})::int`,
+      tokens: sql<number>`coalesce(sum(coalesce(${inputTokens}, 0) + coalesce(${outputTokens}, 0) + coalesce(${cacheReadTokens}, 0) + coalesce(${cacheWriteTokens}, 0)), 0)::float8`,
+      tokenRuns: sql<number>`count(*) filter (where num_nonnulls(${inputTokens}, ${outputTokens}, ${cacheReadTokens}, ${cacheWriteTokens}) > 0)::int`,
+      costUsd: sql<number>`coalesce(sum(${agentRuns.costUsd}), 0)::float8`,
+      costRuns: sql<number>`count(${agentRuns.costUsd})::int`,
+    })
+    .from(agentRuns)
+    .innerJoin(issues, eq(issues.id, agentRuns.issueId))
+    .where(
+      and(
+        eq(agentRuns.workspaceId, access.workspaceId),
+        gte(agentRuns.createdAt, since),
+        notInArray(agentRuns.status, [...AGENT_RUN_OPEN]),
+        teamScope(access, issues.teamId),
+        q.teamId ? eq(issues.teamId, q.teamId) : undefined,
+      ),
+    )
+    .groupBy(agentRuns.agentId, day)
+    .orderBy(day, agentRuns.agentId);
+  const days: string[] = [];
+  const today = Math.floor(now / DAY);
+  for (let d = Math.floor((now - q.days * DAY) / DAY); d <= today; d++)
+    days.push(new Date(d * DAY).toISOString().slice(0, 10));
+  return { since, days, points };
 }

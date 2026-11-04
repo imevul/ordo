@@ -152,6 +152,15 @@ export function duration(ms: number) {
     : unit(m / 60, 'hour');
 }
 
+/** Minutes on a chart's axis: "2.5m". */
+export const minutes = (n: number) =>
+  numberFormat({
+    style: 'unit',
+    unit: 'minute',
+    unitDisplay: 'narrow',
+    maximumFractionDigits: 1,
+  }).format(n);
+
 export const fileSize = (bytes: number) =>
   bytes < 1024
     ? `${bytes} B`

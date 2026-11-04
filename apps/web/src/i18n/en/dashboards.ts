@@ -48,7 +48,7 @@ export default {
     chart: { name: 'Chart', hint: 'Burn-up, burndown, flow, velocity, breakdown' },
     view: { name: 'Saved view', hint: 'The first issues of a view' },
     count: { name: 'Number', hint: 'How many issues match a filter' },
-    agents: { name: 'Agent activity', hint: 'Runs and their cost' },
+    agents: { name: 'Agent activity', hint: 'Runs, or graphs of duration, tokens and cost' },
   },
   charts: {
     burnUp: 'Burn-up',
@@ -80,6 +80,13 @@ export default {
     lastDays: { one: 'Last day', other: 'Last {count} days' },
     agent: 'Agent',
     allAgents: 'All agents',
+    shows: 'Shows',
+    metricTable: 'Table of runs',
+    metric: {
+      duration: 'Graph of run duration',
+      tokens: 'Graph of token use',
+      cost: 'Graph of cost',
+    },
     incomplete: 'Pick what the widget shows first.',
   },
   widget: {
@@ -104,6 +111,29 @@ export default {
     cost: 'Cost',
     total: 'Total',
     unknownAgent: 'Removed agent',
+    metricTitle: {
+      duration: { one: 'Run duration · last day', other: 'Run duration · last {count} days' },
+      tokens: { one: 'Tokens per run · last day', other: 'Tokens per run · last {count} days' },
+      cost: { one: 'Cost per run · last day', other: 'Cost per run · last {count} days' },
+    },
+    metricLabel: {
+      duration: 'average minutes per run, per day and agent',
+      tokens: 'average tokens per run, per day and agent',
+      cost: 'average cost per run, per day and agent',
+    },
+    metricAverage: 'Average, all agents',
+    metricNone: {
+      one: 'No finished run reported this in the last day.',
+      other: 'No finished run reported this in the last {count} days.',
+    },
+    metricOverall: {
+      one: '{value} per run, over {count} run.',
+      other: '{value} per run on average, over {count} runs.',
+    },
+    metricHidden: {
+      one: '{count} more agent is only in the average.',
+      other: '{count} more agents are only in the average.',
+    },
     breakdownBy: 'By {slice}',
     flow: 'Created vs completed',
     flowLabelIssues: 'issues created and completed per week',

@@ -66,10 +66,10 @@ function useWidth() {
   return [ref, width] as const;
 }
 
-function Legend({ series }: { series: Series[] }) {
+export function Legend({ series }: { series: Series[] }) {
   if (series.length < 2) return null;
   return (
-    <div className="mb-2 flex flex-wrap gap-4 font-mono text-[11px] text-muted">
+    <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted">
       {series.map((s) => (
         <span key={s.key} className="inline-flex items-center gap-1.5">
           <svg width="16" height="6" aria-hidden>
@@ -97,6 +97,8 @@ export function LineChart({
   height = 180,
   label,
   marker,
+  format = fmt,
+  legend = true,
 }: {
   series: Series[];
   x: string[];
@@ -104,10 +106,15 @@ export function LineChart({
   label: string;
   /** A labelled vertical line on one day (a target date). */
   marker?: { day: string; label: string };
+  /** The y axis and the readout, for values with a unit. */
+  format?: (n: number) => string;
+  /** Off when the caller lays `Legend` out itself. */
+  legend?: boolean;
 }) {
   const [ref, width] = useWidth();
   const [hover, setHover] = useState<number | null>(null);
-  const m = { top: 8, right: 16, bottom: 22, left: 34 };
+  // A unit makes the axis's labels wider than plain numbers.
+  const m = { top: 8, right: 16, bottom: 22, left: format === fmt ? 34 : 48 };
   const w = width - m.left - m.right;
   const h = height - m.top - m.bottom;
   const max = niceMax(Math.max(0, ...series.flatMap((s) => s.values.map((v) => v ?? 0))));
@@ -124,7 +131,7 @@ export function LineChart({
 
   return (
     <figure className="relative">
-      <Legend series={series} />
+      {legend && <Legend series={series} />}
       <div ref={ref} className="relative">
         <svg width={width} height={height} role="img" aria-label={label}>
           {ticks.map((tick) => (
@@ -144,7 +151,7 @@ export function LineChart({
                 dominantBaseline="middle"
                 className="fill-index font-mono text-[10px]"
               >
-                {fmt(tick)}
+                {format(tick)}
               </text>
             </g>
           ))}
@@ -173,6 +180,21 @@ export function LineChart({
                 points={points}
               />
             )),
+          )}
+          {/* A value between gaps has no line to be part of, so it would not show at all. */}
+          {series.flatMap((s) =>
+            s.values.map((v, i) =>
+              v !== null && s.values[i - 1] == null && s.values[i + 1] == null ? (
+                <rect
+                  key={`${s.key}:dot:${x[i]}`}
+                  x={px(i) - 2.5}
+                  y={py(v) - 2.5}
+                  width="5"
+                  height="5"
+                  fill={s.color}
+                />
+              ) : null,
+            ),
           )}
           {marker && x.includes(marker.day) && (
             <g>
@@ -234,8 +256,12 @@ export function LineChart({
         {hover !== null && (
           <div
             className="panel panel-sm panel-raised pointer-events-none absolute z-10 px-2.5 py-1.5 font-mono text-[11px]"
+            // On whichever side of the line has room; a name on one row keeps many series short.
             style={{
-              left: Math.min(px(hover) + 10, width - 150),
+              ...(px(hover) > width / 2
+                ? { right: width - px(hover) + 10 }
+                : { left: px(hover) + 10 }),
+              maxWidth: Math.max(px(hover), width - px(hover)) - 14,
               top: m.top,
             }}
           >
@@ -243,9 +269,11 @@ export function LineChart({
             {series.map((s) =>
               s.values[hover] == null ? null : (
                 <div key={s.key} className="flex items-center gap-2 text-muted">
-                  <span className="h-0.5 w-3" style={{ background: s.color }} />
-                  {s.label}
-                  <span className="ml-auto pl-3 text-text">{fmt(s.values[hover]!)}</span>
+                  <span className="h-0.5 w-3 flex-none" style={{ background: s.color }} />
+                  <span className="min-w-0 truncate">{s.label}</span>
+                  <span className="ml-auto flex-none pl-3 text-text">
+                    {format(s.values[hover]!)}
+                  </span>
                 </div>
               ),
             )}

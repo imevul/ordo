@@ -44,6 +44,10 @@ export type BreakdownSlice = (typeof BREAKDOWN_SLICES)[number];
 /** Weeks back a timeline chart shows. */
 export const DASHBOARD_WEEKS = [4, 12, 26, 52] as const;
 
+/** What an agent activity widget can graph. */
+export const AGENT_METRICS = ['duration', 'tokens', 'cost'] as const;
+export type AgentMetric = (typeof AGENT_METRICS)[number];
+
 const id = z.uuid();
 const measure = z.enum(['count', 'estimate']).default('count');
 
@@ -104,6 +108,8 @@ const agentsWidget = z.object({
   days: z.number().int().min(1).max(90).default(7),
   agentId: id.nullish(),
   teamId: id.nullish(),
+  /** A graph of this per run, per agent and on average; none is the table of runs. */
+  metric: z.enum(AGENT_METRICS).nullish(),
 });
 
 export const dashboardWidgetSchema = z.discriminatedUnion('type', [
@@ -175,4 +181,35 @@ export interface AgentActivityReport {
   /** The first instant counted. */
   since: string;
   agents: AgentActivity[];
+}
+
+/**
+ * `GET /agent-metrics`: what finished runs used, per agent and UTC day. Always every agent in
+ * scope, so one agent's graph can still be set against the average of all of them.
+ */
+export const agentMetricsQuerySchema = agentActivityQuerySchema.omit({ agentId: true });
+
+/**
+ * One agent's runs started on one day. Runners don't all report everything, so each total comes
+ * with how many runs reported it, which is what an average of it divides by.
+ */
+export interface AgentMetricPoint {
+  agentId: string;
+  /** YYYY-MM-DD */
+  day: string;
+  runs: number;
+  durationMs: number;
+  durationRuns: number;
+  tokens: number;
+  tokenRuns: number;
+  costUsd: number;
+  costRuns: number;
+}
+
+export interface AgentMetricsReport {
+  /** The first instant counted. */
+  since: string;
+  /** Every UTC day from `since` to today, with or without runs. */
+  days: string[];
+  points: AgentMetricPoint[];
 }

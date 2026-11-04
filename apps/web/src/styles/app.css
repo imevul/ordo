@@ -30,6 +30,10 @@
   --color-error: #ef4444;
   /* Second chart series, beside the accent (checked for color-blind separation from pink). */
   --color-chart-2: #4f8ff7;
+  /* More series, for charts with one line per agent. Validated as a set, in this order. */
+  --color-chart-3: #c98500;
+  --color-chart-4: #14a085;
+  --color-chart-5: #9085e9;
 
   --font-sans: "Space Grotesk Variable", "Segoe UI", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, "SFMono-Regular", monospace;
@@ -81,6 +85,9 @@
   --color-warning: #c2610c;
   --color-error: #dc2626;
   --color-chart-2: #2563eb;
+  --color-chart-3: #b7791f;
+  --color-chart-4: #0a8f76;
+  --color-chart-5: #7c3aed;
   --shadow-glow-mark: 0 0 10px color-mix(in srgb, var(--color-primary) 30%, transparent);
   --shadow-glow-nav: 0 0 8px color-mix(in srgb, var(--color-primary) 45%, transparent);
   --shadow-glow-led: 0 0 4px color-mix(in srgb, var(--color-primary) 45%, transparent);
