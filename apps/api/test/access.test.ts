@@ -730,6 +730,7 @@ describe('route inventory', () => {
       'visible, then owner, admin or team admin; widgets query with the viewer’s access (dashboards.test.ts)',
     'DELETE /dashboards/:id': 'visible, then owner, admin or team admin (dashboards.test.ts)',
     'GET /agent-activity': "runs on the caller's teams only (dashboards.test.ts)",
+    'GET /agent-metrics': "runs on the caller's teams only (dashboards.test.ts)",
     'GET /calendar-feeds': "the caller's own feeds (calendar.test.ts)",
     'POST /calendar-feeds':
       'the view must be visible; the feed is built with the owner’s access (calendar.test.ts)',

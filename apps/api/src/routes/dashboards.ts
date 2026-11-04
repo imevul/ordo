@@ -1,5 +1,6 @@
 import {
   agentActivityQuerySchema,
+  agentMetricsQuerySchema,
   createDashboardSchema,
   updateDashboardSchema,
 } from '@ordo/shared';
@@ -10,6 +11,7 @@ import { mutate } from '../lib/mutate.ts';
 import { can } from '../services/access.ts';
 import {
   agentActivity,
+  agentMetrics,
   createDashboard,
   deleteDashboard,
   getDashboard,
@@ -51,5 +53,9 @@ export async function dashboardRoutes(app: FastifyInstance) {
 
   app.get('/agent-activity', async (req) =>
     agentActivity(db, requireAccess(req), parse(agentActivityQuerySchema, req.query)),
+  );
+
+  app.get('/agent-metrics', async (req) =>
+    agentMetrics(db, requireAccess(req), parse(agentMetricsQuerySchema, req.query)),
   );
 }

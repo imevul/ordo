@@ -1,4 +1,4 @@
-import type { AgentActivityReport, Bootstrap, Dashboard } from '@ordo/shared';
+import type { AgentActivityReport, AgentMetricsReport, Bootstrap, Dashboard } from '@ordo/shared';
 import { eq } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -200,5 +200,103 @@ describe('agent activity', () => {
     expect((await of(owner, `?teamId=${ids.secret}`)).agents[0]).toMatchObject({ runs: 1 });
     expect((await member.get(`${ws}/agent-activity?teamId=${ids.secret}`)).statusCode).toBe(404);
     expect((await member.get(`${ws}/agent-activity?days=500`)).statusCode).toBe(400);
+  });
+});
+
+describe('agent metrics', () => {
+  it('adds up what finished runs used per agent and day, with what reported it', async () => {
+    const agent = async (name: string) =>
+      (await owner.post(`${ws}/agents`, { name, teamIds: [ids.eng, ids.secret] })).data
+        .id as string;
+    const ann = await agent('Metrics Ann');
+    const bob = await agent('Metrics Bob');
+    const run = async (
+      agentId: string,
+      teamId: string,
+      status: string,
+      usage: Partial<typeof agentRuns.$inferInsert>,
+      ageDays = 0,
+    ) => {
+      const issue = (
+        await owner.post(`${ws}/issues`, { teamId, title: 'Metric', assigneeId: agentId })
+      ).data;
+      const createdAt = new Date(Date.now() - ageDays * 86_400_000).toISOString();
+      await app.db
+        .update(agentRuns)
+        .set({ status: status as 'queued', createdAt, ...usage })
+        .where(eq(agentRuns.issueId, issue.id));
+    };
+    const full = {
+      durationMs: 60_000,
+      costUsd: 1,
+      inputTokens: 100,
+      outputTokens: 20,
+      cacheReadTokens: 3,
+      cacheWriteTokens: 4,
+    };
+    await run(ann, ids.eng, 'succeeded', full);
+    await run(ann, ids.eng, 'failed', { durationMs: 30_000, outputTokens: 5 });
+    await run(ann, ids.eng, 'succeeded', {});
+    // Still working, too old and out of the reader's sight: none of them count.
+    await run(ann, ids.eng, 'running', full);
+    await run(ann, ids.eng, 'succeeded', full, 40);
+    await run(bob, ids.secret, 'succeeded', full);
+    await run(bob, ids.eng, 'succeeded', full, 2);
+
+    const of = async (who: Client, q = '') =>
+      (await who.get(`${ws}/agent-metrics${q}`)).data as AgentMetricsReport;
+    const report = await of(member);
+    const today = new Date().toISOString().slice(0, 10);
+    const twoAgo = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+    expect(report.days).toHaveLength(8);
+    expect(report.days.at(-1)).toBe(today);
+    expect(new Set(report.days).size).toBe(8);
+    const mine = (who: AgentMetricsReport, id: string) =>
+      who.points.filter((p) => p.agentId === id);
+    expect(mine(report, ann)).toEqual([
+      {
+        agentId: ann,
+        day: today,
+        runs: 3,
+        durationMs: 90_000,
+        durationRuns: 2,
+        tokens: 132,
+        tokenRuns: 2,
+        costUsd: 1,
+        costRuns: 1,
+      },
+    ]);
+    expect(mine(report, bob)).toEqual([
+      expect.objectContaining({ day: twoAgo, runs: 1, tokens: 127, costRuns: 1 }),
+    ]);
+
+    // Admins see the private team's run as well; a team narrows it down.
+    expect(mine(await of(owner), bob)).toHaveLength(2);
+    expect(mine(await of(owner, `?teamId=${ids.secret}`), bob)).toEqual([
+      expect.objectContaining({ day: today, runs: 1 }),
+    ]);
+    expect(mine(await of(owner, '?days=90'), ann)).toHaveLength(2);
+    expect((await member.get(`${ws}/agent-metrics?teamId=${ids.secret}`)).statusCode).toBe(404);
+    expect((await member.get(`${ws}/agent-metrics?days=500`)).statusCode).toBe(400);
+  });
+
+  it('keeps a widget’s metric, and leaves it off the table of runs', async () => {
+    const res = await member.post(`${ws}/dashboards`, {
+      name: 'Agent graphs',
+      widgets: [
+        { id: 'a', type: 'agents', metric: 'tokens', days: 30 },
+        { id: 'b', type: 'agents' },
+      ],
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.data as Dashboard).widgets).toEqual([
+      { id: 'a', type: 'agents', metric: 'tokens', days: 30, w: 2, h: 1 },
+      { id: 'b', type: 'agents', days: 7, w: 2, h: 1 },
+    ]);
+    const bad = await member.post(`${ws}/dashboards`, {
+      name: 'Bad',
+      widgets: [{ id: 'a', type: 'agents', metric: 'vibes' }],
+    });
+    expect(bad.statusCode).toBe(400);
   });
 });

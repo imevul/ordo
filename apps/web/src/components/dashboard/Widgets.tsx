@@ -1,19 +1,20 @@
-import type { DashboardWidget, IssueFilter } from '@ordo/shared';
+import type { AgentMetric, DashboardWidget, IssueFilter } from '@ordo/shared';
 import { Link } from '@tanstack/react-router';
-import { useMemo } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import {
   useAgentActivity,
+  useAgentMetrics,
   useInsightsTimeline,
   useIssues,
   useVelocity,
 } from '../../api/queries.ts';
 import { t } from '../../i18n/index.ts';
-import { timelineScope } from '../../lib/dashboards.ts';
-import { usd } from '../../lib/format.ts';
+import { agentMetricChart, timelineScope } from '../../lib/dashboards.ts';
+import { compactCount, duration, minutes, usd } from '../../lib/format.ts';
 import { breakdown, weeklyFlow } from '../../lib/insights.ts';
 import { issueLoadError, sortIssues, visibleIssues } from '../../lib/issues.ts';
 import { useWorkspace, type WorkspaceData } from '../../lib/workspace.tsx';
-import { BarList, LineChart } from '../Charts.tsx';
+import { BarList, Legend, LineChart, type Series } from '../Charts.tsx';
 import { StatusIcon } from '../icons.tsx';
 import {
   BurndownChart,
@@ -41,8 +42,16 @@ export function widgetTitle(ws: WorkspaceData, w: DashboardWidget): string {
         : t('dashboards.widget.issues');
     case 'view':
       return ws.viewById.get(w.viewId)?.name ?? t('dashboards.widget.viewGone');
-    case 'agents':
-      return t('dashboards.widget.agentsTitle', { count: w.days });
+    case 'agents': {
+      if (!w.metric) return t('dashboards.widget.agentsTitle', { count: w.days });
+      const name = t(`dashboards.widget.metricTitle.${w.metric}`, { count: w.days });
+      const scope = w.agentId
+        ? ws.memberById.get(w.agentId)?.name
+        : w.teamId
+          ? ws.teamById.get(w.teamId)?.name
+          : undefined;
+      return scope ? t('dashboards.widget.chartOf', { name, scope }) : name;
+    }
     case 'chart': {
       const scope = w.projectId
         ? ws.projectById.get(w.projectId)?.name
@@ -200,6 +209,93 @@ function AgentsWidget({ widget }: { widget: Of<'agents'> }) {
   );
 }
 
+/** In the order that was checked for color-blind separation. */
+const AGENT_LINE_COLORS = [
+  'var(--color-primary)',
+  'var(--color-chart-2)',
+  'var(--color-chart-3)',
+  'var(--color-chart-4)',
+  'var(--color-chart-5)',
+];
+
+/** Each metric's axis, and its value in the sentence under the graph. */
+const METRIC_FORMAT: Record<AgentMetric, { axis: (n: number) => string; value: typeof usd }> = {
+  duration: { axis: minutes, value: (n) => duration(n * 60_000) },
+  tokens: { axis: compactCount, value: compactCount },
+  cost: { axis: usd, value: usd },
+};
+
+/** One metric per run over the days: a line per agent, and the average of all of them. */
+function AgentMetricWidget({ widget, metric }: { widget: Of<'agents'>; metric: AgentMetric }) {
+  const ws = useWorkspace();
+  const { data, isLoading } = useAgentMetrics(ws.slug, {
+    days: widget.days,
+    teamId: widget.teamId,
+  });
+  const chart = useMemo(
+    () => (data ? agentMetricChart(data, metric, widget.agentId) : null),
+    [data, metric, widget.agentId],
+  );
+  // Up to six names wrap over more lines the narrower the widget, so the plot takes what's left.
+  const [plot, setPlot] = useState<HTMLDivElement | null>(null);
+  const [plotHeight, setPlotHeight] = useState(chartHeight(widget));
+  useLayoutEffect(() => {
+    if (!plot) return;
+    const ro = new ResizeObserver(([e]) => setPlotHeight(e!.contentRect.height));
+    ro.observe(plot);
+    return () => ro.disconnect();
+  }, [plot]);
+  if (isLoading || !data || !chart) return <Loading />;
+  if (chart.overall.value === null)
+    return <Note>{t('dashboards.widget.metricNone', { count: widget.days })}</Note>;
+  const format = METRIC_FORMAT[metric];
+  const series: Series[] = [
+    ...chart.lines.map((l) => ({
+      key: l.agentId,
+      label: ws.memberById.get(l.agentId)?.name ?? t('dashboards.widget.unknownAgent'),
+      color: AGENT_LINE_COLORS[l.slot]!,
+      values: l.values,
+    })),
+    ...(chart.average
+      ? [
+          {
+            key: 'average',
+            label: t('dashboards.widget.metricAverage'),
+            color: 'var(--color-text)',
+            dashed: true,
+            values: chart.average,
+          },
+        ]
+      : []),
+  ];
+  const overall = t('dashboards.widget.metricOverall', {
+    count: chart.overall.runs,
+    value: format.value(chart.overall.value),
+  });
+  const hidden = chart.hidden ? t('dashboards.widget.metricHidden', { count: chart.hidden }) : '';
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <Legend series={series} />
+      <div ref={setPlot} className="min-h-0 flex-1">
+        <LineChart
+          label={t(`dashboards.widget.metricLabel.${metric}`)}
+          x={data.days}
+          height={Math.max(60, plotHeight)}
+          format={format.axis}
+          legend={false}
+          series={series}
+        />
+      </div>
+      <p
+        className="mt-1 flex-none truncate font-mono text-[11px] text-muted"
+        title={`${overall} ${hidden}`}
+      >
+        {overall} {hidden}
+      </p>
+    </div>
+  );
+}
+
 /** Breakdown and created-vs-completed, over the issues the widget's filter matches. */
 function IssueChart({ widget }: { widget: Of<'chart'> }) {
   const ws = useWorkspace();
@@ -296,7 +392,11 @@ export function WidgetBody({ widget }: { widget: DashboardWidget }) {
     case 'view':
       return <ViewWidget widget={widget} />;
     case 'agents':
-      return <AgentsWidget widget={widget} />;
+      return widget.metric ? (
+        <AgentMetricWidget widget={widget} metric={widget.metric} />
+      ) : (
+        <AgentsWidget widget={widget} />
+      );
     case 'chart':
       if (widget.chart === 'velocity') return <VelocityWidget widget={widget} />;
       if (widget.chart === 'breakdown' || widget.chart === 'flow')

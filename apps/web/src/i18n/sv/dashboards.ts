@@ -49,7 +49,10 @@ export default {
     chart: { name: 'Diagram', hint: 'Burn-up, burndown, flöde, hastighet, fördelning' },
     view: { name: 'Sparad vy', hint: 'De första ärendena i en vy' },
     count: { name: 'Antal', hint: 'Hur många ärenden som matchar ett filter' },
-    agents: { name: 'Agentaktivitet', hint: 'Körningar och vad de kostade' },
+    agents: {
+      name: 'Agentaktivitet',
+      hint: 'Körningar, eller grafer över tid, tokens och kostnad',
+    },
   },
   charts: {
     burnUp: 'Burn-up',
@@ -81,6 +84,13 @@ export default {
     lastDays: { one: 'Senaste dygnet', other: 'Senaste {count} dagarna' },
     agent: 'Agent',
     allAgents: 'Alla agenter',
+    shows: 'Visar',
+    metricTable: 'Tabell över körningar',
+    metric: {
+      duration: 'Graf över körtid',
+      tokens: 'Graf över tokenanvändning',
+      cost: 'Graf över kostnad',
+    },
     incomplete: 'Välj först vad widgeten ska visa.',
   },
   widget: {
@@ -108,6 +118,35 @@ export default {
     cost: 'Kostnad',
     total: 'Totalt',
     unknownAgent: 'Borttagen agent',
+    metricTitle: {
+      duration: { one: 'Körtid · senaste dygnet', other: 'Körtid · senaste {count} dagarna' },
+      tokens: {
+        one: 'Tokens per körning · senaste dygnet',
+        other: 'Tokens per körning · senaste {count} dagarna',
+      },
+      cost: {
+        one: 'Kostnad per körning · senaste dygnet',
+        other: 'Kostnad per körning · senaste {count} dagarna',
+      },
+    },
+    metricLabel: {
+      duration: 'genomsnittliga minuter per körning, per dag och agent',
+      tokens: 'genomsnittliga tokens per körning, per dag och agent',
+      cost: 'genomsnittlig kostnad per körning, per dag och agent',
+    },
+    metricAverage: 'Snitt, alla agenter',
+    metricNone: {
+      one: 'Ingen avslutad körning rapporterade detta det senaste dygnet.',
+      other: 'Ingen avslutad körning rapporterade detta de senaste {count} dagarna.',
+    },
+    metricOverall: {
+      one: '{value} per körning, över {count} körning.',
+      other: '{value} per körning i snitt, över {count} körningar.',
+    },
+    metricHidden: {
+      one: '{count} agent till ingår bara i snittet.',
+      other: '{count} agenter till ingår bara i snittet.',
+    },
     breakdownBy: 'Per {slice}',
     flow: 'Skapade mot klara',
     flowLabelIssues: 'ärenden skapade och klara per vecka',

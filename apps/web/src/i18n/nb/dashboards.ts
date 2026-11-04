@@ -49,7 +49,7 @@ export default {
     chart: { name: 'Diagram', hint: 'Burn-up, burndown, flyt, hastighet, fordeling' },
     view: { name: 'Lagret visning', hint: 'De første sakene i en visning' },
     count: { name: 'Antall', hint: 'Hvor mange saker som passer et filter' },
-    agents: { name: 'Agentaktivitet', hint: 'Kjøringer og hva de kostet' },
+    agents: { name: 'Agentaktivitet', hint: 'Kjøringer, eller grafer over tid, tokens og kostnad' },
   },
   charts: {
     burnUp: 'Burn-up',
@@ -82,6 +82,13 @@ export default {
     lastDays: { one: 'Siste døgn', other: 'Siste {count} dager' },
     agent: 'Agent',
     allAgents: 'Alle agenter',
+    shows: 'Viser',
+    metricTable: 'Tabell over kjøringer',
+    metric: {
+      duration: 'Graf over kjøretid',
+      tokens: 'Graf over tokenbruk',
+      cost: 'Graf over kostnad',
+    },
     incomplete: 'Velg først hva widgeten skal vise.',
   },
   widget: {
@@ -109,6 +116,35 @@ export default {
     cost: 'Kostnad',
     total: 'Totalt',
     unknownAgent: 'Fjernet agent',
+    metricTitle: {
+      duration: { one: 'Kjøretid · siste døgn', other: 'Kjøretid · siste {count} dager' },
+      tokens: {
+        one: 'Tokens per kjøring · siste døgn',
+        other: 'Tokens per kjøring · siste {count} dager',
+      },
+      cost: {
+        one: 'Kostnad per kjøring · siste døgn',
+        other: 'Kostnad per kjøring · siste {count} dager',
+      },
+    },
+    metricLabel: {
+      duration: 'gjennomsnittlige minutter per kjøring, per dag og agent',
+      tokens: 'gjennomsnittlige tokens per kjøring, per dag og agent',
+      cost: 'gjennomsnittlig kostnad per kjøring, per dag og agent',
+    },
+    metricAverage: 'Snitt, alle agenter',
+    metricNone: {
+      one: 'Ingen fullførte kjøringer rapporterte dette siste døgn.',
+      other: 'Ingen fullførte kjøringer rapporterte dette de siste {count} dagene.',
+    },
+    metricOverall: {
+      one: '{value} per kjøring, over {count} kjøring.',
+      other: '{value} per kjøring i snitt, over {count} kjøringer.',
+    },
+    metricHidden: {
+      one: '{count} agent til er bare med i snittet.',
+      other: '{count} agenter til er bare med i snittet.',
+    },
     breakdownBy: 'Etter {slice}',
     flow: 'Opprettet mot fullført',
     flowLabelIssues: 'saker opprettet og fullført per uke',

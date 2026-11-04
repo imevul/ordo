@@ -228,7 +228,9 @@ dashboards are for everyone who can see them. Untick sharing for one only you se
 - **Saved view**: the first issues of a view, in the view's order, with a link to the rest.
 - **Number**: how many issues (or points) match a filter, like "urgent and open".
 - **Agent activity**: agent runs started in the last days, per agent: how many finished, failed or are still open,
-  and what they cost.
+  and what they cost. Or a graph of run duration, token use or cost per run, by day: a line for each of the five
+  busiest agents and a dashed one for the average of all of them. With one agent picked, it's that agent against
+  the average. Runs count once they've finished, and only for what their runner reported.
 
 Drag widgets to reorder them, or use the arrows. **W−/W+** and **H−/H+** make them narrower, wider, shorter or
 taller. **Save layout** (or `E` again) keeps the changes; **Cancel** drops them. Each widget shows only what you can

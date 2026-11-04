@@ -1,6 +1,7 @@
 import type {
   Account,
   AgentActivityReport,
+  AgentMetricsReport,
   ApiKey,
   Attachment,
   Bootstrap,
@@ -404,6 +405,17 @@ export const useAgentActivity = (
       if (q.agentId) params.set('agentId', q.agentId);
       if (q.teamId) params.set('teamId', q.teamId);
       return api.get<AgentActivityReport>(wsPath(slug, `/agent-activity?${params}`));
+    },
+  });
+
+/** What finished runs used, per agent and day; under `agentRuns` like the activity above. */
+export const useAgentMetrics = (slug: string, q: { days: number; teamId?: string | null }) =>
+  useQuery({
+    queryKey: ['ws', slug, 'agentRuns', 'metrics', q],
+    queryFn: () => {
+      const params = new URLSearchParams({ days: String(q.days) });
+      if (q.teamId) params.set('teamId', q.teamId);
+      return api.get<AgentMetricsReport>(wsPath(slug, `/agent-metrics?${params}`));
     },
   });
 

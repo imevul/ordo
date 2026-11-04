@@ -1,4 +1,7 @@
 import {
+  type AgentMetric,
+  type AgentMetricPoint,
+  type AgentMetricsReport,
   type Cycle,
   DASHBOARD_COLUMNS,
   DASHBOARD_MAX_ROWS,
@@ -89,6 +92,76 @@ export function timelineScope(
   if (w.projectId) return { projectId: w.projectId, from };
   if (w.teamId) return { teamId: w.teamId, from };
   return { from };
+}
+
+/** Lines an agent graph can tell apart; the agents past them still count in the average. */
+export const AGENT_METRIC_LINES = 5;
+
+/** A metric's total and the runs that reported it. Durations are in minutes, for a round axis. */
+function metricOf(p: AgentMetricPoint, metric: AgentMetric): [total: number, runs: number] {
+  if (metric === 'duration') return [p.durationMs / 60_000, p.durationRuns];
+  if (metric === 'tokens') return [p.tokens, p.tokenRuns];
+  return [p.costUsd, p.costRuns];
+}
+
+const mean = (points: AgentMetricPoint[], metric: AgentMetric) => {
+  let total = 0;
+  let runs = 0;
+  for (const p of points) {
+    const [t, r] = metricOf(p, metric);
+    total += t;
+    runs += r;
+  }
+  return { value: runs ? total / runs : null, runs };
+};
+
+export interface AgentMetricChart {
+  /** Per run, one line per agent. `slot` picks its color. */
+  lines: { agentId: string; slot: number; values: (number | null)[] }[];
+  /** Per run across all agents; null when that would only repeat the one agent's line. */
+  average: (number | null)[] | null;
+  /** Agents only in the average, for not fitting. */
+  hidden: number;
+  /** The whole period, for the one agent asked for or else all of them. */
+  overall: { value: number | null; runs: number };
+}
+
+/**
+ * A metric's lines: one agent's if one is asked for, or else the busiest agents'. Slots go by id
+ * among the busiest, counting all runs rather than the metric's, so an agent keeps its color
+ * across a dashboard's graphs, also on one of its own (or the first, if it's not among them).
+ */
+export function agentMetricChart(
+  report: AgentMetricsReport,
+  metric: AgentMetric,
+  agentId?: string | null,
+): AgentMetricChart {
+  const reported = report.points.filter((p) => metricOf(p, metric)[1] > 0);
+  const runs = new Map<string, number>();
+  for (const p of report.points) runs.set(p.agentId, (runs.get(p.agentId) ?? 0) + p.runs);
+  const busiest = [...runs.keys()].sort((a, b) => runs.get(b)! - runs.get(a)! || (a < b ? -1 : 1));
+  const shown = busiest.slice(0, AGENT_METRIC_LINES).sort();
+  const perDay = (points: AgentMetricPoint[]) =>
+    report.days.map(
+      (day) =>
+        mean(
+          points.filter((p) => p.day === day),
+          metric,
+        ).value,
+    );
+  const reporting = new Set(reported.map((p) => p.agentId));
+  return {
+    lines: (agentId ? [agentId] : shown)
+      .filter((id) => reporting.has(id))
+      .map((id) => ({
+        agentId: id,
+        slot: Math.max(0, shown.indexOf(id)),
+        values: perDay(reported.filter((p) => p.agentId === id)),
+      })),
+    average: reporting.size > 1 ? perDay(reported) : null,
+    hidden: agentId ? 0 : [...reporting].filter((id) => !shown.includes(id)).length,
+    overall: mean(agentId ? reported.filter((p) => p.agentId === agentId) : reported, metric),
+  };
 }
 
 /** Tailwind needs whole class names, so spans map to literal ones. */

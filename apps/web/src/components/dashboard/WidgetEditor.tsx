@@ -1,4 +1,5 @@
 import {
+  AGENT_METRICS,
   BREAKDOWN_SLICES,
   DASHBOARD_CHARTS,
   DASHBOARD_WEEKS,
@@ -362,6 +363,20 @@ export function WidgetEditor({
 
         {draft.type === 'agents' && (
           <div className="flex flex-wrap gap-3">
+            <Field label={t('dashboards.editor.shows')}>
+              <select
+                className={`${select} w-auto`}
+                value={(draft.metric as string | null | undefined) ?? ''}
+                onChange={(e) => set({ metric: e.target.value || null })}
+              >
+                <option value="">{t('dashboards.editor.metricTable')}</option>
+                {AGENT_METRICS.map((m) => (
+                  <option key={m} value={m}>
+                    {t(`dashboards.editor.metric.${m}`)}
+                  </option>
+                ))}
+              </select>
+            </Field>
             <Field label={t('dashboards.editor.period')}>
               <select
                 className={`${select} w-auto`}
