@@ -156,6 +156,13 @@ temporary directory (`TMPDIR`, or `/tmp`) when that's full or over its quota. Th
 which machine and directory it was. That worker then claims nothing for a minute, doubling up to 15 minutes while
 setup keeps failing, so a broken machine doesn't fail the whole queue. Fix the machine and **Restart** the runs.
 
+_Checkout failed_ means the runner couldn't get the run's repositories. A clone or fetch that fails is tried again after
+15 seconds, 1 minute and 3 minutes, because forges fail for a while during outages and can then answer even a good key
+with `Permission denied (publickey)`. If it still fails, the run fails and all of that agent's workers on the runner
+claim nothing for a minute, doubling up to 15 minutes until a checkout works again, so the rest of the queue stays
+queued. Check the forge's status page and the runner's key, then **Restart** the runs. A repository that doesn't exist
+fails at once, with no retries or pause, as does a problem with the run's own branch or worktree.
+
 Failed runs stay in the **Open** list on the Agent runs page, with what went wrong, until someone deals with them:
 
 - **Restart** queues the same agent on the same issue again, for the same reason (the assignment, the comment that

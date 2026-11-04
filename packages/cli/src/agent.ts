@@ -387,6 +387,46 @@ async function worktreeOf(clone: string, branch: string) {
 /** Worktree paths a run on this machine is using right now; pruning leaves them alone. */
 const inUse = new Set<string>();
 
+const gitError = (err: unknown) =>
+  (err as { stderr?: string }).stderr?.trim() || (err as Error).message;
+
+/** git saying the repository isn't there, which trying again won't change. */
+const NO_SUCH_REPOSITORY =
+  /does not exist|repository not found|does not appear to be a git repository/i;
+
+/** A clone or fetch that kept failing, so the remote or the way to it is the likely problem. */
+export class RemoteUnreachable extends Error {
+  constructor(readonly stderr: string) {
+    super(stderr);
+  }
+}
+
+export interface CheckoutRetries {
+  /** How long to wait before each further try. */
+  delays: readonly number[];
+  /** Waits out a delay; false to stop trying. */
+  wait: (ms: number, error: string) => Promise<boolean>;
+}
+
+/**
+ * Forges fail for a while during their outages, and can then refuse a good key outright (`Permission
+ * denied (publickey)`), so a refusal gets its retries as well.
+ */
+async function reachRemote(op: () => Promise<unknown>, retries?: CheckoutRetries) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await op();
+      return;
+    } catch (err) {
+      const message = gitError(err);
+      if (NO_SUCH_REPOSITORY.test(message)) throw err;
+      const delay = retries?.delays[attempt];
+      if (delay === undefined || !(await retries?.wait(delay, message)))
+        throw new RemoteUnreachable(message);
+    }
+  }
+}
+
 /**
  * A worktree of each repository on the run's branch: an existing local branch is reused (a
  * second run continues the first's work), then the remote's, else a new one from the default
@@ -395,6 +435,7 @@ const inUse = new Set<string>();
 export async function checkout(
   repos: AgentRunRepository[],
   reposDir: string,
+  retries?: CheckoutRetries,
 ): Promise<{ name: string; path: string }[]> {
   await mkdir(reposDir, { recursive: true });
   const out: { name: string; path: string }[] = [];
@@ -402,9 +443,16 @@ export async function checkout(
     const clone = join(reposDir, `${safeName(repo.name)}-${repo.id.slice(0, 8)}`);
     let branch = repo.suggestedBranch;
     let tree = join(`${clone}.worktrees`, safeName(branch));
+    // Locked per try, so runs sharing this clone aren't held up while this one waits to retry.
+    await reachRemote(
+      () =>
+        locked(clone, async () => {
+          if (!existsSync(join(clone, '.git'))) await git(['clone', '--quiet', repo.url, clone]);
+          else await git(['fetch', '--quiet', '--prune', 'origin'], clone);
+        }),
+      retries,
+    );
     await locked(clone, async () => {
-      if (!existsSync(join(clone, '.git'))) await git(['clone', '--quiet', repo.url, clone]);
-      else await git(['fetch', '--quiet', '--prune', 'origin'], clone);
       if (existsSync(tree)) return;
       if (
         !(await refExists(clone, `refs/heads/${branch}`)) &&
@@ -812,6 +860,8 @@ export interface ServeOptions {
   fetch?: typeof fetch;
   /** Echo the command's output into the log. */
   verbose?: boolean;
+  /** How long to wait before each further try at a clone or fetch (default `CHECKOUT_RETRY_MS`). */
+  checkoutRetryMs?: readonly number[];
 }
 
 const sleep = (ms: number, signal: AbortSignal) =>
@@ -936,6 +986,29 @@ async function sweepWorktrees(
 
 const SETUP_PAUSE_MS = 60_000;
 const SETUP_PAUSE_MAX_MS = 15 * 60_000;
+const CHECKOUT_RETRY_MS = [15_000, 60_000, 180_000];
+
+/**
+ * An unreachable remote stops all of an agent's workers, not just the one that found out: each run
+ * claimed during an outage would fail too, and a person has to restart every one of them.
+ */
+function checkoutHold(log: (line: string) => void) {
+  let until = 0;
+  let pause = SETUP_PAUSE_MS;
+  return {
+    remaining: () => until - Date.now(),
+    /** Workers that fail together count as one failure, or the pause would jump to its maximum. */
+    unreachable() {
+      if (Date.now() < until) return;
+      log(`claiming nothing for ${pause / 60_000} min: a repository can't be reached`);
+      until = Date.now() + pause;
+      pause = Math.min(pause * 2, SETUP_PAUSE_MAX_MS);
+    },
+    reached() {
+      pause = SETUP_PAUSE_MS;
+    },
+  };
+}
 
 /** Node doesn't name every errno: EDQUOT comes out as "Unknown system error -122". */
 function systemErrorMessage(err: unknown) {
@@ -969,10 +1042,15 @@ export async function serveAgent(spec: AgentSpec, opts: ServeOptions) {
       );
     else log('no longer paused');
   };
+  const hold = checkoutHold(log);
   const worker = async () => {
     let backoff = 1000;
     let setupPause = SETUP_PAUSE_MS;
     while (!opts.signal.aborted) {
+      if (!opts.once && hold.remaining() > 0) {
+        await sleep(hold.remaining(), opts.signal);
+        continue;
+      }
       let context: AgentRunContext | null;
       try {
         context = await claims.agent.claim({
@@ -997,7 +1075,7 @@ export async function serveAgent(spec: AgentSpec, opts: ServeOptions) {
         await notePause();
         continue;
       }
-      const outcome = await work(ws, spec, context, { ...opts, log });
+      const outcome = await work(ws, spec, context, { ...opts, log }, hold);
       if (outcome !== 'setup_failed') {
         setupPause = SETUP_PAUSE_MS;
         continue;
@@ -1018,6 +1096,7 @@ async function work(
   spec: AgentSpec,
   context: AgentRunContext,
   opts: ServeOptions,
+  hold: Pick<ReturnType<typeof checkoutHold>, 'reached' | 'unreachable'>,
 ): Promise<'setup_failed' | undefined> {
   const id = context.issue.identifier;
   const runId = context.run.id;
@@ -1064,15 +1143,31 @@ async function work(
   try {
     let repoPaths: { name: string; path: string }[] = [];
     if (spec.checkout && context.repositories.length) {
+      let wasCancelled = false;
+      void cancelled.then(() => {
+        wasCancelled = true;
+      });
       try {
-        repoPaths = await checkout(context.repositories, spec.repos);
+        repoPaths = await checkout(context.repositories, spec.repos, {
+          // `once` is for scripts, which get the answer now rather than wait (as with setup).
+          delays: opts.once ? [] : (opts.checkoutRetryMs ?? CHECKOUT_RETRY_MS),
+          wait: async (ms, error) => {
+            opts.log(`${id} trying its checkout again in ${ms / 1000}s: ${error.split('\n')[0]}`);
+            await Promise.race([sleep(ms, opts.signal), cancelled]);
+            return !wasCancelled;
+          },
+        });
+        hold.reached();
         for (const r of repoPaths) {
           inUse.add(r.path);
           held.push(r.path);
         }
       } catch (err) {
-        const message = (err as { stderr?: string }).stderr?.trim() || (err as Error).message;
+        // Cancelled while waiting to retry: the run is over already, and nothing failed it.
+        if (wasCancelled) return;
+        const message = gitError(err);
         opts.log(`${id} checkout failed: ${message}`);
+        if (!opts.once && err instanceof RemoteUnreachable) hold.unreachable();
         await report({
           status: 'failed',
           error: `Checkout failed on ${hostname()}: ${message}`,

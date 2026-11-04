@@ -1001,6 +1001,188 @@ describe('ordo agent', () => {
     await owner.patch(`${ws}/issues/${second.id}`, { assigneeId: null });
   });
 
+  describe('a checkout that can not reach its remote', () => {
+    /** A team of its own, so this agent claims only these issues, whose repository is `repoUrl`. */
+    const rig = async (name: string, repoUrl: string) => {
+      const created = (await owner.post(`${ws}/teams`, { name, key: name.toUpperCase() })).data;
+      const repo = (await owner.post(`${ws}/repositories`, { name, url: repoUrl })).data;
+      await owner.patch(`${ws}/teams/${created.id}`, { defaultRepositoryId: repo.id });
+      const agent = (
+        await owner.post(`${ws}/agents`, { name: `Runner ${name}`, teamIds: [created.id] })
+      ).data;
+      const key = (await owner.post(`${ws}/agents/${agent.id}/keys`, { name: 'test' })).data.token;
+      return {
+        key: key as string,
+        assign: async (title: string) =>
+          (
+            await owner.post(`${ws}/issues`, {
+              teamId: created.id,
+              title,
+              assigneeId: agent.id,
+            })
+          ).data as { id: string; identifier: string },
+      };
+    };
+
+    /** Serves an agent until `check` passes, with lines of log to look at afterwards. */
+    const serving = async (
+      name: string,
+      key: string,
+      concurrency: number,
+      check: (lines: string[]) => Promise<void>,
+      checkoutRetryMs?: number[],
+    ) => {
+      const stop = new AbortController();
+      const lines: string[] = [];
+      const served = serveAgent(
+        {
+          label: name,
+          url,
+          workspace: slug,
+          key,
+          command: 'true',
+          repos: join(dir, 'repos'),
+          concurrency,
+          timeoutMs: 0,
+          env: {},
+          cwd: 'worktree',
+          checkout: true,
+          prune: false,
+          baseDir: dir,
+          instructions: '',
+          output: true,
+          steer: false,
+        },
+        { log: (l) => lines.push(l), signal: stop.signal, checkoutRetryMs },
+      );
+      try {
+        await check(lines);
+      } finally {
+        stop.abort();
+        await served;
+      }
+    };
+
+    /** Stands in for ssh: refuses its first `refusals` connections as GitHub did, then connects. */
+    const withSsh = async (
+      name: string,
+      refusals: number,
+      fn: (tries: () => number) => unknown,
+    ) => {
+      const count = join(dir, `${name}.ssh-count`);
+      const script = join(dir, `${name}.ssh`);
+      writeFileSync(
+        script,
+        `#!/bin/sh
+n=$(cat "${count}" 2>/dev/null || echo 0)
+echo $((n + 1)) > "${count}"
+if [ "$n" -lt ${refusals} ]; then
+  echo 'git@github.com: Permission denied (publickey).' >&2
+  exit 255
+fi
+for last; do :; done
+exec sh -c "$last"
+`,
+      );
+      chmodSync(script, 0o700);
+      const was = { command: process.env.GIT_SSH_COMMAND, variant: process.env.GIT_SSH_VARIANT };
+      process.env.GIT_SSH_COMMAND = script;
+      // Otherwise git runs it once more first, to see what kind of ssh this is.
+      process.env.GIT_SSH_VARIANT = 'simple';
+      try {
+        await fn(() => Number(readFileSync(count, 'utf8')));
+      } finally {
+        if (was.command === undefined) delete process.env.GIT_SSH_COMMAND;
+        else process.env.GIT_SSH_COMMAND = was.command;
+        if (was.variant === undefined) delete process.env.GIT_SSH_VARIANT;
+        else process.env.GIT_SSH_VARIANT = was.variant;
+      }
+    };
+
+    it('tries again, so a run gets through a short refusal', async () => {
+      await withSsh('blip', 2, async (tries) => {
+        const { key, assign: assignHere } = await rig('Blip', `git@ssh.test:${dir}/origin.git`);
+        const issue = await assignHere('Through the blip');
+        await serving(
+          'blip',
+          key,
+          1,
+          async (lines) => {
+            await vi.waitFor(
+              async () =>
+                expect(await runsOf(issue.id)).toMatchObject([
+                  { status: 'succeeded', attempts: 1, failureReason: null },
+                ]),
+              { timeout: 15_000, interval: 50 },
+            );
+            const log = lines.join('\n');
+            expect(log).toContain(
+              `${issue.identifier} trying its checkout again in 0.01s: git@github.com: Permission denied (publickey).`,
+            );
+            expect(log).not.toContain('checkout failed');
+            expect(log).not.toContain('claiming nothing');
+          },
+          [10, 10],
+        );
+        expect(tries()).toBe(3);
+      });
+    });
+
+    it('fails the run if it keeps failing, and all the workers leave the rest queued', async () => {
+      await withSsh('outage', 1000, async () => {
+        const { key, assign: assignHere } = await rig('Outage', `git@ssh.test:${dir}/origin.git`);
+        const first = await assignHere('Claimed first');
+        const second = await assignHere('Claimed second');
+        const third = await assignHere('Left queued');
+        await serving(
+          'outage',
+          key,
+          2,
+          async (lines) => {
+            await vi.waitFor(
+              async () => {
+                for (const issue of [first, second])
+                  expect(await runsOf(issue.id)).toMatchObject([
+                    { status: 'failed', failureReason: 'checkout' },
+                  ]);
+              },
+              { timeout: 15_000, interval: 50 },
+            );
+            expect((await runsOf(first.id))[0]!.error).toContain('Permission denied (publickey)');
+            // Two workers failing together are one pause, and neither goes on to the third run.
+            expect(lines.filter((l) => l.includes('claiming nothing'))).toEqual([
+              "[outage] claiming nothing for 1 min: a repository can't be reached",
+            ]);
+            await new Promise((r) => setTimeout(r, 100));
+            expect(await runsOf(third.id)).toMatchObject([{ status: 'queued', attempts: 0 }]);
+          },
+          [10],
+        );
+      });
+    });
+
+    it("doesn't wait for a repository that isn't there", async () => {
+      const { key, assign: assignHere } = await rig('Absent', join(dir, 'absent.git'));
+      const first = await assignHere('No repository');
+      const second = await assignHere('Still no repository');
+      // With the default delays: a retry here would outlast the test.
+      await serving('absent', key, 1, async (lines) => {
+        await vi.waitFor(
+          async () => {
+            for (const issue of [first, second])
+              expect(await runsOf(issue.id)).toMatchObject([
+                { status: 'failed', failureReason: 'checkout' },
+              ]);
+          },
+          { timeout: 5000, interval: 50 },
+        );
+        const log = lines.join('\n');
+        expect(log).not.toContain('trying its checkout again');
+        expect(log).not.toContain('claiming nothing');
+      });
+    });
+  });
+
   it('stops a worker whose claims are refused', async () => {
     // Accepted by agent/me, then refused at claim, as when a key is revoked mid-run.
     const refusing: typeof fetch = (input, init) =>
