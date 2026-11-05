@@ -283,8 +283,9 @@ function AgentMetricWidget({ widget, metric }: { widget: Of<'agents'>; metric: A
       <Legend series={series} />
       {/* Even under a default title that names the agent: it truncates, and omits a removed one. */}
       {series.length === 1 && (
+        // Wraps like Legend rather than cutting off: touch screens can't hover for the title.
         <p
-          className="mb-2 flex-none truncate font-mono text-[11px] text-muted"
+          className="mb-2 flex-none font-mono text-[11px] break-words text-muted"
           title={series[0]!.label}
         >
           {series[0]!.label}
