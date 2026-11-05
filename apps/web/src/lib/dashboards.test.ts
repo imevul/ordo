@@ -103,6 +103,30 @@ describe('agentMetricChart', () => {
     // An agent past the lines still gets a graph of its own, in the first color.
     expect(agentMetricChart(many, 'cost', 'g').lines).toMatchObject([{ agentId: 'g', slot: 0 }]);
   });
+
+  it('draws the average when the only agent to report a metric is past the lines', () => {
+    const ids = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const quietestReports = report(
+      ids.map((id, i) =>
+        point(id, days[1]!, {
+          runs: 10 - i,
+          ...(id === 'f' ? { costUsd: 0.5, costRuns: 1 } : {}),
+        }),
+      ),
+    );
+    const c = agentMetricChart(quietestReports, 'cost');
+    expect(c.lines).toEqual([]);
+    expect(c.average).toEqual([null, 0.5, null]);
+    expect(c.hidden).toBe(1);
+    expect(c.overall).toEqual({ value: 0.5, runs: 1 });
+    // On its own graph it has a line, so the average would only repeat it.
+    expect(agentMetricChart(quietestReports, 'cost', 'f')).toMatchObject({
+      lines: [{ agentId: 'f', slot: 0, values: [null, 0.5, null] }],
+      average: null,
+    });
+    // A graph of an agent with nothing to show stays a note, whoever else reports.
+    expect(agentMetricChart(quietestReports, 'cost', 'a').overall.value).toBeNull();
+  });
 });
 
 describe('dashboard layout', () => {

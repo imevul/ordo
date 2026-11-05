@@ -118,7 +118,7 @@ const mean = (points: AgentMetricPoint[], metric: AgentMetric) => {
 export interface AgentMetricChart {
   /** Per run, one line per agent. `slot` picks its color. */
   lines: { agentId: string; slot: number; values: (number | null)[] }[];
-  /** Per run across all agents; null when that would only repeat the one agent's line. */
+  /** Per run across all agents; null when that would only repeat the one agent's drawn line. */
   average: (number | null)[] | null;
   /** Agents only in the average, for not fitting. */
   hidden: number;
@@ -150,15 +150,18 @@ export function agentMetricChart(
         ).value,
     );
   const reporting = new Set(reported.map((p) => p.agentId));
+  const lines = (agentId ? [agentId] : shown)
+    .filter((id) => reporting.has(id))
+    .map((id) => ({
+      agentId: id,
+      slot: Math.max(0, shown.indexOf(id)),
+      values: perDay(reported.filter((p) => p.agentId === id)),
+    }));
   return {
-    lines: (agentId ? [agentId] : shown)
-      .filter((id) => reporting.has(id))
-      .map((id) => ({
-        agentId: id,
-        slot: Math.max(0, shown.indexOf(id)),
-        values: perDay(reported.filter((p) => p.agentId === id)),
-      })),
-    average: reporting.size > 1 ? perDay(reported) : null,
+    lines,
+    // A lone reporter past the lines has no line of its own, so the average is all that shows it.
+    average:
+      reporting.size > 1 || (reporting.size === 1 && !lines.length) ? perDay(reported) : null,
     hidden: agentId ? 0 : [...reporting].filter((id) => !shown.includes(id)).length,
     overall: mean(agentId ? reported.filter((p) => p.agentId === agentId) : reported, metric),
   };
