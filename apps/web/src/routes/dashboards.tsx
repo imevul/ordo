@@ -14,7 +14,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { useWsMutation } from '../api/queries.ts';
 import { WidgetEditor } from '../components/dashboard/WidgetEditor.tsx';
@@ -233,6 +233,9 @@ function IconButton({
 }
 
 /** A widget's frame: its title, and the layout controls while editing. */
+/** A widget header of one line (`min-h-6`), which the charts' heights already allow for. */
+const HEADER_PX = 24;
+
 function WidgetCard({
   widget,
   editing,
@@ -255,6 +258,17 @@ function WidgetCard({
   const ws = useWorkspace();
   const [over, setOver] = useState(false);
   const title = widgetTitle(ws, widget);
+  // A long title wraps, so the header can outgrow its one line; the charts below give that up.
+  const [header, setHeader] = useState<HTMLDivElement | null>(null);
+  const [headerExtra, setHeaderExtra] = useState(0);
+  useLayoutEffect(() => {
+    if (!header) return;
+    const ro = new ResizeObserver(([e]) =>
+      setHeaderExtra(Math.max(0, Math.ceil(e!.borderBoxSize[0]!.blockSize) - HEADER_PX)),
+    );
+    ro.observe(header);
+    return () => ro.disconnect();
+  }, [header]);
   const step = 'font-mono text-[10.5px] text-index';
   return (
     <section
@@ -277,9 +291,9 @@ function WidgetCard({
         if (id && id !== widget.id) onDrop(id);
       }}
     >
-      <div className="mb-2 flex min-h-6 flex-none flex-wrap items-center gap-1">
+      <div ref={setHeader} className="mb-2 flex min-h-6 flex-none flex-wrap items-center gap-1">
         {editing && <GripVertical size={13} className="flex-none cursor-grab text-index" />}
-        <h3 className="kicker min-w-[7rem] flex-1 truncate text-[11px] uppercase tracking-[0.14em]">
+        <h3 className="kicker min-w-[7rem] flex-1 break-words text-[11px] uppercase tracking-[0.14em]">
           {title}
         </h3>
         {editing && (
@@ -336,7 +350,7 @@ function WidgetCard({
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <WidgetBody widget={widget} />
+        <WidgetBody widget={widget} headerExtra={headerExtra} />
       </div>
     </section>
   );
