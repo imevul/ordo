@@ -1,6 +1,6 @@
 import type { AgentMetric, DashboardWidget, IssueFilter } from '@ordo/shared';
 import { Link } from '@tanstack/react-router';
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useLayoutEffect, useMemo, useState } from 'react';
 import {
   useAgentActivity,
   useAgentMetrics,
@@ -27,8 +27,13 @@ import {
 /** One grid row and the gap between rows, in pixels. */
 export const ROW_PX = 240;
 export const GAP_PX = 12;
+/** How much taller than one line the widget's header is: a long title wraps rather than cut off. */
+const HeaderExtra = createContext(0);
 /** What a chart's plot gets of its rows: less the padding, the title and the chart's legend. */
-const chartHeight = (w: DashboardWidget) => w.h * ROW_PX + (w.h - 1) * GAP_PX - 108;
+function useChartHeight(w: DashboardWidget): number {
+  const extra = useContext(HeaderExtra);
+  return Math.max(60, w.h * ROW_PX + (w.h - 1) * GAP_PX - 108 - extra);
+}
 
 type Of<T extends DashboardWidget['type']> = Extract<DashboardWidget, { type: T }>;
 
@@ -238,7 +243,7 @@ function AgentMetricWidget({ widget, metric }: { widget: Of<'agents'>; metric: A
   );
   // Up to six names wrap over more lines the narrower the widget, so the plot takes what's left.
   const [plot, setPlot] = useState<HTMLDivElement | null>(null);
-  const [plotHeight, setPlotHeight] = useState(chartHeight(widget));
+  const [plotHeight, setPlotHeight] = useState(useChartHeight(widget));
   useLayoutEffect(() => {
     if (!plot) return;
     const ro = new ResizeObserver(([e]) => setPlotHeight(e!.contentRect.height));
@@ -311,6 +316,7 @@ function IssueChart({ widget }: { widget: Of<'chart'> }) {
   const filter = widget.filters ?? {};
   const { data, isLoading, error } = useIssues(ws.slug, filter);
   const m = widget.measure;
+  const height = useChartHeight(widget);
   const bars = useMemo(
     () =>
       data && widget.chart === 'breakdown' ? breakdown(ws, data, widget.slice ?? 'state', m) : [],
@@ -324,7 +330,7 @@ function IssueChart({ widget }: { widget: Of<'chart'> }) {
   if (isLoading || !data) return <Loading />;
   if (widget.chart === 'breakdown') {
     // As many bars as the rows leave room for.
-    const fits = Math.max(3, Math.floor(chartHeight(widget) / 22));
+    const fits = Math.max(3, Math.floor(height / 22));
     return bars.length ? (
       <BarList bars={bars.slice(0, fits)} />
     ) : (
@@ -339,7 +345,7 @@ function IssueChart({ widget }: { widget: Of<'chart'> }) {
           : t('dashboards.widget.flowLabelPoints')
       }
       x={flow.map((p) => p.start)}
-      height={chartHeight(widget)}
+      height={height}
       series={[
         {
           key: 'created',
@@ -363,11 +369,11 @@ function TimelineChart({ widget }: { widget: Of<'chart'> }) {
   const ws = useWorkspace();
   const scope = useMemo(() => timelineScope(widget, ws.cycles), [widget, ws.cycles]);
   const { data, isLoading } = useInsightsTimeline(ws.slug, scope ?? {}, !!scope);
+  const height = useChartHeight(widget);
   if (!scope) return <Note>{t('dashboards.widget.noCycle')}</Note>;
   if (isLoading || !data) return <Loading />;
   // Points only mean something when something was estimated.
   const m = hasPoints(data.days) ? widget.measure : 'count';
-  const height = chartHeight(widget);
   if (widget.chart === 'burndown') {
     const project = widget.projectId ? ws.projectById.get(widget.projectId) : undefined;
     return (
@@ -387,14 +393,28 @@ function TimelineChart({ widget }: { widget: Of<'chart'> }) {
 function VelocityWidget({ widget }: { widget: Of<'chart'> }) {
   const ws = useWorkspace();
   const { data, isLoading } = useVelocity(ws.slug, widget.teamId ?? undefined);
+  const height = useChartHeight(widget);
   if (isLoading || !data) return <Loading />;
   // Less the line under it with the average.
+  return <VelocityChart velocity={data} measure={widget.measure} height={height - 20} />;
+}
+
+/** `headerExtra`: how many pixels a wrapped title takes beyond one line, which the charts give up. */
+export function WidgetBody({
+  widget,
+  headerExtra = 0,
+}: {
+  widget: DashboardWidget;
+  headerExtra?: number;
+}) {
   return (
-    <VelocityChart velocity={data} measure={widget.measure} height={chartHeight(widget) - 20} />
+    <HeaderExtra.Provider value={headerExtra}>
+      <WidgetContent widget={widget} />
+    </HeaderExtra.Provider>
   );
 }
 
-export function WidgetBody({ widget }: { widget: DashboardWidget }) {
+function WidgetContent({ widget }: { widget: DashboardWidget }) {
   switch (widget.type) {
     case 'count':
       return <CountWidget widget={widget} />;
