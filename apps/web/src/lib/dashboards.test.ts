@@ -12,6 +12,7 @@ import {
   currentCycle,
   dropWidget,
   moveWidget,
+  namesLoneLine,
   putWidget,
   resizeWidget,
   timelineScope,
@@ -126,6 +127,15 @@ describe('agentMetricChart', () => {
     });
     // A graph of an agent with nothing to show stays a note, whoever else reports.
     expect(agentMetricChart(quietestReports, 'cost', 'a').overall.value).toBeNull();
+  });
+});
+
+describe('namesLoneLine', () => {
+  it('names the line unless the default title already names the chosen agent', () => {
+    expect(namesLoneLine({})).toBe(true);
+    expect(namesLoneLine({ title: 'Spend' })).toBe(true);
+    expect(namesLoneLine({ agentId: 'a' })).toBe(false);
+    expect(namesLoneLine({ agentId: 'a', title: 'Spend' })).toBe(true);
   });
 });
 

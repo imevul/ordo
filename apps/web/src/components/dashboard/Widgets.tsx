@@ -9,7 +9,7 @@ import {
   useVelocity,
 } from '../../api/queries.ts';
 import { t } from '../../i18n/index.ts';
-import { agentMetricChart, timelineScope } from '../../lib/dashboards.ts';
+import { agentMetricChart, namesLoneLine, timelineScope } from '../../lib/dashboards.ts';
 import { compactCount, duration, minutes, usd } from '../../lib/format.ts';
 import { breakdown, weeklyFlow } from '../../lib/insights.ts';
 import { issueLoadError, sortIssues, visibleIssues } from '../../lib/issues.ts';
@@ -276,6 +276,11 @@ function AgentMetricWidget({ widget, metric }: { widget: Of<'agents'>; metric: A
   return (
     <div className="flex h-full min-h-0 flex-col">
       <Legend series={series} />
+      {series.length === 1 && namesLoneLine(widget) && (
+        <p className="mb-2 flex-none truncate font-mono text-[11px] text-muted">
+          {series[0]!.label}
+        </p>
+      )}
       <div ref={setPlot} className="min-h-0 flex-1">
         <LineChart
           label={t(`dashboards.widget.metricLabel.${metric}`)}
