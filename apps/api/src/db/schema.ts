@@ -2124,6 +2124,10 @@ export const agentRuns = pgTable(
     planApprovedById: uuid('plan_approved_by_id').references(() => users.id, {
       onDelete: 'set null',
     }),
+    /** The comment its latest question, plan or failure was posted as: what a person acts on. */
+    waitCommentId: uuid('wait_comment_id').references(() => comments.id, {
+      onDelete: 'set null',
+    }),
     /** Opaque to Ordo: the runner's handle on the agent's session, returned on the next pickup. */
     resume: text('resume'),
     /** A person's @mention while the run works, not yet in front of the agent; the latest wins. */

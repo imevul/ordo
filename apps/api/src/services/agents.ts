@@ -806,6 +806,11 @@ export async function proposePlan(ctx: Ctx, runId: string, plan: string): Promis
   return saved;
 }
 
+/** The comment a person has to act on for the run, so links to the hold can open it. */
+async function setWaitComment(ctx: Ctx, runId: string, commentId: string) {
+  await ctx.tx.update(agentRuns).set({ waitCommentId: commentId }).where(eq(agentRuns.id, runId));
+}
+
 async function pause(
   ctx: Ctx,
   runId: string,
@@ -831,9 +836,10 @@ async function pause(
     .from(issues)
     .where(eq(issues.id, run.issueId));
   const asker = await humanUsername(ctx, run.requestedById, issue?.creatorId ?? null);
-  await createComment(ctx, run.issueId, {
+  const comment = await createComment(ctx, run.issueId, {
     body: `${asker ? `@${asker} ` : ''}${body}`.slice(0, 50_000),
   });
+  await setWaitComment(ctx, runId, comment.id);
   await changed(ctx, saved!);
   await noteRunStopped(ctx, run.issueId);
   return toAgentRun(saved!);
@@ -1846,7 +1852,10 @@ export async function reportRun(
     input.status === 'succeeded'
       ? saved!.summary?.trim()
       : failure && (await failureComment(ctx, saved!, failure));
-  if (body) await createComment(ctx, run.issueId, { body: body.slice(0, 50_000) });
+  if (body) {
+    const comment = await createComment(ctx, run.issueId, { body: body.slice(0, 50_000) });
+    if (failure) await setWaitComment(ctx, runId, comment.id);
+  }
   if (used) await afterUsage(ctx, saved!, { emitted: true });
   await changed(ctx, saved!);
   if (final) {
@@ -2157,7 +2166,9 @@ async function reapLease(app: FastifyInstance, run: typeof agentRuns.$inferSelec
       if (failed)
         await createComment(ctx, run.issueId, {
           body: `This run failed after ${current.attempts} attempts: ${error.toLowerCase()}.`,
-        }).catch(() => {});
+        })
+          .then((comment) => setWaitComment(ctx, run.id, comment.id))
+          .catch(() => {});
       await changed(ctx, saved!);
       await noteRunStopped(ctx, run.issueId);
       if (failed) await afterSteerMissed(ctx, saved!);

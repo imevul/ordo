@@ -11,6 +11,7 @@ import { type ReactNode, useState } from 'react';
 import { api, wsPath } from '../api/client.ts';
 import { t, tx } from '../i18n/index.ts';
 import { shortDate } from '../lib/format.ts';
+import { commentAnchor } from '../lib/issues.ts';
 import { readPref, writePref } from '../lib/store.ts';
 import { cycleName, useWorkspace } from '../lib/workspace.tsx';
 import type { AgentRunsScope } from './AgentRunsView.tsx';
@@ -173,12 +174,17 @@ function ChainGroup({ chain }: { chain: AgentRunHoldChain }) {
   );
 }
 
-function IssueLink({ issue }: { issue: Pick<AgentRunHoldIssue, 'identifier' | 'title'> }) {
+function IssueLink({
+  issue,
+}: {
+  issue: Pick<AgentRunHoldIssue, 'identifier' | 'title' | 'commentId'>;
+}) {
   const ws = useWorkspace();
   return (
     <Link
       to="/$slug/issue/$identifier"
       params={{ slug: ws.slug, identifier: issue.identifier }}
+      hash={issue.commentId ? commentAnchor(issue.commentId) : undefined}
       className="text-text hover:text-highlight"
       title={issue.title}
     >
@@ -203,6 +209,8 @@ function IssueRow({ issue }: { issue: AgentRunHoldIssue }) {
       <Link
         to="/$slug/issue/$identifier"
         params={{ slug: ws.slug, identifier: issue.identifier }}
+        // Waiting for a person: open the comment they have to answer.
+        hash={issue.commentId ? commentAnchor(issue.commentId) : undefined}
         className="flex min-w-0 items-baseline gap-2 hover:text-highlight"
       >
         <span className="flex-none font-mono text-[11.5px] text-index">{issue.identifier}</span>
