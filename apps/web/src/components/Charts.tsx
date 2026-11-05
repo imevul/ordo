@@ -106,7 +106,7 @@ export function LineChart({
   label: string;
   /** A labelled vertical line on one day (a target date). */
   marker?: { day: string; label: string };
-  /** The y axis and the readout, for values with a unit. */
+  /** The y axis, the readout and the screen reader table, for values with a unit. */
   format?: (n: number) => string;
   /** Off when the caller lays `Legend` out itself. */
   legend?: boolean;
@@ -295,7 +295,7 @@ export function LineChart({
             <tr key={d}>
               <td>{d}</td>
               {series.map((s) => (
-                <td key={s.key}>{s.values[i] ?? ''}</td>
+                <td key={s.key}>{s.values[i] == null ? '' : format(s.values[i]!)}</td>
               ))}
             </tr>
           ))}
@@ -417,7 +417,7 @@ function DataTable({
           <tr key={d}>
             <td>{d}</td>
             {bands.map((b) => (
-              <td key={b.key}>{b.values[i] ?? ''}</td>
+              <td key={b.key}>{b.values[i] == null ? '' : fmt(b.values[i]!)}</td>
             ))}
           </tr>
         ))}
