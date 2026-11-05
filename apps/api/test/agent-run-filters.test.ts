@@ -602,6 +602,27 @@ describe('the run list', () => {
     expect(seen.size).toBe((await query({ limit: 200 })).runs.length);
   });
 
+  it('lists what runners have now as running', async () => {
+    const agent = await newAgent({ concurrency: 5 });
+    const claimed = await working('running: claimed', agent);
+    const running = await working('running: running', agent);
+    await agent.as('PATCH', `${ws}/agent/runs/${running.runId}`, { status: 'running' });
+    const asked = await working('running: asked', agent);
+    await agent.as('PATCH', `${ws}/agent/runs/${asked.runId}`, {
+      status: 'waiting',
+      question: 'Which?',
+    });
+    const done = await working('running: done', agent);
+    await agent.as('PATCH', `${ws}/agent/runs/${done.runId}`, { status: 'succeeded' });
+    await issue('running: queued', { assigneeId: agent.id });
+    const all = await query({ filter: { agentRunAgentIds: [agent.id] } });
+    expect(all.runs.map((r) => r.status).sort()).toEqual(
+      ['claimed', 'queued', 'running', 'succeeded', 'waiting'].sort(),
+    );
+    const { runs } = await query({ filter: { agentRunAgentIds: [agent.id] }, group: 'running' });
+    expect(runs.map((r) => r.id).sort()).toEqual([claimed.runId, running.runId].sort());
+  });
+
   it('keeps runs on trashed issues listed', async () => {
     const agent = await newAgent();
     const trashed = await working('list: trashed', agent);

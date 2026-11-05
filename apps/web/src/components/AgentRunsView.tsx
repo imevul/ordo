@@ -179,7 +179,9 @@ export function AgentRunsList({
                   ? t('agents.runsPage.emptyOpen')
                   : group === 'waiting'
                     ? t('agents.runsPage.emptyWaiting')
-                    : t('agents.runsPage.emptyTitle')
+                    : group === 'running'
+                      ? t('agents.runsPage.emptyRunning')
+                      : t('agents.runsPage.emptyTitle')
             }
             body={
               filtered

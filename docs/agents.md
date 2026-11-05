@@ -59,7 +59,8 @@ There are three parts:
 7. **Agent runs** in the sidebar (shown once the workspace has an agent) lists what every agent is doing across the
    workspace. It opens on **Open**: runs that are queued, working or waiting for an answer, plus failed runs nobody
    has dealt with yet. **Waiting** leaves out what's being worked on, and every row says
-   [what it's waiting on](#what-a-run-is-waiting-on). **Finished** and **All** show the rest. Filter by what a run is
+   [what it's waiting on](#what-a-run-is-waiting-on). **Running** is the opposite: only runs a runner has claimed
+   or is working on. **Finished** and **All** show the rest. Filter by what a run is
    doing and by its issue's properties; the URL keeps the filters, so a link shows the same list, and **Save view** names
    them. Rows have Resume,
    Cancel, and for failed runs **Restart** and **Dismiss** (see [When a run fails](#when-a-run-fails)).
