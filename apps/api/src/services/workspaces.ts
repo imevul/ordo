@@ -54,7 +54,7 @@ export async function listMembers(db: DbOrTx, access: Access) {
     .from(workspaceMembers)
     .innerJoin(users, eq(users.id, workspaceMembers.userId))
     .where(eq(workspaceMembers.workspaceId, access.workspaceId))
-    .orderBy(asc(users.name));
+    .orderBy(asc(users.name), asc(users.username));
   const now = Date.now();
   return rows.map(
     ({ suspendedAt, kind, statusKind, statusEmoji, statusText, statusUntil, ...m }) => ({
