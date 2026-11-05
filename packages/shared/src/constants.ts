@@ -393,11 +393,20 @@ export type ViewKind = (typeof VIEW_KINDS)[number];
 
 /**
  * The run lists. open: active plus failed runs nobody has dealt with. waiting: the same less what's
- * being worked on, so everything waiting on something. active: queued, working or waiting for an
- * answer.
+ * being worked on, so everything waiting on something. running: what a runner has now (claimed or
+ * running). active: queued, working or waiting for an answer.
  */
-export const AGENT_RUN_GROUPS = ['open', 'waiting', 'active', 'finished', 'all'] as const;
+export const AGENT_RUN_GROUPS = [
+  'open',
+  'waiting',
+  'running',
+  'active',
+  'finished',
+  'all',
+] as const;
 export type AgentRunGroup = (typeof AGENT_RUN_GROUPS)[number];
+/** Runs a runner holds: the `running` group. */
+export const AGENT_RUN_IN_FLIGHT: readonly AgentRunStatus[] = ['claimed', 'running'];
 export const AGENT_RUN_OPEN: readonly AgentRunStatus[] = [
   'queued',
   'claimed',

@@ -227,12 +227,19 @@ export default {
     nav: 'Agent runs',
     kicker: 'agent runs',
     title: 'Agent runs',
-    status: { open: 'Open', waiting: 'Waiting', finished: 'Finished', all: 'All' },
+    status: {
+      open: 'Open',
+      waiting: 'Waiting',
+      running: 'Running',
+      finished: 'Finished',
+      all: 'All',
+    },
     allTeams: 'All teams',
     team: 'Team',
     loadMore: 'Load more',
     emptyFiltered: 'No runs match these filters',
     emptyWaiting: 'No runs are waiting on anything',
+    emptyRunning: 'No agent is running right now',
     /** {name} is an agent; {time} is like "Oct 31 · 01:00". */
     pausedLimit:
       '{name} hit its usage limit and is paused until {time}. Runs that failed on the limit restart then.',

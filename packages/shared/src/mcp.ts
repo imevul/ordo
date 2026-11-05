@@ -279,7 +279,7 @@ export const mcpToolSchemas = {
       .enum(AGENT_RUN_GROUPS)
       .default('active')
       .describe(
-        'active: queued, working or waiting for an answer (default); open: active plus failed runs nobody has restarted or dismissed; waiting: open runs nobody is working on, each with what it waits on; finished; or all',
+        'active: queued, working or waiting for an answer (default); open: active plus failed runs nobody has restarted or dismissed; waiting: open runs nobody is working on, each with what it waits on; running: claimed by a runner or running; finished; or all',
       ),
     limit: limit(200, 50),
   }),

@@ -5,6 +5,7 @@ import {
   AGENT_OUTPUT_PICKUP,
   AGENT_OUTPUT_RETENTION_MS,
   AGENT_PROTOCOL_VERSION,
+  AGENT_RUN_IN_FLIGHT,
   AGENT_RUN_OPEN,
   type Agent,
   type AgentIdentity,
@@ -1344,6 +1345,7 @@ export async function listWorkspaceRuns(
   const status = {
     open: or(open, unhandled),
     waiting: runIsWaiting,
+    running: inArray(agentRuns.status, [...AGENT_RUN_IN_FLIGHT]),
     active: open,
     finished: not(open),
     all: undefined,
