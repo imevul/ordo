@@ -1,0 +1,2 @@
+ALTER TABLE "agent_runs" ADD COLUMN "wait_comment_id" uuid;--> statement-breakpoint
+ALTER TABLE "agent_runs" ADD CONSTRAINT "agent_runs_wait_comment_id_comments_id_fk" FOREIGN KEY ("wait_comment_id") REFERENCES "public"."comments"("id") ON DELETE set null ON UPDATE no action;

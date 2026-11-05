@@ -30,9 +30,24 @@ const PERSON: readonly string[] = AGENT_RUN_PERSON_REASONS;
 type IssueState = 'moving' | 'needs_person' | 'no_run';
 
 /** An agent on it wins, then a person it waits for. Anything else queued gets picked up. */
-function issueStates(rows: { issueId: string; status: string; reasons: string[] }[]) {
+function issueStates(
+  rows: {
+    issueId: string;
+    status: string;
+    reasons: string[];
+    waitCommentId: string | null;
+    createdAt: string;
+  }[],
+) {
   const rank = new Map<string, number>();
+  /** The newest run waiting for a person on each issue: its comment is what they act on. */
+  const asking = new Map<string, { commentId: string | null; createdAt: string }>();
   for (const r of rows) {
+    if (r.status === 'waiting' || r.reasons.some((x) => PERSON.includes(x))) {
+      const seen = asking.get(r.issueId);
+      if (!seen || r.createdAt > seen.createdAt)
+        asking.set(r.issueId, { commentId: r.waitCommentId, createdAt: r.createdAt });
+    }
     const score =
       r.status === 'claimed' || r.status === 'running'
         ? 2
@@ -41,11 +56,14 @@ function issueStates(rows: { issueId: string; status: string; reasons: string[] 
           : 0;
     rank.set(r.issueId, Math.max(rank.get(r.issueId) ?? 0, score));
   }
-  return (id: string): IssueState => {
+  const stateOf = (id: string): IssueState => {
     const score = rank.get(id);
     if (score === undefined) return 'no_run';
     return score === 1 ? 'needs_person' : 'moving';
   };
+  const commentOf = (id: string) =>
+    stateOf(id) === 'needs_person' ? (asking.get(id)?.commentId ?? null) : null;
+  return { stateOf, commentOf };
 }
 
 /** The blocks between open issues the reader can see, both ways. */
@@ -100,7 +118,7 @@ function reach(start: string, next: Map<string, string[]>) {
 async function loadHoldIssues(
   db: DbOrTx,
   ids: string[],
-  stateOf: (id: string) => IssueState,
+  { stateOf, commentOf }: ReturnType<typeof issueStates>,
   blockedBy: Map<string, string[]>,
 ) {
   const byId = new Map<string, AgentRunHoldIssue>();
@@ -133,6 +151,7 @@ async function loadHoldIssues(
       labels: labelRows.filter((l) => l.issueId === r.id).map((l) => l.name),
       reason: stateOf(r.id) === 'needs_person' ? 'needs_person' : 'no_run',
       behind: reach(r.id, blockedBy).size,
+      commentId: commentOf(r.id),
     });
   }
   return byId;
@@ -156,6 +175,8 @@ export async function agentRunHolds(
       teamId: issues.teamId,
       cycleId: issues.cycleId,
       reasons: waitReasonsColumn(holds),
+      waitCommentId: agentRuns.waitCommentId,
+      createdAt: agentRuns.createdAt,
     })
     .from(agentRuns)
     .innerJoin(issues, eq(issues.id, agentRuns.issueId))
@@ -167,7 +188,8 @@ export async function agentRunHolds(
         or(runIsWaiting, inArray(agentRuns.status, ['claimed', 'running'])),
       ),
     );
-  const stateOf = issueStates(runs);
+  const states = issueStates(runs);
+  const { stateOf } = states;
   const shown = opts.teamId ? runs.filter((r) => r.teamId === opts.teamId) : runs;
   const { blockersOf, blockedBy } = await openBlocks(db, access);
 
@@ -288,7 +310,7 @@ export async function agentRunHolds(
         ...blockedRuns.keys(),
       ]),
     ],
-    stateOf,
+    states,
     blockedBy,
   );
   const listed = (ids: string[]) =>
@@ -318,10 +340,11 @@ export async function agentRunHolds(
       later,
       working: finishes ? open.filter((id) => !stuckRootsOf(id).length).length : 0,
       issues: listed(issueIds),
-      nextToStall: listed(stalling).map(({ id, identifier, title }) => ({
+      nextToStall: listed(stalling).map(({ id, identifier, title, commentId }) => ({
         id,
         identifier,
         title,
+        commentId,
       })),
     } satisfies AgentRunHoldChain;
   });

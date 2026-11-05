@@ -83,6 +83,10 @@ async function scene(agentOptions: Record<string, unknown> = {}) {
     },
     report: (runId: string, body: unknown) =>
       bearer(token, 'PATCH', `${ws}/agent/runs/${runId}`, body),
+    lastComment: async (i: Issue) =>
+      (
+        (await owner.get(`${ws}/issues/${i.id}/comments`)).data as { id: string; body: string }[]
+      ).at(-1)!,
     holds: async (client: Client = owner) => {
       const res = await client.get(`${ws}/agent-runs/holds?teamId=${team.id}`);
       expect(res.statusCode, res.body).toBe(200);
@@ -241,25 +245,47 @@ describe('GET /agent-runs/holds', () => {
 
     const holds = await s.holds();
     expect(holds.needPerson).toBe(1);
+    const question = await s.lastComment(asked);
+    expect(question.body).toContain('v1 or v2?');
     expect(holds.chains[0]!.issues).toMatchObject([
-      { identifier: asked.identifier, reason: 'needs_person' },
+      { identifier: asked.identifier, reason: 'needs_person', commentId: question.id },
     ]);
+  });
+
+  it('links a proposed plan, and nothing once the run is moving again', async () => {
+    const s = await scene();
+    const current = await s.cycle('Current', -2, 10);
+    const next = await s.cycle('Next', 10, 20, current.id);
+    const planned = await s.assigned('Planned', current.id);
+    await s.assigned('Waiting', next.id);
+    const claimed = await s.claim();
+    await s.report(claimed!.run.id, { status: 'waiting', plan: 'Do the thing' });
+    const plan = await s.lastComment(planned);
+    expect(plan.body).toContain('Do the thing');
+    expect((await s.holds()).chains[0]!.issues[0]!.commentId).toBe(plan.id);
+
+    await owner.post(`${ws}/agent-runs/${claimed!.run.id}/approve`);
+    expect((await s.holds()).chains[0]!.issues).toEqual([]);
   });
 
   it('lists a failed run as needing a person until it is dismissed', async () => {
     const s = await scene();
     const current = await s.cycle('Current', -2, 10);
     const next = await s.cycle('Next', 10, 20, current.id);
-    await s.assigned('Broke', current.id);
+    const broke = await s.assigned('Broke', current.id);
     await s.assigned('Waiting', next.id);
     const claimed = await s.claim();
     await s.report(claimed!.run.id, { status: 'failed', error: 'boom' });
-    expect((await s.holds()).chains[0]!.issues[0]!.reason).toBe('needs_person');
+    const failure = await s.lastComment(broke);
+    expect((await s.holds()).chains[0]!.issues[0]).toMatchObject({
+      reason: 'needs_person',
+      commentId: failure.id,
+    });
 
     await owner.post(`${ws}/agent-runs/${claimed!.run.id}/dismiss`);
     const after = await s.holds();
     expect(after.needPerson).toBe(0);
-    expect(after.chains[0]!.issues[0]!.reason).toBe('no_run');
+    expect(after.chains[0]!.issues[0]).toMatchObject({ reason: 'no_run', commentId: null });
   });
 
   it('groups blocked runs by the issue that has to move, in any cycle', async () => {

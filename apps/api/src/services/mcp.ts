@@ -838,7 +838,7 @@ function handlers(c: McpCaller): Handlers {
         ...holds.blocked.map((b) => b.issue),
       ];
       const names = await dir.people(toAct.map((i) => i.assigneeId));
-      const named = ({ id: _id, assigneeId, ...rest }: AgentRunHoldIssue) => ({
+      const named = ({ id: _id, commentId: _comment, assigneeId, ...rest }: AgentRunHoldIssue) => ({
         ...rest,
         assignee: assigneeId ? (names.get(assigneeId) ?? null) : null,
       });

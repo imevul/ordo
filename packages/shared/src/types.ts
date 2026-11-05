@@ -1648,6 +1648,8 @@ export interface AgentRunHoldIssue {
   reason: 'needs_person' | 'no_run';
   /** Open issues waiting for it, directly or through others. */
   behind: number;
+  /** For `needs_person`: the comment its run asked, proposed or failed in, when there is one. */
+  commentId: string | null;
 }
 
 export interface AgentRunHoldCycle {
@@ -1675,7 +1677,7 @@ export interface AgentRunHoldChain {
   /** What has to move for `cycle` to finish. */
   issues: AgentRunHoldIssue[];
   /** The same for later cycles that others wait for, so they can be sorted out early. */
-  nextToStall: Pick<AgentRunHoldIssue, 'id' | 'identifier' | 'title'>[];
+  nextToStall: Pick<AgentRunHoldIssue, 'id' | 'identifier' | 'title' | 'commentId'>[];
 }
 
 /** What's holding queued runs back: `GET /agent-runs/holds`. */
