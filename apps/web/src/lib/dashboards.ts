@@ -167,6 +167,14 @@ export function agentMetricChart(
   };
 }
 
+/**
+ * Whether a graph's only line needs naming above the plot. The default title names an agent picked
+ * for the graph, but a title someone typed may not, and on all agents nothing else says whose it is.
+ */
+export const namesLoneLine = (
+  w: Pick<Extract<DashboardWidget, { type: 'agents' }>, 'agentId' | 'title'>,
+) => !w.agentId || !!w.title;
+
 /** Tailwind needs whole class names, so spans map to literal ones. */
 const COL_SPAN = ['', 'md:col-span-1', 'md:col-span-2', 'md:col-span-3', 'md:col-span-4'];
 const ROW_SPAN = ['', 'row-span-1', 'row-span-2', 'row-span-3'];
