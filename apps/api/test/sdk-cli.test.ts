@@ -430,9 +430,10 @@ describe('sdk resources', () => {
   let ops: Bootstrap['teams'][number];
 
   beforeAll(async () => {
-    ({ client: grace, id: graceId } = await joinKit('Grace Hopper', 'cli-grace'));
-    // The same full name twice, so a name alone is ambiguous.
+    // The same full name twice, so a name alone is ambiguous. The later username joins first, so
+    // the list only comes back sorted by username if the server sorts it.
     await joinKit('Grace Hopper', 'cli-grace2');
+    ({ client: grace, id: graceId } = await joinKit('Grace Hopper', 'cli-grace'));
     ops = (await ada.post('/api/w/kit/teams', { name: 'Ops', key: 'OPS' })).data;
     await ada.post('/api/w/kit/labels', { name: 'Infra', color: '#22c55e', teamId: ops.id });
   });
