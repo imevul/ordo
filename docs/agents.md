@@ -17,6 +17,10 @@ There are three parts:
 
 ## Setting up
 
+Agents are off in a new workspace. An admin turns them on under _Settings → General → Agents_; until then the app
+shows nothing about agents, and the agent API and MCP tools answer `403 agents_off`. Turning them off again cancels
+every open run. Agents stay as members and keep the issues they hold, but get no new runs until it's back on.
+
 1. **Repositories** (_Settings → Repositories_, admins). Register where your code lives: a name, a clone URL
    (`https://…`, `ssh://…`, `git@host:owner/repo.git`, or a path on the runner) and the default branch. With a
    GitHub or Forgejo integration connected, **Browse…** lists the repositories it can see and fills all of that in

@@ -85,6 +85,7 @@ beforeAll(async () => {
   app = await testApp({ settingsFromEnv: { allowPrivateNetworkTargets: true } });
   owner = (await signup(app, 'Ida Owner')).client;
   await owner.post('/api/workspaces', { name: 'Idle', slug, teamName: 'Eng', teamKey: 'ENG' });
+  await owner.patch(`/api/w/${slug}`, { settings: { agents: true } });
   ops = (await owner.post(`${ws}/teams`, { name: 'Ops', key: 'OPS' })).data.id;
   const boot = (await owner.get(`${ws}/bootstrap`)).data as Bootstrap;
   workspaceId = boot.workspace.id;

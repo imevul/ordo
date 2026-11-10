@@ -42,6 +42,8 @@ export interface WorkspaceCtx {
   slug: string;
   name: string;
   role: MemberRole;
+  /** The workspace has agents turned on (its `agents` setting). */
+  agents: boolean;
   access: Access;
 }
 
@@ -338,7 +340,11 @@ export async function authorizeWorkspace(
   if (row.settings?.requireSso && !auth.ignoreSso && user.kind !== 'agent')
     await assertSso(db, row, auth);
   const { settings: _settings, ...ws } = row;
-  return { ...ws, access: await computeAccess(db, user.id, row.id, row.role) };
+  return {
+    ...ws,
+    agents: row.settings?.agents === true,
+    access: await computeAccess(db, user.id, row.id, row.role),
+  };
 }
 
 /**

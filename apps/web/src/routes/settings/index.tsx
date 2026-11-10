@@ -32,6 +32,8 @@ const SECTIONS: {
   message: Exclude<keyof Catalog['settings']['nav'], 'groups'>;
   group: 'account' | 'workspace';
   admin?: boolean;
+  /** Only there while the workspace has agents turned on. */
+  agents?: boolean;
   readonly label: string;
 }[] = (
   [
@@ -53,8 +55,14 @@ const SECTIONS: {
     { key: 'authentication', message: 'authentication', group: 'workspace', admin: true },
     { key: 'integrations', message: 'integrations', group: 'workspace', admin: true },
     { key: 'ai', message: 'aiAssistance', group: 'workspace', admin: true },
-    { key: 'agents', message: 'agents', group: 'workspace', admin: true },
-    { key: 'repositories', message: 'repositories', group: 'workspace', admin: true },
+    { key: 'agents', message: 'agents', group: 'workspace', admin: true, agents: true },
+    {
+      key: 'repositories',
+      message: 'repositories',
+      group: 'workspace',
+      admin: true,
+      agents: true,
+    },
     { key: 'webhooks', message: 'webhooks', group: 'workspace', admin: true },
     { key: 'import', message: 'importExport', group: 'workspace', admin: true },
     { key: 'audit', message: 'auditLog', group: 'workspace', admin: true },
@@ -99,7 +107,9 @@ function SettingsShell({
               <div className="mb-1 px-2 font-mono text-[10.5px] font-semibold tracking-[0.2em] text-index uppercase">
                 {t(`settings.nav.groups.${g}`)}
               </div>
-              {SECTIONS.filter((s) => s.group === g && (!s.admin || ws.isAdmin)).map((s) => (
+              {SECTIONS.filter(
+                (s) => s.group === g && (!s.admin || ws.isAdmin) && (!s.agents || ws.agentsOn),
+              ).map((s) => (
                 <Link
                   key={s.key}
                   to="/$slug/settings/$section"
@@ -136,8 +146,11 @@ function SettingsShell({
 export function SettingsPage() {
   const online = useOnline();
   const ws = useWorkspace();
-  const { section } = useParams({ from: '/$slug/settings/$section' });
-  const meta = SECTIONS.find((s) => s.key === section) ?? SECTIONS[0]!;
+  const { section: asked } = useParams({ from: '/$slug/settings/$section' });
+  // An old link to an agent section, in a workspace with agents off, lands on the first one.
+  const found = SECTIONS.find((s) => s.key === asked);
+  const meta = found && (!found.agents || ws.agentsOn) ? found : SECTIONS[0]!;
+  const section = meta.key;
   const body =
     section === 'api' ? (
       <>

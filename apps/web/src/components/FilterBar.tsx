@@ -277,7 +277,7 @@ function filterDefs(
   teamId?: string,
   scope: FilterScope = 'issues',
 ): FilterDef[] {
-  const hasAgents = ws.members.some((m) => m.kind === 'agent');
+  const hasAgents = ws.agentsOn && ws.members.some((m) => m.kind === 'agent');
   const builtin = DEFS.filter(
     (d) =>
       (teamId ? d.key !== 'stateTypes' : d.key !== 'stateIds') &&

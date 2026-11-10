@@ -63,6 +63,8 @@ export default {
     ends: 'Ends',
     startsAfter: 'Starts after',
     onItsDate: 'Nothing, starts on its date',
+    startsAfterPlain:
+      'This cycle follows that one, early or late. The dates here become estimates.',
     startsAfterHint:
       'Agents start on this cycle once that one is finished, early or late. The dates here become estimates.',
     create: 'Create cycle',

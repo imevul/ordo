@@ -70,6 +70,7 @@ beforeAll(async () => {
   app = await testApp();
   owner = (await signup(app, 'Ada Owner')).client;
   await owner.post('/api/workspaces', { name: 'Agents', slug, teamName: 'Eng', teamKey: 'ENG' });
+  await owner.patch(`/api/w/${slug}`, { settings: { agents: true } });
   const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token;
   member = (await signup(app, 'Max Member', { inviteToken: invite })).client;
   prv = (await owner.post(`${ws}/teams`, { name: 'Private', key: 'PRV', private: true })).data.id;

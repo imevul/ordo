@@ -39,6 +39,7 @@ import type { Access } from './access.ts';
 import { agentRunHolds } from './agentRunHolds.ts';
 import {
   askQuestion,
+  assertAgents,
   cancelRun,
   dismissRun,
   heldRuns,
@@ -75,6 +76,8 @@ export interface McpCaller {
   app: FastifyInstance;
   /** The key belongs to an agent: its own-run tools are available. */
   agent?: boolean;
+  /** The workspace has agents turned on; without it the agent tools are refused. */
+  agents?: boolean;
   access: Access;
   workspace: { id: string; slug: string; name: string };
   /** Runs a change as the caller (source `mcp`), like `mutate` does for a request. */
@@ -1185,9 +1188,14 @@ async function agentRunsResult(c: McpReader, dir: Directory, ref: string) {
   };
 }
 
-/** The `tools/list` entries, without agent-only tools for people's keys. */
-export function mcpToolList(agent = false) {
-  return MCP_TOOLS.filter((t) => agent || t.audience !== 'agent').map((t) => ({
+/**
+ * The `tools/list` entries, without agent-only tools for people's keys, and without anything
+ * about agents in a workspace that has them turned off.
+ */
+export function mcpToolList(agent = false, agents = true) {
+  return MCP_TOOLS.filter(
+    (t) => (agent || t.audience !== 'agent') && (agents || t.feature !== 'agents'),
+  ).map((t) => ({
     name: t.name,
     title: t.title,
     description: t.description,
@@ -1207,6 +1215,8 @@ export const isMcpTool = (name: unknown): name is McpToolName =>
 
 /** Validates the arguments and runs the tool. Throws HttpErrors for the agent to read. */
 export async function callMcpTool(c: McpCaller, name: McpToolName, args: unknown) {
+  if (MCP_TOOLS.find((t) => t.name === name)?.feature === 'agents')
+    assertAgents({ agents: c.agents === true });
   const input = parse(mcpToolSchemas[name], args);
   const run = handlers(c)[name] as (a: unknown) => Promise<unknown>;
   return run(input);

@@ -750,7 +750,8 @@ OAuth for MCP clients uses `/.well-known/oauth-authorization-server`,
 
 Team settings take `gitAutomation: { branch?, draft?, open?, review?, merged? }` — a status id or `"none"`; missing
 events use the defaults. Workspace settings take `gitBranchFormat` (for people; agent runs use one branch per issue,
-see [agents.md](agents.md#ordo-agent-run)). Admins can set `agentRunsPaused: true` to stop runners claiming new runs.
+see [agents.md](agents.md#ordo-agent-run)). Admins can set `agentRunsPaused: true` to stop runners claiming new runs. All of this needs the workspace setting
+`agents: true` (off by default); without it these endpoints answer `403` with `messageKey: "agents_off"`.
 
 ## Imports
 

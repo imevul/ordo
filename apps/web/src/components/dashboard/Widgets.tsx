@@ -420,12 +420,16 @@ export function WidgetBody({
 }
 
 function WidgetContent({ widget }: { widget: DashboardWidget }) {
+  const ws = useWorkspace();
   switch (widget.type) {
     case 'count':
       return <CountWidget widget={widget} />;
     case 'view':
       return <ViewWidget widget={widget} />;
     case 'agents':
+      // Made while agents were on: say why it's empty instead of asking the server and failing.
+      if (!ws.agentsOn)
+        return <p className="font-mono text-[12px] text-index">{t('agents.setting.offWidget')}</p>;
       return widget.metric ? (
         <AgentMetricWidget widget={widget} metric={widget.metric} />
       ) : (

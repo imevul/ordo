@@ -23,6 +23,7 @@ import {
 import { requireAdmin, requireOwner, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { badRequest, conflict, isUniqueViolation, notFound, parse } from '../lib/errors.ts';
 import { mutate, requestMeta } from '../lib/mutate.ts';
+import { stopAllRuns } from '../services/agents.ts';
 import { assertAiChangeAllowed, resolveWorkspaceAi } from '../services/ai/assist.ts';
 import { audit, auditCtx, auditFilters } from '../services/audit.ts';
 import { emit } from '../services/context.ts';
@@ -202,6 +203,8 @@ export async function workspaceRoutes(app: FastifyInstance) {
           })
           .where(eq(workspaces.id, ctx.workspaceId))
           .returning();
+        if (input.settings?.agents === false && workspaceSettings(current!).agents)
+          await stopAllRuns(ctx);
         emit(ctx, { kind: 'workspace', action: 'updated', id: ctx.workspaceId });
         await auditCtx(ctx, {
           action: 'workspace.updated',

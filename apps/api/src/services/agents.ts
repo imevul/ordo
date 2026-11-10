@@ -490,10 +490,34 @@ export async function isActiveAgent(tx: DbOrTx, workspaceId: string, userId: str
     .select({ id: agents.userId })
     .from(agents)
     .innerJoin(users, eq(users.id, agents.userId))
+    // With agents turned off nobody is an agent to hand work to: nothing queues a run.
+    .innerJoin(
+      workspaces,
+      and(
+        eq(workspaces.id, agents.workspaceId),
+        sql`(${workspaces.settings}->>'agents')::boolean is true`,
+      ),
+    )
     .where(
       and(eq(agents.userId, userId), eq(agents.workspaceId, workspaceId), isNull(users.disabledAt)),
     );
   return !!row;
+}
+
+/**
+ * Agents are the workspace's choice (Settings → General, off by default). While off, the agent
+ * routes and tools answer this instead of working on a feature nobody asked for.
+ */
+export function assertAgents(ws: { agents: boolean }) {
+  if (!ws.agents) throw forbidden('Agents are off in this workspace').as('agents_off');
+}
+
+/**
+ * The workspace turned agents off: what was queued, waiting or being worked on stops here, so no
+ * runner is left reporting to a closed door and failing its runs one lapsed lease at a time.
+ */
+export async function stopAllRuns(ctx: Ctx) {
+  await cancelOpenRuns(ctx, eq(agentRuns.workspaceId, ctx.workspaceId), 'Agents turned off');
 }
 
 /**

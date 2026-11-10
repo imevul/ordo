@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { api, upload, wsPath } from '../../../api/client.ts';
 import { keys } from '../../../api/queries.ts';
 import { TeamIcon } from '../../../components/icons.tsx';
+import { confirmDialog } from '../../../components/ui/Modal.tsx';
 import { t, tx } from '../../../i18n/index.ts';
 import { memberChoices, useWorkspace } from '../../../lib/workspace.tsx';
 import { FormRow, SettingsCard } from '../ui.tsx';
@@ -210,6 +211,37 @@ export function WorkspaceSection() {
                 await api.patch(wsPath(ws.slug, '/'), {
                   settings: { timeTracking: e.target.checked },
                 });
+                refresh();
+              } catch (err) {
+                toast.error(errMsg(err));
+              }
+            }}
+          />
+        </label>
+      </SettingsCard>
+
+      <SettingsCard title={t('agents.setting.title')} description={t('agents.setting.description')}>
+        <label className="flex items-center justify-between gap-3 py-1 text-[13.5px]">
+          {t('agents.setting.enable')}
+          <input
+            type="checkbox"
+            className="accent-primary"
+            checked={ws.agentsOn}
+            onChange={async (e) => {
+              const on = e.target.checked;
+              // Turning it off cancels every open run, so ask first.
+              if (
+                !on &&
+                !(await confirmDialog({
+                  title: t('agents.setting.offConfirm'),
+                  body: t('agents.setting.offConfirmBody'),
+                  confirmLabel: t('agents.setting.offConfirmLabel'),
+                  danger: true,
+                }))
+              )
+                return;
+              try {
+                await api.patch(wsPath(ws.slug, '/'), { settings: { agents: on } });
                 refresh();
               } catch (err) {
                 toast.error(errMsg(err));

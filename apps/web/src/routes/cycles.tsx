@@ -122,7 +122,7 @@ function CycleModal({
             ))}
           </select>
           <span className="mt-1 block text-[11.5px] text-index">
-            {t('cycles.modal.startsAfterHint')}
+            {ws.agentsOn ? t('cycles.modal.startsAfterHint') : t('cycles.modal.startsAfterPlain')}
           </span>
         </label>
         <div className="mt-6 flex justify-end gap-2">

@@ -1182,6 +1182,11 @@ export interface WorkspaceSettings {
   timezone: string | null;
   /** People log time on issues; off by default. */
   timeTracking: boolean;
+  /**
+   * Agents can be added, assigned issues and run; off by default. While off, nothing queues a run,
+   * runners are refused and the app shows nothing about agents.
+   */
+  agents: boolean;
 }
 
 export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
@@ -1201,6 +1206,7 @@ export const DEFAULT_WORKSPACE_SETTINGS: WorkspaceSettings = {
   agentRunsPaused: false,
   timezone: null,
   timeTracking: false,
+  agents: false,
 };
 
 /** Time someone spent on an issue. A running timer has no duration yet. */

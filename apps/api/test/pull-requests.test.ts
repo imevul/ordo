@@ -120,6 +120,7 @@ beforeAll(async () => {
   owner = (await signup(app, 'Pia Owner')).client;
   ownerId = (await owner.get('/api/auth/me')).data.id;
   await owner.post('/api/workspaces', { name: 'PRs', slug, teamName: 'Alpha', teamKey: 'PRA' });
+  await owner.patch(`/api/w/${slug}`, { settings: { agents: true } });
   boot = (await owner.get(`${ws}/bootstrap`)).data;
 
   forge.on('GET', '/repos/acme/app', { id: 1 });

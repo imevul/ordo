@@ -48,6 +48,8 @@ export interface WorkspaceData extends Bootstrap {
   isOwner: boolean;
   isAdmin: boolean;
   isGuest: boolean;
+  /** The workspace has agents turned on; everything about agents hides without it. */
+  agentsOn: boolean;
   /** Workspace admins, and team admins of this team. */
   canAdminTeam: (teamId: string) => boolean;
 }
@@ -129,6 +131,7 @@ export function WorkspaceProvider({
       isOwner: isOwnerRole(data.role),
       isAdmin: isAdminRole(data.role),
       isGuest: isGuestRole(data.role),
+      agentsOn: data.workspace.settings.agents,
       canAdminTeam: (teamId: string) =>
         isAdminRole(data.role) ||
         !!data.teams
@@ -161,7 +164,7 @@ export function upcomingCycles(
 /** Members for a plain select: people by name, then agents (labelled as such). */
 export function memberChoices(ws: WorkspaceData) {
   return [...ws.members]
-    .filter((m) => !m.suspended)
+    .filter((m) => !m.suspended && (ws.agentsOn || m.kind !== 'agent'))
     .sort(
       (a, b) =>
         Number(a.kind === 'agent') - Number(b.kind === 'agent') || a.name.localeCompare(b.name),

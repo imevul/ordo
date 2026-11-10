@@ -300,7 +300,7 @@ export function ProjectOverview({ project }: { project: Project }) {
               })}
             </div>
           </div>
-          {(ws.repositories.length > 0 || project.repositoryIds.length > 0) && (
+          {ws.agentsOn && (ws.repositories.length > 0 || project.repositoryIds.length > 0) && (
             <div className="text-index" title={t('agents.repositories.projectHint')}>
               {t('agents.repositories.project')}
               <div className="mt-1 flex flex-wrap gap-1.5">
@@ -328,7 +328,7 @@ export function ProjectOverview({ project }: { project: Project }) {
               </div>
             </div>
           )}
-          {ws.isAdmin && project.repositoryIds.length > 0 && (
+          {ws.agentsOn && ws.isAdmin && project.repositoryIds.length > 0 && (
             <PullRequestAgentFields project={project} onSave={(body) => save.mutate(body)} />
           )}
           <div className="text-index">

@@ -446,6 +446,7 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
   const { data: runs = [] } = useQuery({
     queryKey: key,
     queryFn: () => api.get<AgentRun[]>(wsPath(ws.slug, `/issues/${issue.id}/agent-runs`)),
+    enabled: ws.agentsOn,
   });
   const again = useWsMutation(
     ws.slug,
@@ -467,7 +468,7 @@ export function AgentRuns({ issue }: { issue: IssueDetail }) {
     (id: string) => api.post(wsPath(ws.slug, `/agent-runs/${id}/run-anyway`)),
     { invalidate: [['ws', ws.slug, 'agentRuns']] },
   );
-  if (!assignedToAgent && runs.length === 0) return null;
+  if (!ws.agentsOn || (!assignedToAgent && runs.length === 0)) return null;
   const busy = runs.some(isOpenRun);
   // Waiting on an answer: a reply resumes it, and so does this, without one. A plan has Approve.
   const waiting = runs.some((r) => r.status === 'waiting' && !isPlanPending(r));

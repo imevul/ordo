@@ -25,6 +25,7 @@ beforeAll(async () => {
   owner = (await signup(app, 'Dora Default')).client;
   ownerId = (await owner.get('/api/auth/me')).data.id;
   await owner.post('/api/workspaces', { name: 'DA', slug, teamName: 'Eng', teamKey: 'ENG' });
+  await owner.patch(`/api/w/${slug}`, { settings: { agents: true } });
   const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token;
   beaClient = (await signup(app, 'Bea Member', { inviteToken: invite })).client;
   bea = (await beaClient.get('/api/auth/me')).data.id;

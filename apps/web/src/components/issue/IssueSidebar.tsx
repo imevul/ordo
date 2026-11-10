@@ -140,12 +140,13 @@ export function IssueProperties({
           <CustomFieldProp field={field} issue={issue} onPatch={onPatch} />
         </Field>
       ))}
-      {(issue.planApproval !== null ||
-        (issue.assigneeId && ws.memberById.get(issue.assigneeId)?.kind === 'agent')) && (
-        <Field label={t('issue.detail.planApproval')}>
-          <PlanApprovalProp issue={issue} onPatch={onPatch} />
-        </Field>
-      )}
+      {ws.agentsOn &&
+        (issue.planApproval !== null ||
+          (issue.assigneeId && ws.memberById.get(issue.assigneeId)?.kind === 'agent')) && (
+          <Field label={t('issue.detail.planApproval')}>
+            <PlanApprovalProp issue={issue} onPatch={onPatch} />
+          </Field>
+        )}
       <Field label={t('common.team')}>
         <Picker
           placeholder={t('issue.detail.moveToTeam')}

@@ -12,7 +12,7 @@ import {
 } from '@ordo/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { requireAccess, requireAdmin, requireUser } from '../lib/auth.ts';
+import { requireAccess, requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { forbidden, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertTeamAccess } from '../services/access.ts';
@@ -20,6 +20,7 @@ import { agentRunHolds } from '../services/agentRunHolds.ts';
 import {
   appendRunOutput,
   approvePlan,
+  assertAgents,
   cancelRun,
   claimRun,
   countActiveRuns,
@@ -62,6 +63,9 @@ function requireAgent(req: FastifyRequest) {
 
 export async function agentRoutes(app: FastifyInstance) {
   const { db } = app;
+
+  // Everything here is the agent feature; a workspace that hasn't turned it on gets none of it.
+  app.addHook('preHandler', async (req) => assertAgents(requireWorkspace(req)));
 
   // ─── managing agents (admins) ─────────────────────────────────────────
 

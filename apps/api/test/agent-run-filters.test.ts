@@ -87,6 +87,7 @@ beforeAll(async () => {
     teamName: 'One',
     teamKey: 'ONE',
   });
+  await owner.patch(`/api/w/${slug}`, { settings: { agents: true } });
   const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token;
   member = (await signup(app, 'Mia Member', { inviteToken: invite })).client;
   boot = (await owner.get(`${ws}/bootstrap`)).data;
@@ -344,6 +345,7 @@ describe('what holds a queued run back', () => {
       teamName: 'P',
       teamKey: 'PAU',
     });
+    await owner.patch(`/api/w/${paused}`, { settings: { agents: true } });
     const at = `/api/w/${paused}`;
     const pausedTeam = (await owner.get(`${at}/bootstrap`)).data.teams[0].id;
     const id = (await owner.post(`${at}/agents`, { name: 'Pausee', teamIds: [pausedTeam] })).data

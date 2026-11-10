@@ -189,6 +189,7 @@ export const updateWorkspaceSchema = z.object({
       agentRunsPaused: z.boolean().optional(),
       timezone: z.string().max(64).refine(isTimeZone, 'Unknown time zone').nullable().optional(),
       timeTracking: z.boolean().optional(),
+      agents: z.boolean().optional(),
     })
     .optional(),
 });
