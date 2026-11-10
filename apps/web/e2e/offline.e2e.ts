@@ -1,4 +1,4 @@
-import type { APIRequestContext, BrowserContext, Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 import { expect, test, unique } from './fixtures.ts';
 
 // Requests made without a connection fail in the console; that's what this spec is about.
@@ -115,14 +115,7 @@ test('a filter the local copy can’t answer says it needs a connection', async 
   await expect(page.getByText('No issues match these filters.')).toBeVisible();
 });
 
-/** The demo workspace has agents off, like any new one. */
-const agentsOn = async (api: { request: APIRequestContext }) =>
-  expect(
-    (await api.request.patch('/api/w/demo', { data: { settings: { agents: true } } })).ok(),
-  ).toBe(true);
-
-test('the agent runs page says it can’t load, and recovers', async ({ page, context, api }) => {
-  await agentsOn(api);
+test('the agent runs page says it can’t load, and recovers', async ({ page, context }) => {
   const cantLoad = page.getByText('can’t load this list');
   await page.goto('/demo/agent-runs');
   await expect(page.getByRole('button', { name: 'Waiting', exact: true })).toBeVisible();
@@ -139,7 +132,6 @@ test('the agent runs page says it can’t load, and recovers', async ({ page, co
 });
 
 test('trash and dashboard widgets say so too', async ({ page, context, api }) => {
-  await agentsOn(api);
   const res = await api.request.post('/api/w/demo/dashboards', {
     data: {
       name: unique('Blocked work'),
