@@ -1569,6 +1569,11 @@ export interface AgentRun {
   agentId: string;
   status: AgentRunStatus;
   attempts: number;
+  /**
+   * Which pickup of the run this is, counted from 1. A runner sends it back with its heartbeats,
+   * output and reports; once another pickup has replaced it, Ordo stops listening to it.
+   */
+  pickup: number;
   /** What the runner calls itself (host/label). */
   runnerName: string | null;
   sessionUrl: string | null;
