@@ -4,7 +4,7 @@ import { Link, useLocation, useNavigate, useParams } from '@tanstack/react-route
 import { RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { api, wsPath } from '../api/client.ts';
+import { ApiError, api, wsPath } from '../api/client.ts';
 import {
   invalidateIssues,
   useIssue,
@@ -206,7 +206,9 @@ function PlainIssueRow({ issue, right }: { issue: Issue; right?: React.ReactNode
 export function SearchPage() {
   const ws = useWorkspace();
   const [q, setQ] = useState('');
-  const { data, isFetching } = useSearch(ws.slug, q);
+  const { data, isFetching, error } = useSearch(ws.slug, q);
+  // Search always asks the server; this device's copy can't answer it.
+  const offline = error instanceof ApiError && error.code === 'network';
   return (
     <div className="flex h-full min-h-0 flex-col">
       <PageHeader
@@ -259,6 +261,12 @@ export function SearchPage() {
           <EmptyState
             title={t('issues.searchPage.noMatches')}
             body={t('issues.searchPage.nothingMatches', { query: q })}
+          />
+        )}
+        {q && error && !data && (
+          <EmptyState
+            title={t('issues.searchPage.failedTitle')}
+            body={offline ? t('issues.searchPage.needsConnection') : error.message}
           />
         )}
         {!q && (

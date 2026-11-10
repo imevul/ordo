@@ -235,6 +235,8 @@ export default {
     nothingMatches: 'Inget matchar ”{query}”.',
     emptyTitle: 'sök',
     emptyBody: 'Hitta ärenden på titel, beskrivning eller ID.',
+    failedTitle: 'sökningen misslyckades',
+    needsConnection: 'Sökningen behöver en anslutning. Försök igen när du är tillbaka online.',
     archived: 'arkiverat',
   },
   trash: {
