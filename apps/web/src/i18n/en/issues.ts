@@ -241,6 +241,8 @@ export default {
     nothingMatches: 'Nothing matches "{query}".',
     emptyTitle: 'search',
     emptyBody: 'Find issues by title, description or identifier.',
+    failedTitle: 'can’t search',
+    needsConnection: 'Search needs a connection. Try again once you’re back online.',
     archived: 'archived',
   },
   trash: {

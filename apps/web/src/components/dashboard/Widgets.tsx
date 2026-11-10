@@ -163,11 +163,12 @@ function ViewWidget({ widget }: { widget: Of<'view'> }) {
 
 function AgentsWidget({ widget }: { widget: Of<'agents'> }) {
   const ws = useWorkspace();
-  const { data, isLoading } = useAgentActivity(ws.slug, {
+  const { data, isLoading, error } = useAgentActivity(ws.slug, {
     days: widget.days,
     agentId: widget.agentId,
     teamId: widget.teamId,
   });
+  if (error && !data) return <Note>{error.message}</Note>;
   if (isLoading || !data) return <Loading />;
   if (data.agents.length === 0)
     return <Note>{t('dashboards.widget.agentsNone', { count: widget.days })}</Note>;
@@ -233,7 +234,7 @@ const METRIC_FORMAT: Record<AgentMetric, { axis: (n: number) => string; value: t
 /** One metric per run over the days: a line per agent, and the average of all of them. */
 function AgentMetricWidget({ widget, metric }: { widget: Of<'agents'>; metric: AgentMetric }) {
   const ws = useWorkspace();
-  const { data, isLoading } = useAgentMetrics(ws.slug, {
+  const { data, isLoading, error } = useAgentMetrics(ws.slug, {
     days: widget.days,
     teamId: widget.teamId,
   });
@@ -250,6 +251,7 @@ function AgentMetricWidget({ widget, metric }: { widget: Of<'agents'>; metric: A
     ro.observe(plot);
     return () => ro.disconnect();
   }, [plot]);
+  if (error && !data) return <Note>{error.message}</Note>;
   if (isLoading || !data || !chart) return <Loading />;
   if (chart.overall.value === null)
     return <Note>{t('dashboards.widget.metricNone', { count: widget.days })}</Note>;
@@ -369,9 +371,10 @@ function IssueChart({ widget }: { widget: Of<'chart'> }) {
 function TimelineChart({ widget }: { widget: Of<'chart'> }) {
   const ws = useWorkspace();
   const scope = useMemo(() => timelineScope(widget, ws.cycles), [widget, ws.cycles]);
-  const { data, isLoading } = useInsightsTimeline(ws.slug, scope ?? {}, !!scope);
+  const { data, isLoading, error } = useInsightsTimeline(ws.slug, scope ?? {}, !!scope);
   const height = useChartHeight(widget);
   if (!scope) return <Note>{t('dashboards.widget.noCycle')}</Note>;
+  if (error && !data) return <Note>{error.message}</Note>;
   if (isLoading || !data) return <Loading />;
   // Points only mean something when something was estimated.
   const m = hasPoints(data.days) ? widget.measure : 'count';
@@ -393,8 +396,9 @@ function TimelineChart({ widget }: { widget: Of<'chart'> }) {
 
 function VelocityWidget({ widget }: { widget: Of<'chart'> }) {
   const ws = useWorkspace();
-  const { data, isLoading } = useVelocity(ws.slug, widget.teamId ?? undefined);
+  const { data, isLoading, error } = useVelocity(ws.slug, widget.teamId ?? undefined);
   const height = useChartHeight(widget);
+  if (error && !data) return <Note>{error.message}</Note>;
   if (isLoading || !data) return <Loading />;
   // Less the line under it with the average.
   return <VelocityChart velocity={data} measure={widget.measure} height={height - 20} />;

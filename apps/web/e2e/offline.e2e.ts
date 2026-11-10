@@ -135,7 +135,11 @@ test('trash and dashboard widgets say so too', async ({ page, context, api }) =>
   const res = await api.request.post('/api/w/demo/dashboards', {
     data: {
       name: unique('Blocked work'),
-      widgets: [{ id: 'blocked', type: 'count', filters: { blocked: true } }],
+      widgets: [
+        { id: 'blocked', type: 'count', filters: { blocked: true } },
+        { id: 'runs', type: 'agents', title: 'Agent runs', days: 7 },
+        { id: 'burn', type: 'chart', title: 'Burn-up', chart: 'burnUp' },
+      ],
     },
   });
   expect(res.ok(), `create dashboard: ${res.status()}`).toBe(true);
@@ -150,6 +154,23 @@ test('trash and dashboard widgets say so too', async ({ page, context, api }) =>
 
   await page.goto(`/demo/dashboard/${id}`);
   await expect(page.getByText('This list needs a connection')).toBeVisible();
+  // Agent activity and timeline charts always ask the server.
+  await expect(page.getByText("Can't reach Ordo")).toHaveCount(2);
+  await expect(page.getByText('Loading…')).toHaveCount(0);
+});
+
+test('search says it needs a connection', async ({ page, context }) => {
+  await page.goto('/demo/search');
+  const box = page.getByPlaceholder(/Search issues and comments/);
+  await expect(box).toBeVisible();
+
+  await cutApi(context);
+  await box.fill('anything');
+  await expect(page.getByText('Search needs a connection')).toBeVisible();
+
+  await context.unrouteAll();
+  await box.fill('anything at all');
+  await expect(page.getByText('Search needs a connection')).toBeHidden();
 });
 
 test('closing the tab that syncs hands the job to another tab', async ({ context, api }) => {

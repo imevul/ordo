@@ -235,6 +235,8 @@ export default {
     nothingMatches: 'Ingenting passer med «{query}».',
     emptyTitle: 'søk',
     emptyBody: 'Finn saker etter tittel, beskrivelse eller ID.',
+    failedTitle: 'søket mislyktes',
+    needsConnection: 'Søket trenger tilkobling. Prøv igjen når du er tilbake på nett.',
     archived: 'arkivert',
   },
   trash: {
