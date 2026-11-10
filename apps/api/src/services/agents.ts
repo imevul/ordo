@@ -537,6 +537,11 @@ export async function queueRun(
   } = { kind: 'assigned' },
   opts: { followUp?: boolean; retryOfId?: string; requestedById?: string } = {},
 ) {
+  // One at a time per issue and agent, until this transaction ends: two triggers at the same
+  // moment (a double click, an assignment and a mention) would each see no open run and queue one.
+  await ctx.tx.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`agent-run:${issueId}:${agentId}`}, 0))`,
+  );
   const open = await ctx.tx
     .select()
     .from(agentRuns)
