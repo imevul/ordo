@@ -5,10 +5,11 @@ import {
   updateDashboardSchema,
 } from '@ordo/shared';
 import type { FastifyInstance } from 'fastify';
-import { requireAccess } from '../lib/auth.ts';
+import { requireAccess, requireWorkspace } from '../lib/auth.ts';
 import { forbidden, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { can } from '../services/access.ts';
+import { assertAgents } from '../services/agents.ts';
 import {
   agentActivity,
   agentMetrics,
@@ -51,11 +52,13 @@ export async function dashboardRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get('/agent-activity', async (req) =>
-    agentActivity(db, requireAccess(req), parse(agentActivityQuerySchema, req.query)),
-  );
+  app.get('/agent-activity', async (req) => {
+    assertAgents(requireWorkspace(req));
+    return agentActivity(db, requireAccess(req), parse(agentActivityQuerySchema, req.query));
+  });
 
-  app.get('/agent-metrics', async (req) =>
-    agentMetrics(db, requireAccess(req), parse(agentMetricsQuerySchema, req.query)),
-  );
+  app.get('/agent-metrics', async (req) => {
+    assertAgents(requireWorkspace(req));
+    return agentMetrics(db, requireAccess(req), parse(agentMetricsQuerySchema, req.query));
+  });
 }

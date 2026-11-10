@@ -1,6 +1,17 @@
 /** Agents (Settings → Agents, the issue's runs) and Settings → Repositories. */
 export default {
   adminsOnly: 'Only admins can manage agents.',
+  setting: {
+    title: 'Agents',
+    description:
+      "Add members that aren't people and hand them issues: a runner you start picks up what is assigned to them. Off, nothing about agents shows anywhere.",
+    enable: 'Use agents in this workspace',
+    offWidget: '// agents are off in this workspace',
+    offConfirm: 'Turn agents off?',
+    offConfirmLabel: 'Turn off',
+    offConfirmBody:
+      'Runs that are queued, waiting or being worked on are cancelled. Agents stay as members and get no new work until you turn this back on.',
+  },
   title: 'Agents',
   /** {command} is `ordo agent run` */
   description:

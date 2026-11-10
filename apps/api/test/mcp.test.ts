@@ -71,6 +71,7 @@ beforeAll(async () => {
     teamName: 'Engineering',
     teamKey: 'ENG',
   });
+  await ada.patch('/api/w/mcp', { settings: { agents: true } });
   await ada.patch('/api/me', { username: 'ada' });
   key = (await ada.post('/api/me/api-keys', { name: 'agent' })).data.token;
   await ada.post(`${ws}/labels`, { name: 'Bug', color: '#ef4444' });
@@ -247,7 +248,11 @@ describe('auth', () => {
     ).client;
     const memberKey = (await member.post('/api/me/api-keys', { name: 'agent' })).data.token;
     const setPolicy = (settings: Record<string, unknown>) =>
-      app.db.update(workspaces).set({ settings }).where(eq(workspaces.id, boot.workspace.id));
+      app.db
+        .update(workspaces)
+        // Agents stay on: the tests after this one use them.
+        .set({ settings: { agents: true, ...settings } })
+        .where(eq(workspaces.id, boot.workspace.id));
     await setPolicy({ requireSso: true });
     try {
       const blocked = await rpc('tools/list', {}, { token: memberKey });
@@ -1067,6 +1072,7 @@ describe('get_attachment', () => {
       teamName: 'Other',
       teamKey: 'OTH',
     });
+    await ada.patch('/api/w/mcp-other', { settings: { agents: true } });
     const other = await rpc(
       'tools/call',
       { name: 'get_attachment', arguments: { attachment: att.id } },

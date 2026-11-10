@@ -22,6 +22,7 @@ beforeAll(async () => {
     teamName: 'Pub',
     teamKey: 'PUB',
   });
+  await owner.patch('/api/w/mile', { settings: { agents: true } });
   const invite = async (role: string) =>
     (await owner.post(`${ws}/invites`, { role })).data[0].token;
   guest = (await signup(app, 'Gus Guest', { inviteToken: await invite('guest') })).client;

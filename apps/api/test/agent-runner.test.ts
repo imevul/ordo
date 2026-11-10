@@ -138,6 +138,7 @@ beforeAll(async () => {
 
   owner = (await signup(app, 'Rita Runner')).client;
   await owner.post('/api/workspaces', { name: 'Runner', slug, teamName: 'Eng', teamKey: 'ENG' });
+  await owner.patch(`/api/w/${slug}`, { settings: { agents: true } });
   team = (await owner.get(`${ws}/bootstrap`)).data.teams[0];
   eng = team.id;
   const repo = (await owner.post(`${ws}/repositories`, { name: 'app', url: bare })).data;

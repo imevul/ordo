@@ -394,7 +394,7 @@ export function McpSection() {
       </SettingsCard>
 
       <SettingsCard title={t('mcp.tools.title')} description={t('mcp.tools.description')}>
-        {MCP_TOOLS.map((tool) => (
+        {MCP_TOOLS.filter((tool) => ws.agentsOn || tool.feature !== 'agents').map((tool) => (
           <div
             key={tool.name}
             className="flex items-start gap-3 border-b border-border-soft py-2.5"

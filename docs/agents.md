@@ -17,6 +17,10 @@ There are three parts:
 
 ## Setting up
 
+Agents are off in a new workspace. An admin turns them on under _Settings → General → Agents_; until then the app
+shows nothing about agents, and the agent API and MCP tools answer `403 agents_off`. Turning them off again cancels
+every open run. Agents stay as members and keep the issues they hold, but get no new runs until it's back on.
+
 1. **Repositories** (_Settings → Repositories_, admins). Register where your code lives: a name, a clone URL
    (`https://…`, `ssh://…`, `git@host:owner/repo.git`, or a path on the runner) and the default branch. With a
    GitHub or Forgejo integration connected, **Browse…** lists the repositories it can see and fills all of that in
@@ -497,6 +501,11 @@ report, since a run that no longer works takes none (`accepted: false`).
 `claim` takes an optional body `{ "instructions": "…" }`: the runner's own instructions, put before the agent's in
 the run's prompt and `agent.instructions`, and not stored. `claim` long-polls: it answers as soon as a run is queued for the agent, or with `204` after `wait` seconds. Each
 claim holds a five-minute lease. Keep it alive with heartbeats, and stop working when one answers `cancelled: true`.
+
+Add `?pickup=<run.pickup>` (from the claim) to the heartbeat, output and report calls. A run whose lease lapsed is
+handed out again with a higher `pickup`; the runner that went quiet is then told `cancelled: true` on its next
+heartbeat, its output is dropped, and its reports change nothing except to add what it used (the answer is the run
+with the newer `pickup`). Without the parameter Ordo can't tell the two apart and takes either at its word.
 
 To support [steering](#steering-a-working-agent), report `steerable: true` once you can stop and continue the session.
 A `steer` comment id in a heartbeat or output reply then means a person's @mention is waiting: stop the agent and

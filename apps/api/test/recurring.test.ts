@@ -36,6 +36,7 @@ beforeAll(async () => {
     teamName: 'Pub',
     teamKey: 'PUB',
   });
+  await owner.patch('/api/w/rec', { settings: { agents: true } });
   const invite = async (role: string) =>
     (await owner.post(`${ws}/invites`, { role })).data[0].token;
   member = (await signup(app, 'Mona Member', { inviteToken: await invite('member') })).client;

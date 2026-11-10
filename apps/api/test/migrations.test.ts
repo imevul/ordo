@@ -282,4 +282,26 @@ describe('migrations', { timeout: 60_000 }, () => {
       { token_hash: sha256('legacy-token'), token_encrypted: null },
     ]);
   });
+
+  it('keeps agents on in workspaces that already have one', async () => {
+    const url = await freshDatabase('migrations_agents_setting');
+    const { db, sql } = createDb(url);
+    cleanup.push(() => sql.end());
+
+    const before = folderUpTo(entryIndex('0080_agents_setting'));
+    cleanup.push(() => rmSync(before, { recursive: true, force: true }));
+    await migrate(db, { migrationsFolder: before });
+    const [bot] = await sql<{ id: string }[]>`insert into users (email, name, username, kind)
+      values ('bot@x.test', 'Bot', 'bot', 'agent') returning id`;
+    const [using, plain] = await sql<{ id: string }[]>`insert into workspaces (name, slug, settings)
+      values ('Using', 'using', '{"timeTracking": true}'), ('Plain', 'plain', '{}') returning id`;
+    await sql`insert into agents (user_id, workspace_id) values (${bot!.id}, ${using!.id})`;
+
+    await migrate(db, { migrationsFolder: migrationsFolder() });
+    const rows = await sql<{ id: string; settings: Record<string, unknown> }[]>`
+      select id, settings from workspaces`;
+    const settingsOf = (id: string) => rows.find((r) => r.id === id)!.settings;
+    expect(settingsOf(using!.id)).toEqual({ timeTracking: true, agents: true });
+    expect(settingsOf(plain!.id)).toEqual({});
+  });
 });

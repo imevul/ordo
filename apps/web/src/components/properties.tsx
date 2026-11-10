@@ -53,7 +53,8 @@ export const priorityOptions = (): Option[] =>
 export const assigneeOptions = (ws: WorkspaceData): Option[] => [
   { value: 'none', label: t('issues.none.assignee'), icon: <EmptyAvatar size={16} /> },
   // You first, then people, then agents (assigning one hands the issue to its runner).
-  ...[...ws.members]
+  ...ws.members
+    .filter((m) => ws.agentsOn || m.kind !== 'agent')
     .sort((a, b) =>
       a.id === ws.me.id
         ? -1

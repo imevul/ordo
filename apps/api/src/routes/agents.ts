@@ -12,7 +12,7 @@ import {
 } from '@ordo/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { requireAccess, requireAdmin, requireUser } from '../lib/auth.ts';
+import { requireAccess, requireAdmin, requireUser, requireWorkspace } from '../lib/auth.ts';
 import { forbidden, parse } from '../lib/errors.ts';
 import { mutate } from '../lib/mutate.ts';
 import { assertTeamAccess } from '../services/access.ts';
@@ -20,6 +20,7 @@ import { agentRunHolds } from '../services/agentRunHolds.ts';
 import {
   appendRunOutput,
   approvePlan,
+  assertAgents,
   cancelRun,
   claimRun,
   countActiveRuns,
@@ -54,6 +55,12 @@ const claimQuery = z.object({
   runner: z.string().trim().max(200).optional(),
 });
 
+/**
+ * `?pickup=`: the `run.pickup` the runner got with its claim. With it, a runner whose lease lapsed
+ * is told to stop once the run has been handed out again, and what it reports is set aside.
+ */
+const pickupQuery = z.object({ pickup: z.coerce.number().int().min(1).optional() });
+
 /** Runner endpoints answer only an agent's own API key. */
 function requireAgent(req: FastifyRequest) {
   if (requireUser(req).kind !== 'agent') throw forbidden('Only an agent’s API key can do this');
@@ -62,6 +69,9 @@ function requireAgent(req: FastifyRequest) {
 
 export async function agentRoutes(app: FastifyInstance) {
   const { db } = app;
+
+  // Everything here is the agent feature; a workspace that hasn't turned it on gets none of it.
+  app.addHook('preHandler', async (req) => assertAgents(requireWorkspace(req)));
 
   // ─── managing agents (admins) ─────────────────────────────────────────
 
@@ -224,7 +234,8 @@ export async function agentRoutes(app: FastifyInstance) {
   app.post('/agent/runs/:id/heartbeat', async (req) => {
     requireAgent(req);
     const { id } = req.params as { id: string };
-    return mutate(app, req, (ctx) => heartbeat(ctx, id));
+    const { pickup } = parse(pickupQuery, req.query);
+    return mutate(app, req, (ctx) => heartbeat(ctx, id, pickup));
   });
 
   /**
@@ -247,7 +258,8 @@ export async function agentRoutes(app: FastifyInstance) {
       requireAgent(req);
       const { id } = req.params as { id: string };
       const { lines } = parse(agentRunOutputSchema, req.body);
-      return mutate(app, req, (ctx) => appendRunOutput(ctx, id, lines));
+      const { pickup } = parse(pickupQuery, req.query);
+      return mutate(app, req, (ctx) => appendRunOutput(ctx, id, lines, pickup));
     },
   );
 
@@ -255,6 +267,7 @@ export async function agentRoutes(app: FastifyInstance) {
     requireAgent(req);
     const { id } = req.params as { id: string };
     const input = parse(reportAgentRunSchema, req.body);
-    return mutate(app, req, (ctx) => reportRun(ctx, id, input));
+    const { pickup } = parse(pickupQuery, req.query);
+    return mutate(app, req, (ctx) => reportRun(ctx, id, input, pickup));
   });
 }

@@ -212,6 +212,8 @@ beforeAll(async () => {
     teamName: 'Alpha',
     teamKey: 'ALP',
   });
+  // Both have agents on, so a refusal below is about the other workspace's ids, not the setting.
+  await ownerA.patch(wsA, { settings: { agents: true } });
   const token = (await ownerA.post(`${wsA}/invites`, { role: 'admin' })).data[0].token;
   attacker = (await signup(app, 'Arne Admin', { inviteToken: token })).client;
 
@@ -222,6 +224,7 @@ beforeAll(async () => {
     teamName: 'Beta',
     teamKey: 'BET',
   });
+  await b.patch(wsB, { settings: { agents: true } });
   const team = (await bootB()).teams[0]!.id;
   const made = async (path: string, body: object) => {
     const res = await b.post(`${wsB}${path}`, body);

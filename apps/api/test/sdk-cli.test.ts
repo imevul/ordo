@@ -48,6 +48,7 @@ beforeAll(async () => {
   ada = (await signup(app, 'Ada Lovelace')).client;
   await ada.patch('/api/me', { username: 'cli-ada' });
   await ada.post('/api/workspaces', { name: 'Kit', slug: 'kit', teamName: 'Eng', teamKey: 'ENG' });
+  await ada.patch('/api/w/kit', { settings: { agents: true } });
   await ada.post('/api/w/kit/labels', { name: 'Bug', color: '#ef4444' });
   token = (await ada.post('/api/me/api-keys', { name: 'cli' })).data.token;
   boot = (await ada.get('/api/w/kit/bootstrap')).data;
@@ -597,6 +598,7 @@ describe('cli, more', () => {
 
   it('lists workspaces and switches the default with use', async () => {
     await ada.post('/api/workspaces', { name: 'Kit Two', slug: 'kit2', teamKey: 'TWO' });
+    await ada.patch('/api/w/kit2', { settings: { agents: true } });
     const file = join(configDir, 'ordo', 'config.json');
     const listed = await ordo(['workspaces']);
     expect(listed.code, listed.stderr).toBe(0);
@@ -622,6 +624,7 @@ describe('cli, more', () => {
   it('picks the only workspace by itself, and asks when there are several', async () => {
     const solo = (await signup(app, 'Solo Sam')).client;
     await solo.post('/api/workspaces', { name: 'Solo', slug: 'solo', teamKey: 'SOL' });
+    await solo.patch('/api/w/solo', { settings: { agents: true } });
     const key = (await solo.post('/api/me/api-keys', { name: 'cli' })).data.token;
     const env = { XDG_CONFIG_HOME: fresh(), ORDO_URL: url, ORDO_TOKEN: key };
     const one = await ordo(['issue', 'create', 'Alone here'], { env });
@@ -630,6 +633,7 @@ describe('cli, more', () => {
     expect((await solo.get('/api/w/solo/issues/SOL-1')).data.title).toBe('Alone here');
 
     await solo.post('/api/workspaces', { name: 'Duo', slug: 'duo', teamKey: 'DUO' });
+    await solo.patch('/api/w/duo', { settings: { agents: true } });
     const several = await ordo(['teams'], { env });
     expect(several.code).toBe(2);
     expect(several.stderr).toContain('which workspace? Pass -w <slug>');

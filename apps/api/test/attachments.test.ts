@@ -30,6 +30,7 @@ beforeAll(async () => {
     teamName: 'Pub',
     teamKey: 'PUB',
   });
+  await owner.patch('/api/w/att', { settings: { agents: true } });
   const invite = async () => (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token;
   member = (await signup(app, 'Mona Member', { inviteToken: await invite() })).client;
   insider = (await signup(app, 'Ines Insider', { inviteToken: await invite() })).client;
@@ -219,6 +220,7 @@ describe('attachments', () => {
       teamName: 'Other',
       teamKey: 'OTH',
     });
+    await owner.patch('/api/w/att-other', { settings: { agents: true } });
     const otherTeam = (await owner.get('/api/w/att-other/bootstrap')).data.teams[0].id;
     const otherIssue = (
       await owner.post('/api/w/att-other/issues', { teamId: otherTeam, title: 'x' })

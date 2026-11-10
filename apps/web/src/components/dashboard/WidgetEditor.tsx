@@ -145,21 +145,25 @@ export function WidgetEditor({
         </div>
         {!widget && (
           <div className="grid grid-cols-2 gap-px bg-border-soft sm:grid-cols-4" role="radiogroup">
-            {DASHBOARD_WIDGET_TYPES.map((type) => (
-              <button
-                key={type}
-                type="button"
-                role="radio"
-                aria-checked={draft.type === type}
-                onClick={() => switchType(type)}
-                className={`bg-surface px-3 py-2.5 text-left ${draft.type === type ? 'text-text shadow-[inset_0_-2px_0_var(--color-primary)]' : 'text-muted hover:text-text'}`}
-              >
-                <div className="text-[13px] font-medium">{t(`dashboards.types.${type}.name`)}</div>
-                <div className="mt-0.5 text-[11px] text-index">
-                  {t(`dashboards.types.${type}.hint`)}
-                </div>
-              </button>
-            ))}
+            {DASHBOARD_WIDGET_TYPES.filter((type) => ws.agentsOn || type !== 'agents').map(
+              (type) => (
+                <button
+                  key={type}
+                  type="button"
+                  role="radio"
+                  aria-checked={draft.type === type}
+                  onClick={() => switchType(type)}
+                  className={`bg-surface px-3 py-2.5 text-left ${draft.type === type ? 'text-text shadow-[inset_0_-2px_0_var(--color-primary)]' : 'text-muted hover:text-text'}`}
+                >
+                  <div className="text-[13px] font-medium">
+                    {t(`dashboards.types.${type}.name`)}
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-index">
+                    {t(`dashboards.types.${type}.hint`)}
+                  </div>
+                </button>
+              ),
+            )}
           </div>
         )}
 

@@ -197,7 +197,7 @@ export async function mcpRoutes(app: FastifyInstance) {
       case 'ping':
         return {};
       case 'tools/list':
-        return { tools: mcpToolList(user.kind === 'agent') };
+        return { tools: mcpToolList(user.kind === 'agent', ws.agents) };
       case 'tools/call': {
         const name = msg.params?.name;
         if (!isMcpTool(name))
@@ -205,6 +205,7 @@ export async function mcpRoutes(app: FastifyInstance) {
         const caller: McpCaller = {
           app,
           agent: user.kind === 'agent',
+          agents: ws.agents,
           access: ws.access,
           workspace: ws,
           run: (fn) =>

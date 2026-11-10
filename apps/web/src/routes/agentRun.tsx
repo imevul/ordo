@@ -38,12 +38,18 @@ import { t, tx } from '../i18n/index.ts';
 import { durationBetween, longDate, relativeTime } from '../lib/format.ts';
 import { commentAnchor } from '../lib/issues.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
+import { NotFound } from './workspace.tsx';
 
 /**
  * One run, the whole story: what it was asked and why, each step it went through, how it ended
  * and what restarted it. Run events refetch it (realtime invalidates every agentRuns query).
  */
 export function AgentRunPage() {
+  const ws = useWorkspace();
+  return ws.agentsOn ? <AgentRunPageOn /> : <NotFound />;
+}
+
+function AgentRunPageOn() {
   const ws = useWorkspace();
   const { runId } = useParams({ from: '/$slug/agent-runs/$runId' });
   const { data: run, isError } = useQuery({

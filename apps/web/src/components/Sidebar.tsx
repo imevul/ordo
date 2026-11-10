@@ -122,7 +122,7 @@ export function Sidebar({
   const p = { slug: ws.slug };
   const isAdmin = ws.isAdmin;
   // Only once there are agents: otherwise there's nothing to show.
-  const hasAgents = ws.members.some((m) => m.kind === 'agent');
+  const hasAgents = ws.agentsOn && ws.members.some((m) => m.kind === 'agent');
   const { data: activeRuns } = useActiveAgentRunCount(ws.slug, hasAgents);
 
   return (

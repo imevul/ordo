@@ -369,6 +369,8 @@ export const MCP_TOOLS: {
   readOnly: boolean;
   /** `agent`: only listed for an agent's key (it is about the agent's own runs). */
   audience?: 'agent';
+  /** `agents`: only there while the workspace has agents turned on. */
+  feature?: 'agents';
 }[] = [
   {
     name: 'list_teams',
@@ -538,6 +540,7 @@ export const MCP_TOOLS: {
     description:
       'Agents in the workspace: members that are not people. Assigning an issue to one hands it to its runner.',
     readOnly: true,
+    feature: 'agents',
   },
   {
     name: 'assign_to_agent',
@@ -545,6 +548,7 @@ export const MCP_TOOLS: {
     description:
       'Hand an issue to an agent, optionally with a note for it. If the agent already has it, it runs again.',
     readOnly: false,
+    feature: 'agents',
   },
   {
     name: 'agent_runs',
@@ -552,6 +556,7 @@ export const MCP_TOOLS: {
     description:
       "An issue's agent runs: status, runner, session link, summary or error, and usage (tokens, cost in USD, duration) when the runner reported it, newest first.",
     readOnly: true,
+    feature: 'agents',
   },
   {
     name: 'list_agent_runs',
@@ -559,6 +564,7 @@ export const MCP_TOOLS: {
     description:
       'What agents are doing across the workspace: active runs (queued, working, waiting for an answer) by default, or finished ones, with each run’s usage (tokens, cost in USD, duration) when reported.',
     readOnly: true,
+    feature: 'agents',
   },
   {
     name: 'agent_run_holds',
@@ -566,6 +572,7 @@ export const MCP_TOOLS: {
     description:
       "Why queued agent runs aren't starting: chains of cycles with how many runs each holds, the issues that have to move first, and those that will stall the chain next.",
     readOnly: true,
+    feature: 'agents',
   },
   {
     name: 'rerun_agent',
@@ -573,12 +580,14 @@ export const MCP_TOOLS: {
     description:
       "Ask the issue's agent to work on it again, optionally with a note (e.g. review feedback).",
     readOnly: false,
+    feature: 'agents',
   },
   {
     name: 'cancel_agent_run',
     title: 'Cancel agent run',
     description: "Stop the agent's queued or running work on an issue.",
     readOnly: false,
+    feature: 'agents',
   },
   {
     name: 'restart_agent_run',
@@ -586,6 +595,7 @@ export const MCP_TOOLS: {
     description:
       "Restart an issue's latest failed or cancelled run (of agent, when several agents' runs failed) as a new run: same agent, issue and trigger. Works for mention runs too.",
     readOnly: false,
+    feature: 'agents',
   },
   {
     name: 'dismiss_agent_run',
@@ -593,12 +603,14 @@ export const MCP_TOOLS: {
     description:
       "Set an issue's latest failed or cancelled run aside without restarting it, so it leaves the open runs.",
     readOnly: false,
+    feature: 'agents',
   },
   {
     name: 'current_run',
     title: 'Current run',
     description: 'For agents: the runs you are working on now, with their issues.',
     readOnly: true,
+    feature: 'agents',
     audience: 'agent',
   },
   {
@@ -607,6 +619,7 @@ export const MCP_TOOLS: {
     description:
       'For agents: report on a run you hold. Add a session link, mark it running, or finish it (succeeded or failed) with a summary that is posted on the issue.',
     readOnly: false,
+    feature: 'agents',
     audience: 'agent',
   },
   {
@@ -615,6 +628,7 @@ export const MCP_TOOLS: {
     description:
       'For agents: say what you are doing now on a run you hold (a few words, optionally a rough percentage). People see the latest one on the run; it is not posted as a comment. Send one at each new step, not more often.',
     readOnly: false,
+    feature: 'agents',
     audience: 'agent',
   },
   {
@@ -623,6 +637,7 @@ export const MCP_TOOLS: {
     description:
       'For agents: ask a person something you need before you can continue, then stop. The question is posted on the issue, the run pauses, and it resumes when someone replies.',
     readOnly: false,
+    feature: 'agents',
     audience: 'agent',
   },
   {
@@ -631,6 +646,7 @@ export const MCP_TOOLS: {
     description:
       'For agents: post your plan before changing code, then stop. The plan is posted on the issue and the run pauses until a person approves it or replies with changes; it then resumes with the outcome.',
     readOnly: false,
+    feature: 'agents',
     audience: 'agent',
   },
 ];

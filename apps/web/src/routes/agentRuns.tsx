@@ -25,6 +25,7 @@ import { Avatar } from '../components/ui/Avatar.tsx';
 import { getLocale, INTL_TAG, t } from '../i18n/index.ts';
 import { compactCount, longDate, usd } from '../lib/format.ts';
 import { useWorkspace } from '../lib/workspace.tsx';
+import { NotFound } from './workspace.tsx';
 
 export interface AgentRunsSearch {
   group?: AgentRunGroup;
@@ -50,6 +51,11 @@ export function validateAgentRunsSearch(s: Record<string, unknown>): AgentRunsSe
  * finished ones.
  */
 export function AgentRunsPage() {
+  const ws = useWorkspace();
+  return ws.agentsOn ? <AgentRunsPageOn /> : <NotFound />;
+}
+
+function AgentRunsPageOn() {
   const ws = useWorkspace();
   const navigate = useNavigate();
   const search = useSearch({ from: '/$slug/agent-runs' });

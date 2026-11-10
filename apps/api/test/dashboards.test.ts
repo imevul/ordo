@@ -21,6 +21,7 @@ beforeAll(async () => {
   app = await testApp();
   owner = (await signup(app, 'Dagny Dashowner')).client;
   await owner.post('/api/workspaces', { name: 'Dash', slug, teamName: 'Eng', teamKey: 'DSH' });
+  await owner.patch(`/api/w/${slug}`, { settings: { agents: true } });
   const invite = async (role: string) =>
     (await owner.post(`${ws}/invites`, { role })).data[0].token as string;
   member = (await signup(app, 'Mats Dashmember', { inviteToken: await invite('member') })).client;

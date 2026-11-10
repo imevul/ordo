@@ -99,6 +99,7 @@ beforeAll(async () => {
   app = await testApp();
   owner = (await signup(app, 'Ola Owner')).client;
   await owner.post('/api/workspaces', { name: 'Holds', slug, teamName: 'One', teamKey: 'ONE' });
+  await owner.patch(`/api/w/${slug}`, { settings: { agents: true } });
   const invite = (await owner.post(`${ws}/invites`, { role: 'member' })).data[0].token;
   member = (await signup(app, 'Mia Member', { inviteToken: invite })).client;
   boot = (await owner.get(`${ws}/bootstrap`)).data;

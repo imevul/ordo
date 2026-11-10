@@ -660,6 +660,7 @@ export const API_MESSAGE_KEYS = [
   'attachment_too_large',
   'max_reactions',
   'time_tracking_off',
+  'agents_off',
   'own_time_entries',
   'no_timer',
   'timer_conflict',

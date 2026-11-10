@@ -474,9 +474,11 @@ function WebhookModal({
         {!everything && (
           <div className="mb-4">
             <div className="columns-1 gap-6 border border-border-soft p-3 sm:columns-2">
-              {EVENT_GROUPS.map((group) => (
-                <EventGroup key={group.key} group={group} events={events} onChange={setEvents} />
-              ))}
+              {EVENT_GROUPS.filter((group) => ws.agentsOn || group.key !== 'agents').map(
+                (group) => (
+                  <EventGroup key={group.key} group={group} events={events} onChange={setEvents} />
+                ),
+              )}
             </div>
             {events.length === 0 && (
               <p className="mt-1 text-[12px] text-warning">{t('webhooks.form.pickEvent')}</p>

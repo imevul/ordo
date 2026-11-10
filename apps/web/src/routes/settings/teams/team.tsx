@@ -137,7 +137,7 @@ export function TeamSettings({ team }: { team: Team }) {
               onChange={(e) => save.mutate({ cyclesEnabled: e.target.checked })}
             />
           </label>
-          {ws.repositories.length > 0 && (
+          {ws.agentsOn && ws.repositories.length > 0 && (
             <label className="flex items-center justify-between gap-3 border-b border-border-soft py-3 text-[13.5px]">
               <span>
                 {t('agents.repositories.teamDefault')}
