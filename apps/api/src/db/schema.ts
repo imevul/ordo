@@ -2077,6 +2077,11 @@ export const agentRuns = pgTable(
     status: text('status').$type<AgentRunStatus>().notNull().default('queued'),
     /** Claims so far; each lapsed lease counts. */
     attempts: integer('attempts').notNull().default(0),
+    /**
+     * Counts every claim and never starts over (unlike `attempts`): the runner sends it back, so
+     * one whose lease lapsed can't speak for the pickup that replaced it.
+     */
+    pickup: integer('pickup').notNull().default(0),
     leaseExpiresAt: ts('lease_expires_at'),
     runnerName: text('runner_name'),
     sessionUrl: text('session_url'),

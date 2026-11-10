@@ -413,6 +413,7 @@ export const toAgentRun = (r: RunRow): AgentRun => ({
   agentId: r.agentId,
   status: r.status,
   attempts: r.attempts,
+  pickup: r.pickup,
   runnerName: r.runnerName,
   sessionUrl: r.sessionUrl,
   summary: r.summary,
@@ -1554,6 +1555,7 @@ async function takeRun(ctx: Ctx, runnerName: string | null): Promise<RunRow | nu
     .set({
       status: 'claimed',
       attempts: sql`${agentRuns.attempts} + 1`,
+      pickup: sql`${agentRuns.pickup} + 1`,
       leaseExpiresAt: new Date(Date.now() + AGENT_LEASE_MS).toISOString(),
       runnerName,
       error: null,
@@ -1638,6 +1640,13 @@ export async function claimRun(
   }
 }
 
+/**
+ * A runner that names its pickup and isn't the run's current one: its lease lapsed and the run
+ * was handed out again. Runners that send no pickup (older ones) are taken at their word.
+ */
+const isStale = (run: { pickup: number }, pickup: number | undefined) =>
+  pickup !== undefined && pickup !== run.pickup;
+
 /** A runner's run, as long as it's still open. */
 async function ownRun(ctx: Ctx, runId: string) {
   const [run] = await ctx.tx
@@ -1696,9 +1705,10 @@ export async function reportProgress(
  * Only while it works: a cancelled run's runner may send a last batch, which is dropped. Viewers
  * hear of it by an event of its own, so run lists don't refetch every few seconds.
  */
-export async function appendRunOutput(ctx: Ctx, runId: string, lines: string[]) {
+export async function appendRunOutput(ctx: Ctx, runId: string, lines: string[], pickup?: number) {
   const run = await ownRun(ctx, runId);
-  if (run.status !== 'claimed' && run.status !== 'running') return { accepted: false };
+  if (isStale(run, pickup) || (run.status !== 'claimed' && run.status !== 'running'))
+    return { accepted: false };
   const [kept] = await ctx.tx.select().from(agentRunOutput).where(eq(agentRunOutput.runId, runId));
   const next = appendOutput(kept?.lines ?? [], lines);
   const total = (kept?.total ?? 0) + lines.length;
@@ -1752,8 +1762,10 @@ export async function pruneRunOutput(app: FastifyInstance) {
  * Keeps a claim alive. Tells the runner when a person cancelled the run, so it can stop, and when
  * a person's @mention is waiting (`steer`), so it can stop for that and let the run continue.
  */
-export async function heartbeat(ctx: Ctx, runId: string) {
+export async function heartbeat(ctx: Ctx, runId: string, pickup?: number) {
   const run = await ownRun(ctx, runId);
+  // Someone else has the run now: this runner stops, and doesn't extend their lease.
+  if (isStale(run, pickup)) return { cancelled: true, status: run.status };
   // Asking ends the pickup but not the run: stop working, it's not cancelled.
   if (run.status === 'waiting') return { cancelled: false, waiting: true, status: run.status };
   if (!AGENT_RUN_OPEN.includes(run.status) || run.status === 'queued')
@@ -1784,10 +1796,23 @@ export async function reportRun(
     steered?: true;
     usage?: AgentRunUsageReport;
   },
+  pickup?: number,
 ): Promise<AgentRun> {
   let run = await ownRun(ctx, runId);
   const usage = addUsage(input.usage);
   const used = Object.keys(usage).length > 0;
+  // A pickup that was replaced says nothing about the run any more, whatever it reports; what it
+  // used was spent all the same. The answer is the run as it stands, with the newer `pickup`.
+  if (isStale(run, pickup)) {
+    if (!used) return toAgentRun(run);
+    const [kept] = await ctx.tx
+      .update(agentRuns)
+      .set(usage)
+      .where(eq(agentRuns.id, runId))
+      .returning();
+    await afterUsage(ctx, kept!);
+    return toAgentRun(kept!);
+  }
   // The command usually exits after asking; whatever its runner says then changes nothing but
   // the links it can hand on, and what the pickup used. A cancelled run's runner can still say
   // what it used before it stopped.

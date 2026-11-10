@@ -26,6 +26,8 @@ import type {
 } from '@ordo/shared';
 
 /** An error answer from Ordo: the HTTP status, the API's error code and its message. */
+const pickupQuery = (pickup: number | undefined) => (pickup ? `?pickup=${pickup}` : '');
+
 export class OrdoError extends Error {
   readonly status: number;
   readonly code: string;
@@ -318,31 +320,34 @@ export class WorkspaceClient {
     /**
      * Extends the lease (5 minutes). `cancelled`: someone stopped the run; stop working on it.
      * `steer`: a person's @mention is waiting; stop and report `steered` to continue with it.
+     * `pickup` (here and below) is the claim's `run.pickup`: with it, Ordo also answers
+     * `cancelled` once the lease lapsed and another runner has the run.
      */
-    heartbeat: (runId: string) =>
+    heartbeat: (runId: string, pickup?: number) =>
       this.request<{
         cancelled: boolean;
         waiting?: boolean;
         status: AgentRun['status'];
         steer?: string | null;
-      }>('POST', `/agent/runs/${encodeURIComponent(runId)}/heartbeat`),
+      }>('POST', `/agent/runs/${encodeURIComponent(runId)}/heartbeat${pickupQuery(pickup)}`),
 
     /**
      * Live output: lines the command printed since the last call, for the run's page. Ordo keeps
      * the last 500; `accepted` is false once the run no longer works (cancelled, waiting), and
      * `steer` says a person's @mention is waiting, as on the heartbeat.
      */
-    output: (runId: string, lines: string[]) =>
+    output: (runId: string, lines: string[], pickup?: number) =>
       this.request<{ accepted: boolean; steer?: string | null }>(
         'POST',
-        `/agent/runs/${encodeURIComponent(runId)}/output`,
+        `/agent/runs/${encodeURIComponent(runId)}/output${pickupQuery(pickup)}`,
         { lines },
       ),
 
     /**
      * Started (`running`), finished (a summary is posted on the issue), or `waiting` with a
      * `question`. `resume` is handed back on the next pickup. Once a run is waiting, other
-     * reports change nothing but `sessionUrl` and `resume`.
+     * reports change nothing but `sessionUrl` and `resume`. With `pickup`, a report from a pickup
+     * that was replaced changes nothing but the usage: the answer's `pickup` is then a newer one.
      */
     report: (
       runId: string,
@@ -363,7 +368,13 @@ export class WorkspaceClient {
         /** What this pickup used; added to the run's totals, so send it once per pickup. */
         usage?: AgentRunUsageReport;
       },
-    ) => this.request<AgentRun>('PATCH', `/agent/runs/${encodeURIComponent(runId)}`, input),
+      pickup?: number,
+    ) =>
+      this.request<AgentRun>(
+        'PATCH',
+        `/agent/runs/${encodeURIComponent(runId)}${pickupQuery(pickup)}`,
+        input,
+      ),
 
     /** Asks a person and pauses the run; a reply on the issue puts it back in the queue. */
     ask: (runId: string, question: string, kind?: AgentRunQuestionKind) =>

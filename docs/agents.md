@@ -502,6 +502,11 @@ report, since a run that no longer works takes none (`accepted: false`).
 the run's prompt and `agent.instructions`, and not stored. `claim` long-polls: it answers as soon as a run is queued for the agent, or with `204` after `wait` seconds. Each
 claim holds a five-minute lease. Keep it alive with heartbeats, and stop working when one answers `cancelled: true`.
 
+Add `?pickup=<run.pickup>` (from the claim) to the heartbeat, output and report calls. A run whose lease lapsed is
+handed out again with a higher `pickup`; the runner that went quiet is then told `cancelled: true` on its next
+heartbeat, its output is dropped, and its reports change nothing except to add what it used (the answer is the run
+with the newer `pickup`). Without the parameter Ordo can't tell the two apart and takes either at its word.
+
 To support [steering](#steering-a-working-agent), report `steerable: true` once you can stop and continue the session.
 A `steer` comment id in a heartbeat or output reply then means a person's @mention is waiting: stop the agent and
 report `{ steered: true, usage?, resume? }` without a status, and the run goes back in the queue. The next pickup's

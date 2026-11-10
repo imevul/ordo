@@ -411,6 +411,53 @@ describe('runs', () => {
     expect(comments.at(-1)!.body).toContain('failed after 3 attempts');
   });
 
+  it('stops listening to a runner once another has picked the run up', async () => {
+    const i = await issue('Two runners', { assigneeId: agentId });
+    const first = (await claim()).data.run;
+    await app.db
+      .update(agentRuns)
+      .set({ leaseExpiresAt: new Date(Date.now() - 1000).toISOString() })
+      .where(eq(agentRuns.id, first.id));
+    await reapLeases(app);
+    const second = (await claim()).data.run;
+    expect(second).toMatchObject({ id: first.id, pickup: first.pickup + 1 });
+    const run = `${ws}/agent/runs/${first.id}`;
+    const lease = async () =>
+      (await app.db.select().from(agentRuns).where(eq(agentRuns.id, first.id)))[0]!.leaseExpiresAt;
+
+    // The runner that went quiet comes back: it's told to stop, and leaves the lease alone.
+    const before = await lease();
+    const stale = await agent('POST', `${run}/heartbeat?pickup=${first.pickup}`);
+    expect(stale.data).toMatchObject({ cancelled: true, status: 'claimed' });
+    expect(await lease()).toBe(before);
+    const dropped = await agent('POST', `${run}/output?pickup=${first.pickup}`, { lines: ['old'] });
+    expect(dropped.data).toEqual({ accepted: false });
+
+    // Its final report doesn't end the run the other one is working on; its cost still counts.
+    const late = await agent('PATCH', `${run}?pickup=${first.pickup}`, {
+      status: 'succeeded',
+      summary: 'Done, says the wrong runner.',
+      usage: { costUsd: 0.5 },
+    });
+    expect(late.statusCode).toBe(200);
+    expect(late.data).toMatchObject({ status: 'claimed', pickup: second.pickup });
+    expect(late.data.usage).toMatchObject({ costUsd: 0.5 });
+    const comments = (await owner.get(`${ws}/issues/${i.id}/comments`)).data as Comment[];
+    expect(comments.map((c) => c.body).join()).not.toContain('wrong runner');
+
+    // The one that holds it carries on as usual, and so does a runner that names no pickup.
+    const live = await agent('POST', `${run}/heartbeat?pickup=${second.pickup}`);
+    expect(live.data).toMatchObject({ cancelled: false, status: 'claimed' });
+    expect((await agent('POST', `${run}/heartbeat`)).data).toMatchObject({ cancelled: false });
+    const done = await agent('PATCH', `${run}?pickup=${second.pickup}`, {
+      status: 'succeeded',
+      summary: 'Done.',
+      usage: { costUsd: 0.25 },
+    });
+    expect(done.data).toMatchObject({ status: 'succeeded' });
+    expect(done.data.usage).toMatchObject({ costUsd: 0.75 });
+  });
+
   it('keeps reaping lapsed runs when one of them fails', async () => {
     await issue('Poisoned run', { assigneeId: agentId });
     const poisoned = (await claim()).data.run.id as string;

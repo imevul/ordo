@@ -1100,6 +1100,8 @@ async function work(
 ): Promise<'setup_failed' | undefined> {
   const id = context.issue.identifier;
   const runId = context.run.id;
+  // Sent with everything below, so Ordo can tell this pickup from one that replaced it.
+  const pickup = context.run.pickup;
   opts.log(
     `${id} ${context.run.planApprovedAt ? 'resumed with the plan approved' : context.run.question || context.run.plan ? 'resumed after a reply' : 'claimed'} (attempt ${context.run.attempts}): ${context.issue.title}`,
   );
@@ -1122,9 +1124,13 @@ async function work(
   };
   const beat = setInterval(async () => {
     try {
-      const reply = await ws.agent.heartbeat(runId);
+      const reply = await ws.agent.heartbeat(runId, pickup);
       if (reply.cancelled) {
-        opts.log(`${id} was cancelled in Ordo; stopping it`);
+        opts.log(
+          reply.status === 'cancelled'
+            ? `${id} was cancelled in Ordo; stopping it`
+            : `${id} is no longer this runner's (${reply.status} in Ordo); stopping it`,
+        );
         cancel();
       } else if (reply.steer) onSteer();
     } catch (err) {
@@ -1133,7 +1139,7 @@ async function work(
   }, 60_000);
   let refused: string | null = null;
   const report = (input: Parameters<WorkspaceClient['agent']['report']>[1]) =>
-    ws.agent.report(runId, input).catch((err: Error) => {
+    ws.agent.report(runId, input, pickup).catch((err: Error) => {
       refused = err.message;
       opts.log(`${id} report failed: ${err.message}`);
       return undefined;
@@ -1181,7 +1187,7 @@ async function work(
     output = spec.output
       ? outputStream(
           (lines) =>
-            ws.agent.output(runId, lines).catch((err: Error) => {
+            ws.agent.output(runId, lines, pickup).catch((err: Error) => {
               opts.log(`${id} sending output failed: ${err.message}`);
               return undefined;
             }),
@@ -1244,7 +1250,7 @@ async function work(
       const back = await report({ steered: true, usage: result.usage });
       // Cancelled meanwhile: the report is refused, but what the run used still counts.
       if (!back && (refused as string | null)?.includes('cancelled'))
-        await ws.agent.report(runId, { usage: result.usage }).catch(() => {});
+        await ws.agent.report(runId, { usage: result.usage }, pickup).catch(() => {});
       opts.log(`${id} went back in the queue to continue`);
       return;
     }
@@ -1258,9 +1264,13 @@ async function work(
     });
     // Cancelled meanwhile: the report is refused, but what the run used still counts.
     if (!saved && (refused as string | null)?.includes('cancelled'))
-      await ws.agent.report(runId, { usage: result.usage }).catch(() => {});
+      await ws.agent.report(runId, { usage: result.usage }, pickup).catch(() => {});
     // The agent asked a question: the run waits for a reply, whatever the command's exit said.
-    if (saved?.status === 'waiting')
+    if (saved && saved.pickup !== pickup)
+      opts.log(
+        `${id} finished (${result.status}), but another runner picked the run up meanwhile; Ordo kept only what this one used`,
+      );
+    else if (saved?.status === 'waiting')
       opts.log(
         `${id} is waiting for ${saved.plan && !saved.planApprovedAt ? 'approval' : 'an answer'}`,
       );
