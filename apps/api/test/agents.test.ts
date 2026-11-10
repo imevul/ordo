@@ -411,6 +411,20 @@ describe('runs', () => {
     expect(comments.at(-1)!.body).toContain('failed after 3 attempts');
   });
 
+  it('queues one run when several ask at the same moment', async () => {
+    const i = await issue('Asked twice', { assigneeId: agentId });
+    const [queued] = await runsOf(i.id);
+    await owner.post(`${ws}/agent-runs/${queued!.id}/cancel`);
+    const asked = await Promise.all(
+      Array.from({ length: 8 }, () => owner.post(`${ws}/issues/${i.id}/agent-runs`)),
+    );
+    expect(asked.map((r) => r.statusCode)).toEqual(Array(8).fill(200));
+    // Everyone got the same run back.
+    expect(new Set(asked.map((r) => r.data.id)).size).toBe(1);
+    expect((await runsOf(i.id)).filter((r) => r.status === 'queued')).toHaveLength(1);
+    await owner.post(`${ws}/agent-runs/${asked[0]!.data.id}/cancel`);
+  });
+
   it('stops listening to a runner once another has picked the run up', async () => {
     const i = await issue('Two runners', { assigneeId: agentId });
     const first = (await claim()).data.run;
